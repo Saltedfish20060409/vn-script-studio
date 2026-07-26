@@ -1,0 +1,120 @@
+{
+  "id": "demo-rainy-station",
+  "title": "雨夜车站",
+  "logline": "末班车延误的夜里，两个陌生人分享一把伞，却发现彼此寻找的是同一个人。",
+  "genre": "悬疑 / 情感",
+  "lore": "现代都市。车站广播偶尔失灵。女主林夏在找失踪的姐姐；男主周屿自称只是过路人。",
+  "characters": [
+    {
+      "id": "linxia",
+      "defineName": "linxia",
+      "displayName": "林夏",
+      "color": "#7eb8da",
+      "voice": "克制、短句、观察力强，不轻易示弱",
+      "bio": "24 岁，图书管理员。姐姐失踪三周。",
+      "imageTag": "linxia"
+    },
+    {
+      "id": "zhouyu",
+      "defineName": "zhouyu",
+      "displayName": "周屿",
+      "color": "#c4a574",
+      "voice": "温和但回避关键问题，习惯用笑带过",
+      "bio": "身份不明。对车站布局异常熟悉。",
+      "imageTag": "zhouyu"
+    }
+  ],
+  "chapters": [
+    {
+      "id": "ch1",
+      "title": "末班广播",
+      "synopsis": "雨夜月台，林夏等到延误通知，遇见周屿。",
+      "blocks": [
+        {
+          "type": "label",
+          "id": "start",
+          "name": "start"
+        },
+        {
+          "type": "scene",
+          "image": "bg station_night_rain",
+          "transition": "fade"
+        },
+        {
+          "type": "show",
+          "image": "linxia neutral",
+          "at": "left"
+        },
+        {
+          "type": "narration",
+          "text": "雨把站台洗成一条发亮的河。末班车的电子屏跳了两下，变成刺眼的「延误」。"
+        },
+        {
+          "type": "dialogue",
+          "characterId": "linxia",
+          "text": "……又是这样。"
+        },
+        {
+          "type": "show",
+          "image": "zhouyu smile",
+          "at": "right"
+        },
+        {
+          "type": "dialogue",
+          "characterId": "zhouyu",
+          "text": "这把伞还能再挤一个人。如果你不介意潮湿的礼貌的话。"
+        },
+        {
+          "type": "menu",
+          "id": "umbrella",
+          "prompt": "你要怎么做？",
+          "choices": [
+            {
+              "text": "接过伞沿",
+              "jump": "accept_umbrella"
+            },
+            {
+              "text": "婉拒，继续等",
+              "jump": "refuse_umbrella"
+            }
+          ]
+        },
+        {
+          "type": "label",
+          "id": "accept_umbrella",
+          "name": "accept_umbrella"
+        },
+        {
+          "type": "dialogue",
+          "characterId": "linxia",
+          "text": "谢谢。我在等一个人……也许她不会来了。"
+        },
+        {
+          "type": "jump",
+          "target": "talk_rain"
+        },
+        {
+          "type": "label",
+          "id": "refuse_umbrella",
+          "name": "refuse_umbrella"
+        },
+        {
+          "type": "dialogue",
+          "characterId": "linxia",
+          "text": "不用。雨停之前我还站得住。"
+        },
+        {
+          "type": "label",
+          "id": "talk_rain",
+          "name": "talk_rain"
+        },
+        {
+          "type": "dialogue",
+          "characterId": "zhouyu",
+          "text": "那个人……也喜欢在这种天气失踪吗？"
+        }
+      ]
+    }
+  ],
+  "updatedAt": "2026-07-17T08:08:21.324Z"
+}

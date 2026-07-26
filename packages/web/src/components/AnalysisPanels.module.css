@@ -1,0 +1,209 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tab,
+.tabActive {
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.45);
+  padding: 0.4rem 0.85rem;
+}
+
+.tabActive {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-bg);
+  padding: 0.9rem;
+  box-shadow: var(--shadow);
+}
+
+.hint {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  margin: 0 0 0.75rem;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.toolbar input,
+.toolbar select,
+.toolbar button,
+.tlCard input,
+.tlCard textarea,
+.tlCard button,
+.list button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+  background: var(--field-bg);
+}
+
+.tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+}
+
+.tree li {
+  margin: 0.25rem 0;
+  padding-left: 0.4rem;
+  border-left: 2px solid rgba(47, 93, 80, 0.25);
+}
+
+.treeNode {
+  display: inline-block;
+  padding: 0.15rem 0.4rem;
+  border-radius: 6px;
+  background: rgba(47, 93, 80, 0.08);
+}
+
+.tree li[data-kind="menu"] > .treeNode,
+.tree li[data-kind="choice"] > .treeNode {
+  background: rgba(184, 92, 56, 0.12);
+}
+
+.graph {
+  width: 100%;
+  height: auto;
+  background: var(--field-bg);
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+
+.edge {
+  stroke: #2f5d50;
+  stroke-width: 1.5;
+}
+
+.edgeLabel,
+.nodeLabel {
+  font-size: 12px;
+  fill: var(--ink);
+  font-family: var(--font-ui);
+}
+
+.edgeLabel {
+  text-anchor: middle;
+  fill: var(--ink-soft);
+}
+
+.list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  position: relative;
+}
+
+.tlCard {
+  position: relative;
+  margin-left: 1.2rem;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--field-bg);
+}
+
+.tlDot {
+  position: absolute;
+  left: -1.35rem;
+  top: 1rem;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  z-index: 1;
+}
+
+.tlLine {
+  position: absolute;
+  left: -1.15rem;
+  top: 1.4rem;
+  bottom: -0.9rem;
+  width: 2px;
+  background: rgba(47, 93, 80, 0.3);
+}
+
+.tlWhen {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  max-width: 200px;
+}
+
+.report .summary {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  margin: 0 0 0.75rem;
+}
+
+.issueList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.issueList li {
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.issueList li[data-sev="high"] {
+  border-color: rgba(139, 58, 58, 0.45);
+  background: rgba(139, 58, 58, 0.06);
+}
+
+.issueList li[data-sev="warn"] {
+  border-color: rgba(184, 92, 56, 0.4);
+  background: rgba(184, 92, 56, 0.06);
+}
+
+.error {
+  color: var(--danger);
+}

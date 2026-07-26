@@ -1,0 +1,132 @@
+.tab {
+  position: fixed;
+  right: 0;
+  bottom: 96px;
+  z-index: 60;
+  writing-mode: vertical-rl;
+  border: 1px solid var(--line);
+  border-right: none;
+  border-radius: 12px 0 0 12px;
+  background: var(--accent);
+  color: #f7f3eb;
+  padding: 1rem 0.45rem;
+  letter-spacing: 0.12em;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.panel,
+.panelCorner,
+.panelLarge {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel-bg);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 20px 50px rgba(26, 23, 20, 0.18);
+  overflow: hidden;
+  color: var(--ink);
+}
+
+/* 固定高度，保证底部输入框始终在可视区内 */
+.panelCorner {
+  right: 12px;
+  bottom: 12px;
+  left: auto;
+  top: auto;
+  width: min(400px, calc(100vw - 24px));
+  height: min(520px, calc(100vh - 24px));
+}
+
+.panel {
+  /* left/top/width/height 由内联 style 提供 */
+}
+
+/* 放大：屏幕居中、明显更大 */
+.panelLarge {
+  left: 50%;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+  width: min(880px, calc(100vw - 32px));
+  height: min(86vh, calc(100vh - 32px));
+  max-width: none;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-deep);
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+  touch-action: none;
+}
+
+.titlebar:active {
+  cursor: grabbing;
+}
+
+.panelLarge .titlebar {
+  cursor: default;
+}
+
+.titlebar strong {
+  font-family: var(--font-display);
+  font-size: 1rem;
+}
+
+.sub {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.winBtns {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.winBtns button {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--field-bg);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.55rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.chatFill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chatFill > * {
+  flex: 1;
+  min-height: 0;
+}

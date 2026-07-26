@@ -1,0 +1,628 @@
+.boot {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+}
+
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 78%, transparent);
+  backdrop-filter: blur(10px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brandBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.brand {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+}
+
+.titleInput {
+  border: none;
+  background: transparent;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  padding: 0;
+  width: min(420px, 70vw);
+}
+
+.titleInput:focus {
+  outline: none;
+  border-bottom: 1px solid var(--accent);
+}
+
+.topActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ghost,
+.primary,
+.aiQuick button,
+.tab,
+.tabActive,
+.chapterBtn,
+.chapterActive {
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--ink);
+  padding: 0.45rem 0.9rem;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.ghost:hover,
+.primary:hover,
+.aiQuick button:hover,
+.tab:hover,
+.chapterBtn:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+}
+
+.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #f7f3eb;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 0;
+  flex: 1;
+  min-height: 0;
+}
+
+.side {
+  padding: 1rem 0.9rem 2rem;
+  border-right: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper-deep) 70%, transparent);
+}
+
+.sideLabel {
+  margin: 0.8rem 0 0.4rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.chapterList,
+.charMini {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.chapterBtn,
+.chapterActive {
+  width: 100%;
+  text-align: left;
+  border-radius: 10px;
+}
+
+.chapterActive {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.charMini li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.1rem;
+}
+
+.charMini code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.75rem 1rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.tab,
+.tabActive {
+  border-radius: 10px 10px 0 0;
+  border-bottom: none;
+}
+
+.tabActive {
+  background: var(--field-bg);
+  border-color: var(--line);
+  font-weight: 600;
+}
+
+.subNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+}
+
+.subTab,
+.subActive {
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  padding: 0.3rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+.subActive {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  font-weight: 600;
+}
+
+.exprList {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.exprList li {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem;
+  align-items: center;
+  font-size: 0.78rem;
+}
+
+.exprList code {
+  grid-column: 1 / -1;
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+
+.exprList button {
+  grid-column: 2;
+  justify-self: end;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+}
+
+.shareBox {
+  margin-top: 1rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.shareBox input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  background: var(--field-bg);
+  color: var(--ink);
+}
+
+.snapList {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.snapList li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.panel {
+  padding: 1rem 1.1rem 2rem;
+  animation: rise 280ms ease;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.aiQuick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.aiQuick button {
+  font-size: 0.85rem;
+  padding: 0.35rem 0.7rem;
+  background: rgba(44, 74, 110, 0.08);
+  border-color: rgba(44, 74, 110, 0.25);
+}
+
+.aiQuick button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.editor,
+.pre,
+.aiOut,
+.charCard textarea,
+.charCard input,
+.charCard select,
+.lore textarea,
+.aiForm input,
+.aiForm textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--field-bg);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.editor {
+  min-height: calc(100vh - 220px);
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.pre {
+  margin: 0;
+  min-height: 60vh;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.charGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.9rem;
+}
+
+.charCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-bg);
+}
+
+.charCard label,
+.lore,
+.aiForm label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.lore {
+  margin-top: 1rem;
+}
+
+.aiForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  max-width: 900px;
+}
+
+.aiActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.aiOut {
+  font-family: var(--font-mono);
+  line-height: 1.5;
+}
+
+.error {
+  color: var(--danger);
+  margin: 0;
+}
+
+.banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-bg);
+  font-size: 0.9rem;
+}
+
+.select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.45rem 0.55rem;
+  background: var(--field-bg);
+  margin-bottom: 0.5rem;
+}
+
+.chapterRow {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.chapterRow .chapterBtn,
+.chapterRow .chapterActive {
+  flex: 1;
+}
+
+.iconBtn {
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+}
+
+.iconBtn:hover {
+  background: rgba(139, 58, 58, 0.12);
+  color: var(--danger);
+}
+
+.hint {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+.hintInline {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.libraryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.9rem;
+}
+
+.libraryCard,
+.libraryCardActive {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1rem;
+  background: var(--panel-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.libraryCardActive {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.libraryCard h3,
+.libraryCardActive h3,
+.libraryTitle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  cursor: text;
+}
+
+.libraryRename {
+  width: 100%;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  background: var(--field-bg);
+  color: var(--ink);
+}
+
+.libraryCard p,
+.libraryCardActive p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.meta {
+  font-size: 0.8rem !important;
+  opacity: 0.85;
+}
+
+.cardActions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.cardHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.danger {
+  border-radius: 999px;
+  border: 1px solid rgba(139, 58, 58, 0.35);
+  background: rgba(139, 58, 58, 0.08);
+  color: var(--danger);
+  padding: 0.3rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+.bibleGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+  max-width: 960px;
+}
+
+.bibleGrid label,
+.bibleGrid .full {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.bibleGrid .full {
+  grid-column: 1 / -1;
+}
+
+.bibleGrid input,
+.bibleGrid textarea,
+.inlineLabel input,
+.linkForm input,
+.linkForm select {
+  border: 1px solid var(--line);
+  background: var(--field-bg);
+  border-radius: 10px;
+  padding: 0.65rem 0.8rem;
+  color: var(--ink);
+}
+
+.inlineLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.inlineLabel input {
+  min-width: 160px;
+}
+
+.linkForm {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1.2fr auto;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.linkList {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.linkList li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-bg);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 860px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .side {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bibleGrid,
+  .linkForm {
+    grid-template-columns: 1fr;
+  }
+}

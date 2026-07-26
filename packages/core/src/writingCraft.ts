@@ -1,0 +1,589 @@
+import type { AgentTaskKind, VnProject } from "./types.js";
+
+/**
+ * Studio-side writing "skills": compact craft constraints for VN / light-novel scripts.
+ * Injected into the Editor Agent by task — not Cursor SKILL.md files.
+ */
+
+export type WritingSkillId =
+  | "anti_exposition"
+  | "narrative_continuity"
+  | "vn_stagecraft"
+  | "dialogue_natural"
+  | "pacing_hook"
+  | "audience_delight"
+  | "anti_cliche"
+  | "subtext_conflict"
+  | "voice_contrast"
+  | "info_control"
+  | "cast_economy"
+  | "sensory_ground"
+  | "monologue_balance"
+  | "sprite_direction"
+  | "choice_design"
+  | "romance_beat"
+  | "comedy_timing"
+  | "atmosphere"
+  | "escalation"
+  | "silence_beat"
+  | "renpy_hygiene"
+  | "player_agency"
+  | "emotion_truth"
+  | "foreshadow_light"
+  | "power_dynamics"
+  | "scene_blocking"
+  | "flag_subtle"
+  | "anti_repeat"
+  | "name_economy"
+  | "cg_buildup"
+  | "stranger_distance"
+  | "anti_qa_pingpong"
+  | "talk_economy"
+  | "social_temperature";
+
+export interface WritingSkill {
+  id: WritingSkillId;
+  title: string;
+  body: string;
+}
+
+const S = (
+  id: WritingSkillId,
+  title: string,
+  lines: string[]
+): WritingSkill => ({
+  id,
+  title,
+  body: `【技能：${title}】\n${lines.map((l) => `- ${l}`).join("\n")}`,
+});
+
+const SKILLS: Record<WritingSkillId, WritingSkill> = {
+  anti_exposition: S("anti_exposition", "反设定倾倒", [
+    "Characters/Bible/Variables 是作者备忘，不是对白讲义",
+    "严禁履历介绍、能力清单、世界观词典进对白/旁白",
+    "设定只体现在态度、用词、选择与反应；每拍最多透露剧情所需的最小信息",
+  ]),
+  narrative_continuity: S("narrative_continuity", "叙事接续", [
+    "必须接【当前章末尾】的情绪、未完成动作、未答之问，禁止另开介绍课",
+    "先问：上一拍发生了什么？角色此刻要什么/怕什么？",
+    "时空与在场人物默认与末尾一致，除非正文写明转移",
+    "末尾若是钩子/高潮，优先拧紧或兑现，勿回头补说明书",
+  ]),
+  vn_stagecraft: S("vn_stagecraft", "VN 舞台感", [
+    "输出可上演脚本：短旁白 + 对白 + 必要时 scene/show，忌小说大段说明",
+    "旁白做氛围/动作/感官；对白做关系与冲突",
+    "禁止旁白与对白重复同一信息；禁止影评式总结代替戏",
+  ]),
+  dialogue_natural: S("dialogue_natural", "对白自然度", [
+    "voice/bio 校准「怎么说」，不是「念什么设定」",
+    "允许口语、打断、省略、答非所问、顾左右而言他；禁止演讲腔与念稿轮流发言",
+    "角色不知之事不可全知全讲；称呼/敬慢语符合关系但勿贴标签对白",
+    "推进剧情不必靠「连问三句」；可用沉默、动作、转移话题、只接半句",
+  ]),
+  pacing_hook: S("pacing_hook", "节奏与钩子", [
+    "单次只写一小段节拍（数轮对白+少量旁白），留呼吸",
+    "参考：反应→摩擦/推进→新信息或选择或余韵",
+    "禁开场倾泻背景；禁段末作者总结；段末留问题/决定/误会/感官余韵",
+    "信息点单次 ideally 一个主推进；其余用氛围与关系变化填",
+  ]),
+  audience_delight: S("audience_delight", "受众喜爱感", [
+    "优先关系张力、具体细节、意外但合理的反应、一点幽默或痛感",
+    "少用抽象形容词堆砌、正确无趣的说明、万能鸡汤旁白",
+    "自检：删掉所有设定名词后戏是否仍好看？否→重写",
+  ]),
+  anti_cliche: S("anti_cliche", "反套话紫散文", [
+    "避免 AI 套话：微微一笑、不禁、仿佛、涌上心头、命运的齿轮、空气突然安静得可怕（滥用时）",
+    "少堆「美丽/悲伤/复杂」等空心词；用可见动作与具体物象代替",
+    "比喻要准而省，宁缺毋滥；禁止为了华丽牺牲清晰",
+  ]),
+  subtext_conflict: S("subtext_conflict", "潜台词与冲突", [
+    "好对白往往话里有话：表面话题≠真正争夺（面子、秘密、亲近、控制）",
+    "每一小段至少有一处摩擦、误会、试探或拒绝，避免纯信息传递会",
+    "冲突可小：抢话、回避、玩笑带刺、沉默抗拒——不一定要靠追问",
+  ]),
+  voice_contrast: S("voice_contrast", "声线区分", [
+    "遮住名字也应能辨出是谁：句长、节奏、用词、礼貌度、话题偏好不同",
+    "禁止全员同一种「正确书面语」；对照各角色 voice 拉开差距",
+    "配角也要有辨识短句，勿工具人传声筒",
+  ]),
+  info_control: S("info_control", "信息控制", [
+    "悬念靠藏与露的节奏：读者可略懂一点，角色可更懵或更知情",
+    "禁止一次解开所有谜；禁止用旁白剧透尚未发生的结局感",
+    "新信息最好由行动/证物/失言/环境异常带出，而非一问一答百科",
+    "陌生人不会无偿把路线图讲清楚；透露要有动机或口误代价",
+  ]),
+  cast_economy: S("cast_economy", "出场经济", [
+    "单拍焦点角色宜少（通常 2～3 人主说话）；其他人用反应/短句即可",
+    "勿突然拉进一串只为介绍的新名字；新角色要有当场功能",
+    "群众戏用声音/动作群像，勿点名点到流水账",
+  ]),
+  sensory_ground: S("sensory_ground", "感官锚定", [
+    "每拍至少一处可见/可听/可触的具体细节（光、声、气味、体温、物件）",
+    "细节服务情绪或伏笔，禁止风景明信片堆砌",
+    "换景时用一两个感官锚点，代替「来到了某某地点」说明书",
+  ]),
+  monologue_balance: S("monologue_balance", "内心独白分寸", [
+    "内心独白短而尖：一个判断、一个恐惧、一个决定；忌小论文",
+    "能用表情/动作表现的，少用「我感到很…」",
+    "独白不要复述刚说出口的对白",
+  ]),
+  sprite_direction: S("sprite_direction", "立绘表情指示", [
+    "情绪转折处可注释 show 表情（如 show name happy），勿句句标注",
+    "表情变化要有戏的理由；禁止表情与台词情绪打架",
+    "无立绘设定时用短动作代替：偏头、握拳、视线躲开",
+  ]),
+  choice_design: S("choice_design", "选项设计", [
+    "menu 每项后果须不同（信息/关系/路线/风险），禁假选择（三句同意）",
+    "选项文案短、有人物态度，像角色会说的话，不像问卷",
+    "至少一项带代价或暴露性格；标注 jump 目标要合理",
+  ]),
+  romance_beat: S("romance_beat", "恋线节拍", [
+    "好感推进靠具体互动（帮忙、共情、越界一点、留下把柄），忌突然告白说明书",
+    "距离感：试探→靠近→受阻→再靠近；尊重当前好感变量，勿无故飞跃",
+    "羞涩/撩拨用细节与停顿，少用「心跳加速」堆叠",
+  ]),
+  comedy_timing: S("comedy_timing", "喜剧节奏", [
+    "笑点靠反差、误解、毒舌、冷处理；铺垫要短，抖包袱要脆",
+    "严肃戏里的幽默应出自主角性格，勿突然网感玩梗出戏",
+    "笑完立刻回到处境，勿连续段子冲淡张力",
+  ]),
+  atmosphere: S("atmosphere", "氛围类型感", [
+    "按作品 genre/主题保持调性：甜、悬疑、恐怖、校园等勿串味硬切",
+    "恐怖靠未知与身体不适感；悬疑靠线索与不可靠叙述；甜靠温度与节奏",
+    "氛围服务于人物处境，禁止为炫技空转气氛",
+  ]),
+  escalation: S("escalation", "场景内升级", [
+    "一场戏内压力应有阶梯：试探→加压→爆发或强行按住",
+    "禁止平铺信息交换；每一轮对白后处境应略有不同",
+    "高潮后给半拍余韵或新伤口，再进入下一钩子",
+  ]),
+  silence_beat: S("silence_beat", "停顿与留白", [
+    "关键处可用短旁白/省略/动作代替说话；沉默也是对白",
+    "勿用长旁白填满所有空白；给玩家想象与立绘表演留空",
+    "连续对白之间插入一个可见动作，避免机关枪对轰",
+  ]),
+  renpy_hygiene: S("renpy_hygiene", "Ren'Py 脚本卫生", [
+    "输出可粘贴片段：旁白用引号行，对白 name \"...\"，选项用 menu",
+    "label/jump 名称简短英文；勿发明无法落地的引擎指令",
+    "一次 append 保持同一场景连贯；大换景先写 scene",
+  ]),
+  player_agency: S("player_agency", "玩家能动感", [
+    "重要分歧前给可读信号；选择后世界/关系要有可感反馈",
+    "勿用长独白剥夺选择意义；勿嘲讽玩家选项（除非角色人设如此且有代价）",
+    "即使无 menu，也让主角的主动选择推动情节，减少纯旁观",
+  ]),
+  emotion_truth: S("emotion_truth", "情感真实", [
+    "情绪要有触发物；禁无因崩溃、无因告白、无因和解",
+    "大哭大喊须挣来；更多时候用压抑、转移话题、过度平静",
+    "悲剧勿贩卖惨；甜宠勿无冲突的糖水流水线",
+  ]),
+  foreshadow_light: S("foreshadow_light", "伏笔轻点", [
+    "伏笔用物件、口误、反常反应埋，勿旁白标注「这很重要」",
+    "单次续写最多轻点一处，勿集中剧透未来线",
+    "回收伏笔要让玩家「想起来」而非被作者提醒",
+  ]),
+  power_dynamics: S("power_dynamics", "关系权力", [
+    "对白反映谁在主导：提问权、打断权、空间距离、知情权",
+    "关系变化应改变说话方式（敬语崩塌、绰号出现、命令变请求）",
+    "忌所有人永远平等礼貌座谈",
+  ]),
+  scene_blocking: S("scene_blocking", "走位进出场", [
+    "进出场要有理由与方向感；人来人往服务戏，不走过场点名",
+    "空间关系清晰：谁靠近、谁挡门、谁背对",
+    "换景用 scene + 一句感官，勿旅程流水账",
+  ]),
+  flag_subtle: S("flag_subtle", "变量不说破", [
+    "好感/flag 影响态度与选项结果，禁止对白里报数值或「好感度上升」",
+    "状态变化用行为证明：多看一眼、肯帮忙、肯说谎",
+    "需要改变量时，戏里先发生可感事件，再在工程里改（若用户要求）",
+  ]),
+  anti_repeat: S("anti_repeat", "反重复结构", [
+    "避免又一段「问候→介绍→说明任务」模板",
+    "若前文已用过某种误会/搞笑结构，换机制，勿同构复读",
+    "角色口头禅可重复，情节节拍勿复制粘贴",
+  ]),
+  name_economy: S("name_economy", "称呼节制", [
+    "对话中少反复喊全名；用你/喂/称呼关系更自然",
+    "名字出现要有功能：提醒、强调、亲密或威胁",
+    "旁白不要每句主语全名复读",
+  ]),
+  cg_buildup: S("cg_buildup", "名场面铺垫", [
+    "大告白/揭秘/决裂前要有铺垫与节奏加速，忌突然降临",
+    "名场面当拍聚焦：减旁支、加具体细节与选择重量",
+    "事后留余震（尴尬、沉默、玩笑掩饰），勿立刻日常复原",
+  ]),
+  stranger_distance: S("stranger_distance", "陌生人距离", [
+    "互不相识、且人设非热情外向时：默认惜话、戒备、礼貌疏离，禁止像老同学盘根究底",
+    "一拍里同一角色主动追问 ideally ≤1 次；第二次起改用沉默、盯着别处、短应、或被环境打断",
+    "对方多说了不该说的话时，反应可以是警觉/停顿，而不必立刻连环质询把地图问出来",
+    "对照角色 voice：克制型用短句与省略；温和回避型用笑/岔开，而不是耐心答疑",
+  ]),
+  anti_qa_pingpong: S("anti_qa_pingpong", "反问答乒乓", [
+    "严禁「问→答→再问→再答」当唯一引擎把设定/路线塞进戏",
+    "坏例：你好像很熟？→停用站厅？→你听见了吗？ 连续疑问句推进",
+    "好例：一问之后用动作/环境/对方主动漏嘴推进；或只应半句，信息残缺留给下拍",
+    "需要揭示时，让知情者因失言、炫耀、安抚、恐惧而说，而不是被主角审讯逼出",
+  ]),
+  talk_economy: S("talk_economy", "对白经济", [
+    "陌生人场景总对白轮次宜少：宁可旁白/声响/画面多一点，对白少而尖",
+    "删掉不改变关系与处境的寒暄式确认句（「是吗」「这样啊」连发）",
+    "每一句对白最好同时做两件事：推进处境 + 暴露态度；只做传声筒的删掉",
+  ]),
+  social_temperature: S("social_temperature", "社交温度", [
+    "写对话前先定温度：冷淡/客气/试探/暧昧/敌意——整拍保持，勿无故升温成倾诉局",
+    "温度升高需要触发（共伞、共敌、共同秘密、酒精、恐惧），禁止为推进剧情强行变熟",
+    "热情角色可以说多；冷角色说少——不要为了「写满」让冷角色变主持访谈",
+  ]),
+};
+
+/** Full library order (for docs / UI) */
+export const ALL_WRITING_SKILL_IDS: WritingSkillId[] = Object.keys(
+  SKILLS
+) as WritingSkillId[];
+
+const PROSE_CORE: WritingSkillId[] = [
+  "anti_exposition",
+  "narrative_continuity",
+  "vn_stagecraft",
+  "dialogue_natural",
+  "pacing_hook",
+  "audience_delight",
+  "anti_cliche",
+  "subtext_conflict",
+  "voice_contrast",
+  "info_control",
+  "cast_economy",
+  "sensory_ground",
+  "monologue_balance",
+  "sprite_direction",
+  "escalation",
+  "silence_beat",
+  "emotion_truth",
+  "power_dynamics",
+  "scene_blocking",
+  "flag_subtle",
+  "anti_repeat",
+  "name_economy",
+  "atmosphere",
+  "renpy_hygiene",
+  "stranger_distance",
+  "anti_qa_pingpong",
+  "talk_economy",
+  "social_temperature",
+];
+
+const PROSE_EXTRA: WritingSkillId[] = [
+  "romance_beat",
+  "comedy_timing",
+  "foreshadow_light",
+  "cg_buildup",
+  "player_agency",
+];
+
+/** Which craft skills apply to which Agent task */
+const TASK_SKILLS: Record<AgentTaskKind, WritingSkillId[]> = {
+  chat: ["anti_exposition", "audience_delight", "anti_cliche"],
+  continue: [...PROSE_CORE, ...PROSE_EXTRA],
+  scene: [...PROSE_CORE, ...PROSE_EXTRA],
+  rewrite: [
+    "anti_exposition",
+    "vn_stagecraft",
+    "dialogue_natural",
+    "anti_cliche",
+    "subtext_conflict",
+    "voice_contrast",
+    "sensory_ground",
+    "monologue_balance",
+    "audience_delight",
+    "emotion_truth",
+    "name_economy",
+    "anti_repeat",
+    "renpy_hygiene",
+    "stranger_distance",
+    "anti_qa_pingpong",
+    "talk_economy",
+    "social_temperature",
+  ],
+  polish: [
+    "dialogue_natural",
+    "vn_stagecraft",
+    "anti_exposition",
+    "anti_cliche",
+    "voice_contrast",
+    "silence_beat",
+    "name_economy",
+    "monologue_balance",
+    "sensory_ground",
+    "stranger_distance",
+    "anti_qa_pingpong",
+    "talk_economy",
+    "social_temperature",
+  ],
+  branch: [
+    "choice_design",
+    "player_agency",
+    "vn_stagecraft",
+    "anti_exposition",
+    "subtext_conflict",
+    "flag_subtle",
+    "pacing_hook",
+    "renpy_hygiene",
+    "voice_contrast",
+  ],
+  outline: [
+    "pacing_hook",
+    "anti_exposition",
+    "audience_delight",
+    "escalation",
+    "info_control",
+    "foreshadow_light",
+    "cg_buildup",
+    "cast_economy",
+    "atmosphere",
+    "player_agency",
+  ],
+  voice: [
+    "dialogue_natural",
+    "voice_contrast",
+    "anti_exposition",
+    "anti_cliche",
+    "power_dynamics",
+    "name_economy",
+    "subtext_conflict",
+  ],
+  consistency: [
+    "anti_exposition",
+    "info_control",
+    "flag_subtle",
+    "narrative_continuity",
+    "foreshadow_light",
+  ],
+};
+
+const SELF_CHECK = `【落笔自检】
+1. 有无念设定/履历/能力清单？→删或改成行动潜台词
+2. 是否紧接章末节拍？另起介绍段→重写
+3. 遮住名字能否分辨说话人？全员同腔→改
+4. 本拍有无摩擦/选择/关系变化？纯传信息→加冲突
+5. 有无 AI 套话与空心形容词？→换成具体物象/动作
+6. 段末是钩子还是作者总结？总结→改钩子
+7. 是否报了好感/flag 或喊名过度？→改
+8. 同一角色是否连问≥2 个疑问句在盘人？→改成惜话/沉默/环境推进
+9. 陌生人是否聊得过熟、答得过全？→降温、残缺信息`;
+
+export type CraftMode = "off" | "lite" | "full";
+
+export type CraftModePreference = "auto" | CraftMode;
+
+export interface CraftDecision {
+  mode: CraftMode;
+  reason: string;
+}
+
+const LITE_IDS: WritingSkillId[] = [
+  "anti_exposition",
+  "narrative_continuity",
+  "vn_stagecraft",
+  "dialogue_natural",
+  "pacing_hook",
+  "renpy_hygiene",
+  "anti_cliche",
+  "stranger_distance",
+  "anti_qa_pingpong",
+  "talk_economy",
+];
+
+function chapterPlainLength(
+  project: VnProject | undefined,
+  chapterId?: string
+): number {
+  if (!project?.chapters?.length) return 0;
+  const ch =
+    project.chapters.find((c) => c.id === chapterId) ?? project.chapters[0];
+  if (!ch) return 0;
+  return JSON.stringify(ch.blocks).length;
+}
+
+function bioRisk(project: VnProject | undefined): number {
+  if (!project) return 0;
+  let n = 0;
+  for (const c of project.characters) {
+    n +=
+      (c.bio?.length ?? 0) +
+      (c.voice?.length ?? 0) +
+      (c.relationships?.length ?? 0);
+  }
+  n +=
+    (project.bible?.world?.length ?? 0) +
+    (project.bible?.background?.length ?? 0);
+  return n;
+}
+
+/**
+ * Decide whether to inject writing craft skills.
+ * Explicit user intent > settings preference > task > risk signals.
+ */
+export function selectCraftMode(opts: {
+  task: AgentTaskKind;
+  userMessage?: string;
+  project?: VnProject;
+  chapterId?: string;
+  preference?: CraftModePreference;
+}): CraftDecision {
+  const pref = opts.preference ?? "auto";
+  if (pref === "off" || pref === "lite" || pref === "full") {
+    return { mode: pref, reason: `用户固定为「${pref}」` };
+  }
+
+  const msg = (opts.userMessage ?? "").trim();
+
+  if (
+    /关闭工艺|不要\s*skills?|不用工艺|关掉skills?|无工艺|别套工艺/i.test(msg)
+  ) {
+    return { mode: "off", reason: "用户要求关闭工艺" };
+  }
+  if (/强制工艺|全套工艺|防倾倒|严格按skills?|用足工艺/i.test(msg)) {
+    return { mode: "full", reason: "用户要求加强工艺" };
+  }
+  if (/短拍|写短|干脆|少修饰|自然点|别太文艺|紧凑|少技巧|朴素/i.test(msg)) {
+    return { mode: "lite", reason: "用户要短/自然，用轻量工艺" };
+  }
+
+  if (opts.task === "chat") {
+    return { mode: "off", reason: "自由讨论：不注入工艺，保持松弛" };
+  }
+  if (
+    opts.task === "consistency" ||
+    opts.task === "outline" ||
+    opts.task === "voice"
+  ) {
+    return { mode: "lite", reason: `任务「${opts.task}」宜轻量约束` };
+  }
+  if (opts.task === "polish" || opts.task === "branch") {
+    return { mode: "lite", reason: `任务「${opts.task}」：去套话/选项，轻量即可` };
+  }
+
+  const bio = bioRisk(opts.project);
+  const chLen = chapterPlainLength(opts.project, opts.chapterId);
+  if (bio >= 400 || chLen < 800) {
+    return {
+      mode: "full",
+      reason:
+        bio >= 400
+          ? "人设/设定较厚，倾倒风险高 → 全套工艺"
+          : "当前章较短/偏开头，倾倒风险高 → 全套工艺",
+    };
+  }
+  if (chLen > 4000 && /续写|往下写/.test(msg) && !/写一场戏|完整/.test(msg)) {
+    return {
+      mode: "lite",
+      reason: "章内已有较密正文，续写偏短拍 → 轻量工艺更利落",
+    };
+  }
+  if (opts.task === "scene") {
+    return { mode: "full", reason: "写一场戏需要舞台与节奏全套" };
+  }
+  if (opts.task === "rewrite") {
+    return { mode: "full", reason: "改写需压倾倒与提升对白" };
+  }
+  return { mode: "full", reason: "默认续写启用全套工艺" };
+}
+
+export function getWritingSkill(id: WritingSkillId): WritingSkill {
+  return SKILLS[id];
+}
+
+export function listWritingSkills(): WritingSkill[] {
+  return ALL_WRITING_SKILL_IDS.map((id) => SKILLS[id]);
+}
+
+export function skillsForTask(
+  task: AgentTaskKind,
+  mode: CraftMode = "full"
+): WritingSkill[] {
+  if (mode === "off") return [];
+  const ids = TASK_SKILLS[task] ?? [];
+  const seen = new Set<WritingSkillId>();
+  const out: WritingSkill[] = [];
+  for (const id of ids) {
+    if (mode === "lite" && !LITE_IDS.includes(id)) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(SKILLS[id]);
+  }
+  if (mode === "lite") return out.slice(0, 8);
+  return out;
+}
+
+const PRIORITY_IDS: WritingSkillId[] = [
+  "anti_exposition",
+  "stranger_distance",
+  "anti_qa_pingpong",
+  "talk_economy",
+  "social_temperature",
+  "narrative_continuity",
+  "vn_stagecraft",
+  "dialogue_natural",
+  "pacing_hook",
+  "subtext_conflict",
+  "anti_cliche",
+  "renpy_hygiene",
+  "voice_contrast",
+  "sensory_ground",
+];
+
+/** Build craft prompt for the selected mode. */
+export function buildWritingCraftPrompt(
+  task: AgentTaskKind,
+  mode: CraftMode = "full"
+): string {
+  if (mode === "off") {
+    return "—— 写作工艺：本轮关闭（追求短拍自然；仍禁止把人设条目念进对白）——";
+  }
+  const skills = skillsForTask(task, mode);
+  if (!skills.length) return "";
+  const needCheck =
+    task === "continue" ||
+    task === "scene" ||
+    task === "rewrite" ||
+    task === "polish" ||
+    task === "branch";
+
+  if (mode === "lite") {
+    return [
+      `—— 写作工艺 Skills（轻量×${skills.length}：利落优先，防倾倒仍生效）——`,
+      skills.map((s) => s.body).join("\n\n"),
+      needCheck
+        ? "【轻量自检】有无念设定？是否接章末？段末是钩子还是总结？"
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  const priority = skills.filter((s) => PRIORITY_IDS.includes(s.id));
+  const rest = skills.filter((s) => !PRIORITY_IDS.includes(s.id));
+  const primary = (priority.length ? priority : skills.slice(0, 8)).map(
+    (s) => s.body
+  );
+  const checklist =
+    rest.length > 0
+      ? `【亦须遵守（简表）】${rest.map((s) => s.title).join("、")}。冲突时以反设定倾倒与叙事接续为准。`
+      : "";
+
+  return [
+    `—— 写作工艺 Skills（详述 ${primary.length} + 简表 ${rest.length}；优先级高于「把上下文写全」）——`,
+    primary.join("\n\n"),
+    checklist,
+    needCheck ? SELF_CHECK : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export function writingSkillTitles(
+  task: AgentTaskKind,
+  mode: CraftMode = "full"
+): string[] {
+  return skillsForTask(task, mode).map((s) => s.title);
+}
