@@ -1,0 +1,233 @@
+.tab {
+  position: fixed;
+  z-index: 60;
+  border: 1px solid var(--line);
+  background: var(--accent);
+  color: var(--on-accent, #f7f3eb);
+  letter-spacing: 0.12em;
+  font-weight: 600;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition:
+    transform 180ms var(--ease-out),
+    padding 160ms var(--ease-out),
+    filter 160ms var(--ease-out);
+}
+
+.tab:hover {
+  filter: brightness(1.06);
+}
+
+.tab_right {
+  right: 0;
+  writing-mode: vertical-rl;
+  border-right: none;
+  border-radius: 12px 0 0 12px;
+  padding: 1.05rem 0.5rem;
+  min-height: 120px;
+}
+
+.tab_right:hover {
+  padding-right: 0.7rem;
+}
+
+.tab_left {
+  left: 0;
+  writing-mode: vertical-rl;
+  border-left: none;
+  border-radius: 0 12px 12px 0;
+  padding: 1.05rem 0.5rem;
+  min-height: 120px;
+}
+
+.tab_left:hover {
+  padding-left: 0.7rem;
+}
+
+.tab_top {
+  top: 0;
+  writing-mode: horizontal-tb;
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  padding: 0.45rem 1.1rem;
+  min-width: 120px;
+}
+
+.tab_top:hover {
+  padding-top: 0.6rem;
+}
+
+.tab_bottom {
+  bottom: 0;
+  writing-mode: horizontal-tb;
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  padding: 0.45rem 1.1rem;
+  min-width: 120px;
+}
+
+.tab_bottom:hover {
+  padding-bottom: 0.6rem;
+}
+
+.panel,
+.panelCorner,
+.panelLarge {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg, 16px);
+  background: var(--panel-bg);
+  backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  color: var(--ink);
+}
+
+.panelCorner {
+  right: 12px;
+  bottom: 12px;
+  left: auto;
+  top: auto;
+  /* width/height 由内联 style 提供，便于拉伸记忆 */
+}
+
+.panel {
+  /* left/top/width/height 由内联 style 提供 */
+}
+
+.panelDragging {
+  opacity: 0.96;
+  user-select: none;
+}
+
+.panelSnapHint {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent),
+    var(--shadow-lg);
+}
+
+.panelLarge {
+  left: 50%;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+  width: min(1040px, calc(100vw - 32px));
+  height: min(86dvh, calc(100dvh - 32px));
+  max-width: none;
+}
+
+.resizeHandle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  touch-action: none;
+  z-index: 2;
+}
+
+.resizeHandle::before {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid color-mix(in srgb, var(--ink-soft) 70%, transparent);
+  border-bottom: 2px solid color-mix(in srgb, var(--ink-soft) 70%, transparent);
+  border-radius: 1px;
+}
+
+.resizeHandle:hover::before {
+  border-color: var(--accent);
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper-deep) 80%, transparent);
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+  touch-action: none;
+}
+
+.titlebar:active {
+  cursor: grabbing;
+}
+
+.panelLarge .titlebar {
+  cursor: default;
+}
+
+.titlebar strong {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 650;
+}
+
+.sub {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.winBtns {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.winBtns button {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--field-bg);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.winBtns button:hover {
+  border-color: var(--accent);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.6rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.chatFill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chatFill > * {
+  flex: 1;
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab {
+    transition: none;
+  }
+}

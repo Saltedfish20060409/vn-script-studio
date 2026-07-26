@@ -1,0 +1,167 @@
+from datetime import datetime
+from typing import Any, Dict, List, Literal, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class RegisterIn(BaseModel):
+    username: str = Field(min_length=2, max_length=64)
+    password: str = Field(min_length=6, max_length=128)
+
+
+class LoginIn(BaseModel):
+    username: str
+    password: str
+
+
+class UserOut(BaseModel):
+    id: str
+    username: str
+    created_at: datetime
+
+
+class ProjectSummary(BaseModel):
+    id: str
+    title: str
+    logline: Optional[str] = None
+    genre: Optional[str] = None
+    updated_at: datetime
+    created_at: datetime
+
+
+class ProjectCreateIn(BaseModel):
+    title: Optional[str] = None
+    from_demo: bool = False
+
+
+class ProjectPutIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    data: Dict[str, Any]
+    updated_at: Optional[str] = None  # client version for optimistic concurrency
+
+
+class ProjectPatchIn(BaseModel):
+    title: Optional[str] = None
+    logline: Optional[str] = None
+    genre: Optional[str] = None
+
+
+class SnapshotCreateIn(BaseModel):
+    label: str = "快照"
+
+
+class LintIn(BaseModel):
+    draft: str
+
+
+class AgentRunIn(BaseModel):
+    messages: List[Dict[str, Any]]
+    chapter_id: Optional[str] = None
+    selection: Optional[str] = None
+    task: Optional[str] = None
+    chat_memory: Optional[str] = None
+    conversation_id: Optional[str] = None
+    apply_actions: bool = True
+
+
+class AgentRunOut(BaseModel):
+    message: str
+    actions: List[Dict[str, Any]]
+    model: str
+    context_meta: Optional[Dict[str, Any]] = None
+    project: Optional[Dict[str, Any]] = None
+    applied: bool = False
+    warnings: List[str] = Field(default_factory=list)
+    conversation_id: Optional[str] = None
+
+
+class AgentConversationSummary(BaseModel):
+    id: str
+    title: str
+    message_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgentConversationOut(BaseModel):
+    id: str
+    title: str
+    messages: List[Dict[str, Any]] = Field(default_factory=list)
+    chat_memory: str = ""
+    undo_stack: List[Any] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgentConversationCreateIn(BaseModel):
+    title: Optional[str] = None
+
+
+class AgentConversationPutIn(BaseModel):
+    title: Optional[str] = None
+    messages: Optional[List[Dict[str, Any]]] = None
+    chat_memory: Optional[str] = None
+    undo_stack: Optional[List[Any]] = None
+
+
+class AgentConversationRenameIn(BaseModel):
+    title: str
+
+
+# Back-compat aliases
+class AgentSessionOut(AgentConversationOut):
+    pass
+
+
+class AgentSessionPutIn(AgentConversationPutIn):
+    pass
+
+
+class AiRunIn(BaseModel):
+    action: str
+    selection: Optional[str] = None
+    instruction: Optional[str] = None
+    format: Optional[Literal["renpy", "blocks-json"]] = "renpy"
+
+
+class VoiceCheckIn(BaseModel):
+    chapter_id: Optional[str] = None
+    draft: Optional[str] = None
+
+
+class ShareCreateOut(BaseModel):
+    token: str
+    url: str
+
+
+class ShareOut(BaseModel):
+    token: str
+    title: str
+    project: Dict[str, Any]
+    created_at: datetime
+
+
+class SettingsOut(BaseModel):
+    theme: str = "day"
+    font_scale: float = 1.0
+    bg_image: str = ""
+    bg_scale: float = 1.0
+    bg_opacity: float = 0.35
+    bg_pan_x: float = 0
+    bg_pan_y: float = 0
+
+
+class SettingsPutIn(BaseModel):
+    theme: Optional[str] = None
+    font_scale: Optional[float] = None
+    bg_image: Optional[str] = None
+    bg_scale: Optional[float] = None
+    bg_opacity: Optional[float] = None
+    bg_pan_x: Optional[float] = None
+    bg_pan_y: Optional[float] = None
