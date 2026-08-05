@@ -16,6 +16,7 @@
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  background: transparent;
 }
 
 .top {
@@ -26,12 +27,15 @@
   min-height: var(--chrome-h);
   padding: 0.7rem 1.25rem;
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
-  backdrop-filter: blur(14px);
+  background: color-mix(in srgb, var(--panel-bg) 82%, transparent);
   position: sticky;
   top: 0;
   z-index: 20;
   box-shadow: var(--shadow-sm);
+  transition:
+    background var(--dur, 220ms) var(--ease-out),
+    border-color var(--dur, 220ms) var(--ease-out),
+    box-shadow var(--dur, 220ms) var(--ease-out);
 }
 
 .brandBlock {
@@ -141,10 +145,11 @@
   padding: 0.5rem 0.9rem;
   min-height: 40px;
   transition:
-    transform 160ms var(--ease-out),
-    background 160ms var(--ease-out),
-    border-color 160ms var(--ease-out),
-    color 160ms var(--ease-out);
+    transform var(--dur-fast, 140ms) var(--ease-spring, var(--ease-out)),
+    background var(--dur-fast, 140ms) var(--ease-out),
+    border-color var(--dur-fast, 140ms) var(--ease-out),
+    color var(--dur-fast, 140ms) var(--ease-out),
+    box-shadow var(--dur-fast, 140ms) var(--ease-out);
 }
 
 .ghost:hover,
@@ -153,7 +158,8 @@
 .tab:hover,
 .chapterBtn:hover {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, var(--field-bg));
+  background: color-mix(in srgb, var(--accent) 12%, var(--field-bg));
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .primary {
@@ -161,30 +167,66 @@
   border-color: var(--accent);
   color: var(--on-accent);
   font-weight: 600;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .primary:hover {
   background: color-mix(in srgb, var(--accent) 88%, #000);
   border-color: transparent;
   color: var(--on-accent);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.ghost:active,
+.primary:active,
+.aiQuick button:active,
+.tab:active,
+.tabActive:active,
+.chapterBtn:active,
+.chapterActive:active,
+.subTab:active,
+.subActive:active {
+  transform: scale(0.97);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--ink) 12%, transparent);
 }
 
 .layout {
-  display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
-  gap: 0;
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
+  background: transparent;
+}
+
+.chapterBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.chapterBar .inlineLabel {
+  margin: 0;
+}
+
+.chapterBar .select {
+  min-width: 9rem;
+  max-width: 16rem;
 }
 
 .side {
   padding: 1rem 0.85rem 1.5rem;
   border-right: 1px solid var(--line);
-  background: color-mix(in srgb, var(--paper-deep) 65%, transparent);
+  background: color-mix(in srgb, var(--paper-deep) 58%, transparent);
   overflow-y: auto;
   max-height: calc(100dvh - var(--chrome-h));
   position: sticky;
   top: var(--chrome-h);
+  transition:
+    background var(--dur, 220ms) var(--ease-out),
+    border-color var(--dur, 220ms) var(--ease-out),
+    transform var(--dur, 220ms) var(--ease-spring, var(--ease-out));
 }
 
 .sideHidden {
@@ -263,6 +305,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  background: transparent;
 }
 
 .tabs {
@@ -270,8 +313,9 @@
   gap: 0;
   padding: 0 1rem;
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--panel-bg) 70%, transparent);
+  background: color-mix(in srgb, var(--panel-bg) 62%, transparent);
   overflow-x: auto;
+  transition: background var(--dur, 220ms) var(--ease-out);
 }
 
 .tab,
@@ -285,31 +329,39 @@
   font-size: 0.92rem;
   color: var(--ink-soft);
   white-space: nowrap;
+  position: relative;
+  transition:
+    color var(--dur-fast, 140ms) var(--ease-out),
+    border-color var(--dur, 220ms) var(--ease-out),
+    background var(--dur-fast, 140ms) var(--ease-out);
 }
 
 .tab:hover {
   color: var(--ink);
-  background: transparent;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
   border-color: transparent;
   border-bottom-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: none;
+  transform: none;
 }
 
 .tabActive {
   color: var(--accent);
   font-weight: 650;
   border-bottom-color: var(--accent);
-  background: transparent;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .subNav {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+  align-items: center;
   margin-bottom: 1rem;
   padding: 0.2rem;
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--paper-deep) 55%, transparent);
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
 }
 
@@ -322,11 +374,18 @@
   padding: 0.4rem 0.85rem;
   min-height: 36px;
   font-size: 0.82rem;
+  transition:
+    color var(--dur-fast, 140ms) var(--ease-out),
+    background var(--dur-fast, 140ms) var(--ease-out),
+    border-color var(--dur-fast, 140ms) var(--ease-out),
+    box-shadow var(--dur-fast, 140ms) var(--ease-out),
+    transform var(--dur-fast, 140ms) var(--ease-spring, var(--ease-out));
 }
 
 .subTab:hover {
   color: var(--ink);
-  background: color-mix(in srgb, var(--paper) 70%, transparent);
+  background: color-mix(in srgb, var(--panel-bg) 80%, transparent);
+  transform: translateY(-1px);
 }
 
 .subActive {
@@ -389,6 +448,22 @@
   color: var(--ink);
 }
 
+.memoryPeek {
+  margin-top: 0.5rem;
+  padding-top: 0.65rem;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  animation: panelIn var(--dur, 220ms) var(--ease-out);
+}
+
+.memoryPeek .pre {
+  max-height: 280px;
+  min-height: 0;
+  font-size: 0.8rem;
+}
+
 .snapList {
   list-style: none;
   margin: 0.75rem 0 0;
@@ -412,7 +487,20 @@
 
 .panel {
   padding: 1.1rem 1.25rem 2.25rem;
-  animation: rise 260ms var(--ease-out);
+  animation: panelIn var(--dur-slow, 360ms) var(--ease-spring, var(--ease-out));
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
 }
 
 @keyframes rise {
@@ -480,7 +568,7 @@
   font-size: 0.9rem;
   line-height: 1.65;
   resize: vertical;
-  background: color-mix(in srgb, var(--panel-bg) 85%, transparent) !important;
+  background: color-mix(in srgb, var(--panel-bg) 62%, transparent) !important;
 }
 
 .editor:focus-visible {
@@ -511,14 +599,19 @@
   padding: 1rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: var(--panel-bg);
+  background: color-mix(in srgb, var(--panel-bg) 88%, transparent);
   box-shadow: var(--shadow-sm);
-  transition: border-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out);
+  transition:
+    border-color var(--dur, 220ms) var(--ease-out),
+    box-shadow var(--dur, 220ms) var(--ease-out),
+    transform var(--dur, 220ms) var(--ease-spring, var(--ease-out)),
+    background var(--dur, 220ms) var(--ease-out);
 }
 
 .charCard:hover {
   border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
   box-shadow: var(--shadow);
+  transform: translateY(-2px);
 }
 
 .charCard label,
@@ -776,32 +869,8 @@
 }
 
 @media (max-width: 960px) {
-  .menuBtn {
-    display: inline-flex;
-  }
-
   .layout {
-    grid-template-columns: 1fr;
-  }
-
-  .side {
-    position: fixed;
-    left: 0;
-    top: var(--chrome-h);
-    bottom: 0;
-    width: min(280px, 86vw);
-    z-index: 30;
-    border-right: 1px solid var(--line);
-    box-shadow: var(--shadow-lg);
-    max-height: none;
-    transform: translateX(0);
-    transition: transform 220ms var(--ease-out);
-  }
-
-  .sideHidden {
-    display: block;
-    transform: translateX(-105%);
-    pointer-events: none;
+    min-height: 0;
   }
 
   .top {
@@ -810,6 +879,11 @@
 
   .topActions {
     justify-content: flex-start;
+  }
+
+  .chapterBar {
+    margin-left: 0;
+    width: 100%;
   }
 
   .titleInput {

@@ -1,7 +1,12 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError } from "../api/client";
+import {
+  applySettingsToDom,
+  DEFAULT_SETTINGS,
+  loadAppearanceCache,
+} from "../lib/settings";
 import styles from "./LoginPage.module.css";
 
 type Mode = "login" | "register";
@@ -16,9 +21,18 @@ export default function LoginPage() {
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [hasWallpaper, setHasWallpaper] = useState(false);
 
   const redirectTo =
     (location.state as { from?: string } | null)?.from || "/";
+
+  // Align login chrome with last-used studio appearance (local cache)
+  useEffect(() => {
+    const cached = loadAppearanceCache();
+    const s = cached ? { ...DEFAULT_SETTINGS, ...cached } : DEFAULT_SETTINGS;
+    applySettingsToDom(s);
+    setHasWallpaper(Boolean(s.bgImage));
+  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -53,7 +67,15 @@ export default function LoginPage() {
   }
 
   return (
-    <div className={styles.wrap}>
+    <div className={`vnss-app ${styles.wrap}`}>
+      {hasWallpaper ? (
+        <>
+          <div className="vnss-wallpaper" aria-hidden />
+          <div className="vnss-wallpaper-scrim" aria-hidden />
+          <div className="vnss-grain" aria-hidden />
+        </>
+      ) : null}
+
       <section className={styles.hero} aria-label="品牌介绍">
         <div className={styles.heroInner}>
           <span className={styles.mark} aria-hidden>
@@ -66,7 +88,7 @@ export default function LoginPage() {
         </div>
       </section>
 
-      <section className={styles.panel}>
+      <section className={`${styles.panel} vnss-frost`}>
         <div className={styles.card}>
           <h2 className={styles.cardTitle}>
             {mode === "login" ? "欢迎回来" : "创建账号"}

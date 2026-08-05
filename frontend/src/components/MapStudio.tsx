@@ -45,6 +45,7 @@ type Props = {
   onChangeCustomElements: (defs: CustomMapElementDef[]) => void;
   onChangeStrokes: (strokes: MapStroke[]) => void;
   onExtractFromScript?: () => void;
+  onExtractRulesOnly?: () => void;
 };
 
 function clamp(n: number, min: number, max: number) {
@@ -177,6 +178,7 @@ export function MapStudio({
   onChangeCustomElements,
   onChangeStrokes,
   onExtractFromScript,
+  onExtractRulesOnly,
 }: Props) {
   const styleId = normalizeMapStyle(mapStyle);
   const studioRef = useRef<HTMLDivElement>(null);
@@ -1212,8 +1214,19 @@ export function MapStudio({
               type="button"
               className={styles.toolBtn}
               onClick={onExtractFromScript}
+              title="scene + 对白/设定词典 + 模型语义提取"
             >
-              从剧本提取
+              智能提取地图
+            </button>
+          )}
+          {onExtractRulesOnly && (
+            <button
+              type="button"
+              className={styles.toolBtn}
+              onClick={onExtractRulesOnly}
+              title="仅从 scene bg 标签提取"
+            >
+              仅 scene
             </button>
           )}
         </div>

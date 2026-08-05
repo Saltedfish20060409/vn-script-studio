@@ -10,6 +10,7 @@ type Props = {
   project: VnProject;
   chapterId: string;
   selection: string;
+  draft?: string;
   prepareProject: () => VnProject;
   onProjectChange: (p: VnProject) => void;
   onChapterFocus?: (id: string) => void;
@@ -271,7 +272,7 @@ export function AgentFloat(props: Props) {
               : { left: pos.along }
           }
           onClick={expandFromDock}
-          title="展开审稿 Agent（拖到边缘可再次收起）"
+          title="展开审稿 Agent"
         >
           审稿 Agent
         </button>
@@ -331,7 +332,7 @@ export function AgentFloat(props: Props) {
           <span className={styles.sub}>
             {nearEdgeHint
               ? "松手将贴边收起为标签"
-              : "轻小说式编剧顾问 · 拖到边缘可收起 · 右下角可拉伸"}
+              : "一个责编 · ⇄ 换参谋 · ! 说明"}
           </span>
           <div className={styles.winBtns}>
             <button
@@ -373,6 +374,7 @@ export function AgentFloat(props: Props) {
               project={props.project}
               chapterId={props.chapterId}
               selection={props.selection}
+              draft={props.draft}
               prepareProject={props.prepareProject}
               onProjectChange={props.onProjectChange}
               onChapterFocus={props.onChapterFocus}

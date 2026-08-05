@@ -16,3 +16,18 @@ data/
 .npm-cache/
 .cursor/
 *.tsbuildinfo
+
+# Python
+.venv/
+venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local scratch / agent dumps (do not publish)
+.backend-out.txt
+.grep-*.txt
+.tsc-out.txt
+*.out.txt

@@ -59,7 +59,7 @@ async def run_voice_check(
                 "messages": [
                     {
                         "role": "system",
-                        "content": """你是视觉小说对白审稿编辑。根据角色 voice/bio，检查对白是否破人设。
+                        "content": """你是视觉小说对白审稿编辑。根据角色 voice/bio、角色思维卡与口吻正例，检查对白是否破人设。
 只输出 JSON：
 {
   "summary": "总体评价（中文）",
@@ -67,7 +67,7 @@ async def run_voice_check(
     { "character": "角色名", "severity": "info|warn|high", "quote": "原句摘录", "note": "问题", "suggestion": "改写建议" }
   ]
 }
-若整体稳定，issues 可为空，summary 给鼓励与微调建议。""",
+若整体稳定，issues 可为空，summary 给鼓励与微调建议。优先对照思维卡/正例中的表达 DNA，勿只看形容词人设。""",
                     },
                     {
                         "role": "user",

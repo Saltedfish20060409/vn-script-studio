@@ -68,6 +68,8 @@ class AgentRunIn(BaseModel):
     chat_memory: Optional[str] = None
     conversation_id: Optional[str] = None
     apply_actions: bool = True
+    lens_ids: Optional[List[str]] = None
+    lens_intent: Optional[str] = None
 
 
 class AgentRunOut(BaseModel):
@@ -155,6 +157,8 @@ class SettingsOut(BaseModel):
     bg_opacity: float = 0.35
     bg_pan_x: float = 0
     bg_pan_y: float = 0
+    panel_glass: str = "auto"
+    bg_scrim: float = 0.42
 
 
 class SettingsPutIn(BaseModel):
@@ -165,3 +169,11 @@ class SettingsPutIn(BaseModel):
     bg_opacity: Optional[float] = None
     bg_pan_x: Optional[float] = None
     bg_pan_y: Optional[float] = None
+    panel_glass: Optional[str] = None
+    bg_scrim: Optional[float] = None
+
+
+class MapExtractIn(BaseModel):
+    """mode=smart: scene rules + lexicon + LLM; mode=rules: scene tags only."""
+
+    mode: Literal["smart", "rules"] = "smart"

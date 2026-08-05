@@ -26,6 +26,12 @@ from app.domain.types import (
 
 from .agent_context import build_agent_context, infer_agent_task, is_agent_task, task_hint
 from .ai import DeepSeekConfig
+from .mentors import build_mentor_prompt_for_project, resolve_project_mentors
+from .lenses import (
+    build_lens_prompt_for_project,
+    infer_lens_intent,
+    resolve_project_lenses,
+)
 from .narrative_lint import lint_has_blockers, lint_narrative_draft
 from .narrative_review import (
     apply_reviewed_script,
@@ -247,6 +253,8 @@ async def run_agent(config: DeepSeekConfig, request: AgentRequest) -> AgentRespo
         task=task,
         maxChars=12000,
         chatMemory=request.chatMemory,
+        longChapterMemory=request.longChapterMemory,
+        loreCraft=request.loreCraft,
     )
 
     history = [
@@ -265,6 +273,25 @@ async def run_agent(config: DeepSeekConfig, request: AgentRequest) -> AgentRespo
         temperature = 0.78
 
     craft_block = build_writing_craft_prompt(task, craft.mode)
+    mentor_block = build_mentor_prompt_for_project(
+        request.project,
+        task=task,
+        override_ids=request.mentorIds,
+    )
+    mentor_ids = [p.id for p in resolve_project_mentors(request.project, override_ids=request.mentorIds)]
+    lens_intent = infer_lens_intent(last_user or "")
+    lens_block = build_lens_prompt_for_project(
+        request.project,
+        override_ids=request.lensIds,
+        intent=lens_intent,
+    )
+    lens_ids = [p.id for p in resolve_project_lenses(request.project, override_ids=request.lensIds)]
+    system_parts = [AGENT_SYSTEM, task_hint(task), craft_block, mentor_block, lens_block]
+    system_content = "\n\n".join(p for p in system_parts if p and str(p).strip())
+    system_content = (
+        f"{system_content}\n\n"
+        f"—— 作品上下文（检索拼装；人设/设定为内部参考）——\n{ctx.text}"
+    )
 
     async with httpx.AsyncClient(timeout=180) as client:
         res = await client.post(
@@ -280,10 +307,7 @@ async def run_agent(config: DeepSeekConfig, request: AgentRequest) -> AgentRespo
                 "messages": [
                     {
                         "role": "system",
-                        "content": (
-                            f"{AGENT_SYSTEM}\n\n{task_hint(task)}\n\n{craft_block}\n\n"
-                            f"—— 作品上下文（检索拼装；人设/设定为内部参考）——\n{ctx.text}"
-                        ),
+                        "content": system_content,
                     },
                     *history,
                 ],
@@ -339,6 +363,8 @@ async def run_agent(config: DeepSeekConfig, request: AgentRequest) -> AgentRespo
             charsUsed=ctx.charsUsed,
             craftMode=craft.mode,
             craftReason=craft.reason,
+            mentorIds=mentor_ids or None,
+            lensIds=lens_ids or None,
             included=ctx.included,
             selfReview=review_note or None,
         ),

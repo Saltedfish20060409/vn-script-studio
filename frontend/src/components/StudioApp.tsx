@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ApiError,
+  archiveChapterMemory,
   createProject,
   createShare,
   createSnapshot,
@@ -10,9 +11,11 @@ import {
   duplicateProject as apiDuplicateProject,
   exportJson,
   exportRpy,
+  getChapterMemoryArchive,
   getProject,
   getSettings,
   importProjectFile,
+  listChapterMemory,
   listProjects,
   listSnapshots,
   mapExtract,
@@ -21,6 +24,8 @@ import {
   putSettings,
   restoreSnapshot as apiRestoreSnapshot,
   revokeShare,
+  type MemoryArchiveDetail,
+  type MemoryArchiveSummary,
   type ProjectSummary,
   type SnapshotSummary,
 } from "../api/client";
@@ -31,6 +36,7 @@ import { AgentFloat } from "./AgentFloat";
 import { AnalysisPanels } from "./AnalysisPanels";
 import { SystemPanel } from "./SystemPanel";
 import { SettingsGear, SettingsModal } from "./SettingsModal";
+import { CharacterWorkshop } from "./CharacterWorkshop";
 import { blocksToEditable, editableToBlocks } from "../lib/scriptCodec";
 import { normalizeProject } from "../lib/vnLocal";
 import {
@@ -38,6 +44,7 @@ import {
   DEFAULT_SETTINGS,
   fromServerSettings,
   loadAppearanceCache,
+  mergeSettingsAfterSave,
   saveAppearanceCache,
   toServerSettingsPatch,
   type AppSettings,
@@ -109,29 +116,17 @@ export function StudioApp() {
   const [shareUrl, setShareUrl] = useState("");
   const [snapLabel, setSnapLabel] = useState("");
   const [snapshots, setSnapshots] = useState<SnapshotSummary[]>([]);
+  const [memoryArchives, setMemoryArchives] = useState<MemoryArchiveSummary[]>(
+    []
+  );
+  const [memoryDetail, setMemoryDetail] = useState<MemoryArchiveDetail | null>(
+    null
+  );
+  const [memoryDetailBusy, setMemoryDetailBusy] = useState(false);
   /** 导出页：先生成预览，再允许下载 */
   const [rpyPreview, setRpyPreview] = useState<string | null>(null);
   const [rpyStale, setRpyStale] = useState(false);
-  const [sideOpen, setSideOpen] = useState(
-    typeof cachedWs.sideOpen === "boolean" ? cachedWs.sideOpen : true
-  );
 
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 960px)");
-    const sync = () => {
-      // Only auto-open/close when viewport crosses the breakpoint, keep user choice otherwise
-      if (mq.matches) {
-        setSideOpen(false);
-      } else {
-        const ws = loadWorkspace();
-        setSideOpen(typeof ws.sideOpen === "boolean" ? ws.sideOpen : true);
-      }
-    };
-    // Initial: respect cache on desktop; collapse on mobile
-    if (mq.matches) setSideOpen(false);
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
   const fileRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -141,6 +136,12 @@ export function StudioApp() {
   const skipNextProjectSave = useRef(false);
   const settingsSaveTimer = useRef<number | null>(null);
   const skipNextSettingsSave = useRef(true);
+
+  // Apply cached appearance immediately (before server settings return)
+  useEffect(() => {
+    if (settings) applySettingsToDom(settings);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const refreshProjectsList = useCallback(async () => {
     const list = await listProjects();
@@ -167,6 +168,8 @@ export function StudioApp() {
       saveWorkspace({ projectId: id, chapterId: chapter });
       const snaps = await listSnapshots(id).catch(() => []);
       setSnapshots(snaps);
+      const mem = await listChapterMemory(id).catch(() => ({ archives: [] }));
+      setMemoryArchives(mem.archives || []);
     } finally {
       setProjectLoading(false);
     }
@@ -224,7 +227,6 @@ export function StudioApp() {
       worldSub,
       systemSub,
       projectSub,
-      sideOpen,
     });
   }, [
     project?.id,
@@ -234,7 +236,6 @@ export function StudioApp() {
     worldSub,
     systemSub,
     projectSub,
-    sideOpen,
   ]);
 
   // Sync editor text whenever project or chapter switches (not on every save).
@@ -264,7 +265,7 @@ export function StudioApp() {
       window.removeEventListener("pagehide", onUnload);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, chapterId, tab, writeSub, worldSub, systemSub, projectSub, sideOpen]);
+  }, [project, chapterId, tab, writeSub, worldSub, systemSub, projectSub]);
 
   useEffect(() => {
     setRpyPreview(null);
@@ -280,7 +281,7 @@ export function StudioApp() {
     }
     if (projectSaveTimer.current) window.clearTimeout(projectSaveTimer.current);
     projectSaveTimer.current = window.setTimeout(() => {
-      void persistProject(project);
+      void persistProject(project, { silent: true });
     }, 800);
     return () => {
       if (projectSaveTimer.current) window.clearTimeout(projectSaveTimer.current);
@@ -288,9 +289,10 @@ export function StudioApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project]);
 
-  async function persistProject(p: VnProject) {
+  async function persistProject(p: VnProject, opts?: { silent?: boolean }) {
+    const silent = opts?.silent ?? true;
     try {
-      setStatus("保存中…");
+      if (!silent) setStatus("保存中…");
       const saved = await putProject(p.id, p, p.updatedAt);
       skipNextProjectSave.current = true;
       setProject(saved);
@@ -307,7 +309,7 @@ export function StudioApp() {
             : s
         )
       );
-      setStatus("已保存");
+      if (!silent) setStatus("工程已同步到服务器");
       return true;
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
@@ -339,7 +341,6 @@ export function StudioApp() {
       worldSub,
       systemSub,
       projectSub,
-      sideOpen,
     });
     await persistProject(latest);
   }
@@ -364,11 +365,15 @@ export function StudioApp() {
   async function persistSettings(next: AppSettings) {
     try {
       const out = await putSettings(toServerSettingsPatch(next));
-      const merged = fromServerSettings(out);
+      const safe = mergeSettingsAfterSave(next, out);
       skipNextSettingsSave.current = true;
-      setSettings(merged);
-      saveAppearanceCache(merged);
+      setSettings(safe);
+      applySettingsToDom(safe);
+      saveAppearanceCache(safe);
     } catch (e) {
+      // Keep local appearance even if cloud save fails (e.g. oversized image)
+      saveAppearanceCache(next);
+      applySettingsToDom(next);
       setError(e instanceof Error ? e.message : "设置保存失败");
     }
   }
@@ -689,31 +694,82 @@ export function StudioApp() {
     }));
   }
 
-  async function extractLocs() {
+  async function extractLocs(mode: "smart" | "rules" = "smart") {
     if (!project) return;
     commitEditor();
     try {
+      setStatus(mode === "smart" ? "智能提取地图中…" : "按 scene 提取中…");
       const latest = buildLatestProject();
       if (latest) {
         const saved = await putProject(latest.id, latest, latest.updatedAt);
         skipNextProjectSave.current = true;
         setProject(saved);
       }
-      const result = await mapExtract(project.id);
+      const result = await mapExtract(project.id, { mode });
       skipNextProjectSave.current = true;
       setProject(result.project);
+      const warn =
+        result.warnings && result.warnings.length
+          ? `（${result.warnings[0]}）`
+          : "";
       if (result.addedCount === 0 && result.linkCount === 0) {
         setStatus(
-          "未发现新的 scene（需剧本中有 scene bg xxx）。已有地点不会重复添加。"
+          `未发现新地点。可在剧本写 scene bg xxx，或在对白/设定中出现明确场所。${warn}`
         );
       } else {
+        const llmBit =
+          result.llmUsed && (result.llmAddedCount || result.llmLinkCount)
+            ? `，其中模型补充地点 ${result.llmAddedCount ?? 0}、通路 ${result.llmLinkCount ?? 0}`
+            : result.llmUsed
+              ? "（已调用模型）"
+              : "";
         setStatus(
-          `已从剧本提取：新增 ${result.addedCount} 个地点，新增 ${result.linkCount} 条通路（按 scene 顺序）`
+          `地图提取完成（${result.mode ?? mode}）：新增地点 ${result.addedCount}，通路 ${result.linkCount}${llmBit}${warn}`
         );
       }
       setTab("map");
     } catch (e) {
       setError(e instanceof Error ? e.message : "提取失败");
+    }
+  }
+
+  async function archiveLongMemory() {
+    if (!project) return;
+    commitEditor();
+    try {
+      setStatus("正在按章节切片归档长程记忆…");
+      const latest = buildLatestProject();
+      if (latest) {
+        const saved = await putProject(latest.id, latest, latest.updatedAt);
+        skipNextProjectSave.current = true;
+        setProject(saved);
+      }
+      const result = await archiveChapterMemory(project.id, {
+        span: 10,
+        includeIncomplete: true,
+      });
+      setMemoryArchives(result.archives || []);
+      setMemoryDetail(null);
+      setStatus(
+        result.count
+          ? `长程记忆已归档：${result.count} 段（最新 ${result.latestLabel}），Agent 续写会自动读取`
+          : "章节不足，未生成归档（可勾选不完整段或继续写章）"
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "记忆归档失败");
+    }
+  }
+
+  async function openMemoryArchive(archiveId: string) {
+    if (!project) return;
+    setMemoryDetailBusy(true);
+    try {
+      const detail = await getChapterMemoryArchive(project.id, archiveId);
+      setMemoryDetail(detail);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "无法打开记忆归档");
+    } finally {
+      setMemoryDetailBusy(false);
     }
   }
 
@@ -881,19 +937,16 @@ export function StudioApp() {
 
   return (
     <>
-      {settings?.bgImage ? <div className="vnss-wallpaper" aria-hidden /> : null}
+      {settings?.bgImage ? (
+        <>
+          <div className="vnss-wallpaper" aria-hidden />
+          <div className="vnss-wallpaper-scrim" aria-hidden />
+          <div className="vnss-grain" aria-hidden />
+        </>
+      ) : null}
       <div className={`vnss-app ${styles.shell}`}>
-      <header className={styles.top}>
+      <header className={`${styles.top} vnss-frost`}>
         <div className={styles.brandBlock}>
-          <button
-            type="button"
-            className={styles.menuBtn}
-            aria-label={sideOpen ? "收起侧栏" : "展开侧栏"}
-            aria-expanded={sideOpen}
-            onClick={() => setSideOpen((v) => !v)}
-          >
-            ☰
-          </button>
           <span className={styles.brandMark} aria-hidden>
             VN
           </span>
@@ -978,70 +1031,13 @@ export function StudioApp() {
       )}
 
       <div className={styles.layout}>
-        <aside className={`${styles.side} ${sideOpen ? "" : styles.sideHidden}`.trim()}>
-          <p className={styles.sideLabel}>当前剧本</p>
-          <select
-            className={styles.select}
-            value={project.id}
-            onChange={(e) => void switchProject(e.target.value)}
-          >
-            {projectsList.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title}
-              </option>
-            ))}
-          </select>
-
-          <p className={styles.sideLabel}>章节</p>
-          <ul className={styles.chapterList}>
-            {project.chapters.map((c) => (
-              <li key={c.id} className={styles.chapterRow}>
-                <button
-                  type="button"
-                  className={
-                    c.id === chapterId ? styles.chapterActive : styles.chapterBtn
-                  }
-                  onClick={() => {
-                    commitEditor();
-                    setChapterId(c.id);
-                    setTab("write");
-                    setWriteSub("script");
-                  }}
-                >
-                  {c.title}
-                </button>
-                <button
-                  type="button"
-                  className={styles.iconBtn}
-                  title="删除章节"
-                  onClick={() => deleteChapter(c.id)}
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-          <button type="button" className={styles.ghost} onClick={addChapter}>
-            + 章节
-          </button>
-
-          <p className={styles.sideLabel}>角色</p>
-          <ul className={styles.charMini}>
-            {project.characters.map((c) => (
-              <li key={c.id}>
-                <span style={{ color: c.color }}>{c.displayName}</span>
-                <code>{c.defineName}</code>
-              </li>
-            ))}
-          </ul>
-        </aside>
-
         <main className={styles.main}>
-          <nav className={styles.tabs}>
+          <nav className={`${styles.tabs} vnss-frost`}>
             {(
               [
                 ["write", "写作"],
                 ["world", "设定"],
+                ["voice", "角色工坊"],
                 ["map", "地图"],
                 ["system", "VN状态"],
                 ["project", "项目"],
@@ -1235,6 +1231,71 @@ export function StudioApp() {
                     <span>版本快照可回退大改稿；只读链接给画师 / 配音看设定</span>
                   </div>
                   <div className={styles.shareBox}>
+                    <strong>长程章节记忆</strong>
+                    <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--ink-soft)" }}>
+                      借鉴 NovelMaster：每 10 章一段 continuity，拆成 PostgreSQL TEXT
+                      切片；Agent 会自动注入最新段。
+                    </p>
+                    <div className={styles.aiQuick}>
+                      <button
+                        type="button"
+                        className={styles.primary}
+                        onClick={() => void archiveLongMemory()}
+                      >
+                        归档长程记忆
+                      </button>
+                    </div>
+                    <ul className={styles.snapList}>
+                      {memoryArchives.map((a) => (
+                        <li key={a.id}>
+                          <span>
+                            {a.label}
+                            {a.isLatest ? " · 最新" : ""}
+                            <br />
+                            <small>
+                              第 {a.rangeFrom}–{a.rangeTo} 章 · {a.wordCount} 字
+                            </small>
+                          </span>
+                          <button
+                            type="button"
+                            className={styles.ghost}
+                            disabled={memoryDetailBusy}
+                            onClick={() => void openMemoryArchive(a.id)}
+                          >
+                            查看
+                          </button>
+                        </li>
+                      ))}
+                      {memoryArchives.length === 0 && (
+                        <li>尚未归档。章节较多时点上方按钮生成。</li>
+                      )}
+                    </ul>
+                    {memoryDetail && (
+                      <div className={styles.memoryPeek}>
+                        <div className={styles.toolbar}>
+                          <strong>{memoryDetail.label}</strong>
+                          <button
+                            type="button"
+                            className={styles.ghost}
+                            onClick={() => setMemoryDetail(null)}
+                          >
+                            关闭
+                          </button>
+                        </div>
+                        <p className={styles.hint}>
+                          continuity 切片预览（Agent 注入用最新段）
+                        </p>
+                        <pre className={styles.pre}>
+                          {(memoryDetail.continuityText || "").slice(0, 4000) ||
+                            "（无 continuity 正文）"}
+                          {(memoryDetail.continuityText || "").length > 4000
+                            ? "\n…(已截断)"
+                            : ""}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                  <div className={styles.shareBox}>
                     <strong>快照</strong>
                     <div className={styles.aiQuick}>
                       <input
@@ -1333,6 +1394,40 @@ export function StudioApp() {
                 >
                   分析
                 </button>
+                <div className={styles.chapterBar}>
+                  <label className={styles.inlineLabel}>
+                    章节
+                    <select
+                      className={styles.select}
+                      value={chapterId}
+                      onChange={(e) => {
+                        commitEditor();
+                        setChapterId(e.target.value);
+                      }}
+                    >
+                      {project.chapters.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className={styles.ghost}
+                    onClick={addChapter}
+                  >
+                    + 章
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.ghost}
+                    disabled={project.chapters.length <= 1}
+                    onClick={() => deleteChapter(chapterId)}
+                  >
+                    删章
+                  </button>
+                </div>
               </div>
               {writeSub === "script" && (
             <section className={styles.panel}>
@@ -1353,7 +1448,7 @@ export function StudioApp() {
                   />
                 </label>
                 <span className={styles.hintInline}>
-                  续写 / 改写 / 润色请用右下角审稿 Agent
+                  续写 / 改写 / 润色请用右下角审稿 Agent · 换剧本在「项目」
                 </span>
               </div>
               <textarea
@@ -1380,6 +1475,7 @@ export function StudioApp() {
                   <AnalysisPanels
                     project={project}
                     chapterId={chapterId}
+                    draft={editor}
                     onChange={updateActive}
                   />
                 </section>
@@ -1580,6 +1676,15 @@ export function StudioApp() {
             </>
           )}
 
+          {tab === "voice" && (
+            <CharacterWorkshop
+              project={project}
+              onProjectChange={(next) => {
+                replaceActiveProject(normalizeProject(next));
+              }}
+            />
+          )}
+
           {tab === "map" && (
             <section className={styles.panel}>
               <MapStudio
@@ -1601,7 +1706,8 @@ export function StudioApp() {
                 onChangeStrokes={(mapStrokes) =>
                   updateActive((p) => ({ ...p, mapStrokes }))
                 }
-                onExtractFromScript={() => void extractLocs()}
+                onExtractFromScript={() => void extractLocs("smart")}
+                onExtractRulesOnly={() => void extractLocs("rules")}
               />
             </section>
           )}
@@ -1621,6 +1727,7 @@ export function StudioApp() {
         project={project}
         chapterId={chapterId}
         selection={selection}
+        draft={editor}
         prepareProject={() => buildLatestProject() ?? project}
         onProjectChange={(p) => {
           replaceActiveProject(p);

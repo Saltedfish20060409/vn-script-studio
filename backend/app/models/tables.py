@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -102,3 +102,80 @@ class UserSettings(Base):
     bg: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
     user: Mapped["User"] = relationship(back_populates="settings")
+
+
+class ChapterMemoryArchive(Base):
+    """NovelMaster-style chapter-span archive (one row per chapters_001_010 group)."""
+
+    __tablename__ = "chapter_memory_archives"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("projects.id"), index=True
+    )
+    # e.g. chapters_001_010
+    label: Mapped[str] = mapped_column(String(64))
+    span: Mapped[int] = mapped_column(Integer, default=10)
+    range_from: Mapped[int] = mapped_column(Integer)
+    range_to: Mapped[int] = mapped_column(Integer)
+    word_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Ordered chapter ids in this span
+    chapter_ids: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    # [{chapterId, index, title, recall}]
+    spine: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    # [{chapterId, title, wordCount, quickRecall, speakers}]
+    summaries: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    # Placeholder deltas (character / relationship / hooks) — JSONB object
+    deltas: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    is_latest: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    project: Mapped["Project"] = relationship()
+    slices: Mapped[list["ChapterMemorySlice"]] = relationship(
+        back_populates="archive", cascade="all, delete-orphan"
+    )
+
+
+class ChapterMemorySlice(Base):
+    """TEXT slices of long continuity markdown — PG-friendly chunked storage."""
+
+    __tablename__ = "chapter_memory_slices"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    archive_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("chapter_memory_archives.id"), index=True
+    )
+    # continuity | context_snapshot | notes
+    kind: Mapped[str] = mapped_column(String(32), default="continuity")
+    slice_index: Mapped[int] = mapped_column(Integer, default=0)
+    # Keep each slice modest (~6KB) for easy paging / Agent budgets
+    content: Mapped[str] = mapped_column(Text, default="")
+    char_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    archive: Mapped["ChapterMemoryArchive"] = relationship(back_populates="slices")
+
+
+class LoreCraftCard(Base):
+    """Distilled ACG craft card (萌百启发精炼，非百科原文库)."""
+
+    __tablename__ = "lore_craft_cards"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    # empty/null = global library; else project-scoped favorites
+    project_id: Mapped[Optional[str]] = mapped_column(
+        String(64), ForeignKey("projects.id"), nullable=True, index=True
+    )
+    term: Mapped[str] = mapped_column(String(128), index=True)
+    aliases: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    kind: Mapped[str] = mapped_column(String(32), default="term", index=True)
+    definition_short: Mapped[str] = mapped_column(Text, default="")
+    do_list: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    dont_list: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    vn_beats: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    source_title: Mapped[str] = mapped_column(String(255), default="")
+    source_url: Mapped[str] = mapped_column(String(512), default="")
+    raw_extract: Mapped[str] = mapped_column(Text, default="")
+    attribution: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

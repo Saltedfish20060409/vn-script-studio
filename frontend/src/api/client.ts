@@ -283,9 +283,22 @@ export async function exportJson(id: string): Promise<Blob> {
 }
 
 export function mapExtract(
-  id: string
-): Promise<{ project: VnProject; addedCount: number; linkCount: number }> {
-  return apiFetch(`/projects/${id}/map/extract`, { method: "POST" });
+  id: string,
+  opts?: { mode?: "smart" | "rules" }
+): Promise<{
+  project: VnProject;
+  addedCount: number;
+  linkCount: number;
+  llmAddedCount?: number;
+  llmLinkCount?: number;
+  mode?: string;
+  llmUsed?: boolean;
+  warnings?: string[];
+}> {
+  return apiFetch(`/projects/${id}/map/extract`, {
+    method: "POST",
+    body: JSON.stringify({ mode: opts?.mode ?? "smart" }),
+  });
 }
 
 export interface BranchNodeDto {
@@ -307,6 +320,86 @@ export function lint(
     method: "POST",
     body: JSON.stringify({ draft }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Chapter long memory (NovelMaster-style, PG sliced)
+// ---------------------------------------------------------------------------
+
+export interface MemoryArchiveSummary {
+  id: string;
+  label: string;
+  span: number;
+  rangeFrom: number;
+  rangeTo: number;
+  wordCount: number;
+  isLatest: boolean;
+  updatedAt?: string | null;
+}
+
+export function archiveChapterMemory(
+  id: string,
+  opts?: { span?: number; includeIncomplete?: boolean }
+): Promise<{
+  archives: MemoryArchiveSummary[];
+  count: number;
+  span: number;
+  latestLabel: string | null;
+}> {
+  return apiFetch(`/projects/${id}/memory/archive`, {
+    method: "POST",
+    body: JSON.stringify({
+      span: opts?.span ?? 10,
+      include_incomplete: opts?.includeIncomplete ?? false,
+    }),
+  });
+}
+
+export function listChapterMemory(
+  id: string
+): Promise<{ archives: MemoryArchiveSummary[] }> {
+  return apiFetch(`/projects/${id}/memory/archives`);
+}
+
+export interface MemoryArchiveDetail {
+  id: string;
+  label: string;
+  span?: number;
+  rangeFrom: number;
+  rangeTo: number;
+  wordCount: number;
+  isLatest?: boolean;
+  continuityText?: string;
+  spine?: unknown[];
+  summaries?: unknown[];
+  slices?: Array<{
+    id?: string;
+    kind: string;
+    sliceIndex: number;
+    charCount: number;
+    content: string;
+  }>;
+}
+
+export function getChapterMemoryArchive(
+  id: string,
+  archiveId: string
+): Promise<MemoryArchiveDetail> {
+  return apiFetch(`/projects/${id}/memory/archives/${archiveId}`);
+}
+
+export function latestChapterMemory(id: string): Promise<{
+  latest: {
+    archiveId: string;
+    label: string;
+    rangeFrom: number;
+    rangeTo: number;
+    spine: unknown[];
+    continuityText: string;
+    agentBlock: string;
+  } | null;
+}> {
+  return apiFetch(`/projects/${id}/memory/latest`);
 }
 
 // ---------------------------------------------------------------------------
@@ -363,6 +456,8 @@ export interface AgentRunInBody {
   chat_memory?: string;
   conversation_id?: string;
   apply_actions?: boolean;
+  lens_ids?: string[];
+  lens_intent?: string;
 }
 
 export interface AgentRunOut {
@@ -508,6 +603,296 @@ export function voiceCheck(
   });
 }
 
+export interface HarnessLintResult {
+  issues: Array<{
+    severity: string;
+    code: string;
+    message: string;
+    source?: string;
+  }>;
+  errorCount: number;
+  warnCount: number;
+  infoCount: number;
+  pass: boolean;
+}
+
+export function harnessLint(
+  id: string,
+  draft: string
+): Promise<HarnessLintResult> {
+  return apiFetch(`/projects/${id}/harness/lint`, {
+    method: "POST",
+    body: JSON.stringify({ draft }),
+  });
+}
+
+export interface HarnessMeta {
+  roles: string[];
+  goals: string[];
+  otakuSkills: string[];
+}
+
+export function harnessMeta(): Promise<HarnessMeta> {
+  return apiFetch("/harness/meta");
+}
+
+export function harnessRun(
+  id: string,
+  body: {
+    role: "architect" | "writer" | "editor";
+    instruction?: string;
+    draft?: string;
+    selection?: string;
+    chapter_id?: string;
+    mode?: "generate" | "audit" | "audit_and_fix";
+  }
+): Promise<Record<string, unknown>> {
+  return apiFetch(`/projects/${id}/harness/run`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Writing pipeline (Plan → Write → Check → Revise + quality gate)
+// ---------------------------------------------------------------------------
+
+export interface PipelineGate {
+  pass: boolean;
+  errorCount?: number;
+  warnCount?: number;
+  message?: string;
+  blockers?: Array<{ severity?: string; code?: string; message?: string }>;
+}
+
+export interface PipelineRunResult {
+  stages: string[];
+  plan?: { content?: string; beatSheet?: Record<string, unknown> | null };
+  draft?: string;
+  finalDraft?: string;
+  check?: {
+    pass?: boolean;
+    errorCount?: number;
+    warnCount?: number;
+    issues?: Array<{ severity: string; code: string; message: string }>;
+  };
+  revise?: { content?: string; skipped?: boolean; message?: string };
+  gate?: PipelineGate;
+}
+
+export function pipelineMeta(): Promise<{
+  layers: string[];
+  styleSkill: Record<string, unknown>;
+  styleConfirm: string;
+  defaultStages: string[];
+}> {
+  return apiFetch("/pipeline/meta");
+}
+
+export function pipelineRun(
+  id: string,
+  body: {
+    instruction?: string;
+    draft?: string;
+    selection?: string;
+    chapter_id?: string;
+    stages?: Array<"plan" | "write" | "check" | "revise">;
+  }
+): Promise<PipelineRunResult> {
+  return apiFetch(`/projects/${id}/pipeline/run`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function pipelineGate(
+  id: string,
+  body: {
+    draft?: string;
+    chapter_id?: string;
+    require_zero_warn?: boolean;
+    finalize?: boolean;
+    update_ledger?: boolean;
+  }
+): Promise<{
+  check?: PipelineRunResult["check"];
+  gate: PipelineGate;
+  qualityGate?: Record<string, unknown>;
+  project?: VnProject | null;
+  ledgerUpdated?: boolean;
+}> {
+  return apiFetch(`/projects/${id}/pipeline/gate`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function pipelineLedgerDigest(
+  id: string,
+  chapterId: string
+): Promise<{ ledger: unknown; agentBlock: string; project: VnProject }> {
+  return apiFetch(`/projects/${id}/pipeline/ledger/digest`, {
+    method: "POST",
+    body: JSON.stringify({ chapter_id: chapterId }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Writing mentors
+// ---------------------------------------------------------------------------
+
+export interface MentorPackMeta {
+  id: string;
+  name: string;
+  version?: string;
+  tags?: string[];
+  stages?: string[];
+  budget_chars?: number;
+  source?: string;
+}
+
+export function listMentors(): Promise<{
+  packs: MentorPackMeta[];
+  defaultActiveIds: string[];
+  note?: string;
+}> {
+  return apiFetch("/mentors");
+}
+
+export function getProjectMentors(id: string): Promise<{
+  activeIds: string[];
+  customPacks: Array<{ id?: string; name?: string; updatedAt?: string }>;
+  active: MentorPackMeta[];
+  builtin: MentorPackMeta[];
+  defaultActiveIds: string[];
+}> {
+  return apiFetch(`/projects/${id}/mentors`);
+}
+
+export function putProjectMentors(
+  id: string,
+  body: {
+    activeIds: string[];
+    customPacks?: Array<{
+      id: string;
+      name: string;
+      markdown: string;
+      updatedAt?: string;
+    }>;
+  }
+): Promise<{
+  activeIds: string[];
+  active: MentorPackMeta[];
+  project: VnProject;
+}> {
+  return apiFetch(`/projects/${id}/mentors`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export function matchMentors(
+  id: string,
+  text: string
+): Promise<{ ids: string[]; text: string }> {
+  return apiFetch(`/projects/${id}/mentors/match`, {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Author lenses (作家思维)
+// ---------------------------------------------------------------------------
+
+export interface LensPackMeta {
+  id: string;
+  name: string;
+  version?: string;
+  tags?: string[];
+  source?: string;
+  family?: "ln_vn" | "literary" | string;
+}
+
+export function listLenses(): Promise<{
+  packs: LensPackMeta[];
+  families?: Record<string, string>;
+  note?: string;
+  maxActive?: number;
+}> {
+  return apiFetch("/lenses");
+}
+
+export function getProjectLenses(id: string): Promise<{
+  activeIds: string[];
+  customPacks: Array<{ id?: string; name?: string; updatedAt?: string }>;
+  active: LensPackMeta[];
+  builtin: LensPackMeta[];
+}> {
+  return apiFetch(`/projects/${id}/lenses`);
+}
+
+export function putProjectLenses(
+  id: string,
+  body: { activeIds: string[] }
+): Promise<{
+  activeIds: string[];
+  active: LensPackMeta[];
+  project: VnProject;
+}> {
+  return apiFetch(`/projects/${id}/lenses`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export function matchLenses(
+  id: string,
+  text: string
+): Promise<{ ids: string[]; text: string }> {
+  return apiFetch(`/projects/${id}/lenses/match`, {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+}
+
+export interface BrainstormPerspective {
+  id: string;
+  name: string;
+  content: string;
+  ok: boolean;
+  error?: string | null;
+  model?: string | null;
+}
+
+export interface BrainstormResult {
+  mode: string;
+  question: string;
+  lensIds: string[];
+  perspectives: BrainstormPerspective[];
+  synthesis: string;
+  markdown: string;
+  authorCount: number;
+  okCount: number;
+  model?: string;
+}
+
+export function runBrainstorm(
+  id: string,
+  body: {
+    question: string;
+    lens_ids?: string[];
+    chapter_id?: string;
+    selection?: string;
+    draft?: string;
+  }
+): Promise<BrainstormResult> {
+  return apiFetch(`/projects/${id}/brainstorm`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 export function runAi(
   id: string,
   body: {
@@ -521,6 +906,231 @@ export function runAi(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Character workshop (角色工坊)
+// ---------------------------------------------------------------------------
+
+export interface VoiceScenario {
+  id: string;
+  label: string;
+  prompt: string;
+}
+
+export interface VoiceVariant {
+  axisId: string;
+  axisLabel: string;
+  hypothesis: string;
+  lines: Array<{ speaker: string; text: string }>;
+}
+
+export interface VoiceCorpusStats {
+  sampleCount: number;
+  scenarioCoverage: number;
+  volumeChars?: number;
+  shortCount?: number;
+  sceneCount?: number;
+  interviewCount?: number;
+  readyForMind: boolean;
+  hasMindPack?: boolean;
+}
+
+export function getCharacterVoiceState(
+  projectId: string,
+  characterId: string
+): Promise<
+  VoiceCorpusStats & {
+    characterId: string;
+    displayName: string;
+    voice?: string;
+    bio?: string;
+    voiceCorpus: import("../types/vn").VoiceCorpusSample[];
+    voiceMind?: string;
+    voiceRejectNotes: string[];
+    scenarios: VoiceScenario[];
+  }
+> {
+  return apiFetch(`/projects/${projectId}/characters/${characterId}/voice`);
+}
+
+export function generateCharacterVoice(
+  projectId: string,
+  characterId: string,
+  body: {
+    scenario_id?: string;
+    scenario_prompt?: string;
+    scenario_label?: string;
+    extra_constraints?: string;
+    kind?: "preference" | "scene" | "interview";
+    turns?: number;
+    question?: string;
+  }
+): Promise<{
+  kind?: string;
+  scenarioId: string;
+  scenarioLabel: string;
+  scenarioPrompt?: string;
+  question?: string;
+  variants?: VoiceVariant[];
+  lines?: Array<{ speaker: string; text: string }>;
+  model?: string;
+}> {
+  return apiFetch(
+    `/projects/${projectId}/characters/${characterId}/voice/generate`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
+}
+
+export function acceptCharacterVoiceSample(
+  projectId: string,
+  characterId: string,
+  body: {
+    scenario_id?: string;
+    scenario_label?: string;
+    axis?: string;
+    hypothesis?: string;
+    lines: Array<{ speaker: string; text: string }>;
+    user_note?: string;
+    rejected_summary?: string;
+    source?: string;
+  }
+): Promise<
+  VoiceCorpusStats & {
+    sample: import("../types/vn").VoiceCorpusSample;
+    project: VnProject;
+  }
+> {
+  return apiFetch(
+    `/projects/${projectId}/characters/${characterId}/voice/accept`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
+}
+
+export function rejectCharacterVoiceRound(
+  projectId: string,
+  characterId: string,
+  body: { note?: string; hypotheses?: string[] }
+): Promise<{ voiceRejectNotes: string[]; project: VnProject }> {
+  return apiFetch(
+    `/projects/${projectId}/characters/${characterId}/voice/reject`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
+}
+
+export function deleteCharacterVoiceSample(
+  projectId: string,
+  characterId: string,
+  sampleId: string
+): Promise<{ sampleCount: number; project: VnProject }> {
+  return apiFetch(
+    `/projects/${projectId}/characters/${characterId}/voice/samples/${sampleId}`,
+    { method: "DELETE" }
+  );
+}
+
+export function synthesizeCharacterVoiceMind(
+  projectId: string,
+  characterId: string,
+  body: { force?: boolean; apply_voice_summary?: boolean } = {}
+): Promise<{
+  markdown: string;
+  sampleCount: number;
+  scenarioCoverage: number;
+  ready: boolean;
+  project: VnProject;
+}> {
+  return apiFetch(
+    `/projects/${projectId}/characters/${characterId}/voice/synthesize`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
+}
+
+export function extractCharacterVoice(
+  projectId: string,
+  characterId: string
+): Promise<{
+  candidates: Array<{
+    chapterId: string;
+    chapterTitle?: string;
+    blockIndex: number;
+    scenario: string;
+    scenarioLabel: string;
+    lines: Array<{ speaker: string; text: string }>;
+    preview: string;
+  }>;
+  count: number;
+}> {
+  return apiFetch(
+    `/projects/${projectId}/characters/${characterId}/voice/extract`,
+    { method: "POST", body: "{}" }
+  );
+}
+
+export function acceptExtractedCharacterVoice(
+  projectId: string,
+  characterId: string,
+  body: { indices?: number[]; samples?: unknown[] }
+): Promise<{
+  added: unknown[];
+  sampleCount: number;
+  scenarioCoverage: number;
+  readyForMind: boolean;
+  project: VnProject;
+}> {
+  return apiFetch(
+    `/projects/${projectId}/characters/${characterId}/voice/extract/accept`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
+}
+
+export function exportCharacterVoicePack(
+  projectId: string,
+  characterId: string
+): Promise<{
+  filename: string;
+  packId: string;
+  markdown: string;
+  sampleCount: number;
+  scenarioCoverage: number;
+}> {
+  return apiFetch(
+    `/projects/${projectId}/characters/${characterId}/voice/export`
+  );
+}
+
+export function importCharacterVoiceMind(
+  projectId: string,
+  characterId: string,
+  body: { markdown: string; replace_corpus?: boolean }
+): Promise<{ voiceMind?: string; project: VnProject }> {
+  return apiFetch(
+    `/projects/${projectId}/characters/${characterId}/voice/import-mind`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
+}
+
+export function workshopChat(
+  projectId: string,
+  characterId: string,
+  body: {
+    mode: "user" | "duo";
+    message: string;
+    partner_id?: string;
+    history?: Array<{ role: string; content: string }>;
+  }
+): Promise<{
+  mode: string;
+  reply?: string;
+  speakerId?: string;
+  speakerName?: string;
+  lines?: Array<{ speakerId: string; speakerName: string; text: string }>;
+  model?: string;
+}> {
+  return apiFetch(
+    `/projects/${projectId}/characters/${characterId}/workshop/chat`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
 }
 
 // ---------------------------------------------------------------------------

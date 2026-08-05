@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.models import UserSettings
 from app.schemas import SettingsOut, SettingsPutIn
@@ -12,6 +13,8 @@ DEFAULT_BG = {
     "bgOpacity": 0.35,
     "bgPanX": 0.0,
     "bgPanY": 0.0,
+    "panelGlass": "auto",
+    "bgScrim": 0.42,
 }
 
 
@@ -31,6 +34,15 @@ async def get_or_create_settings(db: AsyncSession, user_id: str) -> UserSettings
 def settings_to_out(row: UserSettings) -> SettingsOut:
     bg = dict(DEFAULT_BG)
     bg.update(row.bg or {})
+    glass = bg.get("panelGlass") or "auto"
+    if glass not in ("auto", "mist", "ink"):
+        glass = "auto"
+    scrim = bg.get("bgScrim")
+    try:
+        scrim_f = float(0.42 if scrim is None else scrim)
+    except (TypeError, ValueError):
+        scrim_f = 0.42
+    scrim_f = max(0.0, min(0.85, scrim_f))
     return SettingsOut(
         theme=row.theme,
         font_scale=row.font_scale,
@@ -41,6 +53,8 @@ def settings_to_out(row: UserSettings) -> SettingsOut:
         ),
         bg_pan_x=float(bg.get("bgPanX") or 0),
         bg_pan_y=float(bg.get("bgPanY") or 0),
+        panel_glass=str(glass),
+        bg_scrim=scrim_f,
     )
 
 
@@ -54,7 +68,8 @@ async def update_settings(
     if body.font_scale is not None:
         row.font_scale = body.font_scale
 
-    bg = dict(row.bg or DEFAULT_BG)
+    # Fresh dict + flag_modified so JSONB nested key updates actually persist
+    bg = {**DEFAULT_BG, **(row.bg or {})}
     if body.bg_image is not None:
         bg["bgImage"] = body.bg_image
     if body.bg_scale is not None:
@@ -65,7 +80,13 @@ async def update_settings(
         bg["bgPanX"] = body.bg_pan_x
     if body.bg_pan_y is not None:
         bg["bgPanY"] = body.bg_pan_y
+    if body.panel_glass is not None:
+        g = body.panel_glass.strip().lower()
+        bg["panelGlass"] = g if g in ("auto", "mist", "ink") else "auto"
+    if body.bg_scrim is not None:
+        bg["bgScrim"] = max(0.0, min(0.85, float(body.bg_scrim)))
     row.bg = bg
+    flag_modified(row, "bg")
 
     await db.commit()
     await db.refresh(row)

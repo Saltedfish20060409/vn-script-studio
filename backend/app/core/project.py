@@ -97,6 +97,9 @@ def normalize_project(raw: Any = None) -> VnProject:
             "variables": raw.get("variables") or [],
             "sprites": raw.get("sprites") or [],
             "snapshots": raw.get("snapshots") or [],
+            "writingLedger": raw.get("writingLedger"),
+            "writingMentors": raw.get("writingMentors"),
+            "authorLenses": raw.get("authorLenses"),
             "shareId": raw.get("shareId"),
             "updatedAt": raw.get("updatedAt") or _now_iso(),
         }

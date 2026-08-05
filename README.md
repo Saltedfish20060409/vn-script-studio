@@ -23,45 +23,52 @@ vn-script-studio/
 
 ## 快速开始
 
-### 1. 启动数据库
+日常开发（Windows）可一键启动：
 
-```bash
-docker compose up -d
+```powershell
+# 在仓库根目录
+.\dev.ps1
+# 或双击 / 运行
+.\dev.bat
 ```
 
-### 2. 后端
+会：必要时 `docker compose up -d` → 新开窗口跑后端 `:8000` → 新开窗口跑前端 `:5173` → 打开浏览器。  
+已在跑的端口会跳过。加 `-SkipDocker` 可跳过数据库；`-NoBrowser` 不自动开页。
+
+首次仍需装好依赖（只需一次）：
 
 ```bash
+# 数据库
+docker compose up -d
+
+# 后端
 cd backend
 python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-# macOS/Linux
-# source .venv/bin/activate
-
+.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-copy .env.example .env   # 或 cp .env.example .env
-# 编辑 .env，至少可先用默认 DATABASE_URL；填入 DEEPSEEK_API_KEY 以启用 Agent
-```
+copy .env.example .env          # 或 cp .env.example .env
+# 编辑 .env：DATABASE_URL 端口需与 docker-compose 一致（默认宿主机 15432）
+# 填入 DEEPSEEK_API_KEY 以启用 Agent
 
-启动 API（默认 http://localhost:8000 ，文档 /docs）：
-
-```bash
-# 在 backend/ 目录
-set PYTHONPATH=.
-uvicorn app.main:app --reload --port 8000
-```
-
-### 3. 前端
-
-```bash
-cd frontend
+# 前端
+cd ../frontend
 npm install
+```
+
+手动分别启动时：
+
+```bash
+# 后端（backend/）
+set PYTHONPATH=.
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+
+# 前端（frontend/）
 npm run dev
 ```
 
 打开 http://localhost:5173 ，注册账号后即可使用。Vite 已将 `/api` 代理到后端。
+
+Postgres 用 Docker 常驻即可，不必每次重建；每次写代码通常只需前后端两个进程（或跑一次 `dev.ps1`）。
 
 ## 主要 API（`/api/v1`）
 

@@ -38,8 +38,14 @@
   --bg-custom-scale: 1;
   --bg-custom-pan-x: 0px;
   --bg-custom-pan-y: 0px;
+  --bg-scrim: 0.42;
   --chrome-h: 64px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 140ms;
+  --dur: 220ms;
+  --dur-slow: 360ms;
+  --glass-blur: 16px;
 }
 
 :root[data-theme="night"] {
@@ -84,14 +90,16 @@ body {
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  transition:
+    color var(--dur) var(--ease-out),
+    background-color var(--dur-slow) var(--ease-out);
 }
 
-html[data-theme="day"] body {
-  background: #fbf9f5;
-}
-
-html[data-theme="night"] body {
-  background: #0c0f0d;
+#root {
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  min-height: 100dvh;
 }
 
 html:not([data-custom-bg="1"]) body {
@@ -99,8 +107,60 @@ html:not([data-custom-bg="1"]) body {
   background-color: var(--paper);
 }
 
-html[data-custom-bg="1"] body {
+html[data-theme="day"]:not([data-custom-bg="1"]) body {
+  background-color: #fbf9f5;
+}
+
+html[data-theme="night"]:not([data-custom-bg="1"]) body {
+  background-color: #0c0f0d;
+}
+
+html[data-custom-bg="1"] body,
+html[data-custom-bg="1"] #root {
   background: transparent;
+}
+
+/* Mist ≈ day chrome over wallpaper */
+html[data-custom-bg="1"][data-panel-glass="mist"] {
+  --ink: #1c1917;
+  --ink-soft: #57534e;
+  --line: rgba(28, 25, 23, 0.14);
+  --accent: #1f6b5a;
+  --accent-hot: #c45c2a;
+  --ai: #3d5a80;
+  --ok: #2f6b4a;
+  --danger: #a33b3b;
+  --ring: #1f6b5a;
+  --on-accent: #f8f6f1;
+  --panel-bg: rgba(248, 244, 236, 0.78);
+  --field-bg: rgba(255, 252, 247, 0.62);
+  --paper-deep: rgba(235, 228, 216, 0.68);
+  --input-bg: rgba(255, 252, 247, 0.82);
+  --shadow-sm: 0 1px 2px rgba(20, 16, 12, 0.1);
+  --shadow: 0 10px 28px rgba(20, 16, 12, 0.14);
+  --glass-blur: 18px;
+}
+
+/* Ink ≈ night chrome over wallpaper */
+html[data-custom-bg="1"][data-panel-glass="ink"] {
+  --ink: #e8e4dc;
+  --ink-soft: #a8a29a;
+  --line: rgba(232, 228, 220, 0.14);
+  --accent: #4fad96;
+  --accent-hot: #d4896a;
+  --ai: #8bb0d4;
+  --ok: #6fad88;
+  --danger: #d08888;
+  --ring: #4fad96;
+  --on-accent: #0c1210;
+  --panel-bg: rgba(12, 15, 14, 0.68);
+  --field-bg: rgba(10, 12, 12, 0.55);
+  --paper-deep: rgba(8, 10, 10, 0.6);
+  --input-bg: rgba(10, 12, 12, 0.75);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.5);
+  --glass-blur: 20px;
 }
 
 .vnss-wallpaper {
@@ -108,12 +168,73 @@ html[data-custom-bg="1"] body {
   inset: 0;
   z-index: 0;
   pointer-events: none;
+  background-color: transparent;
   background-image: var(--bg-custom-image);
   background-repeat: no-repeat;
   background-position: calc(50% + var(--bg-custom-pan-x))
     calc(50% + var(--bg-custom-pan-y));
   background-size: calc(var(--bg-custom-scale) * 100%);
   opacity: var(--bg-custom-opacity);
+  transform: scale(1.02);
+  transition:
+    opacity var(--dur-slow) var(--ease-out),
+    background-position var(--dur) var(--ease-out),
+    background-size var(--dur) var(--ease-out);
+}
+
+.vnss-wallpaper-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      120% 80% at 50% 40%,
+      transparent 0%,
+      rgba(6, 8, 10, calc(var(--bg-scrim) * 0.55)) 70%,
+      rgba(4, 6, 8, calc(var(--bg-scrim) * 0.92)) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(6, 8, 10, calc(var(--bg-scrim) * 0.5)) 0%,
+      transparent 28%,
+      transparent 62%,
+      rgba(6, 8, 10, calc(var(--bg-scrim) * 0.65)) 100%
+    );
+  transition: opacity var(--dur-slow) var(--ease-out);
+}
+
+html[data-panel-glass="mist"] .vnss-wallpaper-scrim {
+  background:
+    radial-gradient(
+      120% 80% at 50% 40%,
+      transparent 0%,
+      rgba(245, 240, 230, calc(var(--bg-scrim) * 0.35)) 72%,
+      rgba(235, 228, 216, calc(var(--bg-scrim) * 0.55)) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(250, 246, 238, calc(var(--bg-scrim) * 0.4)) 0%,
+      transparent 30%,
+      transparent 65%,
+      rgba(240, 234, 222, calc(var(--bg-scrim) * 0.45)) 100%
+    );
+}
+
+.vnss-grain {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.045;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+html[data-panel-glass="mist"] .vnss-grain {
+  opacity: 0.03;
+  mix-blend-mode: multiply;
 }
 
 .vnss-app {
@@ -121,6 +242,12 @@ html[data-custom-bg="1"] body {
   z-index: 1;
   min-height: 100vh;
   min-height: 100dvh;
+  background: transparent;
+}
+
+html[data-custom-bg="1"] .vnss-frost {
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.15);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.15);
 }
 
 button,
@@ -139,7 +266,10 @@ select,
   border: 1px solid var(--line);
   color: var(--ink);
   border-radius: var(--radius-sm);
-  transition: border-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    background var(--dur) var(--ease-out);
 }
 
 input:not([type="color"]):not([type="range"]):not([type="file"]):focus-visible,
@@ -159,10 +289,21 @@ textarea::placeholder {
 
 button {
   cursor: pointer;
+  transition:
+    transform var(--dur-fast) var(--ease-spring),
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
 }
 
 button:active:not(:disabled) {
-  transform: scale(0.98);
+  transform: scale(0.97) translateY(0);
 }
 
 a {
@@ -178,6 +319,7 @@ a {
     transition-duration: 0.01ms !important;
   }
 
+  button:hover:not(:disabled),
   button:active:not(:disabled) {
     transform: none;
   }

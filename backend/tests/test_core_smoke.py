@@ -23,6 +23,28 @@ def test_lint_and_map():
     assert len(tree) >= 1
 
 
+def test_map_smart_lexicon_without_llm():
+    import asyncio
+
+    from app.core.map_extract_smart import extract_map_smart
+
+    p = create_demo_project()
+    ch = p.chapters[0]
+    ch.blocks = list(ch.blocks) + [
+        {"type": "narration", "text": "他们拐进街角的咖啡馆，点了两杯美式。"},
+        {
+            "type": "dialogue",
+            "characterId": p.characters[0].id,
+            "text": "我们去公园走走吧。",
+        },
+    ]
+    p.chapters[0] = ch
+    result = asyncio.run(extract_map_smart(p, config=None, use_llm=False))
+    names = " ".join(l.name for l in result["locations"])
+    assert ("咖啡" in names) or ("公园" in names)
+    assert result["llmUsed"] is False
+
+
 def test_normalize_roundtrip():
     p = create_demo_project()
     raw = p.model_dump(mode="json")

@@ -18,6 +18,32 @@ LabelId = str
 LocationId = str
 
 
+class VoiceCorpusLine(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    speaker: str = "self"  # self | other | name
+    text: str = ""
+
+
+class VoiceCorpusSample(BaseModel):
+    """Accepted (or imported) dialogue evidence for a character voice."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    scenario: str = ""
+    scenarioLabel: Optional[str] = None
+    axis: Optional[str] = None
+    hypothesis: Optional[str] = None
+    lines: List[VoiceCorpusLine] = Field(default_factory=list)
+    source: Literal[
+        "preference", "import", "script_extract", "scene", "interview", "manual", "chat"
+    ] = "preference"
+    userNote: Optional[str] = None
+    rejectedSummary: Optional[str] = None
+    createdAt: Optional[str] = None
+
+
 class Character(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -33,6 +59,12 @@ class Character(BaseModel):
     imageTag: Optional[str] = None
     # Relations to other characters (free text)
     relationships: Optional[str] = None
+    # Preference-calibrated dialogue corpus (positive examples)
+    voiceCorpus: Optional[List[VoiceCorpusSample]] = None
+    # Lightweight character mind card (markdown; nuwa five-layer lite)
+    voiceMind: Optional[str] = None
+    # Short notes from rejected variants (anti-patterns)
+    voiceRejectNotes: Optional[List[str]] = None
 
 
 # --- ScriptBlock ------------------------------------------------------------
@@ -364,6 +396,12 @@ class VnProject(BaseModel):
     variables: Optional[List[GameVariable]] = None
     sprites: Optional[List[SpriteDef]] = None
     snapshots: Optional[List[ProjectSnapshot]] = None
+    # Plan→Write→Check ledger: chapter facts / character states / foreshadows
+    writingLedger: Optional[Dict[str, Any]] = None
+    # Writing mentor packs: activeIds + optional imported customPacks
+    writingMentors: Optional[Dict[str, Any]] = None
+    # Author lenses (optional multi-perspective review/plot); default off
+    authorLenses: Optional[Dict[str, Any]] = None
     # Local read-only share id
     shareId: Optional[str] = None
     updatedAt: str
@@ -429,8 +467,16 @@ class AgentRequest(BaseModel):
     task: Optional[str] = None
     # Rolling chat memory (extractive) for long conversations
     chatMemory: Optional[str] = None
+    # NovelMaster-style long chapter archive (assembled from PG slices)
+    longChapterMemory: Optional[str] = None
+    # Moegirl-inspired ACG craft cards (distilled; never paste wiki into script)
+    loreCraft: Optional[str] = None
     # Writing craft injection: auto | off | lite | full
     craftMode: Optional[str] = None
+    # Override project writingMentors.activeIds for this turn (max 2)
+    mentorIds: Optional[List[str]] = None
+    # Optional author lenses for this turn (max 3); None = use project.authorLenses
+    lensIds: Optional[List[str]] = None
     # Second-pass narrative/social self-review: auto | on | off
     selfReview: Optional[str] = None
     # Optional separate critic model (cross-model review reduces self-bias)
@@ -451,6 +497,8 @@ class AgentContextMeta(BaseModel):
     included: List[str] = Field(default_factory=list)
     craftMode: Optional[str] = None
     craftReason: Optional[str] = None
+    mentorIds: Optional[List[str]] = None
+    lensIds: Optional[List[str]] = None
     # Self-review outcome note
     selfReview: Optional[str] = None
 

@@ -7,7 +7,16 @@ from sqlalchemy import text
 from app.api.v1 import api_router
 from app.config import get_settings
 from app.db import Base, engine
-from app.models import AgentSession, Project, Share, User, UserSettings  # noqa: F401
+from app.models import (  # noqa: F401
+    AgentSession,
+    ChapterMemoryArchive,
+    ChapterMemorySlice,
+    LoreCraftCard,
+    Project,
+    Share,
+    User,
+    UserSettings,
+)
 
 
 async def _ensure_agent_session_schema(conn) -> None:

@@ -16,6 +16,7 @@ from app.core import (
     apply_agent_actions,
     build_branch_tree,
     extract_map_from_script,
+    extract_map_smart,
     export_to_renpy,
     lint_narrative_draft,
     normalize_project,
@@ -42,6 +43,7 @@ from app.schemas import (
     AgentSessionPutIn,
     AiRunIn,
     LintIn,
+    MapExtractIn,
     ProjectCreateIn,
     ProjectPatchIn,
     ProjectPutIn,
@@ -51,6 +53,7 @@ from app.schemas import (
     VoiceCheckIn,
 )
 from app.security import get_current_user
+from app.services.novel_memory import get_latest_continuity
 from app.services.projects import (
     create_project_row,
     get_owned_project,
@@ -279,12 +282,39 @@ async def export_json(
 @router.post("/{project_id}/map/extract", response_model=dict)
 async def map_extract(
     project_id: str,
+    body: MapExtractIn = MapExtractIn(),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
+    """Extract map locations.
+
+    - mode=rules: scene bg tags only (fast, offline)
+    - mode=smart (default): scene + lexicon + DeepSeek over dialogue/bible
+    """
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
-    result = extract_map_from_script(vn)
+    mode = body.mode or "smart"
+
+    if mode == "rules":
+        result = extract_map_from_script(vn)
+        result = {
+            **result,
+            "mode": "rules",
+            "llmUsed": False,
+            "llmAddedCount": 0,
+            "llmLinkCount": 0,
+            "warnings": [],
+        }
+    else:
+        creds = server_llm_credentials(settings)
+        cfg = DeepSeekConfig(
+            apiKey=creds["api_key"],
+            baseUrl=creds["base_url"],
+            model=creds["model"],
+        )
+        result = await extract_map_smart(vn, cfg, use_llm=True)
+
     vn.locations = result["locations"]
     vn.locationLinks = result["locationLinks"]
     sync_row_from_vn(row, vn)
@@ -292,8 +322,13 @@ async def map_extract(
     await db.refresh(row)
     return {
         "project": project_to_dict(row_to_vn(row)),
-        "addedCount": result["addedCount"],
-        "linkCount": result["linkCount"],
+        "addedCount": result.get("addedCount", 0),
+        "linkCount": result.get("linkCount", 0),
+        "llmAddedCount": result.get("llmAddedCount", 0),
+        "llmLinkCount": result.get("llmLinkCount", 0),
+        "mode": result.get("mode", mode),
+        "llmUsed": bool(result.get("llmUsed")),
+        "warnings": result.get("warnings") or [],
     }
 
 
@@ -680,6 +715,28 @@ async def run_project_agent(
     critic_base = settings.critic_api_base_url or None
     critic_model = settings.critic_api_model or None
 
+    last_user = ""
+    for m in reversed(body.messages or []):
+        content = getattr(m, "content", None)
+        if content is None and isinstance(m, dict):
+            content = m.get("content")
+        role = getattr(m, "role", None)
+        if role is None and isinstance(m, dict):
+            role = m.get("role")
+        if role == "user" and content:
+            last_user = str(content)
+            break
+
+    from app.services.lore import resolve_lore_block
+    from app.core.pipeline.ledger import format_ledger_for_agent, get_ledger
+
+    lore = await resolve_lore_block(
+        db, project_id, vn, user_message=last_user, limit=4
+    )
+    ledger_block = format_ledger_for_agent(get_ledger(vn))
+    lore_parts = [p for p in [lore.get("agentBlock") or "", ledger_block] if p.strip()]
+    lore_combined = "\n\n".join(lore_parts) or None
+
     req = AgentRequest(
         project=vn,
         messages=body.messages,  # type: ignore[arg-type]
@@ -687,8 +744,13 @@ async def run_project_agent(
         selection=body.selection,
         task=body.task,  # type: ignore[arg-type]
         chatMemory=body.chat_memory,
+        longChapterMemory=(
+            (await get_latest_continuity(db, project_id) or {}).get("agentBlock")
+        ),
+        loreCraft=lore_combined,
         craftMode=settings.agent_craft_mode,
         selfReview=settings.agent_self_review,
+        lensIds=body.lens_ids,
         criticApiKey=critic_key,
         criticApiBaseUrl=critic_base,
         criticApiModel=critic_model,

@@ -10,11 +10,13 @@ _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=str(_BACKEND_ROOT / ".env"),
-        env_file_encoding="utf-8",
+        # utf-8-sig strips BOM so Windows editors don't break DATABASE_URL key
+        env_file_encoding="utf-8-sig",
         extra="ignore",
     )
 
-    database_url: str = "postgresql+asyncpg://vnss:vnss@localhost:5432/vnss"
+    # Host port matches docker-compose.yml (15432:5432)
+    database_url: str = "postgresql+asyncpg://vnss:vnss@localhost:15432/vnss"
     secret_key: str = "change-me-to-a-long-random-string"
     access_token_expire_minutes: int = 60 * 24 * 7
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
@@ -34,6 +36,14 @@ class Settings(BaseSettings):
 
     settings_fernet_key: str = ""
     algorithm: str = "HS256"
+
+    # Moegirlpedia (萌娘百科) lore lookup — self-use; respect CC BY-NC-SA
+    moegirl_enabled: bool = True
+    moegirl_api_base: str = "https://zh.moegirl.org.cn/api.php"
+    moegirl_user_agent: str = (
+        "VNScriptStudio/0.1 (self-use writing aid; "
+        "+https://github.com/Saltedfish20060409/vn-script-studio)"
+    )
 
     @property
     def cors_origin_list(self) -> List[str]:

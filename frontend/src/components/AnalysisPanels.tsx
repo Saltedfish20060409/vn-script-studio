@@ -1,17 +1,29 @@
 import { useMemo, useState } from "react";
+import { voiceCheck } from "../api/client";
 import { buildBranchTree, type BranchNode } from "../lib/branchTree";
 import { uid } from "../lib/vnLocal";
-import type { CharacterLink, TimelineEvent, VoiceReport, VnProject } from "../types/vn";
-import { voiceCheck } from "../api/client";
+import type {
+  CharacterLink,
+  TimelineEvent,
+  VoiceReport,
+  VnProject,
+} from "../types/vn";
 import styles from "./AnalysisPanels.module.css";
 
 type Props = {
   project: VnProject;
   chapterId: string;
+  draft?: string;
   onChange: (updater: (p: VnProject) => VnProject) => void;
 };
 
-function BranchView({ nodes, depth = 0 }: { nodes: BranchNode[]; depth?: number }) {
+function BranchView({
+  nodes,
+  depth = 0,
+}: {
+  nodes: BranchNode[];
+  depth?: number;
+}) {
   return (
     <ul className={styles.tree} style={{ marginLeft: depth ? 12 : 0 }}>
       {nodes.map((n) => (
@@ -78,7 +90,11 @@ export function AnalysisPanels({ project, chapterId, onChange }: Props) {
   }
 
   function addCharLink() {
-    if (!linkDraft.fromId || !linkDraft.toId || linkDraft.fromId === linkDraft.toId)
+    if (
+      !linkDraft.fromId ||
+      !linkDraft.toId ||
+      linkDraft.fromId === linkDraft.toId
+    )
       return;
     const link: CharacterLink = {
       id: uid("clink"),
@@ -184,7 +200,12 @@ export function AnalysisPanels({ project, chapterId, onChange }: Props) {
               添加关系
             </button>
           </div>
-          <svg viewBox="0 0 640 360" className={styles.graph}>
+          <svg
+            className={styles.graph}
+            viewBox="0 0 640 360"
+            role="img"
+            aria-label="角色关系图"
+          >
             {charLinks.map((l) => {
               const a = charLayout.find((c) => c.id === l.fromId);
               const b = charLayout.find((c) => c.id === l.toId);
@@ -196,12 +217,16 @@ export function AnalysisPanels({ project, chapterId, onChange }: Props) {
                     y1={a.y}
                     x2={b.x}
                     y2={b.y}
-                    className={styles.edge}
+                    stroke="currentColor"
+                    strokeOpacity={0.35}
                   />
                   <text
                     x={(a.x + b.x) / 2}
-                    y={(a.y + b.y) / 2 - 6}
-                    className={styles.edgeLabel}
+                    y={(a.y + b.y) / 2 - 4}
+                    fontSize="11"
+                    fill="currentColor"
+                    textAnchor="middle"
+                    opacity={0.7}
                   >
                     {l.label}
                   </text>
@@ -209,21 +234,36 @@ export function AnalysisPanels({ project, chapterId, onChange }: Props) {
               );
             })}
             {charLayout.map((c) => (
-              <g key={c.id} transform={`translate(${c.x},${c.y})`}>
-                <circle r="28" fill={c.color || "#6b7280"} opacity={0.9} />
-                <text textAnchor="middle" dy="4" className={styles.nodeLabel}>
+              <g key={c.id}>
+                <circle
+                  cx={c.x}
+                  cy={c.y}
+                  r={28}
+                  fill="var(--field-bg)"
+                  stroke="var(--accent)"
+                  strokeWidth={1.5}
+                />
+                <text
+                  x={c.x}
+                  y={c.y + 4}
+                  fontSize="11"
+                  textAnchor="middle"
+                  fill="currentColor"
+                >
                   {c.displayName.slice(0, 4)}
                 </text>
               </g>
             ))}
           </svg>
-          <ul className={styles.list}>
+          <ul className={styles.linkList}>
             {charLinks.map((l) => {
               const a = project.characters.find((c) => c.id === l.fromId);
               const b = project.characters.find((c) => c.id === l.toId);
               return (
                 <li key={l.id}>
-                  {a?.displayName} —{l.label}→ {b?.displayName}
+                  <span>
+                    {a?.displayName ?? "?"} —{l.label}→ {b?.displayName ?? "?"}
+                  </span>
                   <button
                     type="button"
                     onClick={() =>
@@ -248,30 +288,12 @@ export function AnalysisPanels({ project, chapterId, onChange }: Props) {
         <div className={styles.panel}>
           <div className={styles.toolbar}>
             <button type="button" onClick={addTimelineEvent}>
-              添加节点
+              添加时间节点
             </button>
           </div>
           <div className={styles.timeline}>
-            {timeline.length === 0 && (
-              <p className={styles.hint}>还没有时间线。可按故事昼夜 / 章节推进添加。</p>
-            )}
-            {timeline.map((ev, idx) => (
+            {timeline.map((ev) => (
               <article key={ev.id} className={styles.tlCard}>
-                <div className={styles.tlDot} />
-                {idx < timeline.length - 1 && <div className={styles.tlLine} />}
-                <input
-                  className={styles.tlWhen}
-                  value={ev.when ?? ""}
-                  placeholder="时间"
-                  onChange={(e) =>
-                    onChange((p) => ({
-                      ...p,
-                      timeline: (p.timeline ?? []).map((t) =>
-                        t.id === ev.id ? { ...t, when: e.target.value } : t
-                      ),
-                    }))
-                  }
-                />
                 <input
                   value={ev.title}
                   onChange={(e) =>
@@ -279,6 +301,18 @@ export function AnalysisPanels({ project, chapterId, onChange }: Props) {
                       ...p,
                       timeline: (p.timeline ?? []).map((t) =>
                         t.id === ev.id ? { ...t, title: e.target.value } : t
+                      ),
+                    }))
+                  }
+                />
+                <input
+                  value={ev.when ?? ""}
+                  placeholder="时间标注"
+                  onChange={(e) =>
+                    onChange((p) => ({
+                      ...p,
+                      timeline: (p.timeline ?? []).map((t) =>
+                        t.id === ev.id ? { ...t, when: e.target.value } : t
                       ),
                     }))
                   }
@@ -316,7 +350,11 @@ export function AnalysisPanels({ project, chapterId, onChange }: Props) {
       {sub === "voice" && (
         <div className={styles.panel}>
           <div className={styles.toolbar}>
-            <button type="button" disabled={voiceBusy} onClick={() => void runVoice()}>
+            <button
+              type="button"
+              disabled={voiceBusy}
+              onClick={() => void runVoice()}
+            >
               {voiceBusy ? "检查中…" : "生成语气一致性报告"}
             </button>
           </div>

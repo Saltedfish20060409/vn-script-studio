@@ -17,13 +17,29 @@
   background: var(--field-bg);
   padding: 0.45rem 0.85rem;
   min-height: 36px;
+  transition:
+    transform 140ms var(--ease-spring, cubic-bezier(0.22, 1, 0.36, 1)),
+    background 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.tab:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  transform: translateY(-1px);
+}
+
+.tab:active,
+.tabActive:active {
+  transform: scale(0.97);
 }
 
 .tabActive {
-  background: var(--ink);
-  color: var(--paper);
-  border-color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel-bg));
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
   font-weight: 600;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .panel {
@@ -32,12 +48,88 @@
   background: var(--panel-bg);
   padding: 1rem;
   box-shadow: var(--shadow-sm);
+  animation: panelSwap 240ms var(--ease-out, ease);
+}
+
+@keyframes panelSwap {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .hint {
   color: var(--ink-soft);
   font-size: 0.9rem;
   margin: 0 0 0.75rem;
+}
+
+.goalList {
+  margin: 0 0 0.75rem;
+  padding-left: 1.1rem;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+
+.roleRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.instruct {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.instruct textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  background: var(--field-bg);
+  color: var(--ink);
+  resize: vertical;
+}
+
+.skills {
+  margin: 0.5rem 0 0.85rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.skills summary {
+  cursor: pointer;
+  color: var(--ink);
+  margin-bottom: 0.35rem;
+}
+
+.skills ul {
+  margin: 0;
+  padding-left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.skills li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.skills strong {
+  font-size: 0.78rem;
+  color: var(--accent);
 }
 
 .toolbar {

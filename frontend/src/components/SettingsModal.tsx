@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   applySettingsToDom,
   type AppSettings,
+  type PanelGlass,
   type ThemeMode,
 } from "../lib/settings";
 import styles from "./SettingsModal.module.css";
@@ -121,7 +122,10 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
         bgImage: data,
         bgPanX: 0,
         bgPanY: 0,
-        bgOpacity: Math.max(settings.bgOpacity, 0.35),
+        // Deep artworks read better with a bit more presence + scrim
+        bgOpacity: Math.max(settings.bgOpacity, 0.48),
+        bgScrim: Math.max(settings.bgScrim ?? 0.42, 0.45),
+        // Keep current glass preference (do not force back to auto)
       });
     };
     reader.readAsDataURL(file);
@@ -299,6 +303,60 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                     }
                   />
                 </label>
+                <label>
+                  可读性暗角 {Math.round((settings.bgScrim ?? 0.42) * 100)}%
+                  <input
+                    type="range"
+                    min={0}
+                    max={0.85}
+                    step={0.01}
+                    value={settings.bgScrim ?? 0.42}
+                    onChange={(e) =>
+                      patch({ bgScrim: Number(e.target.value) })
+                    }
+                  />
+                </label>
+                <p className={styles.note}>
+                  面板玻璃：有壁纸时生效。「自动」跟随日间→雾色 / 夜间→墨色；也可手动锁定。
+                </p>
+                <div className={styles.themeRow}>
+                  {(
+                    [
+                      ["auto", "自动"],
+                      ["ink", "墨色玻璃"],
+                      ["mist", "雾色玻璃"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={
+                        (settings.panelGlass ?? "auto") === id
+                          ? styles.themeActive
+                          : styles.themeCard
+                      }
+                      onClick={() =>
+                        patch({ panelGlass: id as PanelGlass })
+                      }
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  onClick={() =>
+                    patch({
+                      panelGlass: "ink",
+                      bgScrim: 0.5,
+                      theme: "night",
+                      bgOpacity: Math.max(settings.bgOpacity, 0.45),
+                    })
+                  }
+                >
+                  一键适配深色壁纸
+                </button>
                 <button
                   type="button"
                   className={styles.ghost}

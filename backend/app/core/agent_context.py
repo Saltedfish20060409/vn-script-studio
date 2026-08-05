@@ -41,6 +41,10 @@ class AgentContextOptions:
     maxChars: Optional[int] = None
     # Rolling chat memory (extractive, from client)
     chatMemory: Optional[str] = None
+    # NovelMaster-style long chapter archive (from PostgreSQL)
+    longChapterMemory: Optional[str] = None
+    # Distilled ACG craft cards (萌百启发)
+    loreCraft: Optional[str] = None
 
 
 @dataclass
@@ -185,6 +189,10 @@ def _clip(text: str, max_len: int) -> str:
 
 
 def _char_card(c: Character) -> str:
+    from app.core.character_voice.corpus import format_corpus_for_prompt, format_mind_for_prompt
+
+    mind = format_mind_for_prompt(c, max_chars=1600)
+    corpus = format_corpus_for_prompt(c, max_samples=6, max_chars=1400)
     return "\n".join(
         p
         for p in [
@@ -192,6 +200,8 @@ def _char_card(c: Character) -> str:
             f"  语气: {c.voice}" if c.voice else "",
             f"  人设: {c.bio}" if c.bio else "",
             f"  关系: {c.relationships}" if c.relationships else "",
+            mind,
+            corpus,
         ]
         if p
     )
@@ -229,6 +239,8 @@ def build_agent_context(
     task: Optional[str] = None,
     maxChars: Optional[int] = None,
     chatMemory: Optional[str] = None,
+    longChapterMemory: Optional[str] = None,
+    loreCraft: Optional[str] = None,
 ) -> AgentContextResult:
     """Build a retrieval-biased project context for long-form Agent use.
 
@@ -302,7 +314,7 @@ def build_agent_context(
     # Score characters
     ranked_chars: List[Tuple[Character, int]] = []
     for c in project.characters:
-        hay = f"{c.displayName} {c.defineName} {_js(c.voice)} {_js(c.bio)} {_js(c.relationships)}"
+        hay = f"{c.displayName} {c.defineName} {_js(c.voice)} {_js(c.bio)} {_js(c.relationships)} {_js(getattr(c, 'voiceMind', None))}"
         score = _score_haystack(hay, effective_tokens)
         if focus_chapter:
             plain = _blocks_to_plain(focus_chapter.blocks, project.characters)
@@ -417,6 +429,10 @@ def build_agent_context(
         included.append(f"选区{len(selection)}字")
     if chatMemory and chatMemory.strip():
         included.append("对话记忆")
+    if longChapterMemory and longChapterMemory.strip():
+        included.append("长程章节记忆")
+    if loreCraft and loreCraft.strip():
+        included.append("ACG工艺卡")
 
     show_vars = bool(
         var_lines
@@ -430,6 +446,16 @@ def build_agent_context(
     sections: List[str] = [
         "\n".join(meta_lines),
         f"\n## Story Bible（内部参考，禁止整段搬进正文）\n{bible_block}" if bible_block else "",
+        (
+            f"\n{_clip(longChapterMemory.strip(), 3200)}"
+            if longChapterMemory and longChapterMemory.strip()
+            else ""
+        ),
+        (
+            f"\n{_clip(loreCraft.strip(), 2400)}"
+            if loreCraft and loreCraft.strip()
+            else ""
+        ),
         (
             f"\n## 对话滚动记忆（更早轮次压缩，非正式剧情）\n{_clip(chatMemory.strip(), 2800)}"
             if chatMemory and chatMemory.strip()

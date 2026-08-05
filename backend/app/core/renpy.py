@@ -128,6 +128,17 @@ def project_to_context(project: VnProject, max_chars: int = 12000) -> str:
         if c.relationships:
             line += f" | 关系: {c.relationships}"
         chars_lines.append(line)
+        mind = (getattr(c, "voiceMind", None) or "").strip()
+        if mind:
+            snippet = mind if len(mind) <= 600 else mind[:588] + "…"
+            chars_lines.append(f"  思维卡:\n{snippet}")
+        corpus = getattr(c, "voiceCorpus", None) or []
+        if corpus:
+            from app.core.character_voice.corpus import format_corpus_for_prompt
+
+            bit = format_corpus_for_prompt(c, max_samples=4, max_chars=700)
+            if bit:
+                chars_lines.append(bit)
     chars = "\n".join(chars_lines)
 
     bible = project.bible

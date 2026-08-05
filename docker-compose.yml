@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: vnss
       POSTGRES_DB: vnss
     ports:
-      - "5432:5432"
+      - "15432:5432"
     volumes:
       - vnss_pg_data:/var/lib/postgresql/data
     healthcheck:

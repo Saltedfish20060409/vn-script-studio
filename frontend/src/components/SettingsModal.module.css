@@ -12,25 +12,41 @@
   box-shadow: var(--shadow);
   display: grid;
   place-items: center;
-  backdrop-filter: blur(10px);
-  transition: transform 160ms var(--ease-out), background 160ms var(--ease-out), border-color 160ms var(--ease-out);
+  backdrop-filter: blur(var(--glass-blur, 12px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 12px));
+  transition:
+    transform var(--dur, 220ms) var(--ease-spring, cubic-bezier(0.16, 1, 0.3, 1)),
+    background var(--dur, 220ms) var(--ease-out, ease),
+    border-color var(--dur, 220ms) var(--ease-out, ease),
+    box-shadow var(--dur, 220ms) var(--ease-out, ease);
 }
 
 .gear:hover {
-  transform: rotate(20deg);
-  background: var(--paper);
+  transform: rotate(22deg) translateY(-2px);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-bg));
   border-color: var(--accent);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .backdrop {
   position: fixed;
   inset: 0;
   z-index: 80;
-  background: rgba(28, 25, 23, 0.4);
+  background: rgba(8, 10, 12, 0.48);
   display: grid;
   place-items: center;
   padding: 1rem;
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(6px);
+  animation: fadeIn 180ms ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .modal {
@@ -40,11 +56,13 @@
   flex-direction: column;
   border-radius: 16px;
   border: 1px solid var(--line);
-  background: var(--paper);
+  background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
+  backdrop-filter: blur(var(--glass-blur, 16px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 16px));
   box-shadow: var(--shadow-lg);
   overflow: hidden;
   color: var(--ink);
-  animation: rise 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: rise 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @keyframes rise {

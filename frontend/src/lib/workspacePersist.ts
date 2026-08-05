@@ -1,6 +1,6 @@
 /** Persist studio UI so refresh / re-login restores where you left off. */
 
-export type StudioTab = "write" | "world" | "map" | "system" | "project";
+export type StudioTab = "write" | "world" | "voice" | "map" | "system" | "project";
 
 export interface WorkspaceSnapshot {
   projectId: string;

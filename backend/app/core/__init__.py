@@ -37,7 +37,19 @@ from .map_catalog import (
     normalize_map_style,
     preset_by_kind,
 )
+from .map_extract_smart import (
+    build_map_extract_corpus,
+    extract_map_smart,
+    lexicon_suggest_places,
+    merge_suggested_places,
+)
 from .narrative_lint import NarrativeLintIssue, lint_has_blockers, lint_narrative_draft
+from .novel_memory import (
+    DEFAULT_SPAN as MEMORY_ARCHIVE_SPAN,
+    build_all_archive_drafts,
+    format_memory_for_agent,
+    slice_text,
+)
 from .narrative_review import (
     NarrativeReviewResult,
     SelfReviewPreference,
@@ -128,6 +140,10 @@ __all__ = [
     "touch_project",
     "extract_locations_from_script",
     "extract_map_from_script",
+    "extract_map_smart",
+    "build_map_extract_corpus",
+    "lexicon_suggest_places",
+    "merge_suggested_places",
     "uid",
     "new_location_link",
     "project_from_plain_text",

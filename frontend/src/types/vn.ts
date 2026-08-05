@@ -2,6 +2,32 @@ export type CharacterId = string;
 export type LabelId = string;
 export type LocationId = string;
 
+export interface VoiceCorpusLine {
+  speaker: string;
+  text: string;
+}
+
+export interface VoiceCorpusSample {
+  id: string;
+  scenario: string;
+  scenarioLabel?: string;
+  axis?: string;
+  hypothesis?: string;
+  lines: VoiceCorpusLine[];
+  source?:
+    | "preference"
+    | "import"
+    | "script_extract"
+    | "scene"
+    | "interview"
+    | "manual"
+    | "chat"
+    | string;
+  userNote?: string;
+  rejectedSummary?: string;
+  createdAt?: string;
+}
+
 export interface Character {
   id: CharacterId;
   /** Ren'Py define name, e.g. eileen */
@@ -15,6 +41,12 @@ export interface Character {
   imageTag?: string;
   /** Relations to other characters (free text) */
   relationships?: string;
+  /** Preference-calibrated dialogue evidence */
+  voiceCorpus?: VoiceCorpusSample[];
+  /** Lightweight mind card markdown */
+  voiceMind?: string;
+  /** Notes from rejected variants */
+  voiceRejectNotes?: string[];
 }
 
 export type ScriptBlock =
@@ -245,6 +277,39 @@ export interface VnProject {
   variables?: GameVariable[];
   sprites?: SpriteDef[];
   snapshots?: ProjectSnapshot[];
+  writingLedger?: {
+    chapterFacts?: Array<{
+      id?: string;
+      chapterId: string;
+      title?: string;
+      facts?: string[];
+      keyQuotes?: string[];
+    }>;
+    characterStates?: Array<Record<string, unknown>>;
+    foreshadows?: Array<Record<string, unknown>>;
+    events?: Array<Record<string, unknown>>;
+    updatedAt?: string;
+  };
+  /** Active writing mentor packs (methodology; cannot override style_guide) */
+  writingMentors?: {
+    activeIds?: string[];
+    customPacks?: Array<{
+      id: string;
+      name: string;
+      markdown: string;
+      updatedAt?: string;
+    }>;
+  };
+  /** Optional author lenses for multi-perspective review/plot (default off) */
+  authorLenses?: {
+    activeIds?: string[];
+    customPacks?: Array<{
+      id: string;
+      name: string;
+      markdown: string;
+      updatedAt?: string;
+    }>;
+  };
   /** Local read-only share id */
   shareId?: string;
   updatedAt: string;
@@ -318,6 +383,8 @@ export interface AgentContextMeta {
   included: string[];
   craftMode?: "off" | "lite" | "full";
   craftReason?: string;
+  mentorIds?: string[];
+  lensIds?: string[];
   /** Self-review outcome note */
   selfReview?: string;
 }

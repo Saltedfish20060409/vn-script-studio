@@ -9,13 +9,20 @@
   box-shadow: var(--shadow);
   cursor: pointer;
   transition:
-    transform 180ms var(--ease-out),
+    transform 180ms var(--ease-spring, var(--ease-out)),
     padding 160ms var(--ease-out),
-    filter 160ms var(--ease-out);
+    filter 160ms var(--ease-out),
+    box-shadow 180ms var(--ease-out);
 }
 
 .tab:hover {
   filter: brightness(1.06);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 35%, transparent);
+  transform: translateY(-1px);
+}
+
+.tab:active {
+  transform: scale(0.97);
 }
 
 .tab_right {
@@ -71,7 +78,21 @@
 }
 
 .panel,
-.panelCorner,
+.panelCorner {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg, 16px);
+  background: var(--panel-bg);
+  backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  color: var(--ink);
+  animation: floatIn 280ms var(--ease-out, ease);
+}
+
 .panelLarge {
   position: fixed;
   z-index: 60;
@@ -84,6 +105,37 @@
   box-shadow: var(--shadow-lg);
   overflow: hidden;
   color: var(--ink);
+  left: 50%;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+  width: min(1040px, calc(100vw - 32px));
+  height: min(86dvh, calc(100dvh - 32px));
+  max-width: none;
+  animation: floatInLarge 300ms var(--ease-out, ease);
+}
+
+@keyframes floatIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes floatInLarge {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 12px)) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
 }
 
 .panelCorner {
@@ -107,17 +159,6 @@
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent),
     var(--shadow-lg);
-}
-
-.panelLarge {
-  left: 50%;
-  top: 50%;
-  right: auto;
-  bottom: auto;
-  transform: translate(-50%, -50%);
-  width: min(1040px, calc(100vw - 32px));
-  height: min(86dvh, calc(100dvh - 32px));
-  max-width: none;
 }
 
 .resizeHandle {
@@ -198,10 +239,18 @@
   background: var(--field-bg);
   line-height: 1;
   cursor: pointer;
+  transition:
+    transform 140ms var(--ease-spring, var(--ease-out)),
+    border-color 160ms ease,
+    background 160ms ease;
 }
 
 .winBtns button:hover {
   border-color: var(--accent);
+}
+
+.winBtns button:active {
+  transform: scale(0.94);
 }
 
 .body {
@@ -227,7 +276,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tab {
+  .tab,
+  .panel,
+  .panelCorner,
+  .panelLarge {
     transition: none;
+    animation: none !important;
   }
 }

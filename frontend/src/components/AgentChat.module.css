@@ -190,6 +190,215 @@
   overflow: hidden;
 }
 
+.mainHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 28px;
+}
+
+.mainHeadLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.mainHeadTitle {
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  flex-shrink: 0;
+}
+
+.personaBadge {
+  font-size: 0.75rem;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.mainHeadActions {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.helpBtn,
+.personaBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, var(--field-bg));
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.personaBtn {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.helpBtn:hover,
+.personaBtn:hover {
+  background: color-mix(in srgb, var(--accent) 22%, var(--field-bg));
+}
+
+.helpPanel,
+.personaPanel {
+  max-height: min(48vh, 380px);
+  overflow: auto;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--field-bg) 92%, var(--panel-bg));
+  font-size: 0.82rem;
+  overscroll-behavior: contain;
+}
+
+.helpClose {
+  margin-top: 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+  cursor: pointer;
+}
+
+.personaPanelTop {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.personaPanelLead {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.multiToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+}
+
+.brainstormBox {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.15rem;
+}
+
+.brainstormInput {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field-bg);
+  color: var(--ink);
+  font-size: 0.75rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.brainstormBtn {
+  align-self: flex-start;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 16%, var(--field-bg));
+  color: var(--ink);
+  font-size: 0.75rem;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+
+.brainstormBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.personaGrid {
+  display: grid;
+              grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 0.45rem;
+}
+
+.personaCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.28rem;
+  text-align: left;
+  padding: 0.55rem 0.6rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--field-bg);
+  color: var(--ink);
+  cursor: pointer;
+  min-height: 128px;
+}
+
+.personaCardBlurb {
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.personaCardRole {
+  font-size: 0.62rem;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  opacity: 0.9;
+}
+
+.personaCard:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+}
+
+.personaCardOn {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 14%, var(--field-bg));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.personaCard:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.personaCardName {
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.personaCardCheck {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.4rem;
+  font-size: 0.62rem;
+  color: var(--accent);
+}
+
 .shell:not(.shellCompact) .sidebar {
   border-radius: 12px;
 }
@@ -199,10 +408,14 @@
 }
 
 .shellCompact .main > .quickRow,
+.shellCompact .main > .modeHint,
 .shellCompact .main > .selHint,
 .shellCompact .main > .ctxMeta,
 .shellCompact .main > .composer,
-.shellCompact .main > .error {
+.shellCompact .main > .error,
+.shellCompact .main > .mainHead,
+.shellCompact .main > .helpPanel,
+.shellCompact .main > .personaPanel {
   flex-shrink: 0;
 }
 
@@ -229,6 +442,144 @@
   gap: 0.3rem;
 }
 
+.modeBar {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.45rem;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  background: color-mix(in srgb, var(--field-bg) 78%, transparent);
+  overflow: hidden;
+  transition: border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.main[data-mode="architect"] .modeBar {
+  border-color: color-mix(in srgb, #5b7c99 55%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, #5b7c99 20%, transparent);
+}
+
+.main[data-mode="writer"] .modeBar {
+  border-color: color-mix(in srgb, #8a6a4f 55%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, #8a6a4f 20%, transparent);
+}
+
+.main[data-mode="editor"] .modeBar {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.modeBarLabel {
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding: 0 0.35rem 0 0.2rem;
+  flex-shrink: 0;
+}
+
+.modeBtn,
+.modeBtnActive {
+  position: relative;
+  z-index: 1;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 0.4rem 0.9rem;
+  min-height: 34px;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition:
+    transform 160ms var(--ease-spring, cubic-bezier(0.22, 1, 0.36, 1)),
+    background 180ms var(--ease-out, ease),
+    border-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.modeBtn {
+  background: transparent;
+  color: var(--ink-soft);
+  border-color: color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.modeBtn:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  transform: translateY(-1px);
+}
+
+.modeBtnActive {
+  background: color-mix(in srgb, var(--accent) 22%, var(--field-bg));
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent),
+    0 6px 16px color-mix(in srgb, var(--accent) 18%, transparent);
+  font-weight: 650;
+}
+
+.modeBtnActive[data-mode="architect"] {
+  background: color-mix(in srgb, #5b7c99 28%, var(--field-bg));
+  border-color: color-mix(in srgb, #5b7c99 50%, var(--line));
+}
+
+.modeBtnActive[data-mode="writer"] {
+  background: color-mix(in srgb, #8a6a4f 28%, var(--field-bg));
+  border-color: color-mix(in srgb, #8a6a4f 50%, var(--line));
+}
+
+.modeBtnActive[data-mode="editor"] {
+  background: color-mix(in srgb, var(--accent) 28%, var(--field-bg));
+}
+
+.modeBtnActive[data-mode="pipeline"] {
+  background: color-mix(in srgb, #6b5b8a 28%, var(--field-bg));
+  border-color: color-mix(in srgb, #6b5b8a 50%, var(--line));
+}
+
+.main[data-mode="pipeline"] .modeBar {
+  border-color: color-mix(in srgb, #6b5b8a 55%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, #6b5b8a 20%, transparent);
+}
+
+.modeBtn:active:not(:disabled),
+.modeBtnActive:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.modeHint {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.modeToast {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.4;
+  color: var(--ink);
+  padding: 0.4rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 16%, var(--field-bg));
+  animation: modeToastIn 900ms var(--ease-out, ease);
+}
+
+.harnessRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.paneIn {
+  animation: paneSwap 260ms var(--ease-out, ease);
+}
+
 .quickBtn {
   border-radius: 8px;
   border: 1px solid var(--line);
@@ -237,14 +588,54 @@
   padding: 0.35rem 0.7rem;
   min-height: 32px;
   font-size: 0.78rem;
-  transition: border-color 160ms ease, background 160ms ease;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 140ms var(--ease-spring, cubic-bezier(0.22, 1, 0.36, 1)),
+    box-shadow 160ms ease;
 }
 
 .quickBtn:hover:not(:disabled) {
   border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.quickBtn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .quickBtn:disabled {
+  opacity: 0.5;
+}
+
+.quickBtnPrimary {
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 28%, var(--field-bg));
+  color: var(--ink);
+  padding: 0.35rem 0.7rem;
+  min-height: 32px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 140ms var(--ease-spring, cubic-bezier(0.22, 1, 0.36, 1)),
+    box-shadow 160ms ease;
+}
+
+.quickBtnPrimary:hover:not(:disabled) {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.quickBtnPrimary:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.quickBtnPrimary:disabled {
   opacity: 0.5;
 }
 
@@ -256,6 +647,16 @@
   padding: 0.35rem 0.7rem;
   min-height: 32px;
   font-size: 0.78rem;
+  transition: transform 140ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.quickBtnMuted:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+}
+
+.quickBtnMuted:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .quickBtnMuted:disabled {
@@ -300,6 +701,7 @@
   padding: 0.7rem 0.85rem;
   border-radius: 12px;
   animation: rise 220ms ease;
+  transition: border-color 180ms ease, background 180ms ease;
 }
 
 .user {
@@ -312,6 +714,18 @@
   align-self: flex-start;
   background: var(--field-bg);
   border: 1px solid var(--line);
+}
+
+.main[data-mode="architect"] .bot {
+  border-color: color-mix(in srgb, #5b7c99 40%, var(--line));
+}
+
+.main[data-mode="writer"] .bot {
+  border-color: color-mix(in srgb, #8a6a4f 40%, var(--line));
+}
+
+.main[data-mode="editor"] .bot {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
 }
 
 .role {
@@ -357,16 +771,32 @@
   min-height: 72px;
 }
 
-.composer button {
+.composer button,
+.composer .sendBtn {
   border-radius: 999px;
   border: 1px solid var(--accent);
   background: var(--accent);
   color: #f7f3eb;
   padding: 0.7rem 1.2rem;
   height: fit-content;
+  transition:
+    transform 140ms var(--ease-spring, cubic-bezier(0.22, 1, 0.36, 1)),
+    filter 160ms ease,
+    box-shadow 180ms ease;
 }
 
-.composer button:disabled {
+.composer .sendBtn:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 35%, transparent);
+  transform: translateY(-1px);
+}
+
+.composer .sendBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.composer button:disabled,
+.composer .sendBtn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
@@ -379,6 +809,52 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes paneSwap {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes modeToastIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  18% {
+    opacity: 1;
+    transform: none;
+  }
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.92;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .paneIn,
+  .modeToast,
+  .user,
+  .bot {
+    animation: none !important;
+  }
+
+  .modeBtn,
+  .modeBtnActive,
+  .quickBtn,
+  .quickBtnPrimary,
+  .quickBtnMuted,
+  .sendBtn {
+    transition: none !important;
   }
 }
 

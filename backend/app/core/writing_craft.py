@@ -212,6 +212,26 @@ SKILLS: Dict[str, WritingSkill] = {
         "温度升高需要触发（共伞、共敌、共同秘密、酒精、恐惧），禁止为推进剧情强行变熟",
         "热情角色可以说多；冷角色说少——不要为了「写满」让冷角色变主持访谈",
     ]),
+    "otaku_literacy": _s("otaku_literacy", "二次元文化落地", [
+        "写类型张力（傲娇/中二/电波/青梅）靠动作与口是心非，禁止念属性词条",
+        "同人/gal 语感：对白短、潜台词密；制服袖口、铃声、贩卖机灯等物象优先于空心形容词",
+        "中二要有羞耻与代价；电波要有错频喜剧或孤独，勿空喊口号",
+        "忌伪二次元套话：命运的邂逅、好感度上升、萌萌哒堆砌",
+    ]),
+    "ln_vn_bridge": _s("ln_vn_bridge", "轻小说↔视觉小说", [
+        "画面感服务可上演：可见动作 + 听得见对白；大段心声压成一句刺人独白+小动作",
+        "场末钩子服务下一页/下一句：半揭误会、门响、破格称呼、秘密物件",
+        "默认 Ren'Py 友好：短旁白分行对白；需要才 scene/show",
+    ]),
+    "de_ai_voice": _s("de_ai_voice", "去AI味", [
+        "禁纠偏讲解「不是A，是B」与双否一肯叠喻梯；直接写判断与动作",
+        "禁电报分工对白；少装饰破折号；少空心极短段堆叠",
+        "比喻要准而省；华丽须服务角色视角，不是作者炫技",
+    ]),
+    "genre_heat": _s("genre_heat", "类型热度", [
+        "恋爱升温要有触发场景；校园用时间表与公共空间压力",
+        "悬疑信息残缺留给读者；喜剧靠错位与角色坚持，不靠尬梗三连",
+    ]),
 }
 
 # Full library order (for docs / UI)
@@ -246,6 +266,10 @@ PROSE_CORE: List[str] = [
     "anti_qa_pingpong",
     "talk_economy",
     "social_temperature",
+    "otaku_literacy",
+    "ln_vn_bridge",
+    "de_ai_voice",
+    "genre_heat",
 ]
 
 PROSE_EXTRA: List[str] = [
@@ -258,7 +282,13 @@ PROSE_EXTRA: List[str] = [
 
 # Which craft skills apply to which Agent task
 TASK_SKILLS: Dict[str, List[str]] = {
-    "chat": ["anti_exposition", "audience_delight", "anti_cliche"],
+    "chat": [
+        "anti_exposition",
+        "audience_delight",
+        "anti_cliche",
+        "otaku_literacy",
+        "de_ai_voice",
+    ],
     "continue": [*PROSE_CORE, *PROSE_EXTRA],
     "scene": [*PROSE_CORE, *PROSE_EXTRA],
     "rewrite": [
@@ -279,12 +309,19 @@ TASK_SKILLS: Dict[str, List[str]] = {
         "anti_qa_pingpong",
         "talk_economy",
         "social_temperature",
+        "otaku_literacy",
+        "ln_vn_bridge",
+        "de_ai_voice",
+        "genre_heat",
     ],
     "polish": [
         "dialogue_natural",
         "vn_stagecraft",
         "anti_exposition",
         "anti_cliche",
+        "de_ai_voice",
+        "otaku_literacy",
+        "ln_vn_bridge",
         "voice_contrast",
         "silence_beat",
         "name_economy",
@@ -358,6 +395,8 @@ LITE_IDS: List[str] = [
     "stranger_distance",
     "anti_qa_pingpong",
     "talk_economy",
+    "de_ai_voice",
+    "otaku_literacy",
 ]
 
 
@@ -461,6 +500,8 @@ def skills_for_task(task: str, mode: str = "full") -> List[WritingSkill]:
 
 PRIORITY_IDS: List[str] = [
     "anti_exposition",
+    "de_ai_voice",
+    "otaku_literacy",
     "stranger_distance",
     "anti_qa_pingpong",
     "talk_economy",
@@ -471,6 +512,7 @@ PRIORITY_IDS: List[str] = [
     "pacing_hook",
     "subtext_conflict",
     "anti_cliche",
+    "ln_vn_bridge",
     "renpy_hygiene",
     "voice_contrast",
     "sensory_ground",
@@ -509,7 +551,14 @@ def build_writing_craft_prompt(task: str, mode: str = "full") -> str:
         checklist,
         SELF_CHECK if need_check else "",
     ]
-    return "\n\n".join(p for p in parts if p)
+    text = "\n\n".join(p for p in parts if p)
+    try:
+        from app.core.pipeline.style_skill import load_style_skill
+
+        text += "\n\n" + load_style_skill().prompt_block(max_chars=2000)
+    except Exception:
+        pass
+    return text
 
 
 def writing_skill_titles(task: str, mode: str = "full") -> List[str]:

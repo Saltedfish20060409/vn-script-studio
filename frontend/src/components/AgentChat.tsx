@@ -3,11 +3,23 @@ import {
   createAgentConversation,
   deleteAgentConversation,
   getAgentConversation,
+  getProjectLenses,
+  getProjectMentors,
+  harnessLint,
+  listLenses,
+  pipelineGate,
+  pipelineLedgerDigest,
+  pipelineRun,
+  putProjectLenses,
+  runBrainstorm,
   listAgentConversations,
   putAgentConversation,
   renameAgentConversation,
   runAgent,
   type AgentConversationSummary,
+  type HarnessLintResult,
+  type LensPackMeta,
+  type PipelineRunResult,
 } from "../api/client";
 import type { AgentAction, AgentChatMessage, AgentTaskKind, VnProject } from "../types/vn";
 import { AgentMessageBody } from "./AgentMarkdown";
@@ -17,6 +29,8 @@ type Props = {
   project: VnProject;
   chapterId: string;
   selection: string;
+  /** Current chapter script text (editor buffer) for lint / pipeline / gate */
+  draft?: string;
   prepareProject?: () => VnProject;
   onProjectChange: (project: VnProject) => void;
   onChapterFocus?: (chapterId: string) => void;
@@ -24,69 +38,6 @@ type Props = {
   /** Hidden when float is minimized — keep mounted so state survives */
   hidden?: boolean;
 };
-
-type QuickAction = {
-  label: string;
-  task: AgentTaskKind;
-  build: (selection: string) => string;
-};
-
-const QUICK_ACTIONS: QuickAction[] = [
-  {
-    label: "续写",
-    task: "continue",
-    build: () =>
-      "【任务：续写】请只续写一小段可上演节拍，紧接当前章末尾的情绪与未完成的事。\n硬性要求：\n1) 人物设定/bio 是内部参考，禁止写进对白当说明书；\n2) 不要开场介绍人物是谁；\n3) 用行动、态度、潜台词推进——禁止同一角色连问盘人（陌生人尤其惜话）；\n4) 信息残缺优于一问一答把路线问清楚；\n5) 段末留钩子，不要作者总结。\n写完用 append_script 写入当前章。",
-  },
-  {
-    label: "写一场戏",
-    task: "scene",
-    build: () =>
-      "【任务：写一场戏】写完整一小场：进场氛围→冲突推进→对白交锋→收束钩子。设定溶于表演，禁止人物/世界观说明书开场。用 append_script 写入当前章。",
-  },
-  {
-    label: "改写选区",
-    task: "rewrite",
-    build: (sel) =>
-      sel
-        ? "【任务：改写】请改写我提供的选区：保持剧情意图与人物语气，提升画面感与张力，输出 Ren'Py 片段；用 append_script 追加（在 message 说明改了什么）。"
-        : "我想改写选区，但当前没有选中文字。请提醒我先在剧本页拖选一段，然后再改写。",
-  },
-  {
-    label: "润色",
-    task: "polish",
-    build: (sel) =>
-      sel
-        ? "【任务：润色】请润色选区对白/旁白：更自然、更有画面感，情节与人设不变。用 append_script 把润色稿写入当前章节。"
-        : "【任务：润色】请润色当前章节末尾最近几段对白与旁白，使其更自然有画面感，并用 append_script 写入。",
-  },
-  {
-    label: "生成分支",
-    task: "branch",
-    build: () =>
-      "【任务：分支】请为当前情节设计 2～4 个有意义的 Ren'Py menu 分支（每项后果不同：信息/关系/路线），避免假选择，并用 append_script 写入当前章节。",
-  },
-  {
-    label: "大纲",
-    task: "outline",
-    build: () =>
-      "【任务：大纲】请根据已有设定与章节目录，给出接下来 3～5 个场景大纲（场景标题 + 冲突 + 出场人物 + 可选分支）。先写在 message 里讨论；若我同意再写入设定 outline。",
-  },
-  {
-    label: "统一语气",
-    task: "voice",
-    build: (sel) =>
-      sel
-        ? "【任务：语气】请检查选区对白是否符合角色 voice/bio，指出破功处并给出改写；需要落地时用 append_script。"
-        : "【任务：语气】请抽查当前章节对白的人设一致性，指出破功处并给出改写；需要落地时用 append_script。",
-  },
-  {
-    label: "查矛盾",
-    task: "consistency",
-    build: () =>
-      "【任务：查矛盾】请对照 Variables、角色关系、地点氛围与各章摘要，列出矛盾 / 伏笔未回收 / 状态冲突，并给出最小改法（可建议 actions，勿擅自大删剧情）。",
-  },
-];
 
 const TASK_LABEL: Record<AgentTaskKind, string> = {
   chat: "讨论",
@@ -118,6 +69,126 @@ const ACTION_LABEL: Record<string, string> = {
   update_meta: "更新元信息",
 };
 
+const HELP_MD = `### 责编能帮你做什么
+
+用平常话说需求即可。**轻小说 / 视觉小说写法底盘**（可演对白、钩子、去说明书）由「通用文学编辑」在每次对话里自动生效。
+
+### 推荐写作流程
+
+1. **直接聊**：说清场次或卡点。  
+2. **（可选）换作家眼光**：点顶部 **⇄**，选一位作家 skill 卡（可开多选做头脑风暴）。  
+3. **文风体检**（可选）：扫问题不改文。  
+4. **定稿**：过门禁并更新写作账本。
+
+### 卡壳时的替代
+
+「跑流水线：……」适合没思路或要整场戏——**不是**日常必经步骤。
+
+### 强头脑风暴
+
+1. 点 **⇄** → 打开「多选」→ 选 2～3 位作家  
+2. 填写议题，点「开始头脑风暴」，或直接说「头脑风暴：下一场怎么拆」  
+3. 程序会让每位作家**各自独立调用一次模型**（互相看不见），再由责编综合分歧与三步行动  
+
+这与「一次对话里塞多个视角」不同，是真正的分视角圆桌。
+
+### 作家卡从哪来
+
+内置若干公开技法蒸馏包（女娲五层格式）。也可用 [女娲.skill](https://github.com/alchaincyf/nuwa-skill) 离线蒸馏作家 → 导入工程（见仓库 \`backend/vendor/NUWA_LENS_WORKFLOW.md\`）。
+
+冲突时：**风格硬规则 > 通用编辑 > 所选作家视角**。`;
+
+const WELCOME_MARKER = "轻小说 / 视觉小说的写法底盘会自动带上";
+
+const DEFAULT_WRITER = {
+  id: null as string | null,
+  name: "通用文学编辑",
+  role: "默认 · LN/VN 责编",
+  blurb:
+    "日常对话自动用的编辑底盘：可演对白、信息残缺、场钩子、类型热度。写轻小说/视觉小说时无需切换作家。",
+};
+
+const WRITER_CARD_META: Record<
+  string,
+  { role: string; blurb: string; sort: number }
+> = {
+  "author-murakami": {
+    role: "文学 / 氛围小说",
+    blurb: "适合：疏离日常、都市孤独。擅长：留白、重复变奏、克制比喻。",
+    sort: 10,
+  },
+  "author-higashino": {
+    role: "悬疑 / 社会派",
+    blurb: "适合：本格与社会派谜题。擅长：公平伏笔、误导动机、因果收束。",
+    sort: 20,
+  },
+  "author-watari": {
+    role: "轻小说 · 学园恋爱",
+    blurb: "适合：别扭青春恋爱。擅长：心理防线、自欺、越界触发与毒舌距离感。",
+    sort: 30,
+  },
+  "author-nishio": {
+    role: "轻小说 · 对白密集",
+    blurb: "适合：靠嘴推进的故事。擅长：口癖声纹、抬杠逻辑、定义权争夺。",
+    sort: 40,
+  },
+  "author-kamachi": {
+    role: "轻小说 · 动作信息战",
+    blurb: "适合：异能/战斗快节奏。擅长：信息差、倒计时、短章甩钩。",
+    sort: 50,
+  },
+  "author-nasu": {
+    role: "视觉小说 · 规则概念",
+    blurb: "适合：异能、神话、规则对决。擅长：设定可演、代价与例外、概念冲突。",
+    sort: 60,
+  },
+  "author-maeda": {
+    role: "视觉小说 · 泣きゲー",
+    blurb: "适合：催泪向恋爱/亲情。擅长：长蓄力、一句决堤、静场余韵。",
+    sort: 70,
+  },
+  "author-maruto": {
+    role: "视觉小说 · 恋爱细腻",
+    blurb: "适合：成人向拉扯恋爱。擅长：试探与撤回、对白缝隙、二人私密语法。",
+    sort: 80,
+  },
+  "author-urobuchi": {
+    role: "视觉小说 / 剧本 · 致郁思想剧",
+    blurb: "适合：黑暗理想主义、悲剧。擅长：信念对撞、残酷有逻辑、改写立场的反转。",
+    sort: 90,
+  },
+  "author-romeo": {
+    role: "视觉小说 · 恋爱喜剧",
+    blurb: "适合：聪明互怼恋爱、轻元梗。擅长：喜剧落回真心、闹中取静的告白节奏。",
+    sort: 100,
+  },
+  "author-hayashi": {
+    role: "视觉小说 · 温情学园",
+    blurb: "适合：治愈学园日常、轻百合气息。擅长：相处厚度、缓坡感动、群像温度。",
+    sort: 110,
+  },
+  "author-looseboy": {
+    role: "视觉小说 · 现代恋爱",
+    blurb: "适合：职场/成年女主恋爱。擅长：女主主体性、治愈兑账、亲密戏推进人物。",
+    sort: 120,
+  },
+  "author-niijima": {
+    role: "视觉小说 · 夏日群像",
+    blurb: "适合：夏日青春、轻悬念群像。擅长：场所氛围、伏笔回收、谜题服务情感。",
+    sort: 130,
+  },
+  "author-urushibara": {
+    role: "视觉小说 · 实验哲学",
+    blurb: "适合：前卫、猎奇思辨、互文实验。擅长：形式即主题、认知恐怖、多线命题。",
+    sort: 140,
+  },
+  "author-kai": {
+    role: "视觉小说 · 戏剧悬疑",
+    blurb: "适合：成人情感剧、罪与秘密。擅长：慢收紧线索、关系被真相改写、克制对白。",
+    sort: 150,
+  },
+};
+
 function describeActions(actions: AgentAction[]): string {
   if (actions.length === 0) return "";
   const names = actions.map((a) => ACTION_LABEL[a.op] ?? a.op);
@@ -129,9 +200,37 @@ function defaultWelcome(): AgentChatMessage[] {
     {
       role: "assistant",
       content:
-        "我是这部作品的驻场责编。快捷按钮是专业化任务（续写 / 写一场戏 / 查矛盾…），会按当前章 + 相关设定检索上下文。\n对话保存在服务器上，可新建多条对话；刷新或换设备仍可接续。Agent 写入工程前会记一版，可用「撤回编辑」回滚。",
+        "我是这部作品的驻场责编（通用文学编辑）。轻小说 / 视觉小说的写法底盘会自动带上——你只要用平常话说想续写、改哪段、卡在哪就行。\n\n若想换一位作家的眼光来参谋，点顶部 **⇄** 打开作家卡；需要多视角时可打开「多选」。右上角 **!** 有说明。卡壳或要整场戏时，再说「跑流水线」也不迟。",
     },
   ];
+}
+
+function isStaleWelcome(content: string): boolean {
+  const t = (content || "").trim();
+  if (!t.includes("驻场责编")) return false;
+  return !t.includes(WELCOME_MARKER);
+}
+
+/** Refresh baked-in welcome from older sessions; keep real chat history. */
+function normalizeMessages(msgs: AgentChatMessage[]): AgentChatMessage[] {
+  const welcome = defaultWelcome();
+  if (!Array.isArray(msgs) || msgs.length === 0) return welcome;
+  const onlyAssistant = msgs.every((m) => m.role === "assistant");
+  if (onlyAssistant) return welcome;
+  const first = msgs[0];
+  if (first?.role === "assistant" && isStaleWelcome(first.content)) {
+    return [{ role: "assistant", content: welcome[0].content }, ...msgs.slice(1)];
+  }
+  return msgs;
+}
+
+function formatLintBlock(data: HarnessLintResult): string {
+  const head = `${data.pass ? "无硬错误" : "存在硬错误"} · error ${data.errorCount} / warn ${data.warnCount} / info ${data.infoCount}`;
+  if (!data.issues?.length) return `${head}\n未发现明显 AI 腔 / 社交问题。`;
+  const lines = data.issues
+    .slice(0, 24)
+    .map((iss) => `- [${iss.severity}] ${iss.code}：${iss.message}`);
+  return [head, ...lines].join("\n");
 }
 
 function convStorageKey(projectId: string) {
@@ -161,6 +260,7 @@ export function AgentChat({
   project,
   chapterId,
   selection,
+  draft = "",
   prepareProject,
   onProjectChange,
   onChapterFocus,
@@ -180,6 +280,14 @@ export function AgentChat({
   const [error, setError] = useState("");
   const [lastContext, setLastContext] = useState<string>("");
   const [undoCount, setUndoCount] = useState(0);
+  const [thinking, setThinking] = useState("编辑正在检索设定 / 读当前章…");
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [personaOpen, setPersonaOpen] = useState(false);
+  const [multiSelect, setMultiSelect] = useState(false);
+  const [brainstormTopic, setBrainstormTopic] = useState("");
+  const [lensCatalog, setLensCatalog] = useState<LensPackMeta[]>([]);
+  const [activeLensIds, setActiveLensIds] = useState<string[]>([]);
+  const [lensBusy, setLensBusy] = useState(false);
   const [sidebarW, setSidebarW] = useState(() => {
     try {
       const n = Number(localStorage.getItem("vnss-agent-sidebar-w"));
@@ -203,6 +311,32 @@ export function AgentChat({
 
   conversationIdRef.current = conversationId;
   messagesRef.current = messages;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [catalog, cur] = await Promise.all([
+          listLenses(),
+          getProjectLenses(projectId),
+        ]);
+        if (cancelled) return;
+        setLensCatalog(catalog.packs || []);
+        setActiveLensIds(cur.activeIds || []);
+      } catch {
+        /* optional UI */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  // Sync from project prop if parent updated authorLenses
+  useEffect(() => {
+    const ids = project.authorLenses?.activeIds;
+    if (Array.isArray(ids)) setActiveLensIds(ids);
+  }, [project.authorLenses]);
 
   const persistActiveId = useCallback((projectKey: string, id: string) => {
     try {
@@ -235,11 +369,9 @@ export function AgentChat({
     }) => {
       setConversationId(conv.id);
       persistActiveId(projectId, conv.id);
-      if (Array.isArray(conv.messages) && conv.messages.length > 0) {
-        setMessages(conv.messages);
-      } else {
-        setMessages(defaultWelcome());
-      }
+      const raw = Array.isArray(conv.messages) ? conv.messages : [];
+      const next = normalizeMessages(raw);
+      setMessages(next);
       undoStack.current = parseUndoStack(
         Array.isArray(conv.undo_stack) ? conv.undo_stack : []
       );
@@ -248,6 +380,17 @@ export function AgentChat({
       setError("");
       setInput("");
       sessionReady.current = true;
+      // Persist refreshed welcome so old text doesn't keep coming back
+      const changed =
+        next.length !== raw.length ||
+        next.some((m, i) => m.content !== raw[i]?.content || m.role !== raw[i]?.role);
+      if (changed) {
+        void putAgentConversation(projectId, conv.id, {
+          messages: next.slice(-120),
+          chat_memory: "",
+          undo_stack: undoStack.current.slice(-20),
+        }).catch(() => undefined);
+      }
     },
     [persistActiveId, projectId]
   );
@@ -520,7 +663,39 @@ export function AgentChat({
   async function sendText(text: string, task?: AgentTaskKind) {
     const trimmed = text.trim();
     if (!trimmed || busy || !conversationId) return;
+
+    // Natural-language shortcuts into pipeline / gate (still one Agent)
+    if (
+      /^(跑|运行)?\s*(完整)?流水线/.test(trimmed) ||
+      trimmed.startsWith("【流水线】") ||
+      /请.*(规划|计划).*(写|生成|续写)/.test(trimmed)
+    ) {
+      const intent = trimmed.replace(/^【流水线】/, "").replace(/^(跑|运行)?\s*(完整)?流水线[：:\s]*/, "");
+      await runPipelineFlow(intent || trimmed);
+      return;
+    }
+    if (/^(文风)?体检$|^风格检查/.test(trimmed)) {
+      await runStyleLint();
+      return;
+    }
+    if (/^定稿(入库)?$/.test(trimmed)) {
+      await runQualityFinalize();
+      return;
+    }
+    if (/^(头脑风暴|圆桌|多视角)[：:\s]/.test(trimmed) || trimmed === "头脑风暴") {
+      const topic = trimmed
+        .replace(/^(头脑风暴|圆桌|多视角)[：:\s]*/, "")
+        .trim();
+      await runBrainstormFlow(topic);
+      return;
+    }
+    if (/^(列出|查看)?写作导师|^导师列表$|^当前导师$/.test(trimmed)) {
+      await runListMentors();
+      return;
+    }
+
     setError("");
+    setThinking("编辑正在检索设定 / 读当前章…");
     const nextMessages: AgentChatMessage[] = [
       ...messages,
       { role: "user", content: trimmed },
@@ -540,6 +715,8 @@ export function AgentChat({
         task,
         conversation_id: conversationId,
         apply_actions: true,
+        // 与 UI 选中同步；勿仅依赖 DB（避免 PUT 未完成时本轮漏注入）
+        lens_ids: activeLensIds,
       });
 
       const actions = res.actions ?? [];
@@ -576,8 +753,13 @@ export function AgentChat({
             ? "自检过"
             : "自检"
         : "";
+      const lensShort = Array.isArray(meta?.lensIds) && meta.lensIds.length
+        ? `视角×${meta.lensIds.length}`
+        : "";
       setLastContext(
-        [taskName, resultBit, craftShort, reviewShort].filter(Boolean).join(" · ")
+        [taskName, resultBit, craftShort, reviewShort, lensShort]
+          .filter(Boolean)
+          .join(" · ")
       );
 
       const warnings = res.warnings ?? [];
@@ -622,12 +804,373 @@ export function AgentChat({
     }
   }
 
+  async function runListMentors() {
+    if (busy || !conversationId) return;
+    setError("");
+    setThinking("读取写作导师配置…");
+    const nextMessages: AgentChatMessage[] = [
+      ...messages,
+      { role: "user", content: "列出写作导师" },
+    ];
+    setMessages(nextMessages);
+    setBusy(true);
+    setLastContext("写作导师 · 列表");
+    try {
+      const data = await getProjectMentors(projectId);
+      const activeNames = (data.active || [])
+        .map((p) => `**${p.name}** (\`${p.id}\`)`)
+        .join("、") || "（将使用默认写作导师）";
+      const content =
+        `### 写作导师\n\n` +
+        `当前启用：${activeNames}\n\n` +
+        `这是**一份完整的 LN/VN 文学编辑方法论**（可演对白、钩子、类型热度），无需切换角色。\n` +
+        `硬门禁仍以风格 Skill 为准；导师只提供写法判断。`;
+      const finalMessages = [...nextMessages, { role: "assistant" as const, content }];
+      setMessages(finalMessages);
+      await putAgentConversation(projectId, conversationId, {
+        messages: finalMessages.slice(-120),
+        chat_memory: "",
+        undo_stack: undoStack.current.slice(-20),
+      }).catch(() => undefined);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "读取导师失败");
+    } finally {
+      setBusy(false);
+      setThinking("");
+    }
+  }
+
+  async function commitLensIds(next: string[]) {
+    setLensBusy(true);
+    setError("");
+    try {
+      const res = await putProjectLenses(projectId, { activeIds: next });
+      setActiveLensIds(res.activeIds || next);
+      if (res.project) onProjectChange(res.project);
+      if (!next.length) {
+        setLastContext("对话对象 · 通用文学编辑");
+      } else {
+        const names = (res.active || []).map((p) => p.name).join("、");
+        setLastContext(`对话对象 · ${names || next.join(",")}`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "切换作家失败");
+    } finally {
+      setLensBusy(false);
+    }
+  }
+
+  async function onWriterCardClick(id: string | null) {
+    if (lensBusy) return;
+    // Default editor
+    if (id === null) {
+      if (activeLensIds.length) await commitLensIds([]);
+      if (!multiSelect) setPersonaOpen(false);
+      return;
+    }
+    if (multiSelect) {
+      const on = activeLensIds.includes(id);
+      let next = on
+        ? activeLensIds.filter((x) => x !== id)
+        : [...activeLensIds, id];
+      if (!on && next.length > 3) {
+        setError("多选最多 3 位作家/写手");
+        return;
+      }
+      await commitLensIds(next);
+      return;
+    }
+    // Single-select: click again on current → back to default editor
+    if (activeLensIds.length === 1 && activeLensIds[0] === id) {
+      await commitLensIds([]);
+      setPersonaOpen(false);
+      return;
+    }
+    await commitLensIds([id]);
+    setPersonaOpen(false);
+  }
+
+  async function runBrainstormFlow(topicOverride?: string) {
+    if (busy || !conversationId) return;
+    const topic = (topicOverride ?? brainstormTopic).trim();
+    if (!topic) {
+      setError("请先填写头脑风暴议题（想解决的问题）");
+      setPersonaOpen(true);
+      setMultiSelect(true);
+      return;
+    }
+    if (activeLensIds.length < 2) {
+      setError("强头脑风暴至少多选 2 位作家（点 ⇄ 打开多选）");
+      setPersonaOpen(true);
+      setMultiSelect(true);
+      return;
+    }
+    setError("");
+    setThinking("头脑风暴中：各位作家独立发言 → 责编综合…");
+    const userLine = `【头脑风暴】${topic}`;
+    const nextMessages: AgentChatMessage[] = [
+      ...messages,
+      { role: "user", content: userLine },
+    ];
+    setMessages(nextMessages);
+    setBusy(true);
+    setLastContext("头脑风暴 · 分视角独立 → 综合");
+    setPersonaOpen(false);
+    try {
+      const data = await runBrainstorm(projectId, {
+        question: topic,
+        lens_ids: activeLensIds,
+        chapter_id: chapterId,
+        selection: selection || undefined,
+        draft: (draft || "").trim() || undefined,
+      });
+      const content = data.markdown || data.synthesis || "（无结果）";
+      const finalMessages = [
+        ...nextMessages,
+        { role: "assistant" as const, content },
+      ];
+      setMessages(finalMessages);
+      setLastContext(
+        `头脑风暴完成 · ${data.okCount}/${data.authorCount} 视角`
+      );
+      await putAgentConversation(projectId, conversationId, {
+        messages: finalMessages.slice(-120),
+        chat_memory: "",
+        undo_stack: undoStack.current.slice(-20),
+      }).catch(() => undefined);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "头脑风暴失败";
+      setError(msg);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `出错了：${msg}` },
+      ]);
+    } finally {
+      setBusy(false);
+      setThinking("");
+    }
+  }
+
+  async function runStyleLint() {
+    if (busy || !conversationId) return;
+    const text = (draft || "").trim();
+    if (!text) {
+      setError("文风体检需要脚本区有正文");
+      return;
+    }
+    setError("");
+    setThinking("正在对照风格 Skill 做体检…");
+    const nextMessages: AgentChatMessage[] = [
+      ...messages,
+      { role: "user", content: "【文风体检】请检查当前章节草稿。" },
+    ];
+    setMessages(nextMessages);
+    setBusy(true);
+    setLastContext("文风体检 · 风格 Skill + 去AI味");
+    try {
+      const data = await harnessLint(projectId, text);
+      const content = `### 文风体检\n\n${formatLintBlock(data)}`;
+      const finalMessages = [
+        ...nextMessages,
+        { role: "assistant" as const, content },
+      ];
+      setMessages(finalMessages);
+      await putAgentConversation(projectId, conversationId, {
+        messages: finalMessages.slice(-120),
+        chat_memory: "",
+        undo_stack: undoStack.current.slice(-20),
+      }).catch(() => undefined);
+      void refreshList();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "体检失败";
+      setError(msg);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `出错了：${msg}` },
+      ]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function formatPipelineResult(data: PipelineRunResult): string {
+    const parts: string[] = ["### 写作流水线结果"];
+    parts.push(`阶段：${(data.stages || []).join(" → ") || "—"}`);
+    if (data.plan?.beatSheet) {
+      parts.push(
+        "#### 1. 规划（节拍表）\n```json\n" +
+          JSON.stringify(data.plan.beatSheet, null, 2) +
+          "\n```"
+      );
+    } else if (data.plan?.content) {
+      parts.push(`#### 1. 规划\n\n${data.plan.content}`);
+    }
+    const draftText = data.finalDraft || data.draft || "";
+    if (draftText) {
+      parts.push(`#### 生成 / 修正稿\n\n${draftText}`);
+    }
+    if (data.check) {
+      parts.push(
+        `#### 检查\n\n${
+          data.check.pass ? "无硬错误" : "存在硬错误"
+        } · error ${data.check.errorCount ?? 0} / warn ${data.check.warnCount ?? 0}`
+      );
+      const issues = data.check.issues || [];
+      if (issues.length) {
+        parts.push(
+          issues
+            .slice(0, 16)
+            .map((i) => `- [${i.severity}] ${i.code}：${i.message}`)
+            .join("\n")
+        );
+      }
+    }
+    if (data.gate) {
+      parts.push(
+        `#### 质量门禁\n\n${data.gate.pass ? "✅ 通过" : "❌ 未通过"} — ${
+          data.gate.message || ""
+        }`
+      );
+    }
+    parts.push(
+      "\n_稿件尚未自动写入工程。满意后可在脚本区粘贴，或点「定稿入库」通过门禁后写入账本。_"
+    );
+    return parts.join("\n\n");
+  }
+
+  async function runPipelineFlow(instruction: string) {
+    if (busy || !conversationId) return;
+    const userLine =
+      instruction.trim() ||
+      "请按风格 Skill 与项目硬锚，续写下一场可上演戏。";
+    setError("");
+    setThinking("流水线运行中：规划 → 生成 → 检查 → 修正…");
+    const nextMessages: AgentChatMessage[] = [
+      ...messages,
+      { role: "user", content: `【流水线】${userLine}` },
+    ];
+    setMessages(nextMessages);
+    setBusy(true);
+    setLastContext("流水线 · Plan→Write→Check→Revise");
+    try {
+      const data = await pipelineRun(projectId, {
+        instruction: userLine,
+        draft: (draft || "").trim() || undefined,
+        selection: selection || undefined,
+        chapter_id: chapterId,
+      });
+      const content = formatPipelineResult(data);
+      const finalMessages = [
+        ...nextMessages,
+        { role: "assistant" as const, content },
+      ];
+      setMessages(finalMessages);
+      await putAgentConversation(projectId, conversationId, {
+        messages: finalMessages.slice(-120),
+        chat_memory: "",
+        undo_stack: undoStack.current.slice(-20),
+      }).catch(() => undefined);
+      void refreshList();
+      setLastContext(
+        data.gate?.pass
+          ? "流水线完成 · 门禁通过"
+          : `流水线完成 · 门禁未过（error ${data.gate?.errorCount ?? "?"}）`
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "流水线失败";
+      setError(msg);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `出错了：${msg}` },
+      ]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runQualityFinalize() {
+    if (busy || !conversationId) return;
+    setError("");
+    setBusy(true);
+    try {
+      const data = await pipelineGate(projectId, {
+        draft: (draft || "").trim() || undefined,
+        chapter_id: chapterId,
+        finalize: true,
+        update_ledger: true,
+      });
+      const ok = data.gate?.pass;
+      const content = ok
+        ? `### 定稿入库\n\n${data.gate?.message || "已通过质量门禁"}\n\n章节事实摘要已写入写作账本，供后续生成作硬锚。`
+        : `### 定稿被门禁拦截\n\n${data.gate?.message || "未通过"}\n\n${(
+            data.check?.issues || []
+          )
+            .filter((i) => i.severity === "error")
+            .slice(0, 12)
+            .map((i) => `- ${i.code}：${i.message}`)
+            .join("\n")}`;
+      setMessages((prev) => [...prev, { role: "assistant", content }]);
+      if (ok && data.project) {
+        onProjectChange(data.project);
+      }
+      setLastContext(ok ? "定稿 · 门禁通过 · 账本已更新" : "定稿 · 门禁拦截");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "定稿失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runLedgerDigest() {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const data = await pipelineLedgerDigest(projectId, chapterId);
+      onProjectChange(data.project);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `### 章节锚点已入库\n\n已将当前章的事实摘要 / 出场状态 / 章末钩子写入写作账本。\n\n${(
+            data.agentBlock || ""
+          ).slice(0, 1200)}`,
+        },
+      ]);
+      setLastContext("账本 · 章节摘要已更新");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "账本更新失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function send() {
     const text = input.trim();
     if (!text) return;
     setInput("");
     await sendText(text);
   }
+
+  const personaLabel = !activeLensIds.length
+    ? DEFAULT_WRITER.name
+    : activeLensIds
+        .map((id) => lensCatalog.find((p) => p.id === id)?.name || id)
+        .join(" · ");
+
+  const writerCards = [
+    DEFAULT_WRITER,
+    ...[...lensCatalog]
+      .sort((a, b) => (WRITER_CARD_META[a.id]?.sort ?? 99) - (WRITER_CARD_META[b.id]?.sort ?? 99))
+      .map((p) => ({
+        id: p.id as string | null,
+        name: p.name,
+        role: WRITER_CARD_META[p.id]?.role || "作家 · 思维包",
+        blurb:
+          WRITER_CARD_META[p.id]?.blurb ||
+          "公开技法启发向参谋视角（非本人，禁止仿写原文）。",
+      })),
+  ];
 
   return (
     <div
@@ -735,33 +1278,139 @@ export function AgentChat({
         />
 
         <div className={styles.main}>
-          <div className={styles.quickRow}>
-            {QUICK_ACTIONS.map((a) => (
+          <div className={styles.mainHead}>
+            <div className={styles.mainHeadLeft}>
+              <span className={styles.mainHeadTitle}>对话中</span>
+              <span className={styles.personaBadge} title="当前对话对象">
+                {personaLabel}
+              </span>
+            </div>
+            <div className={styles.mainHeadActions}>
               <button
-                key={a.label}
                 type="button"
-                className={styles.quickBtn}
-                disabled={busy || loadingConv || !conversationId}
-                onClick={() => void sendText(a.build(selection), a.task)}
-                title={a.label}
+                className={styles.personaBtn}
+                aria-expanded={personaOpen}
+                aria-label="切换作家 / 写手"
+                title="切换作家 / 写手"
+                onClick={() => {
+                  setHelpOpen(false);
+                  setPersonaOpen((v) => !v);
+                }}
               >
-                {a.label}
+                ⇄
               </button>
-            ))}
-            <button
-              type="button"
-              className={styles.quickBtnMuted}
-              disabled={busy || undoCount === 0}
-              onClick={undoAgentEdit}
-              title="撤回最近一次 Agent 对工程的写入"
-            >
-              撤回编辑{undoCount > 0 ? ` (${undoCount})` : ""}
-            </button>
+              <button
+                type="button"
+                className={styles.helpBtn}
+                aria-expanded={helpOpen}
+                aria-label="功能说明与推荐流程"
+                title="功能说明与推荐流程"
+                onClick={() => {
+                  setPersonaOpen(false);
+                  setHelpOpen((v) => !v);
+                }}
+              >
+                !
+              </button>
+            </div>
           </div>
+          {personaOpen ? (
+            <div className={styles.personaPanel}>
+              <div className={styles.personaPanelTop}>
+                <p className={styles.personaPanelLead}>
+                  选择对话对象。默认是通用文学编辑（LN/VN 底盘自动开）。其他卡片是**作家思维 skill**（可多选头脑风暴）。
+                </p>
+                <label className={styles.multiToggle}>
+                  <input
+                    type="checkbox"
+                    checked={multiSelect}
+                    onChange={(e) => setMultiSelect(e.target.checked)}
+                  />
+                  多选（强头脑风暴）
+                </label>
+                {multiSelect || activeLensIds.length >= 2 ? (
+                  <div className={styles.brainstormBox}>
+                    <input
+                      className={styles.brainstormInput}
+                      value={brainstormTopic}
+                      onChange={(e) => setBrainstormTopic(e.target.value)}
+                      placeholder="议题：例如「男主与雪菜下一场如何升温又不掉距离感」"
+                      disabled={busy || lensBusy}
+                    />
+                    <button
+                      type="button"
+                      className={styles.brainstormBtn}
+                      disabled={
+                        busy ||
+                        lensBusy ||
+                        activeLensIds.length < 2 ||
+                        !brainstormTopic.trim()
+                      }
+                      onClick={() => void runBrainstormFlow()}
+                      title={
+                        activeLensIds.length < 2
+                          ? "请至少选 2 位作家"
+                          : "各位作家独立发言后由责编综合"
+                      }
+                    >
+                      开始头脑风暴
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+              <div className={styles.personaGrid}>
+                {writerCards.map((card) => {
+                  const isDefault = card.id === null;
+                  const selected = isDefault
+                    ? activeLensIds.length === 0
+                    : activeLensIds.includes(card.id as string);
+                  return (
+                    <button
+                      key={card.id ?? "__default__"}
+                      type="button"
+                      className={
+                        selected
+                          ? `${styles.personaCard} ${styles.personaCardOn}`
+                          : styles.personaCard
+                      }
+                      disabled={lensBusy}
+                      onClick={() => void onWriterCardClick(card.id)}
+                    >
+                      <span className={styles.personaCardRole}>{card.role}</span>
+                      <strong className={styles.personaCardName}>{card.name}</strong>
+                      <span className={styles.personaCardBlurb}>{card.blurb}</span>
+                      {selected ? (
+                        <span className={styles.personaCardCheck}>已选</span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                className={styles.helpClose}
+                onClick={() => setPersonaOpen(false)}
+              >
+                收起
+              </button>
+            </div>
+          ) : null}
+          {helpOpen ? (
+            <div className={styles.helpPanel}>
+              <AgentMessageBody content={HELP_MD} mode="markdown" />
+              <button
+                type="button"
+                className={styles.helpClose}
+                onClick={() => setHelpOpen(false)}
+              >
+                收起说明
+              </button>
+            </div>
+          ) : null}
           {lastContext ? (
             <p
               className={styles.ctxMeta}
-              title="只显示是否写入工程；详细工艺在设置里可调"
+              title="本轮 Agent 结果摘要"
             >
               {lastContext}
             </p>
@@ -772,7 +1421,7 @@ export function AgentChat({
             <p className={styles.selHint}>
               {loadingConv
                 ? "正在加载对话…"
-                : "对话保存在服务器；左侧可直接改名，拖动中缝可调宽度"}
+                : "用平常话说需求即可。点 ⇄ 换参谋，点 ! 看说明。"}
             </p>
           )}
           <div
@@ -786,7 +1435,7 @@ export function AgentChat({
                 className={m.role === "user" ? styles.user : styles.bot}
               >
                 <span className={styles.role}>
-                  {m.role === "user" ? "你" : "编辑"}
+                  {m.role === "user" ? "你" : activeLensIds.length ? "参谋" : "编辑"}
                 </span>
                 <AgentMessageBody
                   content={m.content}
@@ -794,9 +1443,7 @@ export function AgentChat({
                 />
               </div>
             ))}
-            {busy && (
-              <p className={styles.thinking}>编辑正在检索设定 / 读当前章…</p>
-            )}
+            {busy && <p className={styles.thinking}>{thinking}</p>}
           </div>
           {error && <p className={styles.error}>{error}</p>}
           <div className={styles.composer}>
@@ -804,7 +1451,7 @@ export function AgentChat({
               rows={compact ? 2 : 3}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="谈剧情、要改稿、要下一场戏…或点上方专业化任务"
+              placeholder="例如：续写天台那场，雪菜先开口…"
               disabled={busy || loadingConv || !conversationId}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -815,6 +1462,7 @@ export function AgentChat({
             />
             <button
               type="button"
+              className={styles.sendBtn}
               disabled={busy || loadingConv || !conversationId || !input.trim()}
               onClick={() => void send()}
             >
