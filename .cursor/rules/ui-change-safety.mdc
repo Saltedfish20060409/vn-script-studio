@@ -26,3 +26,7 @@ Confirm on disk: day `--accent: #002fa7` still present in `globals.css`. If teal
 ## Commits
 
 Persona UI work should be committed soon after acceptance so a restore cannot wipe it back to the old teal theme.
+
+## PowerShell scripts
+
+`dev.ps1` / `*.ps1` must stay **ASCII-only** (no `…`, em dashes, smart quotes). Prefer `api:` labels over `[api]` tags — brackets and broken Unicode both cause ParserError on Windows PowerShell 5.1.
