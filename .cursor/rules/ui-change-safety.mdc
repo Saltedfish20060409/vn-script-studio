@@ -9,24 +9,29 @@ Current brand tokens live in `frontend/src/styles/globals.css`:
 - Day accent `#002fa7` (Klein blue)
 - Night accent `#e11d48` (crimson)
 
+## Cursor "Revert conversation" (most common wipe)
+
+Reverting a chat restores that chat's file checkpoint onto disk. It does **not** remove git commits, but it can put teal `#1f6b5a` back in the working tree.
+
+Recovery (repo root):
+
+```powershell
+.\restore-ui.ps1
+```
+
+Then reload editors from disk and hard-refresh the browser.
+
+Agents recovering from teal may `git restore --source=HEAD --` the paths listed in `restore-ui.ps1`. Do not restore a pre-Persona commit unless the user explicitly asks.
+
 ## Never do without an explicit user request that lists paths
 
-- `git restore` / `git checkout HEAD --` on any `frontend/` UI file
-- Restoring "original" / "HEAD" / "before redesign" UI wholesale
-- Fixing a truncated CSS file by replacing it with `git show HEAD:...`
-
-## If CSS is truncated
-
-Rewrite the missing sections in place (keep current `--accent` tokens). Do not copy the full file from git HEAD.
+- Restoring "original" / "before redesign" UI from an old commit
+- Replacing truncated CSS with a full pre-Persona `globals.css`
 
 ## After any UI write touching theme/shell
 
-Confirm on disk: day `--accent: #002fa7` still present in `globals.css`. If teal `#1f6b5a` reappears, stop and tell the user — do not silently continue.
-
-## Commits
-
-Persona UI work should be committed soon after acceptance so a restore cannot wipe it back to the old teal theme.
+Confirm day `--accent: #002fa7` on disk. If `#1f6b5a` reappears, tell the user and offer `.\restore-ui.ps1`.
 
 ## PowerShell scripts
 
-`dev.ps1` / `*.ps1` must stay **ASCII-only** (no `…`, em dashes, smart quotes). Prefer `api:` labels over `[api]` tags — brackets and broken Unicode both cause ParserError on Windows PowerShell 5.1.
+`dev.ps1` must stay ASCII-only. Prefer `api:` labels over `[api]` tags.
