@@ -328,6 +328,9 @@ export function AgentFloat(props: Props) {
             setDragging(true);
           }}
         >
+          <span className={styles.titleIdx} aria-hidden>
+            AG
+          </span>
           <strong>审稿 Agent</strong>
           <span className={styles.sub}>
             {nearEdgeHint

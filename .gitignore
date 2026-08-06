@@ -14,7 +14,9 @@ data/
 *.rpy.bak
 .cache/
 .npm-cache/
-.cursor/
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 *.tsbuildinfo
 
 # Python

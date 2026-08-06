@@ -944,7 +944,11 @@ export function StudioApp() {
           <div className="vnss-grain" aria-hidden />
         </>
       ) : null}
-      <div className={`vnss-app ${styles.shell}`}>
+      <div
+        className={`vnss-app ${styles.shell} ${
+          tab === "write" && writeSub === "script" ? styles.writeQuiet : ""
+        }`}
+      >
       <header className={`${styles.top} vnss-frost`}>
         <div className={styles.brandBlock}>
           <span className={styles.brandMark} aria-hidden>
@@ -964,16 +968,28 @@ export function StudioApp() {
           </div>
         </div>
         <div className={styles.topActions}>
-          <button type="button" className={styles.ghost} onClick={() => void createBlank()}>
-            新建
-          </button>
-          <button
-            type="button"
-            className={styles.ghost}
-            onClick={() => fileRef.current?.click()}
-          >
-            导入
-          </button>
+          <details className={styles.moreMenu}>
+            <summary>更多</summary>
+            <div className={styles.morePanel} role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => void createBlank()}
+              >
+                新建剧本
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => fileRef.current?.click()}
+              >
+                导入文件
+              </button>
+              <button type="button" role="menuitem" onClick={commitEditor}>
+                保存章节
+              </button>
+            </div>
+          </details>
           <input
             ref={fileRef}
             type="file"
@@ -985,9 +1001,6 @@ export function StudioApp() {
               e.target.value = "";
             }}
           />
-          <button type="button" className={styles.ghost} onClick={commitEditor}>
-            保存章节
-          </button>
           <button
             type="button"
             className={styles.primary}
@@ -1032,17 +1045,17 @@ export function StudioApp() {
 
       <div className={styles.layout}>
         <main className={styles.main}>
-          <nav className={`${styles.tabs} vnss-frost`}>
+          <nav className={`${styles.tabs} vnss-frost`} aria-label="工作室篇章">
             {(
               [
-                ["write", "写作"],
-                ["world", "设定"],
-                ["voice", "角色工坊"],
-                ["map", "地图"],
-                ["system", "VN状态"],
-                ["project", "项目"],
+                ["write", "01", "写作"],
+                ["world", "02", "设定"],
+                ["voice", "03", "角色工坊"],
+                ["map", "04", "地图"],
+                ["system", "05", "VN状态"],
+                ["project", "06", "项目"],
               ] as const
-            ).map(([id, label]) => (
+            ).map(([id, idx, label]) => (
               <button
                 key={id}
                 type="button"
@@ -1052,7 +1065,10 @@ export function StudioApp() {
                   setTab(id);
                 }}
               >
-                {label}
+                <span className={styles.tabIdx} aria-hidden>
+                  {idx}
+                </span>
+                <span className={styles.tabLabel}>{label}</span>
               </button>
             ))}
           </nav>
@@ -1082,6 +1098,17 @@ export function StudioApp() {
 
               {projectSub === "library" && (
                 <>
+              <header className={styles.sectionHead}>
+                <span className={styles.sectionIdx} aria-hidden>
+                  06
+                </span>
+                <div>
+                  <h2 className={styles.sectionTitle}>剧本库</h2>
+                  <p className={styles.sectionLead}>
+                    管理多部剧本：新建、导入或载入示例。
+                  </p>
+                </div>
+              </header>
               <div className={styles.toolbar}>
                 <span>管理多个剧本：新建、导入 Word/文本/JSON，或载入示例</span>
                 <div className={styles.aiQuick}>
@@ -1395,23 +1422,34 @@ export function StudioApp() {
                   分析
                 </button>
                 <div className={styles.chapterBar}>
-                  <label className={styles.inlineLabel}>
-                    章节
-                    <select
-                      className={styles.select}
-                      value={chapterId}
-                      onChange={(e) => {
-                        commitEditor();
-                        setChapterId(e.target.value);
-                      }}
-                    >
-                      {project.chapters.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.title}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <span className={styles.inlineLabel}>章节</span>
+                  <div
+                    className={styles.chapterStrip}
+                    role="listbox"
+                    aria-label="章节列表"
+                  >
+                    {project.chapters.map((c, i) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        role="option"
+                        aria-selected={c.id === chapterId}
+                        className={
+                          c.id === chapterId
+                            ? styles.chapterChipOn
+                            : styles.chapterChip
+                        }
+                        onClick={() => {
+                          if (c.id === chapterId) return;
+                          commitEditor();
+                          setChapterId(c.id);
+                        }}
+                      >
+                        <em>{String(i + 1).padStart(2, "0")}</em>
+                        {c.title || `第 ${i + 1} 章`}
+                      </button>
+                    ))}
+                  </div>
                   <button
                     type="button"
                     className={styles.ghost}
@@ -1472,6 +1510,17 @@ export function StudioApp() {
               )}
               {writeSub === "analysis" && (
                 <section className={styles.panel}>
+                  <header className={styles.sectionHead}>
+                    <span className={styles.sectionIdx} aria-hidden>
+                      01
+                    </span>
+                    <div>
+                      <h2 className={styles.sectionTitle}>分析</h2>
+                      <p className={styles.sectionLead}>
+                        结构、节奏与一致性检查。
+                      </p>
+                    </div>
+                  </header>
                   <AnalysisPanels
                     project={project}
                     chapterId={chapterId}
@@ -1507,6 +1556,17 @@ export function StudioApp() {
               </div>
               {worldSub === "characters" && (
             <section className={styles.panel}>
+              <header className={styles.sectionHead}>
+                <span className={styles.sectionIdx} aria-hidden>
+                  02
+                </span>
+                <div>
+                  <h2 className={styles.sectionTitle}>角色卡</h2>
+                  <p className={styles.sectionLead}>
+                    定义显示名、语气与关系；删除不会自动改写对白。
+                  </p>
+                </div>
+              </header>
               <div className={styles.toolbar}>
                 <span>角色卡（删除不会自动改写对白）</span>
                 <button
@@ -1603,6 +1663,17 @@ export function StudioApp() {
               )}
               {worldSub === "bible" && (
             <section className={styles.panel}>
+              <header className={styles.sectionHead}>
+                <span className={styles.sectionIdx} aria-hidden>
+                  02
+                </span>
+                <div>
+                  <h2 className={styles.sectionTitle}>世界观</h2>
+                  <p className={styles.sectionLead}>
+                    故事设定独立于角色卡，会进入 AI 上下文。
+                  </p>
+                </div>
+              </header>
               <div className={styles.toolbar}>
                 <span>故事设定独立于角色卡，会进入 AI 上下文</span>
               </div>
@@ -1687,6 +1758,17 @@ export function StudioApp() {
 
           {tab === "map" && (
             <section className={styles.panel}>
+              <header className={styles.sectionHead}>
+                <span className={styles.sectionIdx} aria-hidden>
+                  04
+                </span>
+                <div>
+                  <h2 className={styles.sectionTitle}>地图</h2>
+                  <p className={styles.sectionLead}>
+                    地点与通路；可从剧本智能提取。
+                  </p>
+                </div>
+              </header>
               <MapStudio
                 locations={locations}
                 links={links}

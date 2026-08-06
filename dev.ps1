@@ -53,7 +53,7 @@ try {
 
   if (-not (Test-Path $Py)) {
     Write-Host ""
-    Write-Host "[ERROR] Missing backend\.venv" -ForegroundColor Red
+    Write-Host '[ERROR] Missing backend\.venv' -ForegroundColor Red
     Write-Host "Run once in a terminal:" -ForegroundColor Yellow
     Write-Host "  cd backend"
     Write-Host "  python -m venv .venv"
@@ -67,7 +67,7 @@ try {
   if (Test-Path $envFile) {
     $bytes = [System.IO.File]::ReadAllBytes($envFile)
     if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
-      Write-Host "[env] removed UTF-8 BOM from backend\.env" -ForegroundColor Yellow
+      Write-Host '[env] removed UTF-8 BOM from backend\.env' -ForegroundColor Yellow
       $utf8NoBom = New-Object System.Text.UTF8Encoding $false
       $text = $utf8NoBom.GetString($bytes, 3, $bytes.Length - 3)
       [System.IO.File]::WriteAllText($envFile, $text, $utf8NoBom)
@@ -76,7 +76,7 @@ try {
 
   $nodeModules = Join-Path $Frontend "node_modules"
   if (-not (Test-Path $nodeModules)) {
-    Write-Host "[web] frontend\node_modules missing, running npm install ..." -ForegroundColor Yellow
+    Write-Host '[web] frontend\node_modules missing, running npm install ...' -ForegroundColor Yellow
     Push-Location $Frontend
     try {
       npm install
@@ -89,18 +89,18 @@ try {
   if (-not $SkipDocker) {
     $docker = Get-Command docker -ErrorAction SilentlyContinue
     if ($docker) {
-      Write-Host "[db] docker compose up -d" -ForegroundColor DarkGray
+      Write-Host '[db] docker compose up -d' -ForegroundColor DarkGray
       Push-Location $Root
       try {
         docker compose up -d
         if ($LASTEXITCODE -ne 0) {
-          Write-Host "[db] docker compose failed (ok if Postgres already running)" -ForegroundColor Yellow
+          Write-Host '[db] docker compose failed (ok if Postgres already running)' -ForegroundColor Yellow
         }
       } finally {
         Pop-Location
       }
     } else {
-      Write-Host "[db] docker not found, skip" -ForegroundColor Yellow
+      Write-Host '[db] docker not found, skip' -ForegroundColor Yellow
     }
   }
 
@@ -122,7 +122,7 @@ try {
         ($exe -like "*\backend\.venv\Scripts\python.exe") -or
         ($cmd -like "*\backend\.venv\Scripts\python.exe*uvicorn*")
       if (-not $isOurVenv) {
-        Write-Host ("[api] port 8000 held by wrong process PID={0} ({1}), stopping…" -f $opid, $(if ($exe) { $exe } else { $cmd })) -ForegroundColor Yellow
+        Write-Host ('[api] port 8000 held by wrong process PID={0} ({1}), stopping…' -f $opid, $(if ($exe) { $exe } else { $cmd })) -ForegroundColor Yellow
         Stop-Process -Id $opid -Force -ErrorAction SilentlyContinue
         $needReplace = $true
       }
@@ -133,7 +133,7 @@ try {
       Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
         Where-Object { $_.CommandLine -match 'uvicorn app\.main:app' } |
         ForEach-Object {
-          Write-Host ("[api] stop leftover uvicorn PID={0}" -f $_.ProcessId) -ForegroundColor Yellow
+          Write-Host ('[api] stop leftover uvicorn PID={0}' -f $_.ProcessId) -ForegroundColor Yellow
           Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
         }
       Start-Sleep -Seconds 1
@@ -145,7 +145,7 @@ try {
         $hasKind = $null -ne $oa.components.schemas.GenerateIn.properties.kind
       } catch { }
       if (-not $hasKind) {
-        Write-Host "[api] :8000 is up but API schema is stale (no GenerateIn.kind). Restarting…" -ForegroundColor Yellow
+        Write-Host '[api] :8000 is up but API schema is stale (no GenerateIn.kind). Restarting…' -ForegroundColor Yellow
         foreach ($opid in $owners) {
           if ($opid) { Stop-Process -Id $opid -Force -ErrorAction SilentlyContinue }
         }
@@ -155,18 +155,18 @@ try {
         Start-Sleep -Seconds 1
         $needReplace = $true
       } else {
-        Write-Host "[api] port 8000 already listening (project .venv), skip" -ForegroundColor DarkGray
+        Write-Host '[api] port 8000 already listening (project .venv), skip' -ForegroundColor DarkGray
       }
     }
     if ($needReplace -or -not (Test-Port 8000)) {
-      Write-Host "[api] starting uvicorn -> http://127.0.0.1:8000" -ForegroundColor Green
+      Write-Host '[api] starting uvicorn -> http://127.0.0.1:8000' -ForegroundColor Green
       $beCmd = "Set-Location -LiteralPath '$Backend'; `$env:PYTHONPATH='.'; & '$Py' -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
       Start-Process -FilePath "powershell.exe" -ArgumentList @(
         "-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $beCmd
       ) | Out-Null
     }
   } else {
-    Write-Host "[api] starting uvicorn -> http://127.0.0.1:8000" -ForegroundColor Green
+    Write-Host '[api] starting uvicorn -> http://127.0.0.1:8000' -ForegroundColor Green
     $beCmd = "Set-Location -LiteralPath '$Backend'; `$env:PYTHONPATH='.'; & '$Py' -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
     Start-Process -FilePath "powershell.exe" -ArgumentList @(
       "-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $beCmd
@@ -174,26 +174,26 @@ try {
   }
 
   if (Test-Port 5173) {
-    Write-Host "[web] port 5173 already listening, skip" -ForegroundColor DarkGray
+    Write-Host '[web] port 5173 already listening, skip' -ForegroundColor DarkGray
   } else {
-    Write-Host "[web] starting Vite -> http://127.0.0.1:5173" -ForegroundColor Green
+    Write-Host '[web] starting Vite -> http://127.0.0.1:5173' -ForegroundColor Green
     $feCmd = "Set-Location -LiteralPath '$Frontend'; npm run dev -- --host 127.0.0.1 --port 5173"
     Start-Process -FilePath "powershell.exe" -ArgumentList @(
       "-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $feCmd
     ) | Out-Null
   }
 
-  Write-Host "[wait] waiting for API :8000 ..." -ForegroundColor DarkGray
+  Write-Host '[wait] waiting for API :8000 ...' -ForegroundColor DarkGray
   if (-not (Wait-Port 8000 60)) {
-    Write-Host "[WARN] API port 8000 not up yet. Check the uvicorn window for DB/import errors." -ForegroundColor Yellow
+    Write-Host '[WARN] API port 8000 not up yet. Check the uvicorn window for DB/import errors.' -ForegroundColor Yellow
   } else {
-    Write-Host "[api] ready" -ForegroundColor Green
+    Write-Host '[api] ready' -ForegroundColor Green
   }
-  Write-Host "[wait] waiting for Vite :5173 ..." -ForegroundColor DarkGray
+  Write-Host '[wait] waiting for Vite :5173 ...' -ForegroundColor DarkGray
   if (-not (Wait-Port 5173 60)) {
-    Write-Host "[WARN] Vite port 5173 not up yet. Check the frontend window." -ForegroundColor Yellow
+    Write-Host '[WARN] Vite port 5173 not up yet. Check the frontend window.' -ForegroundColor Yellow
   } else {
-    Write-Host "[web] ready" -ForegroundColor Green
+    Write-Host '[web] ready' -ForegroundColor Green
   }
 
   if (-not $NoBrowser) {
@@ -207,7 +207,7 @@ try {
   Wait-IfNeeded 0
 } catch {
   Write-Host ""
-  Write-Host ("[ERROR] " + $_.Exception.Message) -ForegroundColor Red
+  Write-Host ('[ERROR] ' + $_.Exception.Message) -ForegroundColor Red
   Write-Host $_.ScriptStackTrace -ForegroundColor DarkGray
   Wait-IfNeeded 1
 }

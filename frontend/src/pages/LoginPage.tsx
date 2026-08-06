@@ -77,26 +77,39 @@ export default function LoginPage() {
       ) : null}
 
       <section className={styles.hero} aria-label="品牌介绍">
+        <div className={styles.slash} aria-hidden />
+        <div className={styles.arc} aria-hidden>
+          <span>STUDIO</span>
+        </div>
+        <span className={`${styles.shard} ${styles.shardA}`} aria-hidden />
+        <span className={`${styles.shard} ${styles.shardB}`} aria-hidden />
+        <span className={`${styles.shard} ${styles.shardC}`} aria-hidden />
+        <div className={styles.portraitSlot} aria-hidden>
+          <span>立绘位</span>
+        </div>
         <div className={styles.heroInner}>
-          <span className={styles.mark} aria-hidden>
-            VN
-          </span>
-          <h1 className={styles.brand}>Script Studio</h1>
+          <p className={styles.kicker}>VISUAL NOVEL</p>
+          <h1 className={styles.brand}>
+            Script
+            <br />
+            Studio
+          </h1>
           <p className={styles.sub}>
-            面向 Ren&apos;Py 的视觉小说编剧工作台——设定、章节、地图与审稿 Agent，一处写完。
+            非线性叙事工作台——角色、章节、地图与审稿，写完再导出 .rpy。
           </p>
         </div>
       </section>
 
       <section className={`${styles.panel} vnss-frost`}>
         <div className={styles.card}>
+          <div className={styles.cardSlash} aria-hidden />
           <h2 className={styles.cardTitle}>
-            {mode === "login" ? "欢迎回来" : "创建账号"}
+            {mode === "login" ? "进入工作室" : "注册账号"}
           </h2>
           <p className={styles.cardLead}>
             {mode === "login"
-              ? "登录后同步云端剧本库与 Agent 会话。"
-              : "注册后即可新建工程、导入稿件并导出 .rpy。"}
+              ? "同步云端剧本库与 Agent 会话。"
+              : "新建工程、导入稿件、导出 Ren'Py。"}
           </p>
 
           <div className={styles.tabs} role="tablist" aria-label="登录或注册">
@@ -126,7 +139,11 @@ export default function LoginPage() {
             </button>
           </div>
 
-          <form className={styles.form} onSubmit={onSubmit}>
+          <form
+            id="vnss-login-form"
+            className={styles.form}
+            onSubmit={onSubmit}
+          >
             <label htmlFor="vnss-username">
               用户名
               <input
@@ -168,15 +185,9 @@ export default function LoginPage() {
               </p>
             )}
             <button type="submit" className={styles.submit} disabled={busy}>
-              {busy ? "处理中…" : mode === "login" ? "进入工作室" : "注册并进入"}
+              {busy ? "处理中…" : mode === "login" ? "开始创作" : "注册并进入"}
             </button>
           </form>
-
-          <p className={styles.hint}>
-            {mode === "login"
-              ? "还没有账号？切换到「注册」。"
-              : "已有账号？切换到「登录」。"}
-          </p>
         </div>
       </section>
     </div>

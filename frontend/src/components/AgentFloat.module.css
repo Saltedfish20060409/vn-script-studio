@@ -1,80 +1,64 @@
 .tab {
   position: fixed;
   z-index: 60;
-  border: 1px solid var(--line);
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
   background: var(--accent);
   color: var(--on-accent, #f7f3eb);
-  letter-spacing: 0.12em;
-  font-weight: 600;
-  box-shadow: var(--shadow);
+  letter-spacing: 0.1em;
+  font-family: var(--font-display);
+  font-weight: 650;
+  box-shadow: var(--shadow-lg);
   cursor: pointer;
   transition:
-    transform 180ms var(--ease-spring, var(--ease-out)),
-    padding 160ms var(--ease-out),
-    filter 160ms var(--ease-out),
-    box-shadow 180ms var(--ease-out);
+    transform 160ms var(--ease-out, ease),
+    filter 160ms var(--ease-out, ease),
+    box-shadow 160ms var(--ease-out, ease);
 }
 
 .tab:hover {
   filter: brightness(1.06);
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 35%, transparent);
-  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
 }
 
 .tab:active {
-  transform: scale(0.97);
+  transform: scale(0.98);
 }
 
 .tab_right {
   right: 0;
   writing-mode: vertical-rl;
   border-right: none;
-  border-radius: 12px 0 0 12px;
-  padding: 1.05rem 0.5rem;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  padding: 1rem 0.45rem;
   min-height: 120px;
-}
-
-.tab_right:hover {
-  padding-right: 0.7rem;
 }
 
 .tab_left {
   left: 0;
   writing-mode: vertical-rl;
   border-left: none;
-  border-radius: 0 12px 12px 0;
-  padding: 1.05rem 0.5rem;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 1rem 0.45rem;
   min-height: 120px;
-}
-
-.tab_left:hover {
-  padding-left: 0.7rem;
 }
 
 .tab_top {
   top: 0;
   writing-mode: horizontal-tb;
   border-top: none;
-  border-radius: 0 0 12px 12px;
-  padding: 0.45rem 1.1rem;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  padding: 0.4rem 1rem;
   min-width: 120px;
-}
-
-.tab_top:hover {
-  padding-top: 0.6rem;
 }
 
 .tab_bottom {
   bottom: 0;
   writing-mode: horizontal-tb;
   border-bottom: none;
-  border-radius: 12px 12px 0 0;
-  padding: 0.45rem 1.1rem;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  padding: 0.4rem 1rem;
   min-width: 120px;
-}
-
-.tab_bottom:hover {
-  padding-bottom: 0.6rem;
 }
 
 .panel,
@@ -83,14 +67,13 @@
   z-index: 60;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg, 16px);
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
   background: var(--panel-bg);
-  backdrop-filter: blur(14px);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
   color: var(--ink);
-  animation: floatIn 280ms var(--ease-out, ease);
+  animation: floatIn 240ms var(--ease-out, ease);
 }
 
 .panelLarge {
@@ -98,10 +81,9 @@
   z-index: 60;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg, 16px);
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
   background: var(--panel-bg);
-  backdrop-filter: blur(14px);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
   color: var(--ink);
@@ -113,13 +95,13 @@
   width: min(1040px, calc(100vw - 32px));
   height: min(86dvh, calc(100dvh - 32px));
   max-width: none;
-  animation: floatInLarge 300ms var(--ease-out, ease);
+  animation: floatInLarge 260ms var(--ease-out, ease);
 }
 
 @keyframes floatIn {
   from {
     opacity: 0;
-    transform: translateY(10px) scale(0.985);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -130,7 +112,7 @@
 @keyframes floatInLarge {
   from {
     opacity: 0;
-    transform: translate(-50%, calc(-50% + 12px)) scale(0.985);
+    transform: translate(-50%, calc(-50% + 10px));
   }
   to {
     opacity: 1;
@@ -143,7 +125,6 @@
   bottom: 12px;
   left: auto;
   top: auto;
-  /* width/height 由内联 style 提供，便于拉伸记忆 */
 }
 
 .panel {
@@ -191,9 +172,9 @@
 .titlebar {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid var(--line);
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 2px solid var(--line);
   background: color-mix(in srgb, var(--paper-deep) 80%, transparent);
   cursor: grab;
   user-select: none;
@@ -209,10 +190,21 @@
   cursor: default;
 }
 
+.titleIdx {
+  flex-shrink: 0;
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  line-height: 1;
+}
+
 .titlebar strong {
   font-family: var(--font-display);
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   font-weight: 650;
+  letter-spacing: 0.04em;
 }
 
 .sub {
@@ -232,15 +224,15 @@
 }
 
 .winBtns button {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--line);
   background: var(--field-bg);
   line-height: 1;
   cursor: pointer;
   transition:
-    transform 140ms var(--ease-spring, var(--ease-out)),
+    transform 140ms var(--ease-out, ease),
     border-color 160ms ease,
     background 160ms ease;
 }
@@ -257,7 +249,7 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  padding: 0.6rem;
+  padding: 0.55rem;
   display: flex;
   flex-direction: column;
 }

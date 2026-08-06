@@ -4,17 +4,18 @@
   gap: 0.65rem;
   height: min(78vh, 720px);
   min-height: 520px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
   overflow: hidden;
   background: color-mix(in srgb, var(--paper) 40%, transparent);
+  box-shadow: var(--shadow);
 }
 
 .left,
 .right {
   padding: 0.7rem;
   overflow: auto;
-  background: color-mix(in srgb, var(--paper-deep) 55%, transparent);
+  background: color-mix(in srgb, var(--paper-deep) 40%, transparent);
   border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
@@ -28,10 +29,12 @@
 
 .label {
   margin: 0.35rem 0 0.15rem;
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-soft);
+  color: var(--ink);
 }
 
 .styleGrid,
@@ -50,7 +53,7 @@
 .primary,
 .danger {
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--ink);
   padding: 0.4rem 0.45rem;
@@ -61,8 +64,8 @@
 .styleActive,
 .palActive,
 .toolActive {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .styleBtn span[data-swatch],

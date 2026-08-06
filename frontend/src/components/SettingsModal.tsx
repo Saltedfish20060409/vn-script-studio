@@ -140,7 +140,12 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
         aria-label="设置"
       >
         <header className={styles.head}>
-          <h2>设置</h2>
+          <h2>
+            <span className={styles.headIdx} aria-hidden>
+              ST
+            </span>
+            设置
+          </h2>
           <button type="button" className={styles.close} onClick={onClose}>
             ×
           </button>

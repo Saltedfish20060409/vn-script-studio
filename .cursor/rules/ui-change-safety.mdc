@@ -1,0 +1,28 @@
+---
+description: Prevent accidental UI reverts to pre-Persona teal theme
+alwaysApply: true
+---
+
+# UI change safety (Persona)
+
+Current brand tokens live in `frontend/src/styles/globals.css`:
+- Day accent `#002fa7` (Klein blue)
+- Night accent `#e11d48` (crimson)
+
+## Never do without an explicit user request that lists paths
+
+- `git restore` / `git checkout HEAD --` on any `frontend/` UI file
+- Restoring "original" / "HEAD" / "before redesign" UI wholesale
+- Fixing a truncated CSS file by replacing it with `git show HEAD:...`
+
+## If CSS is truncated
+
+Rewrite the missing sections in place (keep current `--accent` tokens). Do not copy the full file from git HEAD.
+
+## After any UI write touching theme/shell
+
+Confirm on disk: day `--accent: #002fa7` still present in `globals.css`. If teal `#1f6b5a` reappears, stop and tell the user — do not silently continue.
+
+## Commits
+
+Persona UI work should be committed soon after acceptance so a restore cannot wipe it back to the old teal theme.

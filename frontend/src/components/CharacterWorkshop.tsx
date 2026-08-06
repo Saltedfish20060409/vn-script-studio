@@ -858,11 +858,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
           <div className={styles.actions}>
             <button
               type="button"
-              className={`${styles.primary} ${
-                shapeMode === "preference" && variants.length === 0
-                  ? styles.ctaPulse
-                  : ""
-              }`}
+              className={styles.primary}
               disabled={!!busy || !character}
               onClick={() => void onGenerate()}
             >
@@ -943,13 +939,11 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
 
         {shapeMode === "preference" && (
           <p className={styles.shapeTip}>
-            建议：每换一个<strong>场景标签</strong>（被误解 / 别扭关心 / 面对权威等）做一轮三选一。
-            只改「场景压力」文字、场景不换，语料容易偏片面。
+            换多个<strong>场景标签</strong>各做一轮；只改压力文字、场景不变会偏窄。
             {uniqueScenarios(corpus).length > 0 && (
               <>
                 {" "}
-                当前已覆盖场景：
-                <em>{uniqueScenarios(corpus).length}</em> 类。
+                已覆盖 <em>{uniqueScenarios(corpus).length}</em> 类。
               </>
             )}
           </p>
@@ -976,15 +970,13 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
           <div className={styles.cardStage}>
             {variants.length === 0 && !busy && (
               <div className={styles.emptyStage}>
-                <p>用三组对白「定声音」</p>
+                <p>定声音</p>
                 <span>
-                    选一个压力场景 → 点「生成三组」→ 选最像的入库。
-                    <strong>请换多个场景重复</strong>
-                    （别只用一个场景刷很多遍），凑够门槛再合成思维包：短正例≥6、或不同场景≥5、或长场次≥2、或台词约≥800字。
-                  </span>
+                  选场景 → 生成三组 → 选最像的入库。多换场景，凑够门槛再合成。
+                </span>
                 <button
                   type="button"
-                  className={`${styles.primary} ${styles.ctaPulse}`}
+                  className={styles.primary}
                   disabled={!!busy || !character}
                   onClick={() => void onGenerate()}
                 >
@@ -1060,10 +1052,9 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
               </>
             ) : (
               <div className={styles.emptyStage}>
-                <p>用长场次加厚语料</p>
+                <p>长场次加厚</p>
                 <span>
-                  一次生成 8～12 轮可演对白，整段入库比短正例更够蒸馏。
-                  请用上方「生成长场次」按钮；若一直无结果，请看页面底部红色错误提示并重启后端。
+                  一次约 8～12 轮，整段入库。无结果时看底部错误提示。
                 </span>
                 <button
                   type="button"
@@ -1088,10 +1079,8 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
             <div className={styles.cardStage}>
               {variants.length === 0 && !busy && (
                 <div className={styles.emptyStage}>
-                  <p>用扮演采访探心智</p>
-                  <span>
-                    系统（或你）出一道压力题，生成三组回答——挑最像本音的入库，比闲聊更适合蒸馏思维包。
-                  </span>
+                  <p>扮演采访</p>
+                  <span>出一道压力题，生成三组回答，挑最像本音的入库。</span>
                   <button
                     type="button"
                     className={styles.primary}
@@ -1710,9 +1699,9 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
           <div>
             <h2>角色工坊</h2>
             <p className={styles.heroValue}>
-              把脑中的角色声音定下来，再用来试聊 / 写对白。
+              定声音 → 思维包 → 试聊
             </p>
-            <p>先在「设定 → 角色卡」添加角色，再回来塑形语料与思维包。</p>
+            <p>先在「设定 → 角色卡」添加角色。</p>
           </div>
         </header>
       </section>
@@ -1726,10 +1715,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
         <div>
           <h2>角色工坊</h2>
           <p className={styles.heroValue}>
-            把脑中的角色声音定下来，再用来试聊 / 写对白。
-          </p>
-          <p className={styles.heroFlow}>
-            塑形语料 → 思维包 → 与角色对话 / 角色互聊
+            定声音 → 思维包 → 试聊 / 写对白
           </p>
         </div>
         {character && (
@@ -1788,12 +1774,35 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
               );
             })}
           </ul>
+          <p className={styles.statsLine}>
+            <span>
+              短正例 <em>{shortCount}</em>
+            </span>
+            <span>
+              长场次 <em>{sceneCount}</em>
+            </span>
+            <span>
+              采访 <em>{interviewCount}</em>
+            </span>
+            <span>
+              字量 <em>{volumeChars}</em>
+            </span>
+            <span>
+              场景 <em>{coverage}</em>
+            </span>
+            <span>
+              可合成 <em>{ready ? "是" : "否"}</em>
+            </span>
+            <span>
+              思维包 <em>{hasMindPack ? "有" : "无"}</em>
+            </span>
+          </p>
           {character && (
             <div className={styles.seed}>
-              <p className={styles.railLabel}>基础信息（只读摘要）</p>
+              <p className={styles.railLabel}>基础信息</p>
               <p className={styles.seedLine}>
                 <em>语气</em>
-                {character.voice || "（空，可在角色卡填写）"}
+                {character.voice || "（空）"}
               </p>
               <p className={styles.seedLine}>
                 <em>简介</em>
@@ -1822,30 +1831,6 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
               </button>
             ))}
           </div>
-
-          <p className={styles.statsLine}>
-            <span>
-              短正例 <em>{shortCount}</em>
-            </span>
-            <span>
-              长场次 <em>{sceneCount}</em>
-            </span>
-            <span>
-              采访 <em>{interviewCount}</em>
-            </span>
-            <span>
-              字量 <em>{volumeChars}</em>
-            </span>
-            <span>
-              场景覆盖 <em>{coverage}</em>
-            </span>
-            <span>
-              可合成 <em>{ready ? "是" : "否"}</em>
-            </span>
-            <span>
-              思维包 <em>{hasMindPack ? "有" : "无"}</em>
-            </span>
-          </p>
 
           {error && <p className={styles.error}>{error}</p>}
 

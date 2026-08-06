@@ -33,8 +33,8 @@
   min-width: 140px;
   max-width: 420px;
   min-height: 0;
-  border: 1px solid var(--line);
-  border-radius: 12px 0 0 12px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
   background: color-mix(in srgb, var(--panel-bg) 88%, var(--field-bg));
   overflow: hidden;
 }
@@ -50,10 +50,12 @@
 }
 
 .sideTitle {
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-soft);
+  color: var(--ink);
 }
 
 .sideNew {
@@ -400,7 +402,7 @@
 }
 
 .shell:not(.shellCompact) .sidebar {
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
 }
 
 .shell:not(.shellCompact) .main {
