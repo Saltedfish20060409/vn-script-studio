@@ -6,6 +6,7 @@ from app.core.harness.ai_flavor import (
     lint_vn_harness,
     summarize_issues,
 )
+from app.core.harness.audit_full import full_audit_draft
 from app.core.harness.pipeline import (
     audit_draft,
     build_writer_user_prompt,
@@ -23,6 +24,7 @@ __all__ = [
     "HarnessIssue",
     "lint_ai_flavor",
     "lint_vn_harness",
+    "full_audit_draft",
     "issues_to_dict",
     "summarize_issues",
     "audit_draft",

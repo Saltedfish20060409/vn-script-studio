@@ -11,7 +11,6 @@ from app.config import Settings, get_settings
 from app.core.ai import DeepSeekConfig
 from app.core.harness import (
     ROLE_PROMPTS,
-    audit_draft,
     build_writer_user_prompt,
     harness_editor_pass,
     run_harness_llm,
@@ -76,9 +75,9 @@ async def harness_lint(
     db: AsyncSession = Depends(get_db),
 ):
     await get_owned_project(db, user, project_id)
-    from app.core.pipeline.style_skill import merge_audit_with_style
+    from app.core.harness.audit_full import full_audit_draft
 
-    return merge_audit_with_style(audit_draft(body.draft), body.draft)
+    return full_audit_draft(body.draft)
 
 
 @router.post("/projects/{project_id}/harness/run")
@@ -99,7 +98,9 @@ async def harness_run(
         if not body.draft.strip():
             raise HTTPException(status_code=400, detail="audit 需要 draft")
         if body.mode == "audit":
-            return {"role": "editor", **audit_draft(body.draft)}
+            from app.core.harness.audit_full import full_audit_draft
+
+            return {"role": "editor", **full_audit_draft(body.draft)}
         return await harness_editor_pass(cfg, body.draft, project=vn)
 
     if body.mode == "audit_and_fix":
@@ -158,5 +159,9 @@ async def harness_run(
         project=vn,
         temperature=0.55 if body.role == "editor" else 0.75,
     )
-    pre = audit_draft(body.draft) if body.draft.strip() else None
+    pre = None
+    if body.draft.strip():
+        from app.core.harness.audit_full import full_audit_draft
+
+        pre = full_audit_draft(body.draft)
     return {**result, "preAudit": pre}

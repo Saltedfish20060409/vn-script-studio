@@ -4,8 +4,6 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional
 
-import httpx
-
 from app.core.ai import DeepSeekConfig
 from app.core.harness.ai_flavor import (
     HarnessIssue,
@@ -14,7 +12,7 @@ from app.core.harness.ai_flavor import (
     summarize_issues,
 )
 from app.core.harness.roles import build_role_system
-from app.core.novel_memory import format_memory_for_agent
+from app.core.llm_http import chat_completions, content_from_response
 from app.domain.types import VnProject
 from app.core.renpy import project_to_context
 
@@ -29,37 +27,26 @@ async def run_harness_llm(
 ) -> Dict[str, Any]:
     if not config.apiKey or "your-key" in config.apiKey:
         raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
-    base_url = (config.baseUrl or "https://api.deepseek.com").rstrip("/")
     model = config.model or "deepseek-chat"
     extra = ""
     if project is not None:
         extra = "作品上下文（节选）：\n" + project_to_context(project)[:3500]
     system = build_role_system(role, extra=extra, project=project)
-    async with httpx.AsyncClient(timeout=120) as client:
-        res = await client.post(
-            f"{base_url}/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {config.apiKey}",
-            },
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": temperature,
-                "stream": False,
-            },
-        )
-    if res.status_code >= 400:
-        raise RuntimeError(f"DeepSeek API {res.status_code}: {res.text[:400]}")
-    data = res.json()
-    choices = data.get("choices") or []
-    content = ""
-    if choices:
-        content = ((choices[0] or {}).get("message") or {}).get("content", "") or ""
-    return {"content": content.strip(), "model": data.get("model") or model, "role": role}
+    res = await chat_completions(
+        config,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=temperature,
+        timeout=120,
+    )
+    content, used_model = content_from_response(res)
+    return {
+        "content": content,
+        "model": used_model or model,
+        "role": role,
+    }
 
 
 def audit_draft(draft: str) -> Dict[str, Any]:
@@ -79,8 +66,10 @@ async def harness_editor_pass(
     draft: str,
     project: Optional[VnProject] = None,
 ) -> Dict[str, Any]:
-    """Lint first, then Editor LLM for minimal fixes if needed."""
-    audit = audit_draft(draft)
+    """Lint first (full audit), then Editor LLM for minimal fixes if needed."""
+    from app.core.harness.audit_full import full_audit_draft
+
+    audit = full_audit_draft(draft)
     if audit["pass"] and audit["warnCount"] == 0:
         return {
             **audit,
@@ -91,7 +80,7 @@ async def harness_editor_pass(
         }
     prompt = (
         "请根据下列体检问题，给出最小改动后的文本（保持剧情意图）。"
-        "先用条目列出仍须注意的点，再给出改写正文。\n\n"
+        "先用条目列出仍须注意的点，再给出改写正文（可用 ```renpy 代码块）。\n\n"
         f"## 体检\n{json.dumps(audit['issues'][:20], ensure_ascii=False)}\n\n"
         f"## 原文\n{draft[:8000]}"
     )

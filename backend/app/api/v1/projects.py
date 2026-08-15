@@ -13,8 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.core import (
+    accept_map_extract_proposal,
     apply_agent_actions,
     build_branch_tree,
+    build_map_extract_proposal,
     extract_map_from_script,
     extract_map_smart,
     export_to_renpy,
@@ -28,6 +30,13 @@ from app.core import (
     uid,
 )
 from app.core.ai import DeepSeekConfig
+from app.core.snapshots import (
+    content_hash_for_payload,
+    decode_snapshot_payload,
+    latest_content_hash,
+    snapshot_payload_dict,
+)
+from app.core.voice_reports import persist_voice_report
 from app.db import get_db
 from app.domain.types import AgentRequest, AiRequest, ProjectSnapshot, VnProject
 from app.models import AgentSession, Project, Share, User
@@ -43,6 +52,14 @@ from app.schemas import (
     AgentSessionPutIn,
     AiRunIn,
     LintIn,
+    FactsAcceptIn,
+    FactsAckStaleIn,
+    FactsRejectIn,
+    FactsScanIn,
+    AgentIngestSettingsIn,
+    ChapterReviseIn,
+    ChapterReviseApplyIn,
+    MapExtractAcceptIn,
     MapExtractIn,
     ProjectCreateIn,
     ProjectPatchIn,
@@ -167,7 +184,7 @@ async def put_project(
     db: AsyncSession = Depends(get_db),
 ):
     row = await get_owned_project(db, user, project_id)
-    if body.updated_at:
+    if body.updated_at and not body.force:
         client_ts = body.updated_at.replace("Z", "+00:00")
         try:
             client_dt = datetime.fromisoformat(client_ts)
@@ -179,7 +196,12 @@ async def put_project(
             if abs((server_dt - client_dt).total_seconds()) > 0.5 and server_dt > client_dt:
                 raise HTTPException(
                     status_code=409,
-                    detail="项目已被更新，请刷新后重试",
+                    detail={
+                        "code": "project_conflict",
+                        "message": "项目已在别处更新。可保留本地稿覆盖，或改用服务器版本。",
+                        "serverUpdatedAt": server_dt.isoformat(),
+                        "clientUpdatedAt": client_dt.isoformat(),
+                    },
                 )
         except ValueError:
             pass
@@ -287,7 +309,7 @@ async def map_extract(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    """Extract map locations.
+    """Dry-run map extract — returns a reviewable proposal, does not write.
 
     - mode=rules: scene bg tags only (fast, offline)
     - mode=smart (default): scene + lexicon + DeepSeek over dialogue/bible
@@ -315,20 +337,52 @@ async def map_extract(
         )
         result = await extract_map_smart(vn, cfg, use_llm=True)
 
-    vn.locations = result["locations"]
-    vn.locationLinks = result["locationLinks"]
-    sync_row_from_vn(row, vn)
-    await db.commit()
-    await db.refresh(row)
+    proposal = build_map_extract_proposal(vn, result)
     return {
-        "project": project_to_dict(row_to_vn(row)),
-        "addedCount": result.get("addedCount", 0),
-        "linkCount": result.get("linkCount", 0),
+        "project": project_to_dict(vn),
+        "proposal": proposal,
+        "addedCount": len(proposal["newPlaceIds"]),
+        "linkCount": len(proposal["newLinkIds"]),
         "llmAddedCount": result.get("llmAddedCount", 0),
         "llmLinkCount": result.get("llmLinkCount", 0),
         "mode": result.get("mode", mode),
         "llmUsed": bool(result.get("llmUsed")),
         "warnings": result.get("warnings") or [],
+    }
+
+
+@router.post("/{project_id}/map/extract/accept", response_model=dict)
+async def map_extract_accept(
+    project_id: str,
+    body: MapExtractAcceptIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Apply checked new places/links from a prior dry-run proposal."""
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    try:
+        merged = accept_map_extract_proposal(
+            vn,
+            proposal_locations=body.proposal.locations,
+            proposal_links=body.proposal.locationLinks,
+            place_ids=body.placeIds,
+            link_ids=body.linkIds,
+            new_place_ids=body.proposal.newPlaceIds,
+            new_link_ids=body.proposal.newLinkIds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    vn.locations = merged["locations"]
+    vn.locationLinks = merged["locationLinks"]
+    sync_row_from_vn(row, vn)
+    await db.commit()
+    await db.refresh(row)
+    return {
+        "project": project_to_dict(row_to_vn(row)),
+        "addedCount": merged.get("addedCount", 0),
+        "linkCount": merged.get("linkCount", 0),
     }
 
 
@@ -350,6 +404,237 @@ async def analysis_branch_tree(
     row = await get_owned_project(db, user, project_id)
     tree = build_branch_tree(row_to_vn(row))
     return {"nodes": [_branch_node_to_dict(n) for n in tree]}
+
+
+@router.post("/{project_id}/analysis/facts/reconcile")
+async def analysis_facts_reconcile(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.core.fact_extract import compute_fingerprints, diff_fingerprints, reconcile_stale
+
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    delta = diff_fingerprints(vn, vn.analysisMeta)
+    new_vn = reconcile_stale(vn)
+    stale_links = sum(1 for l in (new_vn.characterLinks or []) if l.stale)
+    stale_tl = sum(1 for t in (new_vn.timeline or []) if t.stale)
+
+    def _sig(p: VnProject) -> str:
+        links = [
+            (l.id, bool(l.stale), l.staleReason or "")
+            for l in (p.characterLinks or [])
+        ]
+        events = [
+            (t.id, bool(t.stale), t.staleReason or "")
+            for t in (p.timeline or [])
+        ]
+        return str((links, events))
+
+    wrote = False
+    if _sig(vn) != _sig(new_vn):
+        sync_row_from_vn(row, new_vn)
+        await db.commit()
+        await db.refresh(row)
+        wrote = True
+        out = row_to_vn(row)
+    else:
+        # No fact drift — avoid bumping updated_at (prevents client autosave 409)
+        out = vn
+
+    return {
+        "project": project_to_dict(out),
+        "changed": {
+            "chapters": delta.changed_chapter_ids,
+            "bible": delta.bible_changed,
+            "characters": delta.changed_character_ids,
+            "isFirstScan": delta.is_first_scan,
+        },
+        "staleCount": stale_links + stale_tl,
+        "fingerprints": compute_fingerprints(out).model_dump(mode="json"),
+        "wrote": wrote,
+    }
+
+
+@router.post("/{project_id}/analysis/facts/scan")
+async def analysis_facts_scan(
+    project_id: str,
+    body: FactsScanIn = FactsScanIn(),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.core.fact_extract import build_scan_candidates, filter_new_candidates
+    from app.services import analysis_inbox as inbox_svc
+
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    force = [body.chapter_id] if body.chapter_id else None
+    if body.persist_paste and body.paste_text:
+        await inbox_svc.insert_source_snippet(db, project_id, body.paste_text, source="paste")
+    cands, delta, fresh_meta = build_scan_candidates(
+        vn,
+        force_chapter_ids=force,
+        paste_text=body.paste_text,
+        full=body.full,
+    )
+    pending_keys = await inbox_svc.blocked_dedupe_keys(db, project_id)
+    fresh = filter_new_candidates(vn, cands, pending_keys)
+    created = await inbox_svc.insert_candidates(db, project_id, fresh)
+    vn = vn.model_copy(update={"analysisMeta": fresh_meta})
+    sync_row_from_vn(row, vn)
+    await db.commit()
+    await db.refresh(row)
+    return {
+        "project": project_to_dict(row_to_vn(row)),
+        "changed": {
+            "chapters": delta.changed_chapter_ids,
+            "bible": delta.bible_changed,
+            "characters": delta.changed_character_ids,
+            "isFirstScan": delta.is_first_scan,
+        },
+        "summary": {
+            "added": len(created),
+            "characterLinks": sum(1 for c in created if c.kind == "character_link"),
+            "timelineEvents": sum(1 for c in created if c.kind == "timeline_event"),
+        },
+        "inbox": [inbox_svc.inbox_row_to_dict(r) for r in created],
+    }
+
+
+@router.get("/{project_id}/analysis/facts/inbox")
+async def analysis_facts_inbox(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services import analysis_inbox as inbox_svc
+
+    await get_owned_project(db, user, project_id)
+    rows = await inbox_svc.list_inbox(
+        db,
+        project_id,
+        status="pending",
+        kinds=["character_link", "timeline_event"],
+    )
+    return {"items": [inbox_svc.inbox_row_to_dict(r) for r in rows]}
+
+
+@router.post("/{project_id}/analysis/facts/accept")
+async def analysis_facts_accept(
+    project_id: str,
+    body: FactsAcceptIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.core.fact_extract import (
+        accept_character_link,
+        accept_timeline_event,
+        existing_dedupe_keys,
+        link_dedupe_key,
+        timeline_dedupe_key,
+    )
+    from app.services import analysis_inbox as inbox_svc
+
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    items = await inbox_svc.get_inbox_items(db, project_id, body.ids)
+    accepted_ids: list[str] = []
+    skipped_ids: list[str] = []
+    for item in items:
+        if item.status != "pending":
+            continue
+        payload = item.payload or {}
+        evidence = item.evidence or []
+        before_keys = existing_dedupe_keys(vn)
+        if item.kind == "character_link":
+            from_id = str(payload.get("fromId") or "")
+            to_id = str(payload.get("toId") or "")
+            label = str(payload.get("label") or "关系")
+            key = link_dedupe_key(from_id, to_id, label)
+            vn = accept_character_link(
+                vn,
+                from_id=from_id,
+                to_id=to_id,
+                label=label,
+                evidence=evidence,
+                sync_cards=True,
+            )
+            if key in before_keys:
+                skipped_ids.append(item.id)
+            else:
+                accepted_ids.append(item.id)
+        elif item.kind == "timeline_event":
+            title = str(payload.get("title") or "节点")
+            chapter_ref = payload.get("chapterRef")
+            key = timeline_dedupe_key(title, chapter_ref)
+            vn = accept_timeline_event(
+                vn,
+                title=title,
+                when=payload.get("when"),
+                summary=payload.get("summary"),
+                chapter_ref=chapter_ref,
+                order=payload.get("order"),
+                evidence=evidence,
+            )
+            if key in before_keys:
+                skipped_ids.append(item.id)
+            else:
+                accepted_ids.append(item.id)
+        else:
+            skipped_ids.append(item.id)
+    # Close pending either way (accepted or already-present duplicate)
+    await inbox_svc.set_status(
+        db,
+        [i for i in items if i.id in accepted_ids or i.id in skipped_ids],
+        "accepted",
+    )
+    sync_row_from_vn(row, touch_project(vn))
+    await db.commit()
+    await db.refresh(row)
+    return {
+        "acceptedIds": accepted_ids,
+        "skippedIds": skipped_ids,
+        "project": project_to_dict(row_to_vn(row)),
+    }
+
+
+@router.post("/{project_id}/analysis/facts/reject")
+async def analysis_facts_reject(
+    project_id: str,
+    body: FactsRejectIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services import analysis_inbox as inbox_svc
+
+    await get_owned_project(db, user, project_id)
+    items = await inbox_svc.get_inbox_items(db, project_id, body.ids)
+    await inbox_svc.set_status(db, items, "rejected")
+    await db.commit()
+    return {"rejectedIds": [i.id for i in items]}
+
+
+@router.post("/{project_id}/analysis/facts/ack-stale")
+async def analysis_facts_ack_stale(
+    project_id: str,
+    body: FactsAckStaleIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.core.fact_extract import clear_stale_flags
+
+    row = await get_owned_project(db, user, project_id)
+    vn = clear_stale_flags(
+        row_to_vn(row),
+        link_ids=body.linkIds,
+        timeline_ids=body.timelineIds,
+        all_stale=body.all,
+    )
+    sync_row_from_vn(row, touch_project(vn))
+    await db.commit()
+    await db.refresh(row)
+    return {"project": project_to_dict(row_to_vn(row))}
 
 
 @router.post("/{project_id}/analysis/lint")
@@ -397,13 +682,24 @@ async def create_snapshot(
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     snaps = list(vn.snapshots or [])
-    payload = project_to_dict(vn)
-    payload.pop("snapshots", None)
+    payload = snapshot_payload_dict(vn)
+    content_hash = content_hash_for_payload(payload)
+    prev_hash = latest_content_hash(snaps)
+    if prev_hash and prev_hash == content_hash and snaps:
+        last = snaps[-1]
+        return {
+            "id": last.id,
+            "label": last.label,
+            "createdAt": last.createdAt,
+            "contentHash": last.contentHash or content_hash,
+            "deduped": True,
+        }
     snap = {
         "id": uid("snap"),
         "label": body.label,
         "createdAt": datetime.now(timezone.utc).isoformat(),
-        "payload": json.dumps(payload, ensure_ascii=False),
+        "payload": payload,
+        "contentHash": content_hash,
     }
     snaps.append(ProjectSnapshot(**snap))
     # keep last 20
@@ -411,7 +707,13 @@ async def create_snapshot(
     vn.snapshots = snaps
     sync_row_from_vn(row, vn)
     await db.commit()
-    return {"id": snap["id"], "label": snap["label"], "createdAt": snap["createdAt"]}
+    return {
+        "id": snap["id"],
+        "label": snap["label"],
+        "createdAt": snap["createdAt"],
+        "contentHash": content_hash,
+        "deduped": False,
+    }
 
 
 @router.post("/{project_id}/snapshots/{snap_id}/restore", response_model=dict)
@@ -427,7 +729,11 @@ async def restore_snapshot(
     target = next((s for s in snaps if s.id == snap_id), None)
     if target is None:
         raise HTTPException(status_code=404, detail="快照不存在")
-    restored = normalize_project(json.loads(target.payload))
+    try:
+        decoded = decode_snapshot_payload(target.payload)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail=f"快照损坏：{exc}") from exc
+    restored = normalize_project(decoded)
     restored.id = project_id
     restored.snapshots = snaps
     sync_row_from_vn(row, restored)
@@ -694,6 +1000,286 @@ async def put_agent_session(
     return _conversation_out(sess)
 
 
+@router.post("/{project_id}/agent/chapter-revise", response_model=dict)
+async def agent_chapter_revise(
+    project_id: str,
+    body: ChapterReviseIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Two-pass chapter revise: diagnose → full rewrite preview (not written yet)."""
+    from app.core.chapter_revise import run_chapter_revise
+
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    creds = server_llm_credentials(settings)
+    if not creds["api_key"]:
+        raise HTTPException(
+            status_code=400,
+            detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
+        )
+    cfg = DeepSeekConfig(
+        apiKey=creds["api_key"],
+        baseUrl=creds["base_url"],
+        model=creds["model"],
+    )
+    critic = DeepSeekConfig(
+        apiKey=settings.critic_api_key or creds["api_key"],
+        baseUrl=settings.critic_api_base_url or creds["base_url"],
+        model=settings.critic_api_model or creds["model"],
+    )
+
+    if body.async_mode:
+        from types import SimpleNamespace
+
+        from app.core.jobs import get_job_store
+        from app.db import AsyncSessionLocal
+
+        store = get_job_store()
+        owner = SimpleNamespace(id=user.id)
+        payload = {
+            "chapter_id": body.chapter_id,
+            "note": body.note or "",
+            "attachments": list(body.attachments or []),
+            "mode": body.mode,
+            "preferences": dict(body.preferences or {}) if body.preferences else None,
+            "conversation_id": body.conversation_id,
+        }
+
+        async def _runner(job):
+            job.touch(stage="revise", progress=0.1, message="章节回炉运行中…")
+            async with AsyncSessionLocal() as session:
+                row2 = await get_owned_project(session, owner, project_id)
+                vn2 = row_to_vn(row2)
+                result = await run_chapter_revise(
+                    cfg,
+                    vn2,
+                    chapter_id=payload["chapter_id"],
+                    note=payload["note"],
+                    attachments=payload["attachments"],
+                    mode=payload["mode"],
+                    preferences=payload["preferences"],
+                    critic_config=critic,
+                )
+                if payload.get("conversation_id"):
+                    sess = await _get_session(
+                        session, project_id, payload["conversation_id"]
+                    )
+                    sess.updated_at = datetime.now(timezone.utc)
+                    await session.commit()
+                job.result = {
+                    "message": result.message,
+                    "diagnosis": result.diagnosis,
+                    "diagnosisMd": result.diagnosis_md,
+                    "revisedText": result.revised_text,
+                    "sourceText": result.source_text,
+                    "chapterId": result.chapter_id,
+                    "chapterTitle": result.chapter_title,
+                    "sourceChars": result.source_chars,
+                    "warnings": list(result.warnings),
+                    "debugTrace": list(result.debug_trace),
+                    "model": result.model,
+                    "criticNote": result.critic_note,
+                    "lintIssues": list(result.lint_issues),
+                    "llmCalls": list(result.llm_calls),
+                    "elapsedMs": result.elapsed_ms,
+                    "wrote": False,
+                }
+                job.touch(stage="done", progress=0.95, message="回炉预览已生成")
+
+        job = await store.create(
+            kind="chapter_revise",
+            project_id=project_id,
+            user_id=user.id,
+            runner=_runner,
+        )
+        return {"jobId": job.id, "async": True, "status": job.status}
+
+    try:
+        result = await run_chapter_revise(
+            cfg,
+            vn,
+            chapter_id=body.chapter_id,
+            note=body.note or "",
+            attachments=list(body.attachments or []),
+            mode=body.mode,
+            preferences=dict(body.preferences or {}) if body.preferences else None,
+            critic_config=critic,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if body.conversation_id:
+        sess = await _get_session(db, project_id, body.conversation_id)
+        sess.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+
+    return {
+        "message": result.message,
+        "diagnosis": result.diagnosis,
+        "diagnosisMd": result.diagnosis_md,
+        "revisedText": result.revised_text,
+        "sourceText": result.source_text,
+        "chapterId": result.chapter_id,
+        "chapterTitle": result.chapter_title,
+        "sourceChars": result.source_chars,
+        "warnings": list(result.warnings),
+        "debugTrace": list(result.debug_trace),
+        "model": result.model,
+        "criticNote": result.critic_note,
+        "lintIssues": list(result.lint_issues),
+        "llmCalls": list(result.llm_calls),
+        "elapsedMs": result.elapsed_ms,
+        "wrote": False,
+    }
+
+
+@router.post("/{project_id}/agent/chapter-revise/apply", response_model=dict)
+async def agent_chapter_revise_apply(
+    project_id: str,
+    body: ChapterReviseApplyIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Write a previously previewed chapter revise draft into the chapter."""
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    text = (body.text or "").strip()
+    if len(text) < 40:
+        raise HTTPException(status_code=400, detail="改写正文过短，无法写入")
+
+    if body.conversation_id:
+        sess = await _get_session(db, project_id, body.conversation_id)
+        undo = list(sess.undo_stack or [])
+        undo.append(project_to_dict(vn))
+        sess.undo_stack = undo[-30:]
+        sess.updated_at = datetime.now(timezone.utc)
+
+    apply_result = apply_agent_actions(
+        vn,
+        [{"op": "replace_script", "chapterRef": body.chapter_id, "text": text}],
+        defaultChapterId=body.chapter_id,
+    )
+    if not apply_result.applied:
+        detail = "；".join(apply_result.skipped) or "写入失败"
+        raise HTTPException(status_code=400, detail=detail)
+
+    sync_row_from_vn(row, apply_result.project)
+    await db.commit()
+    await db.refresh(row)
+    return {
+        "message": "已将回炉稿写入当前章。",
+        "applied": list(apply_result.applied),
+        "skipped": list(apply_result.skipped),
+        "project": project_to_dict(row_to_vn(row)),
+        "wrote": True,
+    }
+
+
+@router.post("/{project_id}/agent/ingest-settings", response_model=dict)
+async def agent_ingest_settings(
+    project_id: str,
+    body: AgentIngestSettingsIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Force structured write of attachment text into bible / characters / meta."""
+    from app.core.settings_ingest import ingest_attachments_to_settings
+
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    creds = server_llm_credentials(settings)
+    if not creds["api_key"]:
+        raise HTTPException(
+            status_code=400,
+            detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
+        )
+    if not body.attachments:
+        raise HTTPException(status_code=400, detail="请先上传附件")
+
+    cfg = DeepSeekConfig(
+        apiKey=creds["api_key"],
+        baseUrl=creds["base_url"],
+        model=creds["model"],
+    )
+    try:
+        result = await ingest_attachments_to_settings(
+            cfg,
+            vn,
+            list(body.attachments),
+            user_note=body.note or "",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if result.project is not None:
+        if body.conversation_id:
+            sess = await _get_session(db, project_id, body.conversation_id)
+            undo = list(sess.undo_stack or [])
+            undo.append(project_to_dict(vn))
+            sess.undo_stack = undo[-30:]
+            sess.updated_at = datetime.now(timezone.utc)
+        sync_row_from_vn(row, result.project)
+        await db.commit()
+        await db.refresh(row)
+        out_project = project_to_dict(row_to_vn(row))
+    else:
+        out_project = project_to_dict(vn)
+
+    return {
+        "message": result.message,
+        "actions": result.actions,
+        "applied": list(result.applied),
+        "skipped": list(result.skipped),
+        "project": out_project,
+        "wrote": result.project is not None and bool(result.applied),
+    }
+
+
+@router.post("/{project_id}/agent/attachments")
+async def upload_agent_attachment(
+    project_id: str,
+    file: UploadFile = File(...),
+    persist: str = Form("true"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Extract plain text from an uploaded reference file for Agent context."""
+    from app.core.file_text import extract_text_from_bytes
+    from app.services import analysis_inbox as inbox_svc
+
+    await get_owned_project(db, user, project_id)
+    raw = await file.read()
+    filename = file.filename or "upload.txt"
+    try:
+        text, warning = extract_text_from_bytes(raw, filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    snippet_id = None
+    do_persist = str(persist).strip().lower() in ("1", "true", "yes", "on")
+    if do_persist:
+        row = await inbox_svc.insert_source_snippet(
+            db, project_id, text, source="upload"
+        )
+        # stash filename on payload
+        payload = dict(row.payload or {})
+        payload["filename"] = filename
+        row.payload = payload
+        await db.commit()
+        snippet_id = row.id
+
+    return {
+        "id": snippet_id,
+        "filename": filename,
+        "text": text,
+        "chars": len(text),
+        "warning": warning,
+    }
+
+
 @router.post("/{project_id}/agent", response_model=AgentRunOut)
 async def run_project_agent(
     project_id: str,
@@ -737,6 +1323,10 @@ async def run_project_agent(
     lore_parts = [p for p in [lore.get("agentBlock") or "", ledger_block] if p.strip()]
     lore_combined = "\n\n".join(lore_parts) or None
 
+    from app.core.file_text import format_attachment_block
+
+    reference_docs = format_attachment_block(list(body.attachments or [])) or None
+
     req = AgentRequest(
         project=vn,
         messages=body.messages,  # type: ignore[arg-type]
@@ -748,6 +1338,7 @@ async def run_project_agent(
             (await get_latest_continuity(db, project_id) or {}).get("agentBlock")
         ),
         loreCraft=lore_combined,
+        referenceDocs=reference_docs,
         craftMode=settings.agent_craft_mode,
         selfReview=settings.agent_self_review,
         lensIds=body.lens_ids,
@@ -775,6 +1366,7 @@ async def run_project_agent(
     context_meta = result.contextMeta
     if context_meta is not None and hasattr(context_meta, "model_dump"):
         context_meta = context_meta.model_dump(mode="json", by_alias=True)
+    trace = getattr(result, "trace", None) or []
 
     if body.conversation_id:
         sess = await _get_session(db, project_id, body.conversation_id)
@@ -784,13 +1376,64 @@ async def run_project_agent(
     applied = False
     warnings: list[str] = []
     out_project = None
+    inbox_added = 0
     if body.apply_actions and actions:
+        from app.core.fact_extract import (
+            build_scan_candidates,
+            filter_new_candidates,
+        )
+        from app.services import analysis_inbox as inbox_svc
+
         undo = list(sess.undo_stack or [])
         undo.append(project_to_dict(vn))
         sess.undo_stack = undo[-30:]
-        apply_result = apply_agent_actions(vn, actions)
+        apply_result = apply_agent_actions(vn, actions, defaultChapterId=body.chapter_id)
         new_vn = apply_result.project
         warnings = list(apply_result.skipped or [])
+
+        proposals = inbox_svc.proposals_from_agent(apply_result.inbox_proposals or [])
+        if proposals:
+            created = await inbox_svc.insert_candidates(db, project_id, proposals)
+            inbox_added += len(created)
+
+        if apply_result.scan_request:
+            req = apply_result.scan_request
+            paste_parts: list[str] = []
+            if req.get("includePaste") and last_user:
+                paste_parts.append(last_user)
+            if body.attachments:
+                from app.core.file_text import format_attachment_block
+
+                att = format_attachment_block(list(body.attachments))
+                if att:
+                    paste_parts.append(att)
+            paste = "\n\n".join(paste_parts) if paste_parts else None
+            chapter_ref = req.get("chapterRef")
+            force = None
+            if chapter_ref:
+                ch = next(
+                    (
+                        c
+                        for c in new_vn.chapters
+                        if c.id == chapter_ref or c.title == chapter_ref
+                    ),
+                    None,
+                )
+                force = [ch.id] if ch else None
+            cands, _delta, fresh_meta = build_scan_candidates(
+                new_vn,
+                force_chapter_ids=force,
+                paste_text=paste,
+                full=False,
+            )
+            pending_keys = await inbox_svc.blocked_dedupe_keys(db, project_id)
+            fresh = filter_new_candidates(new_vn, cands, pending_keys)
+            created = await inbox_svc.insert_candidates(db, project_id, fresh)
+            inbox_added += len(created)
+            new_vn = new_vn.model_copy(update={"analysisMeta": fresh_meta})
+            if created:
+                warnings.append(f"事实扫描新增 {len(created)} 条待审候选")
+
         sync_row_from_vn(row, new_vn)
         applied = True
         out_project = None  # set after commit
@@ -805,6 +1448,8 @@ async def run_project_agent(
     await db.refresh(sess)
     if applied:
         out_project = project_to_dict(row_to_vn(row))
+        if inbox_added:
+            message = f"{message}\n\n（已有 {inbox_added} 条事实候选进入分析待审托盘，请在「写作分析」中确认。）"
 
     return AgentRunOut(
         message=message,
@@ -815,6 +1460,8 @@ async def run_project_agent(
         applied=applied,
         warnings=warnings,
         conversation_id=sess.id,
+        inbox_added=inbox_added,
+        trace=trace if isinstance(trace, list) else [],
     )
 
 
@@ -844,19 +1491,45 @@ async def voice_check(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    issues_out = [
+        {
+            "character": i.character,
+            "severity": i.severity,
+            "quote": i.quote,
+            "note": i.note,
+            "suggestion": i.suggestion,
+        }
+        for i in report.issues
+    ]
+    vn = persist_voice_report(
+        vn,
+        chapter_id=body.chapter_id,
+        summary=report.summary,
+        issues=issues_out,
+        model=report.model,
+    )
+    sync_row_from_vn(row, vn)
+    await db.commit()
+    await db.refresh(row)
+    fresh = row_to_vn(row)
+    # Find the report we just wrote (last matching chapter)
+    key = body.chapter_id or None
+    persisted = None
+    for r in reversed(fresh.voiceReports or []):
+        if not isinstance(r, dict):
+            continue
+        if (r.get("chapterId") or None) == key:
+            persisted = r
+            break
+
     return {
         "summary": report.summary,
         "model": report.model,
-        "issues": [
-            {
-                "character": i.character,
-                "severity": i.severity,
-                "quote": i.quote,
-                "note": i.note,
-                "suggestion": i.suggestion,
-            }
-            for i in report.issues
-        ],
+        "issues": issues_out,
+        "persisted": True,
+        "stale": bool(persisted.get("stale")) if persisted else False,
+        "fingerprint": (persisted or {}).get("fingerprint"),
+        "project": project_to_dict(fresh),
     }
 
 

@@ -33,3 +33,6 @@ venv/
 .grep-*.txt
 .tsc-out.txt
 *.out.txt
+backend/.cache_agent*
+backend/.cache_*
+**/.cache_agent*

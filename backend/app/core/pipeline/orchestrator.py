@@ -3,21 +3,17 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 from app.core.ai import DeepSeekConfig
 from app.core.agent_context import _blocks_to_plain
-from app.core.harness.pipeline import (
-    audit_draft,
-    build_writer_user_prompt,
-    run_harness_llm,
-)
-from app.core.novel_memory import format_memory_for_agent
+from app.core.harness.audit_full import full_audit_draft
+from app.core.harness.pipeline import build_writer_user_prompt, run_harness_llm
+from app.core.pipeline.apply_draft import apply_draft_to_chapter, extract_script_body
+from app.core.pipeline.beat_check import merge_beat_issues, resolve_beat_issues
 from app.core.pipeline.ledger import format_ledger_for_agent, get_ledger
-from app.core.pipeline.style_skill import (
-    load_style_skill,
-    merge_audit_with_style,
-)
+from app.core.pipeline.style_skill import load_style_skill
 from app.domain.types import VnProject
 from app.services.novel_memory import get_latest_continuity
 
@@ -127,16 +123,69 @@ async def stage_write(
 
 
 def stage_check(draft: str, *, beat_sheet: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    audit = merge_audit_with_style(audit_draft(draft), draft)
+    """Sync check (keyword beats only). Prefer stage_check_async in pipeline."""
+    audit = full_audit_draft(draft)
     notes: List[str] = []
     if beat_sheet and beat_sheet.get("goal"):
         notes.append(f"对照节拍目标：{beat_sheet.get('goal')}")
+    from app.core.pipeline.beat_check import lint_beat_sheet
+
+    beat_issues = lint_beat_sheet(draft, beat_sheet)
+    if beat_issues:
+        audit = merge_beat_issues(audit, beat_issues)
+        notes.append(f"节拍对照：{len(beat_issues)} 条提示")
     return {
         "stage": "check",
         **audit,
         "notes": notes,
         "gateReady": bool(audit.get("pass")),
+        "beatMode": "keyword",
     }
+
+
+async def stage_check_async(
+    draft: str,
+    *,
+    beat_sheet: Optional[Dict[str, Any]] = None,
+    cfg: Optional[DeepSeekConfig] = None,
+    semantic_beats: bool = True,
+    project: Optional[VnProject] = None,
+    chapter_id: Optional[str] = None,
+    voice_check: bool = False,
+    voice_hard: bool = False,
+) -> Dict[str, Any]:
+    audit = full_audit_draft(draft)
+    notes: List[str] = []
+    if beat_sheet and beat_sheet.get("goal"):
+        notes.append(f"对照节拍目标：{beat_sheet.get('goal')}")
+    beat_issues = await resolve_beat_issues(
+        draft,
+        beat_sheet,
+        config=cfg,
+        semantic=semantic_beats and cfg is not None,
+    )
+    mode = "semantic" if (semantic_beats and cfg is not None) else "keyword"
+    if beat_issues:
+        audit = merge_beat_issues(audit, beat_issues)
+        notes.append(f"节拍对照（{mode}）：{len(beat_issues)} 条提示")
+    out: Dict[str, Any] = {
+        "stage": "check",
+        **audit,
+        "notes": notes,
+        "gateReady": bool(audit.get("pass")),
+        "beatMode": mode,
+    }
+    if voice_check and cfg is not None and project is not None:
+        from app.core.pipeline.voice_lint import merge_voice_issues
+
+        out = await merge_voice_issues(
+            out,
+            cfg=cfg,
+            project=project,
+            chapter_id=chapter_id,
+            hard=voice_hard,
+        )
+    return out
 
 
 async def stage_revise(
@@ -159,7 +208,7 @@ async def stage_revise(
         f"{skill.confirm_preamble()}\n\n"
         f"{skill.prompt_block(max_chars=1800)}\n\n"
         "根据检查报告做**最小化改动**修正。保持剧情意图与节拍。"
-        "先列仍须注意的点（短），再给出完整改写正文。\n\n"
+        "先列仍须注意的点（短），再给出完整改写正文（可用 ```renpy 代码块）。\n\n"
         f"## 检查报告\n{json.dumps(issues[:24], ensure_ascii=False)}\n\n"
         f"## 原文\n{draft[:8000]}"
     )
@@ -167,10 +216,11 @@ async def stage_revise(
         cfg, role="editor", user_prompt=prompt, project=project, temperature=0.4
     )
     revised = llm.get("content") or ""
-    # Prefer last fenced or whole content as draft; keep full for chat display
+    body = extract_script_body(revised) if revised.strip() else draft
     return {
         "stage": "revise",
-        "content": revised,
+        "content": body if body.strip() else revised,
+        "rawContent": revised,
         "skipped": False,
         "model": llm.get("model"),
     }
@@ -187,21 +237,50 @@ async def run_pipeline(
     stages: Optional[List[str]] = None,
     db=None,
     project_id: Optional[str] = None,
+    apply_to_chapter: bool = False,
+    apply_mode: str = "replace",
+    semantic_beats: bool = True,
+    max_revise_rounds: int = 2,
+    voice_check: bool = True,
+    voice_hard: bool = False,
+    persist_run: bool = True,
 ) -> Dict[str, Any]:
     """
-    Run selected stages. Default full loop: plan → write → check → revise → check.
-    If draft provided and stages omit write, can check/revise existing draft.
+    Run selected stages. Default: plan → write → check → revise×N → check.
+    max_revise_rounds: after first check, revise+recheck until pass or cap.
+    voice_check: character voice audit on the final check only.
     """
     wanted = stages or ["plan", "write", "check", "revise", "check"]
+    trace: List[Dict[str, Any]] = []
     result: Dict[str, Any] = {
         "stages": [],
         "plan": None,
         "draft": draft or "",
         "check": None,
         "revise": None,
+        "reviseRounds": 0,
         "finalDraft": draft or "",
         "gate": None,
+        "applied": False,
+        "project": None,
+        "trace": trace,
     }
+
+    def _push_trace(
+        stage: str,
+        t0: float,
+        *,
+        ok: bool = True,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        row: Dict[str, Any] = {
+            "stage": stage,
+            "ms": int((time.perf_counter() - t0) * 1000),
+            "ok": ok,
+        }
+        if extra:
+            row.update(extra)
+        trace.append(row)
 
     continuity = None
     if db is not None and project_id:
@@ -209,19 +288,31 @@ async def run_pipeline(
 
     beat_sheet = None
     current = draft or ""
+    vn = project
+    want_check = "check" in wanted
+    want_revise = "revise" in wanted
+    rounds_cap = max(0, int(max_revise_rounds))
 
     if "plan" in wanted:
+        t0 = time.perf_counter()
         plan = await stage_plan(
-            cfg, project, instruction=instruction, chapter_id=chapter_id
+            cfg, vn, instruction=instruction, chapter_id=chapter_id
         )
         result["plan"] = plan
         result["stages"].append("plan")
         beat_sheet = plan.get("beatSheet")
+        _push_trace(
+            "plan",
+            t0,
+            ok=bool(beat_sheet),
+            extra={"hasBeatSheet": bool(beat_sheet)},
+        )
 
     if "write" in wanted:
+        t0 = time.perf_counter()
         written = await stage_write(
             cfg,
-            project,
+            vn,
             instruction=instruction,
             chapter_id=chapter_id,
             selection=selection,
@@ -231,8 +322,14 @@ async def run_pipeline(
         result["stages"].append("write")
         current = written.get("content") or current
         result["draft"] = current
+        _push_trace(
+            "write",
+            t0,
+            ok=bool(current.strip()),
+            extra={"chars": len(current)},
+        )
 
-    if not current.strip() and "check" in wanted:
+    if not current.strip() and want_check:
         result["check"] = {
             "stage": "check",
             "pass": False,
@@ -247,41 +344,179 @@ async def run_pipeline(
                     "source": "pipeline",
                 }
             ],
+            "notes": [],
+            "gateReady": False,
         }
         result["stages"].append("check")
         result["finalDraft"] = current
         result["gate"] = quality_gate_from_check(result["check"])
+        _push_trace("check", time.perf_counter(), ok=False, extra={"errorCount": 1})
         return result
 
-    # First check
-    check_indices = [i for i, s in enumerate(wanted) if s == "check"]
-    ran_first_check = False
-    if check_indices:
-        chk = stage_check(current, beat_sheet=beat_sheet)
+    async def _do_check(*, final: bool = False) -> Dict[str, Any]:
+        return await stage_check_async(
+            current,
+            beat_sheet=beat_sheet,
+            cfg=cfg,
+            semantic_beats=semantic_beats,
+            project=vn,
+            chapter_id=chapter_id,
+            voice_check=voice_check and final,
+            voice_hard=voice_hard,
+        )
+
+    if want_check:
+        t0 = time.perf_counter()
+        chk = await _do_check(final=not want_revise)
         result["check"] = chk
         result["stages"].append("check")
-        ran_first_check = True
-
-    if "revise" in wanted and result.get("check"):
-        rev = await stage_revise(
-            cfg, project, draft=current, check=result["check"]
+        _push_trace(
+            "check",
+            t0,
+            ok=bool(chk.get("pass")),
+            extra={
+                "errorCount": chk.get("errorCount"),
+                "warnCount": chk.get("warnCount"),
+                "beatMode": chk.get("beatMode"),
+                "pass": 1,
+            },
         )
-        result["revise"] = rev
-        result["stages"].append("revise")
-        if not rev.get("skipped"):
-            # Try to pull body after last markdown header
-            body = rev.get("content") or current
-            current = body
-            result["draft"] = current
 
-    # Second check after revise if requested twice or always after revise
-    if "revise" in wanted and ran_first_check:
-        chk2 = stage_check(current, beat_sheet=beat_sheet)
-        result["check"] = chk2
+    revise_done = 0
+    if want_revise and result.get("check"):
+        while revise_done < rounds_cap:
+            chk_now = result["check"] or {}
+            if chk_now.get("pass"):
+                break
+
+            t0 = time.perf_counter()
+            rev = await stage_revise(cfg, vn, draft=current, check=chk_now)
+            result["revise"] = rev
+            result["stages"].append("revise")
+            revise_done += 1
+            if not rev.get("skipped"):
+                current = rev.get("content") or current
+                result["draft"] = current
+            _push_trace(
+                "revise",
+                t0,
+                ok=True,
+                extra={
+                    "skipped": bool(rev.get("skipped")),
+                    "round": revise_done,
+                },
+            )
+            if rev.get("skipped"):
+                break
+
+            if want_check:
+                t0 = time.perf_counter()
+                is_last = revise_done >= rounds_cap
+                chk2 = await _do_check(final=is_last)
+                result["check"] = chk2
+                result["stages"].append("check")
+                _push_trace(
+                    "check",
+                    t0,
+                    ok=bool(chk2.get("pass")),
+                    extra={
+                        "errorCount": chk2.get("errorCount"),
+                        "warnCount": chk2.get("warnCount"),
+                        "beatMode": chk2.get("beatMode"),
+                        "pass": revise_done + 1,
+                        "voiceChecked": bool(chk2.get("voiceChecked")),
+                    },
+                )
+                if chk2.get("pass"):
+                    break
+
+    result["reviseRounds"] = revise_done
+
+    if (
+        want_check
+        and voice_check
+        and result.get("check")
+        and not (result["check"] or {}).get("voiceChecked")
+    ):
+        t0 = time.perf_counter()
+        chk_v = await _do_check(final=True)
+        result["check"] = chk_v
         result["stages"].append("check")
+        _push_trace(
+            "check",
+            t0,
+            ok=bool(chk_v.get("pass")),
+            extra={
+                "errorCount": chk_v.get("errorCount"),
+                "warnCount": chk_v.get("warnCount"),
+                "beatMode": chk_v.get("beatMode"),
+                "voiceChecked": True,
+                "pass": "voice",
+            },
+        )
 
     result["finalDraft"] = current
-    result["gate"] = quality_gate_from_check(result.get("check") or stage_check(current))
+    result["gate"] = quality_gate_from_check(
+        result.get("check")
+        or await stage_check_async(
+            current,
+            beat_sheet=beat_sheet,
+            cfg=cfg,
+            semantic_beats=semantic_beats,
+            project=vn,
+            chapter_id=chapter_id,
+            voice_check=voice_check,
+            voice_hard=voice_hard,
+        )
+    )
+
+    if (
+        apply_to_chapter
+        and chapter_id
+        and (result["finalDraft"] or "").strip()
+        and result["gate"].get("pass")
+    ):
+        t0 = time.perf_counter()
+        try:
+            vn = apply_draft_to_chapter(
+                vn, chapter_id, result["finalDraft"], mode=apply_mode
+            )
+            result["applied"] = True
+            result["project"] = vn
+            ch = next(c for c in vn.chapters if c.id == chapter_id)
+            types = [b.get("type") for b in (ch.blocks or [])]
+            _push_trace(
+                "apply",
+                t0,
+                ok=True,
+                extra={
+                    "blockCount": len(ch.blocks or []),
+                    "blockTypes": sorted({t for t in types if t}),
+                },
+            )
+        except ValueError as exc:
+            result["applyError"] = str(exc)
+            _push_trace("apply", t0, ok=False, extra={"error": str(exc)})
+
+    if persist_run:
+        from app.core.pipeline.run_history import append_harness_run
+
+        base = result.get("project") or vn
+        stamped = append_harness_run(
+            base,
+            kind="pipeline",
+            chapter_id=chapter_id,
+            gate=result.get("gate"),
+            check=result.get("check"),
+            stages=result.get("stages"),
+            trace=trace,
+            revise_rounds=revise_done,
+            applied=bool(result.get("applied")),
+            instruction=instruction,
+        )
+        result["project"] = stamped
+        result["runId"] = (stamped.harnessRuns or [{}])[0].get("id")
+
     return result
 
 

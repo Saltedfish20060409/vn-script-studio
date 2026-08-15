@@ -3,11 +3,16 @@ import type { MapElementKind, MapStyleId } from "../types/vn";
 export interface MapElementPreset {
   kind: MapElementKind;
   name: string;
+  /** Glyph key (usually same as kind); never emoji. */
   icon: string;
   color: string;
   hint: string;
 }
 
+/** Sole Persona LOC_MAP board — genre skins were removed. */
+export const DEFAULT_MAP_STYLE: MapStyleId = "default";
+
+/** @deprecated Multi-skin list retired; kept for any stray imports. */
 export const MAP_STYLES: {
   id: MapStyleId;
   name: string;
@@ -15,82 +20,36 @@ export const MAP_STYLES: {
   desc: string;
 }[] = [
   {
-    id: "campus",
-    name: "学院清亮",
-    genre: "校园",
-    desc: "木框软木公告板为主体，贴纸条与图钉",
-  },
-  {
-    id: "romance",
-    name: "恋粉色纸",
-    genre: "恋爱",
-    desc: "粉信纸、邮戳与火漆印为主体",
-  },
-  {
-    id: "cyber",
-    name: "赛博夜城",
-    genre: "科幻",
-    desc: "科技对话框 HUD 为主体，扫描线与角标",
-  },
-  {
-    id: "isekai",
-    name: "异世界羊皮",
-    genre: "奇幻",
-    desc: "卷轴羊皮纸为主体，纹章装饰",
-  },
-  {
-    id: "urban",
-    name: "都市线稿",
-    genre: "现代",
-    desc: "城市蓝图图纸为主体",
-  },
-  {
-    id: "mystery",
-    name: "悬疑案卷",
-    genre: "推理",
-    desc: "案件板 + 拍立得与红线为主体",
-  },
-  {
-    id: "horror",
-    name: "惊悚暗室",
-    genre: "恐怖",
-    desc: "斑驳墙面与歪斜旧照片为主体",
+    id: "default",
+    name: "作战图",
+    genre: "Persona",
+    desc: "统一 LOC_MAP 底板",
   },
 ];
 
-const KNOWN = new Set(MAP_STYLES.map((s) => s.id));
-
-export function normalizeMapStyle(style?: MapStyleId): MapStyleId {
-  const map: Record<string, MapStyleId> = {
-    ink: "urban",
-    soft: "romance",
-    neon: "cyber",
-    parchment: "isekai",
-    slate: "urban",
-  };
-  if (!style) return "campus";
-  const next = map[style] ?? style;
-  return KNOWN.has(next) ? next : "campus";
+/** Collapse any legacy / unknown style id to the single board. */
+export function normalizeMapStyle(_style?: string | null): MapStyleId {
+  return DEFAULT_MAP_STYLE;
 }
 
-/** Common visual-novel scene markers */
+/** Common visual-novel scene markers — geometric glyphs, not emoji */
 export const MAP_ELEMENT_PRESETS: MapElementPreset[] = [
-  { kind: "station", name: "车站", icon: "🚉", color: "#5b8def", hint: "月台 / 换乘" },
-  { kind: "plaza", name: "广场", icon: "🏛️", color: "#c4a574", hint: "集会 / 喷泉" },
-  { kind: "park", name: "公园", icon: "🌳", color: "#5a9a6a", hint: "散步 / 约会" },
-  { kind: "hospital", name: "医院", icon: "🏥", color: "#e07070", hint: "病房 / 走廊" },
-  { kind: "school", name: "学校", icon: "🏫", color: "#6b8cae", hint: "教室 / 天台" },
-  { kind: "cafe", name: "咖啡馆", icon: "☕", color: "#b08968", hint: "闲谈场景" },
-  { kind: "home", name: "自宅", icon: "🏠", color: "#d4a017", hint: "主角房间" },
-  { kind: "shop", name: "商店", icon: "🏪", color: "#7eb8da", hint: "便利店 / 街边" },
-  { kind: "office", name: "公司", icon: "🏢", color: "#6b7280", hint: "写字楼" },
-  { kind: "apartment", name: "公寓", icon: "🏬", color: "#8b7bb8", hint: "合租 / 邻居" },
-  { kind: "temple", name: "神社/寺", icon: "⛩️", color: "#c45c4a", hint: "祈愿 / 祭典" },
-  { kind: "forest", name: "树林", icon: "🌲", color: "#3d6b4f", hint: "秘密小路" },
-  { kind: "beach", name: "海边", icon: "🌊", color: "#4a90a4", hint: "度假线" },
-  { kind: "bridge", name: "桥", icon: "🌉", color: "#7a8b99", hint: "分手 / 重逢" },
-  { kind: "landmark", name: "地标", icon: "📍", color: "#b85c38", hint: "标志建筑" },
-  { kind: "custom", name: "自定义", icon: "✦", color: "#8b7bb8", hint: "自订图标" },
+  { kind: "station", name: "车站", icon: "station", color: "#002fa7", hint: "月台 / 换乘" },
+  { kind: "plaza", name: "广场", icon: "plaza", color: "#4a5568", hint: "集会 / 喷泉" },
+  { kind: "park", name: "公园", icon: "park", color: "#0f766e", hint: "散步 / 约会" },
+  { kind: "hospital", name: "医院", icon: "hospital", color: "#be123c", hint: "病房 / 走廊" },
+  { kind: "school", name: "学校", icon: "school", color: "#1d4ed8", hint: "教室 / 天台" },
+  { kind: "cafe", name: "咖啡馆", icon: "cafe", color: "#9a3412", hint: "闲谈场景" },
+  { kind: "home", name: "自宅", icon: "home", color: "#a16207", hint: "主角房间" },
+  { kind: "shop", name: "商店", icon: "shop", color: "#0369a1", hint: "便利店 / 街边" },
+  { kind: "office", name: "公司", icon: "office", color: "#475569", hint: "写字楼" },
+  { kind: "apartment", name: "公寓", icon: "apartment", color: "#6d28d9", hint: "合租 / 邻居" },
+  { kind: "temple", name: "神社/寺", icon: "temple", color: "#b91c1c", hint: "祈愿 / 祭典" },
+  { kind: "forest", name: "树林", icon: "forest", color: "#166534", hint: "秘密小路" },
+  { kind: "beach", name: "海边", icon: "beach", color: "#0e7490", hint: "度假线" },
+  { kind: "bridge", name: "桥", icon: "bridge", color: "#64748b", hint: "分手 / 重逢" },
+  { kind: "landmark", name: "地标", icon: "landmark", color: "#c2410c", hint: "标志建筑" },
+  { kind: "custom", name: "自定义", icon: "custom", color: "#002fa7", hint: "自订地点" },
 ];
 
 export function presetByKind(kind?: MapElementKind): MapElementPreset {

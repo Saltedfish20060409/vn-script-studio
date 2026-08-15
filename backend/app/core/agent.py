@@ -32,7 +32,6 @@ from .lenses import (
     infer_lens_intent,
     resolve_project_lenses,
 )
-from .narrative_lint import lint_has_blockers, lint_narrative_draft
 from .narrative_review import (
     apply_reviewed_script,
     chapter_tail_plain,
@@ -61,14 +60,15 @@ AGENT_SYSTEM = """你是「VN Script Studio」的驻场轻小说 / 视觉小说�
 2. 正文优先 Ren'Py 可粘贴风格：旁白 "..."、对白 name "..."、必要时 scene/show/menu/jump/label。
 3. 审稿要具体到句子：口气崩、信息倾倒、假选择、地点氛围不一致，并给改法。
 4. 尊重 Variables（好感/flag）与 Sprites 表情槽；需要时可在对白旁注释 show 标签。
-5. 纯讨论/大纲/点评：actions=[]，精华放 message。
-6. 快捷任务若已要求写入，或用户说「写入/追加/应用/创建…」，再用 actions。
-7. 禁止擅自大删既有剧情；replace_script 仅在用户明确要求整章重写时。
-8. message 里可先用一两句说明本段「接了什么节拍、故意没写哪些设定」；正文仍走 actions。
+5. 纯讨论/大纲/点评/征求意见：actions=[]，把完整意见写进 message（可长文、分点）；禁止只回「已处理」或空 message。
+6. 快捷任务若已要求写入，或用户明确说「写入/追加/应用/改到工程里…」，再用 actions。
+7. 禁止擅自大删既有剧情；replace_script 仅在用户明确要求整章重写并写入时。
+8. 若本轮有脚本 actions：message 至少用几句说明改了什么、为什么这样改；不要空 message。
+9. 用户粘贴他人审稿/长文分析并问「对吗 / 怎么改 / 提意见」：先在 message 里表态与细化方案（可摘改写示例对白）；未明确要求写入正文前不要 replace_script/append_script。
 
 输出（单一 JSON，无 markdown 围栏）：
 {
-  "message": "中文：讨论/审稿/大纲；正文要点可先展示",
+  "message": "中文：讨论/审稿/大纲必须写满；正文要点可先展示",
   "actions": []
 }
 
@@ -79,9 +79,32 @@ add_location_link / delete_location_link /
 add_chapter / delete_chapter / rename_chapter /
 append_script { "op":"append_script", "chapterRef"?, "text" } /
 replace_script { "op":"replace_script", "chapterRef"?, "text" } /
-update_bible / update_meta
+update_bible / update_meta /
+propose_character_link { fromRef, toRef, label?, quote? } — 进分析待审托盘，不直接改图 /
+propose_timeline_event { title, when?, summary?, chapterRef? } — 进待审托盘 /
+add_character_link / update_character_link / delete_character_link — 仅当用户明确要求写入/应用/填上关系图 /
+add_timeline_event / update_timeline_event / delete_timeline_event — 仅当用户明确要求写入时间线 /
+scan_facts { chapterRef?, includePaste? } — 触发增量事实扫描（批量结果进待审，勿静默直写）
 
-defineName：英文小写+数字下划线。relation：adjacent|contains|inside|above|below|leads_to|visible_from|other。"""
+用户上传参考资料：
+- 上下文可能含「用户上传参考资料」（人设表、大纲、摘录等）。可据此讨论、propose_*；用户明示「整理进项目/写入/填上/更新设定」时再用 CRUD / update_bible / add_character 等写入。
+- **设定页（工作室 → 故事设定）**对应 `update_bible.patch` 字段：
+  - world＝世界观/规则
+  - background＝故事背景/前情
+  - outline＝大纲/节拍
+  - themes＝主题/基调/禁忌
+  - notes＝其他备忘
+  作品标题/一句话/类型用 `update_meta`（title/logline/genre）。
+  角色卡用 add_character / update_character（voice/bio/relationships）。
+- 用户说「根据附件写入/更新设定/整理进设定页」时：必须输出 update_bible（可多项字段合并进一个 patch），必要时叠加 update_meta / add_character / update_character；message 用中文说明改了哪些栏。合并写入：保留工程里已有且附件未覆盖的内容，附件新信息追加或改写对应栏，勿无故清空未提及字段。
+- 从附件整理关系/时间线：优先 propose_* 或 scan_facts（includePaste=true）；禁止把附件原文整段塞进对白。
+
+事实层边界：
+- 角色关系图 / 时间线 = 可对账事实；语气讨论与审稿意见 = 观点层，禁止用 message 假装已写入事实。
+- 默认 propose_* 或 scan_facts；只有用户明确说写入/应用/填上/确认时才用 add_*_link / add_timeline_event。
+- 用户消息里的长粘贴设定可作临时源：scan_facts.includePaste=true 或 propose 时附 quote。
+
+defineName：英文小写+数字下划线。地图通路仅表示联通（无需填写 relation）。"""
 
 
 def _slug_define(name: str) -> str:
@@ -137,6 +160,33 @@ def _text_to_blocks(text: str) -> List[ScriptBlock]:
             continue
         blocks.append({"type": "raw", "code": t})
     return blocks
+
+
+def _normalize_bible_patch(raw: Any) -> Dict[str, str]:
+    """Accept English keys or common Chinese aliases from the model."""
+    if not isinstance(raw, dict):
+        return {}
+    aliases = {
+        "world": ("world", "世界", "世界观", "世界规则", "lore"),
+        "background": ("background", "背景", "前情", "故事背景", "背景设定"),
+        "outline": ("outline", "大纲", "节拍", "故事大纲", "剧情大纲"),
+        "themes": ("themes", "主题", "基调", "禁忌", "主题基调"),
+        "notes": ("notes", "备忘", "其他", "备注", "其他备忘"),
+    }
+    out: Dict[str, str] = {}
+    lower_map = {str(k).strip().lower(): v for k, v in raw.items()}
+    for canon, keys in aliases.items():
+        for key in keys:
+            hit = raw.get(key)
+            if hit is None:
+                hit = lower_map.get(key.lower())
+            if hit is None:
+                continue
+            text = str(hit).strip()
+            if text:
+                out[canon] = text
+                break
+    return out
 
 
 def _coerce_script_text(value: Any) -> Optional[str]:
@@ -203,6 +253,14 @@ def _normalize_agent_actions(raw: Any) -> List[AgentAction]:
                 if isinstance(ref, str):
                     obj["chapterRef"] = ref
 
+        if obj["op"] in ("update_bible", "update_story_bible", "set_bible"):
+            obj["op"] = "update_bible"
+            patch = _normalize_bible_patch(obj.get("patch") or obj.get("bible") or {})
+            if not patch:
+                patch = _normalize_bible_patch(obj)
+            if patch:
+                obj["patch"] = patch
+
         out.append(obj)
     return out
 
@@ -220,155 +278,36 @@ def _parse_agent_json(raw: str) -> Tuple[str, List[AgentAction]]:
     if start >= 0 and end > start:
         text = text[start : end + 1]
     parsed = json.loads(text)
+    actions = _normalize_agent_actions(parsed.get("actions"))
     message = parsed.get("message")
-    message = message.strip() if isinstance(message, str) and message.strip() else "已处理。"
-    return message, _normalize_agent_actions(parsed.get("actions"))
+    if isinstance(message, str) and message.strip():
+        return message.strip(), actions
+    # Empty message is a common model failure mode; never leave a dead "已处理。"
+    if actions:
+        ops = []
+        for a in actions:
+            op = a.get("op")
+            if isinstance(op, str) and op and op not in ops:
+                ops.append(op)
+        op_bit = "、".join(ops[:6]) if ops else "若干操作"
+        return (
+            f"已生成工程改动（{op_bit}），但模型未附文字说明。"
+            f"若你要的是审稿/修改意见，请再说一次「只要意见、先不要写入」；"
+            f"若要说明改了什么，直接问「刚才改了哪些」。",
+            actions,
+        )
+    return (
+        "我这一轮没产出可用的文字说明。请换个问法再试："
+        "例如「先不要改工程，只根据上文给第一章修改意见」。",
+        actions,
+    )
 
 
 async def run_agent(config: DeepSeekConfig, request: AgentRequest) -> AgentResponse:
-    if not config.apiKey or "your-key" in config.apiKey:
-        raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
-    base_url = (config.baseUrl or "https://api.deepseek.com").rstrip("/")
-    model = config.model or "deepseek-chat"
+    """Editor agent entry — multi-step tool loop with trajectory."""
+    from app.core.agent_loop import run_agent_loop
 
-    last_user = next(
-        (m.content for m in reversed(request.messages) if m.role == "user"), None
-    )
-
-    task = request.task if is_agent_task(request.task) else infer_agent_task(last_user or "")
-
-    craft = select_craft_mode(
-        task=task,
-        user_message=last_user,
-        project=request.project,
-        chapter_id=request.chapterId,
-        preference=request.craftMode,
-    )
-
-    ctx = build_agent_context(
-        request.project,
-        chapterId=request.chapterId,
-        selection=request.selection,
-        userMessage=last_user,
-        task=task,
-        maxChars=12000,
-        chatMemory=request.chatMemory,
-        longChapterMemory=request.longChapterMemory,
-        loreCraft=request.loreCraft,
-    )
-
-    history = [
-        {"role": m.role, "content": m.content} for m in request.messages[-20:]
-    ] if request.messages else []
-
-    if craft.mode == "off":
-        temperature = 0.82
-    elif task in ("polish", "voice", "consistency"):
-        temperature = 0.55
-    elif task == "outline":
-        temperature = 0.7
-    elif craft.mode == "lite":
-        temperature = 0.72
-    else:
-        temperature = 0.78
-
-    craft_block = build_writing_craft_prompt(task, craft.mode)
-    mentor_block = build_mentor_prompt_for_project(
-        request.project,
-        task=task,
-        override_ids=request.mentorIds,
-    )
-    mentor_ids = [p.id for p in resolve_project_mentors(request.project, override_ids=request.mentorIds)]
-    lens_intent = infer_lens_intent(last_user or "")
-    lens_block = build_lens_prompt_for_project(
-        request.project,
-        override_ids=request.lensIds,
-        intent=lens_intent,
-    )
-    lens_ids = [p.id for p in resolve_project_lenses(request.project, override_ids=request.lensIds)]
-    system_parts = [AGENT_SYSTEM, task_hint(task), craft_block, mentor_block, lens_block]
-    system_content = "\n\n".join(p for p in system_parts if p and str(p).strip())
-    system_content = (
-        f"{system_content}\n\n"
-        f"—— 作品上下文（检索拼装；人设/设定为内部参考）——\n{ctx.text}"
-    )
-
-    async with httpx.AsyncClient(timeout=180) as client:
-        res = await client.post(
-            f"{base_url}/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {config.apiKey}",
-            },
-            json={
-                "model": model,
-                "temperature": temperature,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": system_content,
-                    },
-                    *history,
-                ],
-            },
-        )
-
-    if res.status_code >= 400:
-        err_text = res.text
-        raise RuntimeError(f"DeepSeek API {res.status_code}: {err_text[:400]}")
-
-    data = res.json()
-    choices = data.get("choices") or []
-    content = "{}"
-    if choices:
-        content = ((choices[0] or {}).get("message") or {}).get("content", "{}") or "{}"
-        content = content.strip() or "{}"
-    message, actions = _parse_agent_json(content)
-
-    review_note = ""
-    review_pref = request.selfReview or "auto"
-    if should_self_review(task, review_pref):
-        script_hit = extract_script_from_actions(actions)
-        if script_hit.op and script_hit.text:
-            lint_issues = lint_narrative_draft(script_hit.text)
-            critic_config = DeepSeekConfig(
-                apiKey=request.criticApiKey or config.apiKey,
-                baseUrl=request.criticApiBaseUrl or config.baseUrl,
-                model=request.criticApiModel or config.model,
-            )
-            review = await run_narrative_self_review(
-                critic_config,
-                draft=script_hit.text,
-                task=task,
-                project=request.project,
-                chapterTail=chapter_tail_plain(request.project, request.chapterId),
-                lintIssues=lint_issues,
-            )
-            review_note = review.note
-            if not review.ok and review.revisedText:
-                actions = apply_reviewed_script(actions, script_hit.index, review.revisedText)
-                if review.issues:
-                    message = f"{message}\n\n（自检修订：{'；'.join(review.issues[:3])}）"
-            elif lint_has_blockers(lint_issues) and not review.revisedText:
-                error_msgs = [i.message for i in lint_issues if i.severity == "error"][:2]
-                review_note = review_note or f"规则未过：{'；'.join(error_msgs)}"
-
-    return AgentResponse(
-        message=message,
-        actions=actions,
-        model=data.get("model") or model,
-        contextMeta=AgentContextMeta(
-            task=ctx.task,
-            charsUsed=ctx.charsUsed,
-            craftMode=craft.mode,
-            craftReason=craft.reason,
-            mentorIds=mentor_ids or None,
-            lensIds=lens_ids or None,
-            included=ctx.included,
-            selfReview=review_note or None,
-        ),
-    )
+    return await run_agent_loop(config, request)
 
 
 @dataclass
@@ -376,6 +315,8 @@ class ApplyAgentResult:
     project: VnProject
     applied: List[str]
     skipped: List[str]
+    inbox_proposals: List[Dict[str, Any]] = field(default_factory=list)
+    scan_request: Optional[Dict[str, Any]] = None
 
 
 def apply_agent_actions(
@@ -384,6 +325,15 @@ def apply_agent_actions(
     defaultChapterId: Optional[str] = None,
 ) -> ApplyAgentResult:
     """Apply agent actions immutably to a project."""
+    from app.core.fact_extract import (
+        accept_character_link,
+        accept_timeline_event,
+        link_dedupe_key,
+        should_weak_sync_label,
+        timeline_dedupe_key,
+        weak_sync_relationships,
+    )
+
     next_project = project.model_copy(deep=True)
     if next_project.locations is None:
         next_project.locations = []
@@ -398,6 +348,8 @@ def apply_agent_actions(
 
     applied: List[str] = []
     skipped: List[str] = []
+    inbox_proposals: List[Dict[str, Any]] = []
+    scan_request: Optional[Dict[str, Any]] = None
 
     for action in actions:
         op = action.get("op")
@@ -636,12 +588,19 @@ def apply_agent_actions(
                 continue
 
             if op == "update_bible":
-                patch = action.get("patch") or {}
+                raw_patch = action.get("patch") or action.get("bible") or action
+                patch = _normalize_bible_patch(raw_patch)
+                # Also allow top-level fields on the action itself
+                if not patch:
+                    patch = _normalize_bible_patch(action)
+                if not patch:
+                    skipped.append("update_bible 缺少可识别的设定字段（world/background/outline/themes/notes）")
+                    continue
                 current_bible = next_project.bible.model_dump() if next_project.bible else {}
                 next_project.bible = StoryBible.model_validate({**current_bible, **patch})
                 if "world" in patch:
                     next_project.lore = patch["world"]
-                applied.append("更新故事设定")
+                applied.append("更新故事设定：" + "、".join(patch.keys()))
                 continue
 
             if op == "update_meta":
@@ -654,6 +613,209 @@ def apply_agent_actions(
                 applied.append("更新作品信息")
                 continue
 
+            if op == "propose_character_link":
+                from_ref = action.get("fromRef") or action.get("fromId") or ""
+                to_ref = action.get("toRef") or action.get("toId") or ""
+                a = _find_character(next_project, str(from_ref))
+                b = _find_character(next_project, str(to_ref))
+                if not a or not b:
+                    skipped.append(f"提议关系失败: {from_ref} → {to_ref}")
+                    continue
+                label = str(action.get("label") or "关系")
+                quote = action.get("quote")
+                evidence = [
+                    {
+                        "source": "agent",
+                        "quote": str(quote)[:200] if quote else None,
+                    }
+                ]
+                inbox_proposals.append(
+                    {
+                        "kind": "character_link",
+                        "payload": {
+                            "fromId": a.id,
+                            "toId": b.id,
+                            "label": label,
+                        },
+                        "evidence": evidence,
+                        "dedupe_key": link_dedupe_key(a.id, b.id, label),
+                    }
+                )
+                applied.append(f"提议关系 {a.displayName}—{label}→{b.displayName}")
+                continue
+
+            if op == "propose_timeline_event":
+                title = str(action.get("title") or "").strip()
+                if not title:
+                    skipped.append("propose_timeline_event 缺少 title")
+                    continue
+                chapter_ref = action.get("chapterRef")
+                if chapter_ref:
+                    ch = _find_chapter(next_project, str(chapter_ref))
+                    chapter_ref = ch.id if ch else chapter_ref
+                payload = {
+                    "title": title,
+                    "when": action.get("when"),
+                    "summary": action.get("summary"),
+                    "chapterRef": chapter_ref,
+                    "order": action.get("order"),
+                }
+                inbox_proposals.append(
+                    {
+                        "kind": "timeline_event",
+                        "payload": payload,
+                        "evidence": [{"source": "agent", "quote": title}],
+                        "dedupe_key": timeline_dedupe_key(title, chapter_ref),
+                    }
+                )
+                applied.append(f"提议时间线「{title}」")
+                continue
+
+            if op == "add_character_link":
+                from_ref = action.get("fromRef") or action.get("fromId") or ""
+                to_ref = action.get("toRef") or action.get("toId") or ""
+                a = _find_character(next_project, str(from_ref))
+                b = _find_character(next_project, str(to_ref))
+                if not a or not b:
+                    skipped.append(f"添加关系失败: {from_ref} → {to_ref}")
+                    continue
+                label = str(action.get("label") or "关系")
+                before = len(next_project.characterLinks or [])
+                next_project = accept_character_link(
+                    next_project,
+                    from_id=a.id,
+                    to_id=b.id,
+                    label=label,
+                    evidence=[{"source": "agent"}],
+                    sync_cards=True,
+                )
+                if len(next_project.characterLinks or []) == before:
+                    skipped.append(f"关系已存在: {label}")
+                else:
+                    applied.append(f"写入关系 {a.displayName}—{label}→{b.displayName}")
+                continue
+
+            if op == "update_character_link":
+                link_id = action.get("id") or action.get("ref")
+                label = action.get("label")
+                links = list(next_project.characterLinks or [])
+                hit = next((l for l in links if l.id == link_id), None)
+                if not hit and action.get("fromRef") and action.get("toRef"):
+                    a = _find_character(next_project, str(action.get("fromRef")))
+                    b = _find_character(next_project, str(action.get("toRef")))
+                    if a and b:
+                        hit = next(
+                            (
+                                l
+                                for l in links
+                                if l.fromId == a.id and l.toId == b.id
+                            ),
+                            None,
+                        )
+                if not hit:
+                    skipped.append("未找到角色关系边")
+                    continue
+                patch: Dict[str, Any] = {}
+                if label:
+                    patch["label"] = label
+                next_project.characterLinks = [
+                    l.model_copy(update=patch) if l.id == hit.id else l for l in links
+                ]
+                if label and should_weak_sync_label(str(label)):
+                    next_project = weak_sync_relationships(
+                        next_project, hit.fromId, hit.toId, str(label)
+                    )
+                applied.append("更新角色关系")
+                continue
+
+            if op == "delete_character_link":
+                link_id = action.get("id") or action.get("ref")
+                links = list(next_project.characterLinks or [])
+                if link_id:
+                    next_project.characterLinks = [
+                        l for l in links if l.id != link_id
+                    ]
+                else:
+                    a = _find_character(
+                        next_project, str(action.get("fromRef") or "")
+                    )
+                    b = _find_character(
+                        next_project, str(action.get("toRef") or "")
+                    )
+                    if not a or not b:
+                        skipped.append("未找到要删除的关系")
+                        continue
+                    next_project.characterLinks = [
+                        l
+                        for l in links
+                        if not (l.fromId == a.id and l.toId == b.id)
+                    ]
+                applied.append("删除角色关系")
+                continue
+
+            if op == "add_timeline_event":
+                title = str(action.get("title") or "").strip()
+                if not title:
+                    skipped.append("add_timeline_event 缺少 title")
+                    continue
+                chapter_ref = action.get("chapterRef")
+                if chapter_ref:
+                    ch = _find_chapter(next_project, str(chapter_ref))
+                    chapter_ref = ch.id if ch else chapter_ref
+                before = len(next_project.timeline or [])
+                next_project = accept_timeline_event(
+                    next_project,
+                    title=title,
+                    when=action.get("when"),
+                    summary=action.get("summary"),
+                    chapter_ref=chapter_ref,
+                    order=action.get("order"),
+                    evidence=[{"source": "agent"}],
+                )
+                if len(next_project.timeline or []) == before:
+                    skipped.append(f"时间线已存在: {title}")
+                else:
+                    applied.append(f"写入时间线「{title}」")
+                continue
+
+            if op == "update_timeline_event":
+                ref = action.get("id") or action.get("ref")
+                events = list(next_project.timeline or [])
+                hit = next((e for e in events if e.id == ref or e.title == ref), None)
+                if not hit:
+                    skipped.append("未找到时间线节点")
+                    continue
+                patch = {
+                    k: action[k]
+                    for k in ("title", "when", "summary", "chapterRef", "order")
+                    if k in action and action[k] is not None
+                }
+                next_project.timeline = [
+                    e.model_copy(update=patch) if e.id == hit.id else e for e in events
+                ]
+                applied.append("更新时间线节点")
+                continue
+
+            if op == "delete_timeline_event":
+                ref = action.get("id") or action.get("ref") or action.get("title")
+                events = list(next_project.timeline or [])
+                next_project.timeline = [
+                    e for e in events if e.id != ref and e.title != ref
+                ]
+                if len(next_project.timeline) == len(events):
+                    skipped.append("未找到要删除的时间线节点")
+                else:
+                    applied.append("删除时间线节点")
+                continue
+
+            if op == "scan_facts":
+                scan_request = {
+                    "chapterRef": action.get("chapterRef"),
+                    "includePaste": bool(action.get("includePaste")),
+                }
+                applied.append("请求扫描事实")
+                continue
+
             skipped.append(f"未知动作: {op if op else '?'}")
         except Exception as err:  # noqa: BLE001 - mirror TS catch-all
             op_str = str(action.get("op") or "?")
@@ -661,4 +823,10 @@ def apply_agent_actions(
             skipped.append(f"{op_str} 执行失败: {detail[:120]}")
 
     next_project.updatedAt = datetime.now(timezone.utc).isoformat()
-    return ApplyAgentResult(project=next_project, applied=applied, skipped=skipped)
+    return ApplyAgentResult(
+        project=next_project,
+        applied=applied,
+        skipped=skipped,
+        inbox_proposals=inbox_proposals,
+        scan_request=scan_request,
+    )

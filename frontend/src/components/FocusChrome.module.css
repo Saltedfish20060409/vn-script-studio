@@ -1,0 +1,352 @@
+.setupBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(6, 8, 12, 0.55);
+  animation: focusFade 220ms var(--ease-out, ease);
+}
+
+.setup {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.85rem 1rem;
+  align-items: end;
+  width: min(480px, 100%);
+  padding: 1.35rem 1.25rem 1.2rem;
+  border: 2px solid var(--line);
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-lg);
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%);
+  animation: focusRise 280ms var(--ease-out, ease);
+}
+
+.setupMascot {
+  grid-row: 1 / span 8;
+  align-self: end;
+}
+
+.setupMain {
+  min-width: 0;
+}
+
+.setupIdx {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+}
+
+.setupTitle {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.setupLead {
+  margin: 0 0 1rem;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.fieldset {
+  margin: 0 0 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border: 2px solid var(--line);
+}
+
+.fieldset legend {
+  padding: 0 0.35rem;
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.radio {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.35rem 0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.presets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 0.85rem;
+}
+
+.presetsLabel {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.presetRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.preset,
+.presetOn {
+  min-width: 44px;
+  min-height: 40px;
+  padding: 0.35rem 0.65rem;
+  border: 2px solid var(--line);
+  background: var(--field-bg);
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.presetOn {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.custom input {
+  width: 4.5rem;
+  min-height: 40px;
+  padding: 0.35rem 0.5rem;
+  border: 2px solid var(--line) !important;
+  border-radius: var(--radius-sm) !important;
+  background: var(--input-bg) !important;
+  font-family: var(--font-mono);
+}
+
+.setupActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.ghost,
+.primary {
+  min-height: 44px;
+  padding: 0.45rem 0.9rem;
+  border: 2px solid var(--line);
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.ghost {
+  background: var(--field-bg);
+}
+
+.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--shadow);
+}
+
+.setupHint {
+  margin: 0.75rem 0 0;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.bar {
+  position: fixed;
+  z-index: 95;
+  top: 0.75rem;
+  right: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.55rem 0.45rem 0.65rem;
+  border: 2px solid var(--line);
+  background: var(--panel-bg);
+  box-shadow: var(--shadow);
+  animation: focusRise 260ms var(--ease-out, ease);
+}
+
+.barIdx {
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+}
+
+.barClock {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  min-width: 4.5rem;
+}
+
+.barMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.barLabel {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  letter-spacing: 0.06em;
+}
+
+.barStat {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.barExit {
+  min-height: 36px;
+  padding: 0.3rem 0.65rem;
+  border: 2px solid var(--line);
+  background: var(--field-bg);
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.barEnded .barClock,
+.barEnded .barLabel {
+  color: var(--accent);
+}
+
+.barFlash {
+  animation: focusFlash 1.1s var(--ease-out, ease);
+}
+
+.restBanner {
+  position: fixed;
+  z-index: 96;
+  left: 50%;
+  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  width: min(520px, calc(100vw - 1.5rem));
+  padding: 0.7rem 0.85rem;
+  border: 2px solid var(--line);
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-lg);
+  animation: focusRise 260ms var(--ease-out, ease);
+}
+
+.restIdx {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+}
+
+.restBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+  min-width: 8rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.restBody strong {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+
+@media (max-width: 720px) {
+  .bar {
+    top: max(0.5rem, env(safe-area-inset-top, 0px));
+    right: max(0.5rem, env(safe-area-inset-right, 0px));
+    left: max(0.5rem, env(safe-area-inset-left, 0px));
+    width: auto;
+    flex-wrap: wrap;
+  }
+
+  .setup,
+  .preset,
+  .presetOn,
+  .ghost,
+  .primary,
+  .barExit {
+    min-height: 44px;
+  }
+}
+
+@keyframes focusFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes focusRise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) skewX(-1deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes focusFlash {
+  0%,
+  100% {
+    box-shadow: var(--shadow);
+  }
+  35% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent),
+      var(--shadow-lg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setupBackdrop,
+  .setup,
+  .bar,
+  .barFlash {
+    animation: none !important;
+  }
+}

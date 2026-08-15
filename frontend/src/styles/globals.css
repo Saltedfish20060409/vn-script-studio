@@ -1,4 +1,4 @@
-﻿:root,
+:root,
 :root[data-theme="day"] {
   /* Persona day: white slash + Klein blue */
   --ink: #0a0e1a;
@@ -30,9 +30,10 @@
   --page-bg:
     linear-gradient(125deg, #ffffff 0%, #ffffff 42%, transparent 42.2%),
     linear-gradient(180deg, #eef2fb 0%, var(--paper) 55%, #e2e8f4 100%);
-  --input-bg: #ffffff;
-  --panel-bg: rgba(255, 255, 255, 0.94);
-  --field-bg: rgba(255, 255, 255, 0.82);
+  --input-bg: color-mix(in srgb, #dce4f4 42%, transparent);
+  --panel-bg: color-mix(in srgb, #f0f3fa 92%, #002fa7);
+  --field-bg: color-mix(in srgb, #d8e0f0 48%, transparent);
+  --chrome-strip: url("/ui/ui-chrome-strip.png");
   --font-scale: 1;
   --bg-custom-opacity: 0.35;
   --bg-custom-scale: 1;
@@ -48,6 +49,41 @@
   --glass-blur: 12px;
   --slash: #002fa7;
   --shard: #e11d48;
+  /* Phase-8 rail tokens — solid panel chrome (no frost slab) */
+  --rail-fill: color-mix(in srgb, var(--accent) 8%, var(--panel-bg));
+  --rail-fill-soft: color-mix(in srgb, var(--accent) 5%, var(--panel-bg));
+  --rail-fill-strong: color-mix(in srgb, var(--accent) 14%, var(--panel-bg));
+  --rail-border: color-mix(in srgb, var(--accent) 28%, var(--line));
+  --rail-border-soft: color-mix(in srgb, var(--accent) 18%, var(--line));
+  --rail-blur: none;
+  --rail-grad: linear-gradient(
+    105deg,
+    color-mix(in srgb, var(--accent) 12%, var(--panel-bg)) 0%,
+    var(--panel-bg) 58%
+  );
+  --card-fill: var(--panel-bg);
+  --slash-in: menuEnter 280ms var(--ease-out);
+}
+
+@keyframes menuEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) skewX(-1.2deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.vnss-slash-in {
+  animation: var(--slash-in);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vnss-slash-in {
+    animation: none !important;
+  }
 }
 
 :root[data-theme="night"] {
@@ -70,11 +106,24 @@
   --page-bg:
     radial-gradient(900px 480px at 12% -8%, rgba(225, 29, 72, 0.22), transparent 55%),
     linear-gradient(155deg, #1a080e 0%, var(--paper) 48%, #050203 100%);
-  --input-bg: #12080c;
-  --panel-bg: rgba(18, 8, 12, 0.92);
-  --field-bg: rgba(12, 6, 8, 0.75);
+  --input-bg: color-mix(in srgb, #1a0a10 55%, transparent);
+  --panel-bg: color-mix(in srgb, #160a0f 90%, #e11d48);
+  --field-bg: color-mix(in srgb, #1c0c12 52%, transparent);
+  --chrome-strip: url("/ui/ui-chrome-strip.png");
   --slash: #e11d48;
   --shard: #ff3d7a;
+  --rail-fill: color-mix(in srgb, var(--accent) 10%, var(--panel-bg));
+  --rail-fill-soft: color-mix(in srgb, var(--accent) 6%, var(--panel-bg));
+  --rail-fill-strong: color-mix(in srgb, var(--accent) 16%, var(--panel-bg));
+  --rail-border: color-mix(in srgb, var(--accent) 36%, var(--line));
+  --rail-border-soft: color-mix(in srgb, var(--accent) 22%, var(--line));
+  --rail-blur: none;
+  --rail-grad: linear-gradient(
+    105deg,
+    color-mix(in srgb, var(--accent) 14%, var(--panel-bg)) 0%,
+    var(--panel-bg) 58%
+  );
+  --card-fill: var(--panel-bg);
 }
 
 * {
@@ -135,15 +184,28 @@ html[data-custom-bg="1"][data-panel-glass="mist"] {
   --danger: #be123c;
   --ring: #002fa7;
   --on-accent: #f8fafc;
-  --panel-bg: rgba(255, 255, 255, 0.86);
-  --field-bg: rgba(255, 255, 255, 0.78);
-  --paper-deep: rgba(230, 235, 244, 0.82);
-  --input-bg: rgba(255, 255, 255, 0.92);
+  --panel-bg: color-mix(in srgb, #f0f3fa 52%, transparent);
+  --field-bg: color-mix(in srgb, #d8e0f0 32%, transparent);
+  --paper-deep: rgba(230, 235, 244, 0.42);
+  --input-bg: color-mix(in srgb, #dce4f4 36%, transparent);
+  --chrome-strip: url("/ui/ui-chrome-strip.png");
   --shadow-sm: 0 1px 0 rgba(10, 14, 26, 0.1);
   --shadow: 4px 4px 0 rgba(0, 47, 167, 0.12);
   --glass-blur: 14px;
   --slash: #002fa7;
   --shard: #e11d48;
+  --rail-fill: color-mix(in srgb, var(--accent) 8%, var(--panel-bg));
+  --rail-fill-soft: color-mix(in srgb, var(--accent) 5%, var(--panel-bg));
+  --rail-fill-strong: color-mix(in srgb, var(--accent) 12%, var(--panel-bg));
+  --rail-border: color-mix(in srgb, var(--accent) 26%, var(--line));
+  --rail-border-soft: color-mix(in srgb, var(--accent) 18%, var(--line));
+  --rail-blur: none;
+  --rail-grad: linear-gradient(
+    105deg,
+    color-mix(in srgb, var(--accent) 10%, var(--panel-bg)) 0%,
+    var(--panel-bg) 58%
+  );
+  --card-fill: var(--panel-bg);
 }
 
 html[data-custom-bg="1"][data-panel-glass="ink"] {
@@ -157,16 +219,28 @@ html[data-custom-bg="1"][data-panel-glass="ink"] {
   --danger: #fb7185;
   --ring: #e11d48;
   --on-accent: #fff5f7;
-  --panel-bg: rgba(18, 8, 12, 0.78);
-  --field-bg: rgba(12, 6, 8, 0.7);
-  --paper-deep: rgba(10, 4, 6, 0.72);
-  --input-bg: rgba(18, 8, 12, 0.85);
+  --panel-bg: rgba(18, 8, 12, 0.55);
+  --field-bg: rgba(12, 6, 8, 0.28);
+  --paper-deep: rgba(10, 4, 6, 0.48);
+  --input-bg: rgba(18, 8, 12, 0.32);
   --shadow-sm: 0 1px 0 rgba(0, 0, 0, 0.45);
   --shadow: 4px 4px 0 rgba(225, 29, 72, 0.28);
   --shadow-lg: 8px 8px 0 rgba(225, 29, 72, 0.34);
   --glass-blur: 16px;
   --slash: #e11d48;
   --shard: #ff3d7a;
+  --rail-fill: color-mix(in srgb, var(--accent) 10%, var(--panel-bg));
+  --rail-fill-soft: color-mix(in srgb, var(--accent) 6%, var(--panel-bg));
+  --rail-fill-strong: color-mix(in srgb, var(--accent) 16%, var(--panel-bg));
+  --rail-border: color-mix(in srgb, var(--accent) 32%, var(--line));
+  --rail-border-soft: color-mix(in srgb, var(--accent) 22%, var(--line));
+  --rail-blur: none;
+  --rail-grad: linear-gradient(
+    105deg,
+    color-mix(in srgb, var(--accent) 12%, var(--panel-bg)) 0%,
+    var(--panel-bg) 58%
+  );
+  --card-fill: var(--panel-bg);
 }
 
 .vnss-wallpaper {
@@ -285,10 +359,22 @@ input:not([type="color"]):not([type="range"]):not([type="file"]),
 textarea,
 select,
 .field-transparent {
-  background: var(--field-bg) !important;
-  border: 1px solid var(--line);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--accent) 6%, transparent),
+      transparent 55%
+    ),
+    var(--field-bg) !important;
+  border: 2px solid var(--line);
   color: var(--ink);
   border-radius: var(--radius-sm);
+  backdrop-filter: blur(10px) saturate(1.12);
+  -webkit-backdrop-filter: blur(10px) saturate(1.12);
+  box-shadow:
+    var(--shadow-sm),
+    inset 3px 0 0 color-mix(in srgb, var(--accent) 22%, transparent);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
   transition:
     border-color var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out),
@@ -297,7 +383,15 @@ select,
 
 input:not([type="color"]):not([type="range"]):not([type="file"]):focus-visible,
 textarea:focus-visible,
-select:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow:
+    var(--shadow-sm),
+    0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent),
+    inset 3px 0 0 var(--accent);
+}
+
 button:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--ring);

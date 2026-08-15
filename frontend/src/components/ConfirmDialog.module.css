@@ -1,0 +1,176 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(6, 8, 12, 0.55);
+  animation: fade 180ms var(--ease-out, ease);
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.dialog {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem 1.15rem;
+  width: min(480px, 100%);
+  padding: 1.15rem 1.2rem 1rem;
+  border: 2px solid var(--line);
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-lg);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+  color: var(--ink);
+  animation: rise 260ms var(--ease-out, ease);
+}
+
+.danger {
+  box-shadow:
+    var(--shadow-lg),
+    0 0 0 2px color-mix(in srgb, var(--danger) 35%, transparent);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px) skewX(-1deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.mascotCol {
+  align-self: end;
+}
+
+.body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.idx {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+}
+
+.danger .idx {
+  color: var(--danger);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1.25;
+}
+
+.text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+}
+
+.ghost,
+.primary,
+.dangerBtn {
+  min-height: 44px;
+  padding: 0.45rem 1rem;
+  border: 2px solid var(--line);
+  font-family: var(--font-display);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--ink-soft);
+}
+
+.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.dangerBtn {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.hint {
+  margin: 0.15rem 0 0;
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  text-align: right;
+  letter-spacing: 0.04em;
+}
+
+.promptForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.15rem;
+}
+
+.promptInput {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--line);
+  background: var(--field-bg, var(--panel-bg));
+  color: var(--ink);
+  font-family: var(--font-body, inherit);
+  font-size: 0.95rem;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+}
+
+.promptInput:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (max-width: 520px) {
+  .dialog {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .actions {
+    justify-content: center;
+  }
+
+  .hint {
+    text-align: center;
+  }
+}

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from app.core.character_voice.corpus import find_character
 from app.domain.types import VnProject
@@ -77,3 +77,44 @@ def extract_dialogue_candidates(
         "candidates": candidates,
         "count": len(candidates),
     }
+
+
+def format_script_anchors_for_prompt(
+    project: VnProject,
+    character_id: str,
+    *,
+    limit: int = 4,
+    max_chars: int = 700,
+) -> str:
+    """Read-only chapter dialogue anchors for generation (do not copy verbatim)."""
+    try:
+        data = extract_dialogue_candidates(project, character_id=character_id, limit=80)
+    except KeyError:
+        return ""
+    cands = list(data.get("candidates") or [])
+    if not cands:
+        return ""
+    picked = cands[-limit:] if len(cands) > limit else cands
+    parts: List[str] = [
+        "  【剧本锚点】（已写对白，对齐用词与人设习惯；禁止照抄原文）"
+    ]
+    used = len(parts[0])
+    for row in picked:
+        preview = str(row.get("preview") or "").strip()
+        if not preview:
+            lines = row.get("lines") or []
+            self_lines = [
+                str(ln.get("text") or "").strip()
+                for ln in lines
+                if isinstance(ln, dict) and str(ln.get("speaker") or "") == "self"
+            ]
+            preview = next((t for t in self_lines if t), "")
+        if not preview:
+            continue
+        title = str(row.get("chapterTitle") or row.get("chapterId") or "章")
+        bit = f"  · 〔{title}〕{preview}"
+        if used + len(bit) > max_chars:
+            break
+        parts.append(bit)
+        used += len(bit)
+    return "\n".join(parts) if len(parts) > 1 else ""

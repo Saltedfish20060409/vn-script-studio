@@ -96,31 +96,42 @@ html[data-theme="night"] .slash {
 
 .portraitSlot {
   position: absolute;
-  right: 6%;
-  bottom: 12%;
-  width: min(28vw, 200px);
-  height: min(42vw, 300px);
-  border: 2px dashed color-mix(in srgb, var(--line) 70%, var(--accent));
-  background: color-mix(in srgb, var(--panel-bg) 40%, transparent);
+  right: 3%;
+  bottom: 3%;
+  /* room for standee + caption; stay in the right third */
+  width: min(34vw, 280px);
+  height: min(72vh, 560px);
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
   display: grid;
-  place-items: center;
-  transform: skewY(-2deg);
+  place-items: end center;
+  transform: none;
+  /* below brand copy so Script Studio / 副文永不被挡住 */
   z-index: 1;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  overflow: visible;
 }
 
-.portraitSlot span {
-  font-family: var(--font-display);
-  font-size: 0.85rem;
-  letter-spacing: 0.2em;
-  color: var(--ink-soft);
-  writing-mode: vertical-rl;
+.portraitSlot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.portraitSlot:active {
+  transform: translateY(1px);
 }
 
 .heroInner {
   position: relative;
-  z-index: 2;
+  z-index: 4;
   max-width: 28rem;
-  animation: rise 360ms var(--ease-out);
+  /* keep title clear of the standee column */
+  padding-right: min(28vw, 200px);
+  animation: rise 380ms var(--ease-out);
 }
 
 .kicker {
@@ -164,11 +175,13 @@ html[data-theme="night"] .slash {
   position: relative;
   width: min(380px, 100%);
   padding: 1.75rem 1.5rem;
-  border: 2px solid var(--line);
-  background: var(--panel-bg);
+  border: 2px solid var(--rail-border);
+  background: var(--rail-grad);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
-  animation: rise 320ms var(--ease-out) 40ms both;
+  animation: var(--slash-in);
+  backdrop-filter: var(--rail-blur);
+  -webkit-backdrop-filter: var(--rail-blur);
 }
 
 .cardSlash {
@@ -284,7 +297,7 @@ html[data-theme="night"] .slash {
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(14px) skewX(-2deg);
   }
   to {
     opacity: 1;
@@ -304,10 +317,14 @@ html[data-theme="night"] .slash {
   }
 
   .portraitSlot {
-    width: 110px;
-    height: 160px;
-    right: 4%;
-    bottom: 8%;
+    width: min(42vw, 160px);
+    height: min(38vh, 280px);
+    right: 3%;
+    bottom: 4%;
+  }
+
+  .heroInner {
+    padding-right: min(40vw, 140px);
   }
 
   .arc {

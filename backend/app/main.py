@@ -1,4 +1,7 @@
 from contextlib import asynccontextmanager
+import asyncio
+import logging
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +12,7 @@ from app.config import get_settings
 from app.db import Base, engine
 from app.models import (  # noqa: F401
     AgentSession,
+    AnalysisInboxItem,
     ChapterMemoryArchive,
     ChapterMemorySlice,
     LoreCraftCard,
@@ -18,72 +22,34 @@ from app.models import (  # noqa: F401
     UserSettings,
 )
 
+logger = logging.getLogger(__name__)
 
-async def _ensure_agent_session_schema(conn) -> None:
-    """Dev-friendly migrate: multi-conversation per project."""
-    # Drop legacy one-session-per-project uniqueness (constraint and/or index).
-    await conn.execute(
-        text(
-            """
-            DO $$
-            BEGIN
-              IF EXISTS (
-                SELECT 1 FROM pg_constraint
-                WHERE conname = 'agent_sessions_project_id_key'
-              ) THEN
-                ALTER TABLE agent_sessions
-                  DROP CONSTRAINT agent_sessions_project_id_key;
-              END IF;
-            END $$;
-            """
-        )
-    )
-    await conn.execute(
-        text(
-            """
-            DROP INDEX IF EXISTS agent_sessions_project_id_key
-            """
-        )
-    )
-    # Recreate as non-unique if a legacy unique index remains under this name
-    await conn.execute(
-        text(
-            """
-            DROP INDEX IF EXISTS ix_agent_sessions_project_id
-            """
-        )
-    )
-    await conn.execute(
-        text(
-            """
-            ALTER TABLE IF EXISTS agent_sessions
-              ADD COLUMN IF NOT EXISTS title VARCHAR(255) DEFAULT '新对话'
-            """
-        )
-    )
-    await conn.execute(
-        text(
-            """
-            ALTER TABLE IF EXISTS agent_sessions
-              ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()
-            """
-        )
-    )
-    await conn.execute(
-        text(
-            """
-            CREATE INDEX IF NOT EXISTS ix_agent_sessions_project_id
-              ON agent_sessions (project_id)
-            """
-        )
-    )
+
+def _alembic_upgrade_sync() -> None:
+    from alembic import command
+    from alembic.config import Config
+
+    root = Path(__file__).resolve().parents[1]
+    cfg = Config(str(root / "alembic.ini"))
+    command.upgrade(cfg, "head")
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    try:
+        await asyncio.to_thread(_alembic_upgrade_sync)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("alembic upgrade skipped/failed: %s", exc)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        await _ensure_agent_session_schema(conn)
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE IF EXISTS agent_sessions
+                  ADD COLUMN IF NOT EXISTS title VARCHAR(255) DEFAULT '新对话'
+                """
+            )
+        )
     yield
 
 

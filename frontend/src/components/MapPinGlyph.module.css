@@ -1,0 +1,55 @@
+.stamp {
+  --stamp-color: var(--accent);
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--ink);
+  line-height: 0;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.sm {
+  width: 22px;
+  height: 22px;
+}
+
+.md {
+  width: 44px;
+  height: 44px;
+}
+
+.lg {
+  width: 56px;
+  height: 56px;
+}
+
+.plate {
+  fill: color-mix(in srgb, var(--stamp-color) 22%, var(--panel-bg, #f0f3fa));
+  stroke: var(--line, #1a2338);
+  stroke-width: 2.2;
+}
+
+.shard {
+  fill: var(--shard, var(--accent-hot, #e11d48));
+  stroke: none;
+}
+
+.mark {
+  color: var(--stamp-color);
+}
+
+.active .plate {
+  fill: color-mix(in srgb, var(--stamp-color) 38%, var(--panel-bg, #f0f3fa));
+  stroke: var(--stamp-color);
+  stroke-width: 2.6;
+}
+
+.active .mark {
+  color: var(--ink);
+}

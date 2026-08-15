@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
+import { ConfirmProvider } from "./components/ConfirmDialog";
+import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 import LoginPage from "./pages/LoginPage";
 import SharePage from "./pages/SharePage";
 import { StudioApp } from "./components/StudioApp";
@@ -21,19 +23,23 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <AuthProvider>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/share/:token" element={<SharePage />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <StudioApp />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <ConfirmProvider>
+        <StudioErrorBoundary label="应用根">
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/share/:token" element={<SharePage />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <StudioApp />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+        </StudioErrorBoundary>
+      </ConfirmProvider>
     </AuthProvider>
   );
 }

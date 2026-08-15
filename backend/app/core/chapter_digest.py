@@ -131,6 +131,25 @@ def digest_all_chapters(project: VnProject) -> List[ChapterDigest]:
     return [make_chapter_digest(ch, project.characters) for ch in project.chapters]
 
 
+def refresh_chapter_index(project: VnProject) -> VnProject:
+    """Recompute extractive chapterIndex on the project blob (local, no LLM)."""
+    from app.domain.types import ChapterIndexEntry
+
+    entries = [
+        ChapterIndexEntry(
+            chapterId=d.chapterId,
+            title=d.title,
+            hash=d.hash,
+            synopsis=d.synopsis,
+            speakers=list(d.speakers),
+            openHook=d.openHook,
+            closeHook=d.closeHook,
+        )
+        for d in digest_all_chapters(project)
+    ]
+    return project.model_copy(update={"chapterIndex": entries})
+
+
 def _score_text(hay: str, tokens: List[str]) -> int:
     if not tokens or not hay:
         return 0

@@ -45,6 +45,10 @@ async def synthesize_voice_mind(
             f"axis={s.axis or '?'} hyp={s.hypothesis or ''} :: {lines}"
         )
     rejects = [str(x).strip() for x in (char.voiceRejectNotes or []) if str(x).strip()]
+    prefers = [str(x).strip() for x in (char.voicePreferNotes or []) if str(x).strip()]
+    from app.core.character_voice.corpus import confirmed_axes
+
+    dirs = confirmed_axes(char)
 
     system = (
         "你是角色思维包蒸馏助手。根据作者挑选的正例对白，写一张**轻量角色思维包**（中文 markdown）。\n"
@@ -52,6 +56,7 @@ async def synthesize_voice_mind(
         "## 视角一句话\n## 心智模型\n## 表达 DNA\n## 决策启发式\n## 审阅时问什么\n"
         "## 反模式\n## 诚实边界\n"
         "要求：可操作、短句条目、面向视觉小说可演对白；禁止大段原文照抄正例；"
+        "已确认方向与作者【偏好】优先写入「表达 DNA」与「心智模型」；忌讳写入「反模式」；"
         "诚实边界写明此卡非真人、服从工程 style_guide 与角色事实卡。\n"
         "只输出 markdown 正文，不要包 JSON。"
     )
@@ -61,8 +66,10 @@ async def synthesize_voice_mind(
             f"语气：{char.voice or ''}",
             f"简介：{char.bio or ''}",
             f"关系：{char.relationships or ''}",
+            f"已确认方向：{'、'.join(dirs) if dirs else '（尚无）'}",
             "正例：",
             *samples_txt[:24],
+            "偏好笔记：" + ("；".join(prefers[-10:]) if prefers else "（无）"),
             "忌讳笔记：" + ("；".join(rejects[-8:]) if rejects else "（无）"),
         ]
     )

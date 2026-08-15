@@ -81,7 +81,7 @@ def build_role_system(role: str, extra: str = "", project=None) -> str:
 
         skill = load_style_skill()
         block += "\n\n" + skill.prompt_block(max_chars=2400)
-    except Exception:
+    except ImportError:
         pass
     try:
         from app.core.mentors import (
@@ -104,7 +104,7 @@ def build_role_system(role: str, extra: str = "", project=None) -> str:
             )
         if mentor:
             block += "\n\n" + mentor
-    except Exception:
+    except ImportError:
         pass
     if extra.strip():
         block += "\n\n## 本轮追加\n" + extra.strip()

@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   applySettingsToDom,
   type AppSettings,
   type PanelGlass,
   type ThemeMode,
 } from "../lib/settings";
+import { MascotFigure } from "./MascotFigure";
+import { mascotLine } from "../lib/mascotCopy";
 import styles from "./SettingsModal.module.css";
 
 type Props = {
@@ -23,6 +25,7 @@ function BgPanPreview({
   panX,
   panY,
   onPan,
+  onHoldChange,
 }: {
   image: string;
   scale: number;
@@ -30,6 +33,7 @@ function BgPanPreview({
   panX: number;
   panY: number;
   onPan: (x: number, y: number) => void;
+  onHoldChange?: (holding: boolean) => void;
 }) {
   const drag = useRef<{
     startX: number;
@@ -37,10 +41,14 @@ function BgPanPreview({
     originX: number;
     originY: number;
   } | null>(null);
-  const [dragging, setDragging] = useState(false);
+  const [holding, setHolding] = useState(false);
 
   useEffect(() => {
-    if (!dragging) return;
+    onHoldChange?.(holding);
+  }, [holding, onHoldChange]);
+
+  useEffect(() => {
+    if (!holding) return;
     const onMove = (e: PointerEvent) => {
       if (!drag.current) return;
       const dx = e.clientX - drag.current.startX;
@@ -49,15 +57,17 @@ function BgPanPreview({
     };
     const onUp = () => {
       drag.current = null;
-      setDragging(false);
+      setHolding(false);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
     };
-  }, [dragging, onPan]);
+  }, [holding, onPan]);
 
   return (
     <div className={styles.bgPreviewWrap}>
@@ -68,7 +78,7 @@ function BgPanPreview({
           backgroundSize: `${scale * 100}%`,
           backgroundPosition: `calc(50% + ${panX}px) calc(50% + ${panY}px)`,
           opacity,
-          cursor: dragging ? "grabbing" : "grab",
+          cursor: holding ? "grabbing" : "grab",
         }}
         onPointerDown={(e) => {
           e.preventDefault();
@@ -78,12 +88,14 @@ function BgPanPreview({
             originX: panX,
             originY: panY,
           };
-          setDragging(true);
+          setHolding(true);
         }}
         role="presentation"
-        title="拖动调整取景区"
+        title="按住并拖动以调整取景区"
       />
-      <p className={styles.bgDragHint}>在预览区拖动以平移背景取景</p>
+      <p className={styles.bgDragHint}>
+        按住预览区可平移取景；松手前旁白会一直陪着。
+      </p>
     </div>
   );
 }
@@ -91,15 +103,31 @@ function BgPanPreview({
 export function SettingsModal({ open, onClose, settings, onChange }: Props) {
   const [pane, setPane] = useState<Pane>("theme");
   const fileRef = useRef<HTMLInputElement>(null);
+  const idleLineRef = useRef(mascotLine("settings"));
+  const panLineRef = useRef(mascotLine("settingsPan"));
+  const [holdingBg, setHoldingBg] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setHoldingBg(false);
+      return;
+    }
+    idleLineRef.current = mascotLine("settings");
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  const onBgHold = useCallback((holding: boolean) => {
+    setHoldingBg((prev) => {
+      if (holding && !prev) {
+        panLineRef.current = mascotLine("settingsPan");
+      }
+      return holding;
+    });
+  }, []);
 
   if (!open) return null;
 
@@ -131,6 +159,8 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
     reader.readAsDataURL(file);
   }
 
+  const mascotText = holdingBg ? panLineRef.current : idleLineRef.current;
+
   return (
     <div className={styles.backdrop} onClick={onClose} role="presentation">
       <div
@@ -140,9 +170,10 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
         aria-label="设置"
       >
         <header className={styles.head}>
+          <div className={styles.headBanner} aria-hidden />
           <h2>
             <span className={styles.headIdx} aria-hidden>
-              ST
+              CFG
             </span>
             设置
           </h2>
@@ -154,16 +185,19 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
           <nav className={styles.nav}>
             {(
               [
-                ["theme", "外观"],
-                ["bg", "工具背景"],
+                ["theme", "01", "外观"],
+                ["bg", "02", "工具背景"],
               ] as const
-            ).map(([id, label]) => (
+            ).map(([id, idx, label]) => (
               <button
                 key={id}
                 type="button"
                 className={pane === id ? styles.navActive : styles.navBtn}
                 onClick={() => setPane(id)}
               >
+                <span className={styles.navIdx} aria-hidden>
+                  {idx}
+                </span>
                 {label}
               </button>
             ))}
@@ -278,6 +312,7 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                     panX={settings.bgPanX}
                     panY={settings.bgPanY}
                     onPan={(bgPanX, bgPanY) => patch({ bgPanX, bgPanY })}
+                    onHoldChange={onBgHold}
                   />
                 ) : (
                   <p className={styles.note}>尚未导入图片。</p>
@@ -372,6 +407,14 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
               </div>
             )}
           </div>
+        </div>
+        <div className={styles.mascotDock} aria-hidden>
+          <MascotFigure
+            className={styles.mascotFigure}
+            size="md"
+            mood={holdingBg ? "cheer" : "idle"}
+            line={mascotText}
+          />
         </div>
       </div>
     </div>

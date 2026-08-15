@@ -65,6 +65,8 @@ class Character(BaseModel):
     voiceMind: Optional[str] = None
     # Short notes from rejected variants (anti-patterns)
     voiceRejectNotes: Optional[List[str]] = None
+    # Why a pick felt right (preference chips / free text)
+    voicePreferNotes: Optional[List[str]] = None
 
 
 # --- ScriptBlock ------------------------------------------------------------
@@ -205,20 +207,7 @@ LOCATION_RELATION_LABELS: Dict[str, str] = {
     "other": "其他",
 }
 
-MapStyleId = Literal[
-    "campus",
-    "romance",
-    "cyber",
-    "isekai",
-    "urban",
-    "mystery",
-    "horror",
-    "ink",  # deprecated, migrated
-    "soft",
-    "neon",
-    "parchment",
-    "slate",
-]
+MapStyleId = Literal["default"]
 
 MapLineStyle = Literal["solid", "dashed", "dotted", "double", "rail", "magic"]
 
@@ -349,8 +338,36 @@ class ProjectSnapshot(BaseModel):
     id: str
     label: str
     createdAt: str
-    # Full project JSON string to avoid circular typing weight
-    payload: str
+    # dict (content-addressed) or legacy JSON string
+    payload: Any
+    contentHash: Optional[str] = None
+
+
+class ChapterIndexEntry(BaseModel):
+    """Lightweight per-chapter digest stored on the project blob."""
+
+    model_config = ConfigDict(extra="allow")
+
+    chapterId: str
+    title: str
+    hash: str
+    synopsis: str = ""
+    speakers: List[str] = Field(default_factory=list)
+    openHook: str = ""
+    closeHook: str = ""
+
+
+class FactEvidence(BaseModel):
+    """Provenance for an accepted or proposed analysis fact."""
+
+    model_config = ConfigDict(extra="allow")
+
+    # script | bible | card | paste | upload | agent
+    source: str
+    chapterId: Optional[str] = None
+    quote: Optional[str] = None
+    field: Optional[str] = None
+    fingerprint: Optional[str] = None
 
 
 class CharacterLink(BaseModel):
@@ -360,6 +377,10 @@ class CharacterLink(BaseModel):
     fromId: CharacterId
     toId: CharacterId
     label: str
+    evidence: Optional[List[FactEvidence]] = None
+    stale: Optional[bool] = None
+    staleReason: Optional[str] = None
+    acceptedAt: Optional[str] = None
 
 
 class TimelineEvent(BaseModel):
@@ -372,6 +393,22 @@ class TimelineEvent(BaseModel):
     chapterRef: Optional[str] = None
     summary: Optional[str] = None
     order: float
+    evidence: Optional[List[FactEvidence]] = None
+    stale: Optional[bool] = None
+    staleReason: Optional[str] = None
+    acceptedAt: Optional[str] = None
+
+
+class AnalysisMeta(BaseModel):
+    """Lightweight fingerprints for incremental fact scanning (in project JSON)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    chapterFingerprints: Optional[Dict[str, str]] = None
+    bibleFingerprint: Optional[str] = None
+    characterFingerprints: Optional[Dict[str, str]] = None
+    lastScanAt: Optional[str] = None
+    lastReconcileAt: Optional[str] = None
 
 
 class VnProject(BaseModel):
@@ -396,12 +433,20 @@ class VnProject(BaseModel):
     variables: Optional[List[GameVariable]] = None
     sprites: Optional[List[SpriteDef]] = None
     snapshots: Optional[List[ProjectSnapshot]] = None
+    # Extractive chapter digests / content hashes (refreshed on save)
+    chapterIndex: Optional[List[ChapterIndexEntry]] = None
     # Plan→Write→Check ledger: chapter facts / character states / foreshadows
     writingLedger: Optional[Dict[str, Any]] = None
+    # Recent harness / pipeline run summaries (capped; for replay & observability)
+    harnessRuns: Optional[List[Dict[str, Any]]] = None
     # Writing mentor packs: activeIds + optional imported customPacks
     writingMentors: Optional[Dict[str, Any]] = None
     # Author lenses (optional multi-perspective review/plot); default off
     authorLenses: Optional[Dict[str, Any]] = None
+    # Fingerprints for analysis fact-bus incremental scan
+    analysisMeta: Optional[AnalysisMeta] = None
+    # Persisted voice-check reports (chapterId + fingerprint; may be stale)
+    voiceReports: Optional[List[Dict[str, Any]]] = None
     # Local read-only share id
     shareId: Optional[str] = None
     updatedAt: str
@@ -471,6 +516,8 @@ class AgentRequest(BaseModel):
     longChapterMemory: Optional[str] = None
     # Moegirl-inspired ACG craft cards (distilled; never paste wiki into script)
     loreCraft: Optional[str] = None
+    # User-uploaded reference docs (already extracted plain text)
+    referenceDocs: Optional[str] = None
     # Writing craft injection: auto | off | lite | full
     craftMode: Optional[str] = None
     # Override project writingMentors.activeIds for this turn (max 2)
@@ -511,3 +558,5 @@ class AgentResponse(BaseModel):
     model: str
     # What context slices were injected (transparency for long-form)
     contextMeta: Optional[AgentContextMeta] = None
+    # Multi-step tool trajectory (thought / tool_call / tool_result / actions / done)
+    trace: Optional[List[Dict[str, Any]]] = None

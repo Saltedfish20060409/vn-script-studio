@@ -4,8 +4,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-import httpx
-
 from app.domain.types import AiRequest, AiResponse, VnProject
 
 from .renpy import project_to_context
@@ -52,9 +50,9 @@ async def run_ai(config: DeepSeekConfig, request: AiRequest) -> AiResponse:
     if not config.apiKey or "your-key" in config.apiKey:
         raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
 
-    base_url = (config.baseUrl or "https://api.deepseek.com").rstrip("/")
-    model = config.model or "deepseek-chat"
+    from app.core.llm_http import chat_completions, content_from_response
 
+    model = config.model or "deepseek-chat"
     user_parts = [
         p
         for p in [
@@ -65,32 +63,14 @@ async def run_ai(config: DeepSeekConfig, request: AiRequest) -> AiResponse:
         if p
     ]
 
-    async with httpx.AsyncClient(timeout=120) as client:
-        res = await client.post(
-            f"{base_url}/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {config.apiKey}",
-            },
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": _build_system_prompt(request.project)},
-                    {"role": "user", "content": "\n\n".join(user_parts)},
-                ],
-                "temperature": 0.8 if request.action == "outline" else 0.7,
-                "stream": False,
-            },
-        )
-
-    if res.status_code >= 400:
-        err_text = res.text
-        raise RuntimeError(f"DeepSeek API {res.status_code}: {err_text[:400]}")
-
-    data = res.json()
-    choices = data.get("choices") or []
-    content = ""
-    if choices:
-        content = ((choices[0] or {}).get("message") or {}).get("content", "") or ""
-        content = content.strip()
-    return AiResponse(content=content, model=data.get("model") or model)
+    res = await chat_completions(
+        config,
+        messages=[
+            {"role": "system", "content": _build_system_prompt(request.project)},
+            {"role": "user", "content": "\n\n".join(user_parts)},
+        ],
+        temperature=0.8 if request.action == "outline" else 0.7,
+        timeout=120,
+    )
+    content, used_model = content_from_response(res)
+    return AiResponse(content=content, model=used_model or model)

@@ -11,10 +11,12 @@ import {
   rejectCharacterVoiceRound,
   synthesizeCharacterVoiceMind,
   workshopChat,
+  type VoiceAxisTag,
   type VoiceScenario,
   type VoiceVariant,
 } from "../api/client";
 import type { VnProject, VoiceCorpusSample } from "../types/vn";
+import { MascotFigure } from "./MascotFigure";
 import styles from "./CharacterWorkshop.module.css";
 
 type Props = {
@@ -43,6 +45,15 @@ type ChatMsg = {
 
 const AXIS_LETTERS = ["A", "B", "C"];
 const GUIDE_STORAGE_KEY = "vnss-workshop-guide-v1";
+
+const WHY_CHIPS = [
+  "更克制",
+  "关系距离对",
+  "用词更像",
+  "节奏对",
+  "情绪对",
+  "思维方式对",
+] as const;
 
 function readGuideDismissed(): boolean {
   try {
@@ -107,7 +118,32 @@ function parseSceneText(text: string): Array<{ speaker: string; text: string }> 
 function ensureCustomScenario(list: VoiceScenario[]): VoiceScenario[] {
   const has = list.some((s) => s.id === "custom");
   if (has) return list;
-  return [...list, { id: "custom", label: "自定义…", prompt: "" }];
+  return [...list, { id: "custom", label: "自定义…", prompt: "", longSuitable: true }];
+}
+
+function promptSlug(prompt: string, maxLen = 16): string {
+  return prompt.replace(/\s+/g, " ").trim().slice(0, maxLen);
+}
+
+const GENERIC_CUSTOM_LABELS = new Set(["", "自定义", "自定义…", "custom"]);
+
+/** Align with backend normalize_scenario_key for coverage display */
+function scenarioCoverageKey(s: VoiceCorpusSample): string {
+  const sid = (s.scenario || "").trim();
+  let label = (s.scenarioLabel || "").trim();
+  if (label.startsWith("长场次·")) label = label.slice("长场次·".length).trim() || label;
+  if (sid.startsWith("custom:")) {
+    let name = sid.slice("custom:".length).trim();
+    if (!name || GENERIC_CUSTOM_LABELS.has(name)) {
+      name = GENERIC_CUSTOM_LABELS.has(label) ? "未命名" : label || "未命名";
+    }
+    return `custom:${name}`;
+  }
+  if (sid === "custom") {
+    const name = GENERIC_CUSTOM_LABELS.has(label) ? "未命名" : label || "未命名";
+    return `custom:${name}`;
+  }
+  return sid || label;
 }
 
 /** 与后端 corpus_stats.readyForMind 对齐的门槛说明 */
@@ -123,7 +159,7 @@ const READY_TARGETS = {
 function uniqueScenarios(corpus: VoiceCorpusSample[]): string[] {
   const ids: string[] = [];
   for (const s of corpus) {
-    const key = (s.scenario || s.scenarioLabel || "").trim();
+    const key = scenarioCoverageKey(s);
     if (key && !ids.includes(key)) ids.push(key);
   }
   return ids;
@@ -210,7 +246,21 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
   const [interviewQuestion, setInterviewQuestion] = useState("");
   const [manualText, setManualText] = useState("");
   const [interviewManual, setInterviewManual] = useState("");
-
+  const [axisTags, setAxisTags] = useState<VoiceAxisTag[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [confirmedAxes, setConfirmedAxes] = useState<string[]>([]);
+  const [unlikeOpen, setUnlikeOpen] = useState(false);
+  const [unlikeText, setUnlikeText] = useState("");
+  const [unlikeAxis, setUnlikeAxis] = useState("");
+  const [unlikeCustomAxis, setUnlikeCustomAxis] = useState("");
+  const [whyOpen, setWhyOpen] = useState(false);
+  const [whyChips, setWhyChips] = useState<string[]>([]);
+  const [whyCustom, setWhyCustom] = useState("");
+  const [pendingAccept, setPendingAccept] = useState<{
+    variant: VoiceVariant;
+    index: number;
+    source: "preference" | "interview";
+  } | null>(null);
   const [corpus, setCorpus] = useState<VoiceCorpusSample[]>([]);
   const [mind, setMind] = useState("");
   const [sampleCount, setSampleCount] = useState(0);
@@ -223,6 +273,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
   const [hasMindPack, setHasMindPack] = useState(false);
   const [showGuide, setShowGuide] = useState(() => !readGuideDismissed());
   const [dontShowGuideAgain, setDontShowGuideAgain] = useState(false);
+  const [railOpen, setRailOpen] = useState(false);
 
   const [extractRows, setExtractRows] = useState<
     Array<{
@@ -287,6 +338,8 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
       setInterviewCount(st.interviewCount ?? 0);
       setVolumeChars(st.volumeChars ?? 0);
       setHasMindPack(!!st.hasMindPack || !!(st.voiceMind || "").trim());
+      setConfirmedAxes(st.confirmedAxes || []);
+      if (st.axisTags?.length) setAxisTags(st.axisTags);
       if (st.scenarios?.length) {
         setScenarioId((prev) => {
           const keep = st.scenarios.find((s) => s.id === prev);
@@ -307,6 +360,8 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
     setSceneText("");
     setInterviewQuestion("");
     setInterviewManual("");
+    setSelectedTagIds([]);
+    setUnlikeOpen(false);
     setError("");
     setExtractRows([]);
     setChatMessages([]);
@@ -332,17 +387,34 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
   const resolvedScenario = useMemo(() => {
     const isCustom =
       scenarioId === "custom" || scenarioId.startsWith("custom:");
-    const label = isCustom
-      ? customScenarioLabel.trim() || "自定义"
-      : selectedScenario?.label || scenarioId;
-    const id = isCustom ? `custom:${label}` : scenarioId;
+    if (!isCustom) {
+      return {
+        id: scenarioId,
+        label: selectedScenario?.label || scenarioId,
+        prompt: scenarioPrompt || selectedScenario?.prompt || "",
+        isCustom: false,
+        longSuitable: !!selectedScenario?.longSuitable,
+      };
+    }
+    const named = customScenarioLabel.trim();
+    const slug = promptSlug(scenarioPrompt);
+    const label =
+      named && !GENERIC_CUSTOM_LABELS.has(named)
+        ? named
+        : slug || "未命名";
     return {
-      id,
+      id: `custom:${label}`,
       label,
-      prompt: scenarioPrompt || selectedScenario?.prompt || "",
-      isCustom,
+      prompt: scenarioPrompt || "",
+      isCustom: true,
+      longSuitable: true,
     };
-  }, [scenarioId, customScenarioLabel, selectedScenario, scenarioPrompt]);
+  }, [
+    scenarioId,
+    customScenarioLabel,
+    selectedScenario,
+    scenarioPrompt,
+  ]);
 
   function applyProject(p: VnProject) {
     onProjectChange(p);
@@ -361,6 +433,22 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
     setSceneText("");
     setInterviewQuestion("");
     setInterviewManual("");
+    setUnlikeOpen(false);
+    setUnlikeText("");
+    setUnlikeAxis("");
+    setUnlikeCustomAxis("");
+    setWhyOpen(false);
+    setWhyChips([]);
+    setWhyCustom("");
+    setPendingAccept(null);
+  }
+
+  function toggleAxisTag(id: string) {
+    setSelectedTagIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= 3) return prev;
+      return [...prev, id];
+    });
   }
 
   async function onGenerate(constraintOverride?: string) {
@@ -374,6 +462,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
     // 长场次：先清结果，但保留用户正在写的压力文案
     setVariants([]);
     setGenMeta(null);
+    setUnlikeOpen(false);
     if (shapeMode === "scene") setSceneText("");
     if (shapeMode === "interview") {
       /* keep question unless empty — system may fill */
@@ -393,7 +482,12 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
         extra_constraints: extra,
         kind,
         question: shapeMode === "interview" ? interviewQuestion : undefined,
+        axis_tags:
+          shapeMode === "preference" || shapeMode === "interview"
+            ? selectedTagIds
+            : undefined,
       });
+      if (res.confirmedAxes) setConfirmedAxes(res.confirmedAxes);
       if (kind === "scene") {
         const lines = Array.isArray(res.lines) ? res.lines : [];
         if (!lines.length) {
@@ -438,12 +532,99 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
     }
   }
 
-  async function onAcceptVariant(
+  function beginAcceptVariant(
     v: VoiceVariant,
     index: number,
     source: "preference" | "interview"
   ) {
     if (!character || !genMeta) return;
+    setPendingAccept({ variant: v, index, source });
+    setWhyChips([]);
+    setWhyCustom("");
+    setWhyOpen(true);
+    setError("");
+  }
+
+  function renderWhyPanel() {
+    if (!whyOpen || !pendingAccept) return null;
+    const label =
+      pendingAccept.variant.axisLabel || pendingAccept.variant.axisId || "这组";
+    return (
+      <div className={styles.whyBox}>
+        <p className={styles.manualHint}>
+          为何更像「{label}」？（可选，可跳过）填写后会进入偏好笔记，帮助后续收敛。
+        </p>
+        <div className={styles.tagCloud} role="group" aria-label="为何更像">
+          {WHY_CHIPS.map((chip) => {
+            const on = whyChips.includes(chip);
+            return (
+              <button
+                key={chip}
+                type="button"
+                className={on ? styles.tagOn : styles.tag}
+                aria-pressed={on}
+                onClick={() => toggleWhyChip(chip)}
+              >
+                {chip}
+              </button>
+            );
+          })}
+        </div>
+        <label className={styles.field}>
+          补充一句
+          <input
+            value={whyCustom}
+            onChange={(e) => setWhyCustom(e.target.value)}
+            placeholder="例如：少卖萌，更像她对后辈的距离"
+          />
+        </label>
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className={styles.primary}
+            disabled={!!busy}
+            onClick={() => {
+              const note = [...whyChips, whyCustom.trim()]
+                .filter(Boolean)
+                .join("；");
+              void commitAcceptVariant(note);
+            }}
+          >
+            {busy.startsWith("accept-") ? "写入语料…" : "确认入库"}
+          </button>
+          <button
+            type="button"
+            disabled={!!busy}
+            onClick={() => void commitAcceptVariant("")}
+          >
+            跳过，直接入库
+          </button>
+          <button
+            type="button"
+            disabled={!!busy}
+            onClick={() => {
+              setWhyOpen(false);
+              setPendingAccept(null);
+              setWhyChips([]);
+              setWhyCustom("");
+            }}
+          >
+            取消
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function toggleWhyChip(label: string) {
+    setWhyChips((prev) =>
+      prev.includes(label) ? prev.filter((x) => x !== label) : [...prev, label]
+    );
+  }
+
+  async function commitAcceptVariant(preferenceNote?: string) {
+    if (!character || !genMeta || !pendingAccept) return;
+    const { variant: v, index, source } = pendingAccept;
     setBusy(`accept-${index}`);
     setError("");
     try {
@@ -452,13 +633,17 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
         .map((x) => x.hypothesis || x.axisLabel)
         .filter(Boolean)
         .join(" / ");
+      const note = (preferenceNote || "").trim();
       const res = await acceptCharacterVoiceSample(project.id, character.id, {
         scenario_id: genMeta.scenarioId,
         scenario_label: genMeta.scenarioLabel,
+        scenario_prompt: genMeta.scenarioPrompt,
         axis: v.axisLabel || v.axisId,
         hypothesis: v.hypothesis,
         lines: v.lines,
         rejected_summary: rejected || undefined,
+        preference_note: note || undefined,
+        user_note: note || undefined,
         source,
       });
       applyProject(res.project);
@@ -472,6 +657,14 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
     } finally {
       setBusy("");
     }
+  }
+
+  async function onAcceptVariant(
+    v: VoiceVariant,
+    index: number,
+    source: "preference" | "interview"
+  ) {
+    beginAcceptVariant(v, index, source);
   }
 
   async function onAcceptScene() {
@@ -492,6 +685,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
       const res = await acceptCharacterVoiceSample(project.id, character.id, {
         scenario_id: meta.scenarioId,
         scenario_label: meta.scenarioLabel,
+        scenario_prompt: meta.scenarioPrompt,
         lines,
         source: "scene",
       });
@@ -520,11 +714,14 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
     setError("");
     try {
       const res = await acceptCharacterVoiceSample(project.id, character.id, {
-        scenario_id: source === "interview" ? "interview" : scenarioId,
+        scenario_id:
+          source === "interview" ? "interview" : resolvedScenario.id,
         scenario_label:
           source === "interview"
             ? `采访·${(genMeta?.question || interviewQuestion || "手动").slice(0, 20)}`
-            : selectedScenario?.label || scenarioId,
+            : resolvedScenario.label,
+        scenario_prompt:
+          source === "interview" ? undefined : resolvedScenario.prompt,
         lines,
         source,
       });
@@ -544,20 +741,67 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
 
   async function onRejectAll() {
     if (!character) return;
+    // Open「都不像」handwrite panel; still record reject notes
     setBusy("reject");
     setError("");
     try {
       const res = await rejectCharacterVoiceRound(project.id, character.id, {
         hypotheses: variants.map((v) => v.hypothesis || v.axisLabel),
         note: constraints
-          ? `都不选；请收紧：${constraints}`
-          : "三组都不符合预期",
+          ? `都不像；请收紧：${constraints}`
+          : "三组都不符合预期，改用手写",
       });
       applyProject(res.project);
-      resetGen();
-      if (!constraints) setConstraints("再短一点；少卖萌；少书面语");
+      setUnlikeAxis(variants[0]?.axisLabel || "");
+      setUnlikeCustomAxis("");
+      setUnlikeText("");
+      setUnlikeOpen(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "记录失败");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function onAcceptUnlike() {
+    if (!character || !genMeta) return;
+    const lines = parseManualLines(unlikeText);
+    if (!lines.length) {
+      setError("请先手写更像的台词");
+      return;
+    }
+    const axis =
+      unlikeCustomAxis.trim() ||
+      unlikeAxis.trim() ||
+      variants[0]?.axisLabel ||
+      "手写方向";
+    setBusy("accept-unlike");
+    setError("");
+    try {
+      const res = await acceptCharacterVoiceSample(project.id, character.id, {
+        scenario_id: genMeta.scenarioId,
+        scenario_label: genMeta.scenarioLabel,
+        scenario_prompt: genMeta.scenarioPrompt,
+        axis,
+        hypothesis: `手写补方向：${axis}`,
+        lines,
+        rejected_summary: variants
+          .map((v) => v.hypothesis || v.axisLabel)
+          .filter(Boolean)
+          .join(" / "),
+        source: "preference",
+      });
+      applyProject(res.project);
+      setSampleCount(res.sampleCount);
+      setCoverage(res.scenarioCoverage);
+      setReady(res.readyForMind);
+      setConfirmedAxes((prev) =>
+        prev.includes(axis) ? prev : [...prev, axis].slice(-8)
+      );
+      resetGen();
+      await loadState(character.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "入库失败");
     } finally {
       setBusy("");
     }
@@ -818,6 +1062,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
           >
             {list.map((s) => (
               <option key={s.id} value={s.id}>
+                {s.longSuitable && shapeMode === "scene" ? "宜写长 · " : ""}
                 {s.label}
               </option>
             ))}
@@ -829,9 +1074,26 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
             <input
               value={customScenarioLabel}
               onChange={(e) => setCustomScenarioLabel(e.target.value)}
-              placeholder="例如：雨夜车站分别"
+              placeholder="例如：雨夜车站分别（建议填写，计入不同场景）"
             />
           </label>
+        )}
+        {isCustom && !customScenarioLabel.trim() && scenarioPrompt.trim() && (
+          <p className={styles.scenarioHint}>
+            未起名时将按压力文案记为「{promptSlug(scenarioPrompt)}」，仍计入覆盖。
+          </p>
+        )}
+        {shapeMode === "scene" && !isCustom && (
+          <p className={styles.scenarioHint}>
+            {resolvedScenario.longSuitable
+              ? "此场景较宜写长：关系推进或压力可持续多轮。"
+              : "此场景偏短压测；长场次也能用，但戏幅可能偏紧。可换带「宜写长」标记的场景。"}
+          </p>
+        )}
+        {shapeMode === "scene" && isCustom && (
+          <p className={styles.scenarioHint}>
+            自定义场景默认宜写长：把情境写清，方便多轮推进。
+          </p>
         )}
         <label className={`${styles.field} ${styles.grow}`}>
           场景压力
@@ -841,7 +1103,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
             onChange={(e) => setScenarioPrompt(e.target.value)}
             placeholder={
               isCustom
-                ? "用一两句话写清情境与压力（必填）"
+                ? "用一两句话写清情境与压力（必填；可兼作场景名）"
                 : "可改写默认压力，或保持预设"
             }
           />
@@ -870,7 +1132,17 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
                 disabled={!!busy}
                 onClick={() => void onRejectAll()}
               >
-                都不选
+                都不像…
+              </button>
+            )}
+            {shapeMode === "preference" && selectedTagIds.length > 0 && (
+              <button
+                type="button"
+                disabled={!!busy || !character}
+                onClick={() => void onGenerate()}
+                title="按已勾标签重开三组"
+              >
+                按标签重开
               </button>
             )}
             {shapeMode === "preference" && sampleCount >= 1 && (
@@ -939,14 +1211,57 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
 
         {shapeMode === "preference" && (
           <p className={styles.shapeTip}>
-            换多个<strong>场景标签</strong>各做一轮；只改压力文字、场景不变会偏窄。
+            默认按角色卡出本轮三轴；侧边可勾最多 3 个标签后「按标签重开」。少选时模型补轴。
+            多换<strong>场景</strong>收敛方向。
+            {confirmedAxes.length > 0 && (
+              <>
+                {" "}
+                已确认：
+                <em>{confirmedAxes.join(" · ")}</em>
+              </>
+            )}
             {uniqueScenarios(corpus).length > 0 && (
               <>
                 {" "}
-                已覆盖 <em>{uniqueScenarios(corpus).length}</em> 类。
+                已覆盖 <em>{uniqueScenarios(corpus).length}</em> 类场景。
               </>
             )}
           </p>
+        )}
+
+        {(shapeMode === "preference" || shapeMode === "interview") &&
+          axisTags.length > 0 && (
+          <div className={styles.tagPanel}>
+            <div className={styles.tagPanelHead}>
+              <span>方向标签（可选，最多 3）</span>
+              {selectedTagIds.length > 0 && (
+                <button
+                  type="button"
+                  className={styles.tagClear}
+                  onClick={() => setSelectedTagIds([])}
+                >
+                  清空
+                </button>
+              )}
+            </div>
+            <div className={styles.tagCloud} role="group" aria-label="方向标签">
+              {axisTags.map((t) => {
+                const on = selectedTagIds.includes(t.id);
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className={on ? styles.tagOn : styles.tag}
+                    title={t.hint}
+                    aria-pressed={on}
+                    onClick={() => toggleAxisTag(t.id)}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {shapeMode === "preference" && sampleCount > 0 && !ready && (
@@ -972,7 +1287,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
               <div className={styles.emptyStage}>
                 <p>定声音</p>
                 <span>
-                  选场景 → 生成三组 → 选最像的入库。多换场景，凑够门槛再合成。
+                  选场景 → 生成三组（动态轴）→ 选最像的入库。都不像可手写并记方向。
                 </span>
                 <button
                   type="button"
@@ -985,8 +1300,12 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
               </div>
             )}
             {busy === "generating" && (
-              <div className={styles.emptyStage}>
-                <p>正在拉开三条差异轴…</p>
+              <div className={styles.busyBar} role="status" aria-live="polite">
+                <span className={styles.busyStamp} aria-hidden>
+                  RUN
+                </span>
+                <span className={styles.busyPulse} aria-hidden />
+                <span>生成进行中…按本轮三轴拉开差异</span>
               </div>
             )}
             {variants.length > 0 && (
@@ -1015,13 +1334,83 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
                 ))}
               </div>
             )}
+            {renderWhyPanel()}
+            {unlikeOpen && (
+              <div className={styles.unlikeBox}>
+                <p className={styles.manualHint}>
+                  都不像：手写更贴的对白，并确认本轮<strong>方向标签</strong>
+                  （可从本轮三轴选，或自填）。
+                </p>
+                <div className={styles.unlikeAxes}>
+                  {variants.map((v) => (
+                    <button
+                      key={v.axisId}
+                      type="button"
+                      className={
+                        unlikeAxis === v.axisLabel && !unlikeCustomAxis.trim()
+                          ? styles.tagOn
+                          : styles.tag
+                      }
+                      onClick={() => {
+                        setUnlikeAxis(v.axisLabel || v.axisId);
+                        setUnlikeCustomAxis("");
+                      }}
+                    >
+                      {v.axisLabel || v.axisId}
+                    </button>
+                  ))}
+                </div>
+                <label className={styles.field}>
+                  或自填方向
+                  <input
+                    value={unlikeCustomAxis}
+                    onChange={(e) => setUnlikeCustomAxis(e.target.value)}
+                    placeholder="例如：温柔劝说"
+                  />
+                </label>
+                <textarea
+                  rows={4}
+                  value={unlikeText}
+                  onChange={(e) => setUnlikeText(e.target.value)}
+                  placeholder={"对方：……\n角色：……"}
+                />
+                <div className={styles.actions}>
+                  <button
+                    type="button"
+                    className={styles.primary}
+                    disabled={!!busy || !unlikeText.trim()}
+                    onClick={() => void onAcceptUnlike()}
+                  >
+                    {busy === "accept-unlike" ? "入库中…" : "手写入库"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!!busy}
+                    onClick={() => {
+                      setUnlikeOpen(false);
+                      resetGen();
+                      if (!constraints)
+                        setConstraints("再短一点；少卖萌；少书面语");
+                    }}
+                  >
+                    丢弃并重开
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {shapeMode === "scene" && (
           <div className={styles.sceneEditor}>
             {busy === "generating" ? (
-              <p className={styles.muted}>正在生成长场次（约 8～12 轮对白，可能需数十秒）…</p>
+              <div className={styles.busyBar} role="status" aria-live="polite">
+                <span className={styles.busyStamp} aria-hidden>
+                  RUN
+                </span>
+                <span className={styles.busyPulse} aria-hidden />
+                <span>生成进行中…长场次约需数十秒</span>
+              </div>
             ) : sceneText.trim() ? (
               <>
                 <p className={styles.muted}>
@@ -1092,8 +1481,12 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
                 </div>
               )}
               {busy === "generating" && (
-                <div className={styles.emptyStage}>
-                  <p>角色正在组织回答…</p>
+                <div className={styles.busyBar} role="status" aria-live="polite">
+                  <span className={styles.busyStamp} aria-hidden>
+                    RUN
+                  </span>
+                  <span className={styles.busyPulse} aria-hidden />
+                  <span>生成进行中…角色正在组织回答</span>
                 </div>
               )}
               {variants.length > 0 && (
@@ -1126,6 +1519,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
                   ))}
                 </div>
               )}
+              {renderWhyPanel()}
             </div>
             <div className={styles.manualBox}>
               <p className={styles.manualHint}>
@@ -1595,8 +1989,42 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
     ];
     const next = steps.find((s) => !s.done) || steps[2];
 
+    const doneCount = steps.filter((s) => s.done).length;
+    const pct = Math.round((doneCount / steps.length) * 100);
+
     return (
       <div className={styles.progress}>
+        <div className={styles.progressRail} aria-label={`进度 ${doneCount}/3`}>
+          <div className={styles.progressRailTop}>
+                <span>档案养成</span>
+            <strong>
+              {doneCount}/3 · {next.title.replace(/^[①②③]\s*/, "")}
+            </strong>
+          </div>
+          <div className={styles.progressRailTrack}>
+            <div className={styles.progressRailFill} style={{ width: `${pct}%` }} />
+          </div>
+          <div className={styles.progressRailSteps}>
+            {steps.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={
+                  s.done
+                    ? styles.progressDotDone
+                    : s.id === next.id
+                      ? styles.progressDotOn
+                      : styles.progressDot
+                }
+                disabled={s.id === "chat" && !hasMindPack}
+                onClick={() => goStep(s.id)}
+                title={s.title}
+              >
+                {s.title.replace(/^([①②③]).*/, "$1")}
+              </button>
+            ))}
+          </div>
+        </div>
         <ol className={styles.progressList}>
           {steps.map((s) => (
             <li
@@ -1618,16 +2046,16 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
                 <strong>{s.title}</strong>
                 <span>{s.desc}</span>
               </button>
-              <button
-                type="button"
-                className={
-                  s.id === next.id && !s.done ? styles.primary : undefined
-                }
-                disabled={s.id === "chat" && !hasMindPack}
-                onClick={() => goStep(s.id)}
-              >
-                {s.cta}
-              </button>
+              {s.id === next.id ? (
+                <button
+                  type="button"
+                  className={styles.primary}
+                  disabled={s.id === "chat" && !hasMindPack}
+                  onClick={() => goStep(s.id)}
+                >
+                  {s.cta}
+                </button>
+              ) : null}
             </li>
           ))}
         </ol>
@@ -1640,6 +2068,10 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
     return (
       <div className={styles.guideOverlay} role="dialog" aria-modal="true">
         <div className={styles.guideCard}>
+          <div className={styles.guideMascot} aria-hidden>
+            <MascotFigure size="lg" mood="cheer" line="三步走完，声音就立住了。" />
+          </div>
+          <div className={styles.guideMain}>
           <h3>角色工坊怎么用</h3>
           <p className={styles.guideLead}>
             把脑中的角色声音定下来，再用来试聊和写对白——不是普通聊天机器人。
@@ -1687,6 +2119,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
               知道了
             </button>
           </div>
+          </div>
         </div>
       </div>
     );
@@ -1696,14 +2129,22 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
     return (
       <section className={styles.page}>
         <header className={styles.hero}>
-          <div>
+          <div className={styles.heroBanner} aria-hidden />
+          <div className={styles.heroCopy}>
+            <p className={styles.heroIdx}>档案室 · FILE</p>
             <h2>角色工坊</h2>
-            <p className={styles.heroValue}>
-              定声音 → 思维包 → 试聊
-            </p>
-            <p>先在「设定 → 角色卡」添加角色。</p>
+            <p className={styles.heroValue}>定声音 → 思维包 → 试聊</p>
           </div>
         </header>
+        <div className={styles.emptyStage}>
+          <img
+            className={styles.emptyArt}
+            src="/workshop/workshop-empty.png"
+            alt=""
+          />
+          <p>还没有角色</p>
+          <span>先在「设定 → 角色卡」添加角色，再回来塑形与试聊。</span>
+        </div>
       </section>
     );
   }
@@ -1712,45 +2153,68 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
     <section className={styles.page}>
       {renderGuide()}
       <header className={styles.hero}>
-        <div>
+        <div className={styles.heroBanner} aria-hidden />
+        <div className={styles.heroCopy}>
+          <p className={styles.heroIdx}>档案室 · FILE</p>
           <h2>角色工坊</h2>
           <p className={styles.heroValue}>
             定声音 → 思维包 → 试聊 / 写对白
           </p>
         </div>
-        {character && (
-          <div className={styles.heroMeta}>
-            <strong style={{ color: character.color || undefined }}>
-              {character.displayName}
-            </strong>
-            <span>
-              {sampleCount} 正例 · 覆盖 {coverage} 场景
-              {hasMindPack ? " · 已有思维包" : ""}
-              {ready ? " · 可合成" : ""}
-            </span>
-            {!showGuide && (
-              <button
-                type="button"
-                className={styles.ghostLink}
-                onClick={() => {
-                  setDontShowGuideAgain(false);
-                  setShowGuide(true);
-                }}
-              >
-                查看引导
-              </button>
-            )}
-          </div>
-        )}
+        <div className={styles.heroMeta}>
+          <button
+            type="button"
+            className={styles.railToggle}
+            aria-expanded={railOpen}
+            onClick={() => setRailOpen((v) => !v)}
+          >
+            {railOpen ? "收起名单" : "打开名单"}
+          </button>
+          {!showGuide && (
+            <button
+              type="button"
+              className={styles.ghostLink}
+              onClick={() => {
+                setDontShowGuideAgain(false);
+                setShowGuide(true);
+              }}
+            >
+              查看引导
+            </button>
+          )}
+        </div>
       </header>
 
       {renderProgress()}
 
       <div className={styles.layout}>
-        <aside className={styles.rail}>
-          <p className={styles.railLabel}>角色</p>
+        {railOpen && (
+          <button
+            type="button"
+            className={styles.railScrim}
+            aria-label="关闭角色名单"
+            onClick={() => setRailOpen(false)}
+          />
+        )}
+        <aside
+          className={`${styles.rail} ${railOpen ? styles.railDrawerOpen : ""}`}
+          id="workshop-rail"
+        >
+          <div className={styles.railHead}>
+            <div>
+              <p className={styles.railKicker}>CAST</p>
+              <p className={styles.railLabel}>角色名单</p>
+            </div>
+            <button
+              type="button"
+              className={styles.railClose}
+              onClick={() => setRailOpen(false)}
+            >
+              关闭
+            </button>
+          </div>
           <ul className={styles.charList}>
-            {characters.map((c) => {
+            {characters.map((c, i) => {
               const n = c.voiceCorpus?.length || 0;
               const active = c.id === character?.id;
               return (
@@ -1758,8 +2222,14 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
                   <button
                     type="button"
                     className={active ? styles.charActive : styles.charBtn}
-                    onClick={() => setCharId(c.id)}
+                    onClick={() => {
+                      setCharId(c.id);
+                      setRailOpen(false);
+                    }}
                   >
+                    <span className={styles.charIdx} aria-hidden>
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
                     <span
                       className={styles.swatch}
                       style={{ background: c.color || "#888" }}
@@ -1774,42 +2244,75 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
               );
             })}
           </ul>
-          <p className={styles.statsLine}>
-            <span>
-              短正例 <em>{shortCount}</em>
-            </span>
-            <span>
-              长场次 <em>{sceneCount}</em>
-            </span>
-            <span>
-              采访 <em>{interviewCount}</em>
-            </span>
-            <span>
-              字量 <em>{volumeChars}</em>
-            </span>
-            <span>
-              场景 <em>{coverage}</em>
-            </span>
-            <span>
-              可合成 <em>{ready ? "是" : "否"}</em>
-            </span>
-            <span>
-              思维包 <em>{hasMindPack ? "有" : "无"}</em>
-            </span>
-          </p>
-          {character && (
-            <div className={styles.seed}>
-              <p className={styles.railLabel}>基础信息</p>
-              <p className={styles.seedLine}>
-                <em>语气</em>
-                {character.voice || "（空）"}
-              </p>
-              <p className={styles.seedLine}>
-                <em>简介</em>
-                {character.bio || "（空）"}
-              </p>
+          {character ? (
+            <div className={styles.dossierCard}>
+              <div className={styles.dossierMark} aria-hidden>
+                档
+              </div>
+              <div className={styles.dossierHead}>
+                <p className={styles.dossierIdx}>
+                  FILE{" "}
+                  {String(
+                    Math.max(
+                      1,
+                      characters.findIndex((c) => c.id === character.id) + 1,
+                    ),
+                  ).padStart(2, "0")}
+                </p>
+                <h3
+                  className={styles.dossierName}
+                  style={{ color: character.color || undefined }}
+                >
+                  {character.displayName}
+                </h3>
+                <p className={styles.dossierMeta}>
+                  {sampleCount} 正例 · 覆盖 {coverage} 场景
+                  {hasMindPack ? " · 已有思维包" : " · 尚无思维包"}
+                  {ready ? " · 可合成" : ""}
+                </p>
+              </div>
+              <dl className={styles.dossierGrid}>
+                <div>
+                  <dt>短正例</dt>
+                  <dd>{shortCount}</dd>
+                </div>
+                <div>
+                  <dt>长场次</dt>
+                  <dd>{sceneCount}</dd>
+                </div>
+                <div>
+                  <dt>采访</dt>
+                  <dd>{interviewCount}</dd>
+                </div>
+                <div>
+                  <dt>字量</dt>
+                  <dd>{volumeChars}</dd>
+                </div>
+                <div>
+                  <dt>场景</dt>
+                  <dd>{coverage}</dd>
+                </div>
+                <div>
+                  <dt>可合成</dt>
+                  <dd>{ready ? "是" : "否"}</dd>
+                </div>
+                <div>
+                  <dt>思维包</dt>
+                  <dd>{hasMindPack ? "有" : "无"}</dd>
+                </div>
+              </dl>
+              <div className={styles.dossierSeed}>
+                <p>
+                  <em>语气</em>
+                  {character.voice || "（空）"}
+                </p>
+                <p>
+                  <em>简介</em>
+                  {character.bio || "（空）"}
+                </p>
+              </div>
             </div>
-          )}
+          ) : null}
         </aside>
 
         <div className={styles.stage} ref={zonePanelRef}>

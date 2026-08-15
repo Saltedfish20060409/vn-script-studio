@@ -156,6 +156,26 @@ class ChapterMemorySlice(Base):
     archive: Mapped["ChapterMemoryArchive"] = relationship(back_populates="slices")
 
 
+class AnalysisInboxItem(Base):
+    """Sidecar inbox for analysis fact candidates (relations / timeline / paste)."""
+
+    __tablename__ = "analysis_inbox_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("projects.id"), index=True
+    )
+    # character_link | timeline_event | source_snippet
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    evidence: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    # pending | accepted | rejected
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    dedupe_key: Mapped[str] = mapped_column(String(255), default="", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class LoreCraftCard(Base):
     """Distilled ACG craft card (萌百启发精炼，非百科原文库)."""
 

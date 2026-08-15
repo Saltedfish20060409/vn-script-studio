@@ -1,0 +1,150 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  max-width: 100%;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Shared standee aspect (all moods padded to 480×917) */
+.figure {
+  position: relative;
+  width: var(--mascot-w, 148px);
+  height: calc(var(--mascot-w, 148px) * 917 / 480);
+  display: grid;
+  place-items: end center;
+}
+
+.xs {
+  --mascot-w: 52px;
+}
+
+.sm {
+  --mascot-w: 96px;
+}
+
+.md {
+  --mascot-w: 168px;
+}
+
+.lg {
+  --mascot-w: 240px;
+}
+
+.xl {
+  --mascot-w: 300px;
+}
+
+/* Parent-sized (login portrait slot): fixed box, moods stay locked */
+.fill {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.fill .figure {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 480 / 917;
+  max-height: calc(100% - 3.4rem);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.fill .line {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.slot {
+  width: 100%;
+  height: 100%;
+  border: 2px dashed color-mix(in srgb, var(--line) 65%, var(--accent));
+  background: color-mix(in srgb, var(--field-bg) 70%, transparent);
+  clip-path: polygon(0 0, 100% 0, 100% 92%, 88% 100%, 0 100%);
+  display: grid;
+  place-items: end center;
+  overflow: hidden;
+}
+
+/* Real standee: no card/frame — float into the surface */
+.hasArt .slot {
+  border: none;
+  background: transparent;
+  clip-path: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.art {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+  image-rendering: auto;
+  transition: opacity 160ms ease;
+  filter: drop-shadow(0 10px 18px color-mix(in srgb, var(--ink) 18%, transparent));
+}
+
+.svg {
+  width: 92%;
+  height: 94%;
+  display: block;
+}
+
+.quiet .slot {
+  opacity: 0.48;
+}
+
+.hasArt.quiet .slot {
+  border: none;
+}
+
+.line {
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(14rem, 100%);
+  margin: 0;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  box-shadow: var(--shadow-sm);
+  border-radius: 2px 10px 10px 10px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  backdrop-filter: blur(8px);
+}
+
+.sm .line {
+  max-width: min(9.25rem, 100%);
+  font-size: 0.68rem;
+}
+
+.quiet .line {
+  display: none;
+}
+
+.dockBadge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--line);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-display);
+  font-size: 0.55rem;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}

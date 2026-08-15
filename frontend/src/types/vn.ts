@@ -47,6 +47,8 @@ export interface Character {
   voiceMind?: string;
   /** Notes from rejected variants */
   voiceRejectNotes?: string[];
+  /** Why a pick felt right */
+  voicePreferNotes?: string[];
 }
 
 export type ScriptBlock =
@@ -110,20 +112,7 @@ export const LOCATION_RELATION_LABELS: Record<LocationRelation, string> = {
   other: "其他",
 };
 
-export type MapStyleId =
-  | "campus"
-  | "romance"
-  | "cyber"
-  | "isekai"
-  | "urban"
-  | "mystery"
-  | "horror"
-  /** @deprecated migrated */
-  | "ink"
-  | "soft"
-  | "neon"
-  | "parchment"
-  | "slate";
+export type MapStyleId = "default";
 
 export type MapLineStyle =
   | "solid"
@@ -236,8 +225,28 @@ export interface ProjectSnapshot {
   id: string;
   label: string;
   createdAt: string;
-  /** Full project JSON string to avoid circular typing weight */
-  payload: string;
+  /** Content-addressed object, or legacy JSON string */
+  payload: Record<string, unknown> | string;
+  contentHash?: string;
+}
+
+export interface ChapterIndexEntry {
+  chapterId: string;
+  title: string;
+  hash: string;
+  synopsis?: string;
+  speakers?: string[];
+  openHook?: string;
+  closeHook?: string;
+}
+
+export interface FactEvidence {
+  /** script | bible | card | paste | upload | agent */
+  source: string;
+  chapterId?: string;
+  quote?: string;
+  field?: string;
+  fingerprint?: string;
 }
 
 export interface CharacterLink {
@@ -245,6 +254,10 @@ export interface CharacterLink {
   fromId: CharacterId;
   toId: CharacterId;
   label: string;
+  evidence?: FactEvidence[];
+  stale?: boolean;
+  staleReason?: string;
+  acceptedAt?: string;
 }
 
 export interface TimelineEvent {
@@ -255,6 +268,28 @@ export interface TimelineEvent {
   chapterRef?: string;
   summary?: string;
   order: number;
+  evidence?: FactEvidence[];
+  stale?: boolean;
+  staleReason?: string;
+  acceptedAt?: string;
+}
+
+export interface AnalysisMeta {
+  chapterFingerprints?: Record<string, string>;
+  bibleFingerprint?: string;
+  characterFingerprints?: Record<string, string>;
+  lastScanAt?: string;
+  lastReconcileAt?: string;
+}
+
+export interface FactInboxItem {
+  id: string;
+  kind: "character_link" | "timeline_event" | "source_snippet" | string;
+  payload: Record<string, unknown>;
+  evidence: FactEvidence[];
+  status: string;
+  dedupeKey: string;
+  createdAt?: string | null;
 }
 
 export interface VnProject {
@@ -264,7 +299,7 @@ export interface VnProject {
   genre?: string;
   characters: Character[];
   chapters: SceneChapter[];
-  /** @deprecated prefer bible.world — kept for older saves */
+  /** @deprecated Mirror of bible.world for older saves — UI edits bible.world only */
   lore?: string;
   bible?: StoryBible;
   locations?: Location[];
@@ -277,6 +312,8 @@ export interface VnProject {
   variables?: GameVariable[];
   sprites?: SpriteDef[];
   snapshots?: ProjectSnapshot[];
+  /** Extractive chapter digests / content hashes (server-refreshed on save) */
+  chapterIndex?: ChapterIndexEntry[];
   writingLedger?: {
     chapterFacts?: Array<{
       id?: string;
@@ -290,6 +327,8 @@ export interface VnProject {
     events?: Array<Record<string, unknown>>;
     updatedAt?: string;
   };
+  /** Recent harness / pipeline run summaries (capped) */
+  harnessRuns?: Array<Record<string, unknown>>;
   /** Active writing mentor packs (methodology; cannot override style_guide) */
   writingMentors?: {
     activeIds?: string[];
@@ -310,6 +349,9 @@ export interface VnProject {
       updatedAt?: string;
     }>;
   };
+  analysisMeta?: AnalysisMeta;
+  /** Phase 2: persisted voice-check reports */
+  voiceReports?: Array<Record<string, unknown>>;
   /** Local read-only share id */
   shareId?: string;
   updatedAt: string;
@@ -358,11 +400,88 @@ export type AgentAction =
   | { op: "append_script"; chapterRef?: string; text: string }
   | { op: "replace_script"; chapterRef?: string; text: string }
   | { op: "update_bible"; patch: Partial<StoryBible> }
-  | { op: "update_meta"; title?: string; logline?: string; genre?: string };
+  | { op: "update_meta"; title?: string; logline?: string; genre?: string }
+  | {
+      op: "propose_character_link";
+      fromRef: string;
+      toRef: string;
+      label?: string;
+      quote?: string;
+    }
+  | {
+      op: "propose_timeline_event";
+      title: string;
+      when?: string;
+      summary?: string;
+      chapterRef?: string;
+      order?: number;
+    }
+  | {
+      op: "add_character_link";
+      fromRef: string;
+      toRef: string;
+      label?: string;
+    }
+  | {
+      op: "update_character_link";
+      id?: string;
+      ref?: string;
+      fromRef?: string;
+      toRef?: string;
+      label?: string;
+    }
+  | {
+      op: "delete_character_link";
+      id?: string;
+      ref?: string;
+      fromRef?: string;
+      toRef?: string;
+    }
+  | {
+      op: "add_timeline_event";
+      title: string;
+      when?: string;
+      summary?: string;
+      chapterRef?: string;
+      order?: number;
+    }
+  | {
+      op: "update_timeline_event";
+      id?: string;
+      ref?: string;
+      title?: string;
+      when?: string;
+      summary?: string;
+      chapterRef?: string;
+      order?: number;
+    }
+  | { op: "delete_timeline_event"; id?: string; ref?: string; title?: string }
+  | { op: "scan_facts"; chapterRef?: string; includePaste?: boolean };
+
+export interface AgentTraceEvent {
+  type: "thought" | "tool_call" | "tool_result" | "actions" | "done" | string;
+  text?: string;
+  id?: string;
+  name?: string;
+  arguments?: Record<string, unknown>;
+  ok?: boolean;
+  preview?: string;
+  actions?: AgentAction[];
+  skipped?: string[];
+  message?: string;
+}
 
 export interface AgentChatMessage {
   role: "user" | "assistant";
   content: string;
+  /** Optional action chip under assistant bubble (persisted with conversation). */
+  action?: {
+    type: "open_revise_review";
+    chapterId: string;
+    label?: string;
+  };
+  /** Multi-step tool trajectory for this assistant turn */
+  trace?: AgentTraceEvent[];
 }
 
 /** Writing-task mode for Agent retrieval + prompt bias */

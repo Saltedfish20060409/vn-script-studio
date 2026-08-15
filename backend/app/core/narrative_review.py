@@ -6,11 +6,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-import httpx
-
-from app.domain.types import AgentAction, Character, VnProject
+from app.domain.types import AgentAction, VnProject
 
 from .ai import DeepSeekConfig
+from .llm_http import chat_completions, content_from_response
 from .narrative_lint import NarrativeLintIssue, lint_has_blockers, lint_narrative_draft
 
 SelfReviewPreference = str  # "auto" | "on" | "off"
@@ -124,7 +123,11 @@ def _parse_review_json(raw: str) -> NarrativeReviewResult:
             note=note or (f"自检通过（备注：{issues[0]}）" if issues else "自检通过"),
         )
     except (json.JSONDecodeError, AttributeError, TypeError):
-        return NarrativeReviewResult(ok=True, issues=[], note="自检解析失败，沿用原稿")
+        return NarrativeReviewResult(
+            ok=False,
+            issues=["critic_parse_failed"],
+            note="自检 JSON 解析失败，不得静默放行；请重试或人工改稿",
+        )
 
 
 def _character_voice_brief(project: VnProject) -> str:
@@ -163,9 +166,6 @@ async def run_narrative_self_review(
             note="规则引擎通过；无 Key 跳过模型责编",
         )
 
-    base_url = (config.baseUrl or "https://api.deepseek.com").rstrip("/")
-    model = config.model or "deepseek-chat"
-
     user = "\n\n".join(
         p
         for p in [
@@ -183,45 +183,34 @@ async def run_narrative_self_review(
         if p
     )
 
-    async with httpx.AsyncClient(timeout=120) as client:
-        res = await client.post(
-            f"{base_url}/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {config.apiKey}",
-            },
-            json={
-                "model": model,
-                "temperature": 0.25,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {"role": "system", "content": CRITIC_SYSTEM},
-                    {"role": "user", "content": user},
-                ],
-            },
+    try:
+        res = await chat_completions(
+            config,
+            messages=[
+                {"role": "system", "content": CRITIC_SYSTEM},
+                {"role": "user", "content": user},
+            ],
+            temperature=0.25,
+            response_format={"type": "json_object"},
+            timeout=120,
         )
-
-    if res.status_code >= 400:
+    except RuntimeError as exc:
         if lint_has_blockers(lint_issues):
             return NarrativeReviewResult(
                 ok=False,
                 issues=lint_msgs,
                 lintIssues=lint_issues,
-                note=f"责编模型失败({res.status_code})；规则引擎未通过",
+                note=f"责编模型失败；规则引擎未通过（{exc}）",
             )
         return NarrativeReviewResult(
-            ok=True,
-            issues=[],
+            ok=False,
+            issues=["critic_unavailable"],
             lintIssues=lint_issues,
-            note=f"责编请求失败({res.status_code})，规则无硬伤，沿用原稿",
+            note=f"责编请求失败，不得静默放行：{exc}",
         )
 
-    data = res.json()
-    choices = data.get("choices") or []
-    content = "{}"
-    if choices:
-        content = ((choices[0] or {}).get("message") or {}).get("content", "{}") or "{}"
-        content = content.strip() or "{}"
+    content, _used = content_from_response(res)
+    content = content.strip() or "{}"
     reviewed = _parse_review_json(content)
     reviewed.lintIssues = lint_issues
 

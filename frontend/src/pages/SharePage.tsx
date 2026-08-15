@@ -35,20 +35,40 @@ export default function SharePage() {
 
   if (loading) {
     return (
-      <div className={styles.wrap}>
-        <h1>只读分享</h1>
-        <p>加载中…</p>
+      <div className={`vnss-app ${styles.wrap}`}>
+        <header className={styles.head}>
+          <div className={styles.arc} aria-hidden />
+          <div className={styles.headInner}>
+            <span className={styles.headIdx} aria-hidden>
+              SH
+            </span>
+            <div className={styles.headCopy}>
+              <h1>只读分享</h1>
+              <p className={styles.statusMsg}>加载中…</p>
+            </div>
+          </div>
+        </header>
       </div>
     );
   }
 
   if (error || !share) {
     return (
-      <div className={styles.wrap}>
-        <h1>只读分享</h1>
-        <p>
-          分享链接 <code>{token}</code> 无法打开：{error || "未找到"}
-        </p>
+      <div className={`vnss-app ${styles.wrap}`}>
+        <header className={styles.head}>
+          <div className={styles.arc} aria-hidden />
+          <div className={styles.headInner}>
+            <span className={styles.headIdx} aria-hidden>
+              SH
+            </span>
+            <div className={styles.headCopy}>
+              <h1>只读分享</h1>
+              <p className={styles.statusMsg}>
+                分享链接 <code>{token}</code> 无法打开：{error || "未找到"}
+              </p>
+            </div>
+          </div>
+        </header>
       </div>
     );
   }
@@ -56,26 +76,34 @@ export default function SharePage() {
   const p: VnProject = share.project;
 
   return (
-    <div className={styles.wrap}>
+    <div className={`vnss-app ${styles.wrap}`}>
       <header className={styles.head}>
-        <p className={styles.badge}>只读设定包 · 无需会员</p>
-        <h1>{p.title}</h1>
-        <p className={styles.meta}>
-          {p.genre || "未标题材"} · 分享于{" "}
-          {new Date(share.created_at).toLocaleString()}
-        </p>
-        {p.logline && <p className={styles.logline}>{p.logline}</p>}
+        <div className={styles.arc} aria-hidden />
+        <div className={styles.headInner}>
+          <span className={styles.headIdx} aria-hidden>
+            SH
+          </span>
+          <div className={styles.headCopy}>
+            <p className={styles.badge}>只读设定包 · 无需会员</p>
+            <h1>{p.title}</h1>
+            <p className={styles.meta}>
+              {p.genre || "未标题材"} · 分享于{" "}
+              {new Date(share.created_at).toLocaleString()}
+            </p>
+            {p.logline && <p className={styles.logline}>{p.logline}</p>}
+          </div>
+        </div>
       </header>
 
-      <ShareSection title="世界观">
+      <ShareSection idx="01" title="世界观">
         <pre>{p.bible?.world || p.lore || "—"}</pre>
       </ShareSection>
-      <ShareSection title="背景 / 大纲">
+      <ShareSection idx="02" title="背景 / 大纲">
         <pre>{p.bible?.background || "—"}</pre>
         <pre>{p.bible?.outline || ""}</pre>
       </ShareSection>
 
-      <ShareSection title="角色">
+      <ShareSection idx="03" title="角色">
         <div className={styles.grid}>
           {p.characters.map((c) => (
             <article key={c.id} className={styles.card}>
@@ -90,7 +118,7 @@ export default function SharePage() {
         </div>
       </ShareSection>
 
-      <ShareSection title="地点">
+      <ShareSection idx="04" title="地点">
         <ul className={styles.list}>
           {(p.locations ?? []).map((l) => (
             <li key={l.id}>
@@ -103,7 +131,7 @@ export default function SharePage() {
         </ul>
       </ShareSection>
 
-      <ShareSection title="变量 / 好感度">
+      <ShareSection idx="05" title="变量 / 好感度">
         <ul className={styles.list}>
           {(p.variables ?? []).map((v) => (
             <li key={v.id}>
@@ -115,7 +143,7 @@ export default function SharePage() {
         </ul>
       </ShareSection>
 
-      <ShareSection title="立绘表情">
+      <ShareSection idx="06" title="立绘表情">
         <div className={styles.grid}>
           {(p.sprites ?? []).map((s) => (
             <article key={s.id} className={styles.card}>
@@ -136,7 +164,7 @@ export default function SharePage() {
         </div>
       </ShareSection>
 
-      <ShareSection title="章节一览（无正文）">
+      <ShareSection idx="07" title="章节一览（无正文）">
         <ChapterList project={p} />
       </ShareSection>
     </div>
@@ -144,16 +172,23 @@ export default function SharePage() {
 }
 
 function ShareSection({
+  idx,
   title,
   children,
 }: {
+  idx: string;
   title: string;
   children: ReactNode;
 }) {
   return (
     <section className={styles.section}>
-      <h2>{title}</h2>
-      {children}
+      <header className={styles.sectionHead}>
+        <span className={styles.sectionIdx} aria-hidden>
+          {idx}
+        </span>
+        <h2 className={styles.sectionTitle}>{title}</h2>
+      </header>
+      <div className={styles.sectionBody}>{children}</div>
     </section>
   );
 }

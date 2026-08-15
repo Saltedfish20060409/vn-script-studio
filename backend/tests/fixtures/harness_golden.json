@@ -1,0 +1,236 @@
+{
+  "cases": [
+    {
+      "id": "pass_clean_dialogue",
+      "expectPass": true,
+      "forbidCodes": ["style_universal_ack", "style_os_tag"],
+      "draft": "旁白: 雨夜的站台只剩末班车的灯。\n绫: 「你怎么还在这里？」\n主角: 「伞……借你。」\n"
+    },
+    {
+      "id": "fail_yuanlai_ruci",
+      "expectPass": false,
+      "requireCodes": ["style_universal_ack"],
+      "draft": "绫: 「原来如此。」\n主角: 「我明白了。」\n"
+    },
+    {
+      "id": "fail_xinsheng_os",
+      "expectPass": false,
+      "requireCodes": ["style_os_tag"],
+      "draft": "旁白: 他愣在原地。\n心声：完了，被发现了。\n绫: 「你在听吗？」\n"
+    },
+    {
+      "id": "fail_neixin_os_tag",
+      "expectPass": false,
+      "requireCodes": ["style_os_tag"],
+      "draft": "旁白: 他停住脚步。\n内心OS：不能再错了。\n绫: 「……」\n"
+    },
+    {
+      "id": "fail_tucao_tag",
+      "expectPass": false,
+      "requireCodes": ["style_os_tag"],
+      "draft": "旁白: 教室很安静。\n吐槽：这家伙又迟到。\n绫: 「喂。」\n"
+    },
+    {
+      "id": "fail_leng_yixia",
+      "expectPass": false,
+      "requireCodes": ["style_donot"],
+      "draft": "旁白: 他愣了一下，才开口。\n绫: 「……你说完了？」\n"
+    },
+    {
+      "id": "fail_weiwei_yizheng",
+      "expectPass": false,
+      "requireCodes": ["style_donot"],
+      "draft": "旁白: 她微微一怔。\n主角: 「抱歉。」\n"
+    },
+    {
+      "id": "fail_xinxiang",
+      "expectPass": false,
+      "requireCodes": ["style_donot"],
+      "draft": "旁白: 他心想这下完了。\n绫: 「看什么？」\n"
+    },
+    {
+      "id": "fail_yuanlai_shi_zheyang",
+      "expectPass": false,
+      "requireCodes": ["style_universal_ack"],
+      "draft": "主角: 「原来是这样。」\n绫: 「嗯。」\n"
+    },
+    {
+      "id": "warn_ai_cliche_optional",
+      "expectPass": true,
+      "note": "may warn on cliche; must not hard-fail solely on mild wording",
+      "draft": "旁白: 风把传单掀起又落下。\n绫: 「别站着发呆，走了。」\n"
+    },
+    {
+      "id": "warn_author_summary_optional",
+      "expectPass": true,
+      "requireCodes": ["style_author_summary"],
+      "draft": "旁白: 或许这就是命运吧。\n绫: 「走了。」\n"
+    },
+    {
+      "id": "warn_nake_summary",
+      "expectPass": true,
+      "requireCodes": ["style_author_summary"],
+      "draft": "旁白: 那一刻，他忽然觉得胸口发热。\n绫: 「……」\n"
+    },
+    {
+      "id": "pass_renpy_quote_style",
+      "expectPass": true,
+      "forbidCodes": ["style_universal_ack"],
+      "draft": "aya \"You're still here?\"\nnarration \"The last train lights flickered.\"\n"
+    },
+    {
+      "id": "pass_mixed_cn_en_speakers",
+      "expectPass": true,
+      "forbidCodes": ["style_os_tag"],
+      "draft": "aya \"Wait.\"\n绫: 「别跑。」\n旁白: 伞骨在风里吱呀响。\n"
+    },
+    {
+      "id": "beats_keyword_miss",
+      "expectPass": false,
+      "beatSheet": {
+        "goal": "雨夜车站告白",
+        "beats": [
+          {"name": "重逢", "action": "雨夜车站重逢"},
+          {"name": "递伞", "action": "把红伞递过去"},
+          {"name": "告白", "action": "说出喜欢"}
+        ],
+        "triggers": ["红伞"]
+      },
+      "requireCodes": ["beats_coverage"],
+      "draft": "旁白: 教室里阳光很好。\n绫: 「作业写完了吗？」\n"
+    },
+    {
+      "id": "beats_keyword_hit",
+      "expectPass": true,
+      "beatSheet": {
+        "goal": "雨夜车站重逢",
+        "beats": [
+          {"name": "车站", "action": "雨夜车站重逢"},
+          {"name": "红伞", "action": "红伞被风吹偏"}
+        ],
+        "triggers": ["红伞"]
+      },
+      "forbidCodes": ["beats_coverage"],
+      "draft": "旁白: 雨夜的车站灯火摇曳。\n绫: 「你的红伞！」\n旁白: 伞被风吹偏，两人同时伸手。\n"
+    },
+    {
+      "id": "beats_partial_warn_not_error",
+      "expectPass": true,
+      "beatSheet": {
+        "goal": "车站相遇",
+        "beats": [
+          {"name": "车站", "action": "在车站见面"},
+          {"name": "闲聊", "action": "随便聊聊天气"}
+        ]
+      },
+      "forbidCodes": ["beats_coverage"],
+      "draft": "旁白: 车站广播响了。\n绫: 「我到了。」\n"
+    },
+    {
+      "id": "beats_trigger_only_still_hit",
+      "expectPass": true,
+      "beatSheet": {
+        "goal": "递伞",
+        "beats": [{"name": "伞", "action": "递出红伞"}],
+        "triggers": ["红伞"]
+      },
+      "forbidCodes": ["beats_coverage"],
+      "draft": "主角: 「这把红伞给你。」\n绫: 「……谢了。」\n"
+    },
+    {
+      "id": "beats_iron_box_miss",
+      "expectPass": false,
+      "beatSheet": {
+        "goal": "开箱",
+        "beats": [
+          {"name": "开箱", "action": "打开古旧铁盒"},
+          {"name": "读信", "action": "发现泛黄信件"}
+        ]
+      },
+      "requireCodes": ["beats_coverage"],
+      "draft": "旁白: 客厅很干净。\n绫: 「茶凉了。」\n"
+    },
+    {
+      "id": "beats_iron_box_hit",
+      "expectPass": true,
+      "beatSheet": {
+        "goal": "开箱",
+        "beats": [
+          {"name": "开箱", "action": "打开古旧铁盒"},
+          {"name": "读信", "action": "发现泛黄信件"}
+        ]
+      },
+      "forbidCodes": ["beats_coverage"],
+      "draft": "旁白: 他打开古旧铁盒。\n绫: 「这是……泛黄信件？」\n"
+    },
+    {
+      "id": "emptyish_still_pass_style",
+      "expectPass": true,
+      "draft": "绫: 「嗯。」\n"
+    },
+    {
+      "id": "pass_ellipsis_only",
+      "expectPass": true,
+      "forbidCodes": ["style_universal_ack"],
+      "draft": "绫: 「……」\n主角: 「……」\n旁白: 雨还在下。\n"
+    },
+    {
+      "id": "pass_with_menu_jump_lines",
+      "expectPass": true,
+      "forbidCodes": ["style_universal_ack", "style_os_tag"],
+      "draft": "绫: 「你要走吗？」\n选项: 留下 / 离开\njump stay\n"
+    },
+    {
+      "id": "pass_scene_label_rawish",
+      "expectPass": true,
+      "forbidCodes": ["style_os_tag"],
+      "draft": "scene bg_station\nlabel meet:\n绫: 「到了。」\n"
+    },
+    {
+      "id": "fail_mingbai_le",
+      "expectPass": false,
+      "requireCodes": ["style_universal_ack"],
+      "draft": "绫: 「所以是这样……」\n主角: 「我明白了。」\n"
+    },
+    {
+      "id": "fail_both_ack_and_os",
+      "expectPass": false,
+      "requireCodes": ["style_universal_ack", "style_os_tag"],
+      "draft": "心声：糟了。\n主角: 「原来如此。」\n"
+    },
+    {
+      "id": "pass_action_heavy",
+      "expectPass": true,
+      "forbidCodes": ["style_universal_ack", "style_os_tag"],
+      "draft": "旁白: 他把湿透的外套甩到椅背。\n绫: 「地板会湿。」\n主角: 「先不管。」\n旁白: 她扔来一条毛巾。\n"
+    },
+    {
+      "id": "pass_short_conflict",
+      "expectPass": true,
+      "forbidCodes": ["style_donot"],
+      "draft": "绫: 「你迟到。」\n主角: 「公交抛锚。」\n绫: 「借口。」\n主角: 「要查监控吗？」\n"
+    },
+    {
+      "id": "pass_bare_narration_prose",
+      "expectPass": true,
+      "draft": "雨打在铁皮棚上。\n远处有刹车声。\n"
+    },
+    {
+      "id": "fail_qingqing_yixiao_warn_ok",
+      "expectPass": true,
+      "note": "轻轻一笑 is banned phrase but often warn-tier via style_donot; may still pass if only warn",
+      "draft": "旁白: 她轻轻一笑。\n主角: 「别笑。」\n"
+    },
+    {
+      "id": "pass_return_jump_ok",
+      "expectPass": true,
+      "draft": "绫: 「回头再说。」\njump corridor\nreturn\n"
+    },
+    {
+      "id": "beats_zero_beats_sheet",
+      "expectPass": true,
+      "beatSheet": {"goal": "闲逛", "beats": []},
+      "draft": "旁白: 走廊空无一人。\n绫: 「走这边。」\n"
+    }
+  ]
+}

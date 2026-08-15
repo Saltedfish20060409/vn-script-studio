@@ -45,6 +45,8 @@ class AgentContextOptions:
     longChapterMemory: Optional[str] = None
     # Distilled ACG craft cards (萌百启发)
     loreCraft: Optional[str] = None
+    # User-uploaded reference documents (plain text block)
+    referenceDocs: Optional[str] = None
 
 
 @dataclass
@@ -57,16 +59,24 @@ class AgentContextResult:
 
 
 TASK_HINTS: Dict[str, str] = {
-    "chat": "本轮模式：自由讨论。可给方案、点评、大纲；仅当用户明确要求写入时再给 actions。设定勿当讲义复述。",
+    "chat": (
+        "本轮模式：自由讨论。可给方案、点评、大纲；把完整意见写进 message。"
+        "仅当用户明确要求写入工程时再给 actions。设定勿当讲义复述。"
+        "若用户征求修改意见/点评长文分析：actions=[]，用 message 长文回应。"
+    ),
     "continue": (
         "本轮任务：续写一小段可上演节拍。紧接【当前章末尾】；人设只校准语气。禁止设定宣讲；"
         "禁止陌生人连问盘人（一拍一角色 ideally ≤1 问）；信息用环境/失言/残缺感推进。默认 append_script；不要重写前文。"
+        "message 须简要说明本段节拍意图。"
     ),
     "rewrite": (
         "本轮任务：改写选区。保持剧情意图，砍盘问串与说明书腔，提升画面感与对白张力；"
-        "append_script 追加改写稿（勿 replace 整章，除非用户要求）。"
+        "append_script 追加改写稿（勿 replace 整章，除非用户要求）。message 说明改法要点。"
     ),
-    "polish": "本轮任务：润色。不改情节；重点砍盘问串、问答乒乓、过熟闲聊与套话，打磨对白自然度；append_script 写入。",
+    "polish": (
+        "本轮任务：润色。不改情节；重点砍盘问串、问答乒乓、过熟闲聊与套话，打磨对白自然度；"
+        "append_script 写入。message 说明润了哪些口气问题。"
+    ),
     "branch": (
         "本轮任务：有意义的分支。2～4 个 Ren'Py menu，每项后果不同；选项文案短而有戏剧性，"
         "勿在选项里塞设定说明；append_script。"
@@ -83,9 +93,16 @@ TASK_HINTS: Dict[str, str] = {
 
 def infer_agent_task(message: str) -> str:
     m = message.strip()
+    # Long paste asking for opinions/critique stays in chat (don't mis-fire rewrite).
+    if len(m) > 800 and re.search(
+        r"(修改意见|审稿|你觉得|对吗|据此|怎么改|提一些|征求)", m
+    ):
+        return "chat"
     if re.search(r"【任务：续写】|^续写|请续写|往下写", m):
         return "continue"
-    if re.search(r"【任务：改写】|改写选区|请改写", m):
+    if re.search(r"【任务：改写】|改写选区", m) or (
+        len(m) < 240 and re.search(r"请改写", m)
+    ):
         return "rewrite"
     if re.search(r"【任务：润色】|请润色", m):
         return "polish"
@@ -241,6 +258,7 @@ def build_agent_context(
     chatMemory: Optional[str] = None,
     longChapterMemory: Optional[str] = None,
     loreCraft: Optional[str] = None,
+    referenceDocs: Optional[str] = None,
 ) -> AgentContextResult:
     """Build a retrieval-biased project context for long-form Agent use.
 
@@ -433,6 +451,8 @@ def build_agent_context(
         included.append("长程章节记忆")
     if loreCraft and loreCraft.strip():
         included.append("ACG工艺卡")
+    if referenceDocs and referenceDocs.strip():
+        included.append("上传资料")
 
     show_vars = bool(
         var_lines
@@ -454,6 +474,11 @@ def build_agent_context(
         (
             f"\n{_clip(loreCraft.strip(), 2400)}"
             if loreCraft and loreCraft.strip()
+            else ""
+        ),
+        (
+            f"\n{_clip(referenceDocs.strip(), 8000)}"
+            if referenceDocs and referenceDocs.strip()
             else ""
         ),
         (

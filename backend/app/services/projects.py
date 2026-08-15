@@ -15,6 +15,8 @@ from app.core import (
     touch_project,
     uid,
 )
+from app.core.chapter_digest import refresh_chapter_index
+from app.core.voice_reports import mark_voice_reports_stale
 from app.domain.types import VnProject
 from app.models import Project, User
 
@@ -37,6 +39,8 @@ def row_to_vn(row: Project) -> VnProject:
 
 def sync_row_from_vn(row: Project, vn: VnProject) -> None:
     touched = touch_project(vn)
+    touched = refresh_chapter_index(touched)
+    touched = mark_voice_reports_stale(touched)
     payload = project_to_dict(touched)
     row.title = touched.title
     row.logline = touched.logline
@@ -77,6 +81,9 @@ async def create_project_row(
 
     if title:
         project.title = title
+
+    project = refresh_chapter_index(normalize_project(project))
+    project = mark_voice_reports_stale(project)
 
     now = datetime.now(timezone.utc)
     payload = project_to_dict(project)

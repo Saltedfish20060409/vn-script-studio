@@ -14,6 +14,58 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _infer_speaker_state(plain: str, name: str) -> tuple[str, str]:
+    """Pick emotion + body snippet from the speaker's last dialogue lines."""
+    lines: List[str] = []
+    for line in (plain or "").splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if s.startswith(f"{name}:") or s.startswith(f"{name}："):
+            frag = s.split(":", 1)[-1].split("：", 1)[-1].strip()
+            # strip quotes
+            frag = frag.strip("\"「」''")
+            if frag:
+                lines.append(frag)
+        elif f'{name} "' in s or f"{name} 「" in s:
+            lines.append(s)
+    last = lines[-1] if lines else ""
+    body = (last[:48] + ("…" if len(last) > 48 else "")) if last else "出场"
+    emotion = "平静"
+    blob = "".join(lines[-3:]) if lines else ""
+    if any(x in blob for x in ("！", "!", "啊", "混蛋", "该死")):
+        emotion = "激动"
+    elif any(x in blob for x in ("？", "?", "为什么", "难道")):
+        emotion = "疑惑"
+    elif any(x in blob for x in ("…", "...", "……", "算了", "没事")):
+        emotion = "低落"
+    elif any(x in blob for x in ("哈哈", "呵呵", "谢谢", "喜欢")):
+        emotion = "愉悦"
+    elif any(x in blob for x in ("怕", "担心", "别", "小心")):
+        emotion = "担忧"
+    return emotion, body or "—"
+
+
+def _speakers_from_plain(plain: str, characters: List[Any]) -> List[str]:
+    """Fallback speaker list when chapter only has raw lines."""
+    names = []
+    for c in characters or []:
+        n = getattr(c, "displayName", None) or getattr(c, "defineName", None)
+        if n:
+            names.append(str(n))
+    found: List[str] = []
+    seen = set()
+    for line in (plain or "").splitlines():
+        s = line.strip()
+        for name in names:
+            if s.startswith(f"{name}:") or s.startswith(f"{name}："):
+                if name not in seen:
+                    seen.add(name)
+                    found.append(name)
+                break
+    return found
+
+
 def empty_ledger() -> Dict[str, Any]:
     return {
         "chapterFacts": [],
@@ -106,8 +158,11 @@ def digest_chapter_into_ledger(
     if not facts:
         if dig.beatSummary:
             facts.append(dig.beatSummary)
-        if dig.speakers:
-            facts.append("出场：" + "、".join(dig.speakers[:8]))
+        speakers_for_facts = list(dig.speakers)
+        if not speakers_for_facts:
+            speakers_for_facts = _speakers_from_plain(plain, project.characters)
+        if speakers_for_facts:
+            facts.append("出场：" + "、".join(speakers_for_facts[:8]))
         if dig.openHook:
             facts.append(f"开场钩：{dig.openHook[:80]}")
         if dig.closeHook:
@@ -160,11 +215,20 @@ def digest_chapter_into_ledger(
                 }
             )
     else:
-        for name in dig.speakers[:6]:
+        # Heuristic emotion/body from last lines spoken by each character
+        speaker_names = list(dig.speakers) or _speakers_from_plain(
+            plain, project.characters
+        )
+        for name in speaker_names[:6]:
             char = next(
-                (c for c in project.characters if c.displayName == name or c.defineName == name),
+                (
+                    c
+                    for c in project.characters
+                    if c.displayName == name or c.defineName == name
+                ),
                 None,
             )
+            emotion, body = _infer_speaker_state(plain, name)
             states.append(
                 {
                     "id": str(uuid4()),
@@ -172,9 +236,13 @@ def digest_chapter_into_ledger(
                     "chapterTitle": ch.title,
                     "characterId": char.id if char else "",
                     "characterName": name,
-                    "emotion": "（待流水线充实）",
-                    "body": "—",
-                    "relations": (char.relationships[:80] if char and char.relationships else "—"),
+                    "emotion": emotion,
+                    "body": body,
+                    "relations": (
+                        char.relationships[:80]
+                        if char and char.relationships
+                        else "—"
+                    ),
                     "updatedAt": _now(),
                 }
             )

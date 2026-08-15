@@ -88,6 +88,7 @@ export function AgentFloat(props: Props) {
 
   useEffect(() => {
     try {
+      const narrow = window.innerWidth < 900;
       const raw = localStorage.getItem(POS_KEY) || localStorage.getItem("vnss-agent-float-v5");
       if (raw) {
         const p = JSON.parse(raw) as {
@@ -105,6 +106,13 @@ export function AgentFloat(props: Props) {
             w: clamp(p.w, MIN_W, Math.max(MIN_W, window.innerWidth - 24)),
             h: clamp(p.h, MIN_H, Math.max(MIN_H, window.innerHeight - 24)),
           });
+        }
+        // Narrow viewports: keep writing surface visible (agent as edge tab)
+        if (narrow && p.mode !== "docked") {
+          setSize("normal");
+          setPos({ mode: "docked", edge: "right", along: 96 });
+          inited.current = true;
+          return;
         }
         if (p.size === "large" || p.size === "normal") setSize(p.size);
         if (
@@ -138,6 +146,11 @@ export function AgentFloat(props: Props) {
           inited.current = true;
           return;
         }
+      }
+      if (narrow) {
+        setPos({ mode: "docked", edge: "right", along: 96 });
+        inited.current = true;
+        return;
       }
     } catch {
       /* ignore */
@@ -333,9 +346,7 @@ export function AgentFloat(props: Props) {
           </span>
           <strong>审稿 Agent</strong>
           <span className={styles.sub}>
-            {nearEdgeHint
-              ? "松手将贴边收起为标签"
-              : "一个责编 · ⇄ 换参谋 · ! 说明"}
+            {nearEdgeHint ? "松手贴边收起" : "卷宗 · ⇄ 参谋"}
           </span>
           <div className={styles.winBtns}>
             <button

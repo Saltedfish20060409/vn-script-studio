@@ -21,6 +21,7 @@ from .chapter_digest import (
     digest_all_chapters,
     format_chapter_digest_index,
     make_chapter_digest,
+    refresh_chapter_index,
 )
 from .demo import create_demo_project, empty_project
 from .import_text import project_from_plain_text
@@ -31,6 +32,7 @@ from .longform_memory import (
     select_outline_beats,
 )
 from .map_catalog import (
+    DEFAULT_MAP_STYLE,
     MAP_ELEMENT_PRESETS,
     MAP_STYLES,
     MapElementPreset,
@@ -38,7 +40,9 @@ from .map_catalog import (
     preset_by_kind,
 )
 from .map_extract_smart import (
+    accept_map_extract_proposal,
     build_map_extract_corpus,
+    build_map_extract_proposal,
     extract_map_smart,
     lexicon_suggest_places,
     merge_suggested_places,
@@ -69,6 +73,13 @@ from .project import (
 )
 from .renpy import export_character_defines, export_to_renpy, project_to_context
 from .voice_check import VoiceIssue, VoiceReport, run_voice_check
+from .fact_extract import (
+    accept_character_link,
+    accept_timeline_event,
+    build_scan_candidates,
+    compute_fingerprints,
+    reconcile_stale,
+)
 from .writing_craft import (
     ALL_WRITING_SKILL_IDS,
     CraftDecision,
@@ -87,6 +98,7 @@ from .writing_craft import (
 __all__ = [
     "LOCATION_RELATION_LABELS",
     "MAP_LINE_STYLE_LABELS",
+    "DEFAULT_MAP_STYLE",
     "MAP_STYLES",
     "MAP_ELEMENT_PRESETS",
     "MapElementPreset",
@@ -134,6 +146,11 @@ __all__ = [
     "run_voice_check",
     "VoiceIssue",
     "VoiceReport",
+    "accept_character_link",
+    "accept_timeline_event",
+    "build_scan_candidates",
+    "compute_fingerprints",
+    "reconcile_stale",
     "create_demo_project",
     "empty_project",
     "normalize_project",
@@ -142,6 +159,8 @@ __all__ = [
     "extract_map_from_script",
     "extract_map_smart",
     "build_map_extract_corpus",
+    "build_map_extract_proposal",
+    "accept_map_extract_proposal",
     "lexicon_suggest_places",
     "merge_suggested_places",
     "uid",
@@ -150,6 +169,7 @@ __all__ = [
     "digest_all_chapters",
     "make_chapter_digest",
     "format_chapter_digest_index",
+    "refresh_chapter_index",
     "ChapterDigest",
     "compress_chat_history",
     "parse_outline_beats",

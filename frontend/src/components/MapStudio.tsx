@@ -1,31 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  LOCATION_RELATION_LABELS,
   MAP_LINE_STYLE_LABELS,
 } from "../types/vn";
 import type {
   CustomMapElementDef,
   Location,
   LocationLink,
-  LocationRelation,
   MapElementKind,
   MapLineStyle,
   MapStroke,
-  MapStyleId,
+  SceneChapter,
 } from "../types/vn";
 import {
   MAP_ELEMENT_PRESETS,
-  MAP_STYLES,
-  normalizeMapStyle,
   presetByKind,
 } from "../lib/mapCatalog";
+import {
+  findLocationOccurrences,
+  primaryEvidence,
+} from "../lib/mapOccurrences";
+import { planRoadCurves } from "../lib/mapRoads";
 import { uid } from "../lib/vnLocal";
+import { mascotLine } from "../lib/mascotCopy";
+import { EmptyStage } from "./EmptyStage";
+import { MapPinGlyph, isGlyphKey } from "./MapPinGlyph";
 import styles from "./MapStudio.module.css";
 
 /** Large playable world — camera clamps so you never see empty void */
 const WORLD_W = 4800;
 const WORLD_H = 3600;
-/** Thematic stage (bulletin / letter / HUD…) sits in the center of the world */
+/** Persona LOC_MAP HUD stage sits in the center of the world */
 const STAGE_W = 2200;
 const STAGE_H = 1500;
 const STAGE_X = (WORLD_W - STAGE_W) / 2;
@@ -36,14 +40,16 @@ type Tool = "pan" | "place" | "link" | "select" | "draw";
 type Props = {
   locations: Location[];
   links: LocationLink[];
-  mapStyle: MapStyleId;
+  chapters: SceneChapter[];
   customElements: CustomMapElementDef[];
   strokes: MapStroke[];
   onChangeLocations: (locations: Location[]) => void;
   onChangeLinks: (links: LocationLink[]) => void;
-  onChangeStyle: (style: MapStyleId) => void;
   onChangeCustomElements: (defs: CustomMapElementDef[]) => void;
   onChangeStrokes: (strokes: MapStroke[]) => void;
+  onJumpToChapter?: (chapterId: string, blockIndex?: number) => void;
+  focusLocationId?: string | null;
+  focusTick?: number;
   onExtractFromScript?: () => void;
   onExtractRulesOnly?: () => void;
 };
@@ -91,18 +97,26 @@ function strokeHitsPoint(
   return false;
 }
 
-function resolveIcon(
+function resolvePin(
   loc: Location,
   customs: CustomMapElementDef[]
-): { icon: string; color: string } {
-  if (loc.icon && loc.color) return { icon: loc.icon, color: loc.color };
+): { glyph: string; color: string } {
   if (loc.elementKind === "custom" && loc.tags?.[0]) {
     const c = customs.find((x) => x.id === loc.tags![0]);
-    if (c) return { icon: c.icon, color: c.color };
+    if (c) {
+      return {
+        glyph: isGlyphKey(c.icon) ? c.icon! : "custom",
+        color: loc.color || c.color || presetByKind("custom").color,
+      };
+    }
   }
   const p = presetByKind(loc.elementKind);
+  const glyph =
+    (isGlyphKey(loc.icon) && loc.icon) ||
+    (loc.elementKind && loc.elementKind !== "custom" ? loc.elementKind : null) ||
+    p.icon;
   return {
-    icon: loc.icon || p.icon,
+    glyph,
     color: loc.color || p.color,
   };
 }
@@ -169,24 +183,24 @@ function labelOffsets(
 export function MapStudio({
   locations,
   links,
-  mapStyle,
+  chapters,
   customElements,
   strokes,
   onChangeLocations,
   onChangeLinks,
-  onChangeStyle,
   onChangeCustomElements,
   onChangeStrokes,
+  onJumpToChapter,
+  focusLocationId = null,
+  focusTick = 0,
   onExtractFromScript,
   onExtractRulesOnly,
 }: Props) {
-  const styleId = normalizeMapStyle(mapStyle);
   const studioRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [tool, setTool] = useState<Tool>("pan");
   const [placeKind, setPlaceKind] = useState<MapElementKind>("landmark");
   const [placeCustomId, setPlaceCustomId] = useState<string | null>(null);
-  const [relation, setRelation] = useState<LocationRelation>("leads_to");
   const [lineStyle, setLineStyle] = useState<MapLineStyle>("solid");
   const [linkFrom, setLinkFrom] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -200,7 +214,7 @@ export function MapStudio({
   const [drawing, setDrawing] = useState(false);
   const draftStroke = useRef<MapStroke | null>(null);
   const [draftPts, setDraftPts] = useState<{ x: number; y: number }[]>([]);
-  const [brushColor, setBrushColor] = useState("#5b6b7a");
+  const [brushColor, setBrushColor] = useState("#002fa7");
   const [brushWidth, setBrushWidth] = useState(6);
   const [brushMode, setBrushMode] = useState<"pen" | "eraser">("pen");
   const strokeHistory = useRef<MapStroke[][]>([]);
@@ -249,8 +263,8 @@ export function MapStudio({
 
   const [customForm, setCustomForm] = useState({
     name: "秘密地点",
-    icon: "✦",
-    color: "#8b7bb8",
+    icon: "custom",
+    color: "#002fa7",
   });
 
   const nodes = useMemo(
@@ -267,7 +281,15 @@ export function MapStudio({
     selectedIds.length === 1
       ? (locations.find((l) => l.id === selectedIds[0]) ?? null)
       : null;
+  const occurrences = useMemo(
+    () => (selected ? findLocationOccurrences(selected, chapters) : []),
+    [selected, chapters]
+  );
   const offsets = useMemo(() => labelOffsets(nodes), [nodes]);
+  const roadCurves = useMemo(() => {
+    const pts = new Map(nodes.map((n) => [n.id, { x: n.x, y: n.y }] as const));
+    return planRoadCurves(links, pts);
+  }, [nodes, links]);
 
   const applyCam = useCallback(
     (next: { x: number; y: number; zoom: number }) => {
@@ -324,9 +346,34 @@ export function MapStudio({
     setDidFit(true);
   }, [nodes, applyCam]);
 
+  const focusPin = useCallback(
+    (id: string) => {
+      const n = nodes.find((x) => x.id === id);
+      if (!n) return;
+      const el = viewportRef.current;
+      if (!el) return;
+      const { width, height } = el.getBoundingClientRect();
+      if (width < 40 || height < 40) return;
+      const zoom = clamp(0.85, 0.4, 1.2);
+      applyCam({
+        zoom,
+        x: n.x * zoom - width / 2,
+        y: n.y * zoom - height / 2,
+      });
+      setSelectedIds([id]);
+      setTool("select");
+      setDidFit(true);
+    },
+    [nodes, applyCam]
+  );
+
   useEffect(() => {
-    setDidFit(false);
-  }, [styleId]);
+    if (!focusLocationId || !focusTick) return;
+    const id = window.requestAnimationFrame(() => {
+      focusPin(focusLocationId);
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [focusLocationId, focusTick, focusPin]);
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -414,7 +461,7 @@ export function MapStudio({
       if (placeKind === "custom" && placeCustomId) {
         const c = customElements.find((e) => e.id === placeCustomId);
         if (c) {
-          icon = c.icon;
+          icon = isGlyphKey(c.icon) ? c.icon : "custom";
           color = c.color;
           name = c.name;
           tags = [c.id];
@@ -866,7 +913,7 @@ export function MapStudio({
             id: uid("link"),
             fromId: linkFrom,
             toId: id,
-            relation,
+            relation: "adjacent",
             lineStyle,
           },
         ]);
@@ -924,8 +971,8 @@ export function MapStudio({
       {
         id,
         name: customForm.name.trim() || "自定义",
-        icon: customForm.icon.trim() || "✦",
-        color: customForm.color || "#8b7bb8",
+        icon: "custom",
+        color: customForm.color || "#002fa7",
       },
     ]);
     setPlaceKind("custom");
@@ -955,28 +1002,9 @@ export function MapStudio({
   }
 
   return (
-    <div className={styles.studio} data-style={styleId} ref={studioRef}>
+    <div className={styles.studio} ref={studioRef}>
       <aside className={styles.left}>
-        <p className={styles.label}>题材风格</p>
-        <div className={styles.styleGrid}>
-          {MAP_STYLES.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className={
-                styleId === s.id ? styles.styleActive : styles.styleBtn
-              }
-              onClick={() => onChangeStyle(s.id)}
-              title={`${s.genre} · ${s.desc}`}
-            >
-              <span data-swatch={s.id} />
-              <strong>{s.name}</strong>
-              <em>{s.genre}</em>
-            </button>
-          ))}
-        </div>
-
-        <p className={styles.label}>场景元素</p>
+        <p className={styles.label}>NODE · 地点</p>
         <div className={styles.palette}>
           {MAP_ELEMENT_PRESETS.filter((p) => p.kind !== "custom").map((p) => (
             <button
@@ -994,7 +1022,7 @@ export function MapStudio({
               }}
               title={p.hint}
             >
-              <span>{p.icon}</span>
+              <MapPinGlyph kind={p.icon} color={p.color} size="sm" />
               {p.name}
             </button>
           ))}
@@ -1017,7 +1045,11 @@ export function MapStudio({
                 }}
                 title="选中以放置"
               >
-                <span>{c.icon}</span>
+                <MapPinGlyph
+                  kind={isGlyphKey(c.icon) ? c.icon : "custom"}
+                  color={c.color}
+                  size="sm"
+                />
                 {c.name}
               </button>
               <button
@@ -1046,7 +1078,7 @@ export function MapStudio({
           </p>
         )}
 
-        <p className={styles.label}>自定义要素</p>
+        <p className={styles.label}>自定义</p>
         <div className={styles.customForm}>
           <input
             value={customForm.name}
@@ -1056,19 +1088,18 @@ export function MapStudio({
             placeholder="名称"
           />
           <div className={styles.customRow}>
-            <input
-              value={customForm.icon}
-              onChange={(e) =>
-                setCustomForm((f) => ({ ...f, icon: e.target.value }))
-              }
-              placeholder="图标"
-              maxLength={4}
-            />
+            <span className={styles.hintTiny} style={{ alignSelf: "center" }}>
+              章钉色
+            </span>
             <input
               type="color"
               value={customForm.color}
               onChange={(e) =>
-                setCustomForm((f) => ({ ...f, color: e.target.value }))
+                setCustomForm((f) => ({
+                  ...f,
+                  color: e.target.value,
+                  icon: "custom",
+                }))
               }
             />
           </div>
@@ -1080,6 +1111,9 @@ export function MapStudio({
 
       <div className={styles.center}>
         <div className={styles.toolbar}>
+          <span className={styles.label} style={{ margin: 0, alignSelf: "center" }}>
+            TOOL
+          </span>
           {(
             [
               ["pan", "漫游"],
@@ -1103,37 +1137,21 @@ export function MapStudio({
             </button>
           ))}
           {tool === "link" && (
-            <>
-              <select
-                value={relation}
-                onChange={(e) =>
-                  setRelation(e.target.value as LocationRelation)
-                }
-              >
-                {(
-                  Object.keys(LOCATION_RELATION_LABELS) as LocationRelation[]
-                ).map((r) => (
-                  <option key={r} value={r}>
-                    {LOCATION_RELATION_LABELS[r]}
+            <select
+              value={lineStyle}
+              onChange={(e) =>
+                setLineStyle(e.target.value as MapLineStyle)
+              }
+              title="连线样式"
+            >
+              {(Object.keys(MAP_LINE_STYLE_LABELS) as MapLineStyle[]).map(
+                (ls) => (
+                  <option key={ls} value={ls}>
+                    {MAP_LINE_STYLE_LABELS[ls]}
                   </option>
-                ))}
-              </select>
-              <select
-                value={lineStyle}
-                onChange={(e) =>
-                  setLineStyle(e.target.value as MapLineStyle)
-                }
-                title="连线样式"
-              >
-                {(Object.keys(MAP_LINE_STYLE_LABELS) as MapLineStyle[]).map(
-                  (ls) => (
-                    <option key={ls} value={ls}>
-                      {MAP_LINE_STYLE_LABELS[ls]}
-                    </option>
-                  )
-                )}
-              </select>
-            </>
+                )
+              )}
+            </select>
           )}
           {tool === "draw" && (
             <>
@@ -1237,14 +1255,32 @@ export function MapStudio({
         <div
           ref={viewportRef}
           className={styles.viewport}
-          data-style={styleId}
           tabIndex={0}
           onPointerDown={onViewportPointerDown}
           onContextMenu={(e) => e.preventDefault()}
         >
+          {locations.length === 0 && strokes.length === 0 ? (
+            <div className={styles.emptyOverlay}>
+              <EmptyStage
+                stamp="MAP"
+                title="世界观地图还空着"
+                line={mascotLine("emptyMap")}
+                compact
+              >
+                {onExtractFromScript ? (
+                  <button
+                    type="button"
+                    className={styles.primary}
+                    onClick={onExtractFromScript}
+                  >
+                    智能提取地图
+                  </button>
+                ) : null}
+              </EmptyStage>
+            </div>
+          ) : null}
           <div
             className={styles.world}
-            data-style={styleId}
             style={{
               width: WORLD_W,
               height: WORLD_H,
@@ -1252,7 +1288,7 @@ export function MapStudio({
               transformOrigin: "0 0",
             }}
           >
-            <MapStage styleId={styleId} />
+            <MapStage />
             <svg
               className={styles.roads}
               width={WORLD_W}
@@ -1268,10 +1304,10 @@ export function MapStudio({
                 const a = byId.get(link.fromId);
                 const b = byId.get(link.toId);
                 if (!a || !b) return null;
-                const mx = (a.x + b.x) / 2;
-                const my = (a.y + b.y) / 2 - 40;
+                const curve = roadCurves.get(link.id);
+                const mx = curve?.mx ?? (a.x + b.x) / 2;
+                const my = curve?.my ?? (a.y + b.y) / 2;
                 const ls = link.lineStyle ?? "solid";
-                const label = LOCATION_RELATION_LABELS[link.relation];
                 const dash = lineDash(ls);
                 const strokeW = ls === "rail" ? 10 : ls === "double" ? 5 : 7;
                 return (
@@ -1290,24 +1326,13 @@ export function MapStudio({
                       strokeWidth={strokeW}
                       strokeDasharray={dash}
                     />
-                    <rect
-                      x={mx - label.length * 5.5}
-                      y={my - 14}
-                      width={label.length * 11}
-                      height={18}
-                      rx={4}
-                      className={styles.roadLabelBg}
-                    />
-                    <text x={mx} y={my} className={styles.roadLabel}>
-                      {label}
-                    </text>
                   </g>
                 );
               })}
             </svg>
             <div className={styles.pinLayer}>
               {nodes.map((n) => {
-                const { icon, color } = resolveIcon(n, customElements);
+                const { glyph, color } = resolvePin(n, customElements);
                 const active =
                   selectedIds.includes(n.id) ||
                   n.id === linkFrom ||
@@ -1330,11 +1355,8 @@ export function MapStudio({
                     onPointerDown={(e) => onPinPointerDown(e, n.id, n.x, n.y)}
                     title={n.description || n.name}
                   >
-                    <span
-                      className={styles.pinBadge}
-                      style={{ borderColor: color }}
-                    >
-                      {icon}
+                    <span className={styles.pinBadge}>
+                      <MapPinGlyph kind={glyph} color={color} active={active} />
                     </span>
                     <span className={styles.pinLabel}>{n.name}</span>
                   </button>
@@ -1357,10 +1379,10 @@ export function MapStudio({
       </div>
 
       <aside className={styles.right}>
-        <p className={styles.label}>要素属性</p>
+        <p className={styles.label}>NODE · 属性</p>
         {selectedIds.length > 1 ? (
           <div className={styles.inspector}>
-            <p className={styles.empty}>已选 {selectedIds.length} 个要素</p>
+            <p className={styles.empty}>已选 {selectedIds.length} 个地点</p>
             <button
               type="button"
               className={styles.danger}
@@ -1370,7 +1392,7 @@ export function MapStudio({
             </button>
           </div>
         ) : !selected ? (
-          <p className={styles.empty}>选中地图上的图钉以编辑</p>
+          <p className={styles.empty}>选中地点章钉以编辑属性</p>
         ) : (
           <div className={styles.inspector}>
             <label>
@@ -1380,21 +1402,22 @@ export function MapStudio({
                 onChange={(e) => updateSelected({ name: e.target.value })}
               />
             </label>
-            <label>
-              图标
-              <input
-                value={selected.icon ?? ""}
-                onChange={(e) => updateSelected({ icon: e.target.value })}
+            <div className={styles.inspectorPin}>
+              <MapPinGlyph
+                kind={resolvePin(selected, customElements).glyph}
+                color={selected.color ?? resolvePin(selected, customElements).color}
+                size="sm"
+                active
               />
-            </label>
-            <label>
-              颜色
-              <input
-                type="color"
-                value={selected.color ?? "#6b7280"}
-                onChange={(e) => updateSelected({ color: e.target.value })}
-              />
-            </label>
+              <label>
+                章钉色
+                <input
+                  type="color"
+                  value={selected.color ?? "#002fa7"}
+                  onChange={(e) => updateSelected({ color: e.target.value })}
+                />
+              </label>
+            </div>
             <label>
               scene 标签
               <input
@@ -1444,12 +1467,49 @@ export function MapStudio({
               className={styles.danger}
               onClick={deleteSelected}
             >
-              删除此要素
+              删除此地点
             </button>
           </div>
         )}
 
-        <p className={styles.label}>通路列表</p>
+        <p className={styles.label}>SCENE · 出现</p>
+        {selectedIds.length > 1 ? (
+          <p className={styles.empty}>选中单个地点以查看出现章节</p>
+        ) : !selected ? (
+          <p className={styles.empty}>选中地点章钉以查看剧本出现</p>
+        ) : occurrences.length === 0 ? (
+          <p className={styles.empty}>
+            剧本中暂无匹配。检查 scene 标签，或地名是否出现在对白/旁白中。
+          </p>
+        ) : (
+          <ul className={styles.occList}>
+            {occurrences.map((occ) => {
+              const primary = primaryEvidence(occ);
+              const n = occ.hits.length;
+              return (
+                <li key={occ.chapterId}>
+                  <button
+                    type="button"
+                    className={styles.occBtn}
+                    disabled={!onJumpToChapter}
+                    onClick={() =>
+                      onJumpToChapter?.(occ.chapterId, primary.blockIndex)
+                    }
+                    title="跳到写作区并定位到对应段落"
+                  >
+                    <strong>{occ.chapterTitle}</strong>
+                    <span>
+                      {primary.evidence}
+                      {n > 1 ? ` · ×${n}` : ""}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <p className={styles.label}>LINK · 通路</p>
         <ul className={styles.linkList}>
           {links.map((l) => {
             const from = byId.get(l.fromId)?.name ?? "?";
@@ -1458,7 +1518,7 @@ export function MapStudio({
             return (
               <li key={l.id}>
                 <span>
-                  {from} —{LOCATION_RELATION_LABELS[l.relation]}→ {to}
+                  {from} — {to}
                   <small> · {MAP_LINE_STYLE_LABELS[ls]}</small>
                 </span>
                 <button
@@ -1478,8 +1538,8 @@ export function MapStudio({
   );
 }
 
-/** Thematic map body — bulletin board / letter / HUD dialog / etc. */
-function MapStage({ styleId }: { styleId: MapStyleId }) {
+/** Unified Persona LOC_MAP HUD. */
+function MapStage() {
   const box = {
     left: STAGE_X,
     top: STAGE_Y,
@@ -1487,134 +1547,24 @@ function MapStage({ styleId }: { styleId: MapStyleId }) {
     height: STAGE_H,
   };
 
-  if (styleId === "campus") {
-    return (
-      <div className={styles.stage} style={box} data-style="campus" aria-hidden>
-        <div className={styles.campusFrame}>
-          <div className={styles.campusHeader}>学生会 · 校园导览公告板</div>
-          <div className={styles.campusCork}>
-            <span className={styles.scrap} style={{ left: "6%", top: "8%", transform: "rotate(-4deg)" }}>
-              社团招募
-            </span>
-            <span className={styles.scrap} style={{ right: "8%", top: "12%", transform: "rotate(3deg)" }}>
-              天台开放日
-            </span>
-            <span className={styles.scrap} style={{ left: "12%", bottom: "10%", transform: "rotate(2deg)" }}>
-              失物招领
-            </span>
-            <span className={styles.scrap} style={{ right: "14%", bottom: "14%", transform: "rotate(-2deg)" }}>
-              文化祭地图
-            </span>
-            <div className={styles.campusGrid} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (styleId === "romance") {
-    return (
-      <div className={styles.stage} style={box} data-style="romance" aria-hidden>
-        <div className={styles.letterSheet}>
-          <div className={styles.letterLines} />
-          <div className={styles.letterStamp}>♡</div>
-          <div className={styles.letterSeal} />
-          <p className={styles.letterTitle}>致你的场景手记</p>
-          <p className={styles.letterHint}>把约会地点钉在信纸上…</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (styleId === "cyber") {
-    return (
-      <div className={styles.stage} style={box} data-style="cyber" aria-hidden>
-        <div className={styles.cyberDialog}>
-          <div className={styles.cyberChrome}>
-            <span>LOC_MAP.exe</span>
-            <span className={styles.cyberDots}>● ● ●</span>
-          </div>
-          <div className={styles.cyberBody}>
-            <div className={styles.cyberBracket} data-corner="tl" />
-            <div className={styles.cyberBracket} data-corner="tr" />
-            <div className={styles.cyberBracket} data-corner="bl" />
-            <div className={styles.cyberBracket} data-corner="br" />
-            <p className={styles.cyberPrompt}>{">"} sync_scene_graph — waiting input_</p>
-            <div className={styles.cyberScan} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (styleId === "isekai") {
-    return (
-      <div className={styles.stage} style={box} data-style="isekai" aria-hidden>
-        <div className={styles.scrollSheet}>
-          <div className={styles.scrollRoll} data-side="top" />
-          <div className={styles.scrollBody}>
-            <p className={styles.scrollTitle}>✦ 大陆旅图 ✦</p>
-            <div className={styles.scrollOrnament} />
-          </div>
-          <div className={styles.scrollRoll} data-side="bottom" />
-        </div>
-      </div>
-    );
-  }
-
-  if (styleId === "urban") {
-    return (
-      <div className={styles.stage} style={box} data-style="urban" aria-hidden>
-        <div className={styles.blueprint}>
-          <p className={styles.blueTitle}>CITY ROUTE DRAFT</p>
-          <div className={styles.blueGrid} />
-          <div className={styles.blueCompass}>N</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (styleId === "mystery") {
-    return (
-      <div className={styles.stage} style={box} data-style="mystery" aria-hidden>
-        <div className={styles.caseBoard}>
-          <div className={styles.caseTab}>CASE FILE</div>
-          <div className={styles.caseCork}>
-            <span className={styles.polaroid} style={{ left: "8%", top: "10%", transform: "rotate(-6deg)" }}>
-              证人
-            </span>
-            <span className={styles.polaroid} style={{ right: "10%", top: "16%", transform: "rotate(5deg)" }}>
-              物证
-            </span>
-            <span className={styles.polaroid} style={{ left: "18%", bottom: "12%", transform: "rotate(3deg)" }}>
-              时间线
-            </span>
-            <svg className={styles.caseStrings} viewBox="0 0 100 100" preserveAspectRatio="none">
-              <line x1="20" y1="25" x2="75" y2="30" />
-              <line x1="75" y1="30" x2="30" y2="75" />
-              <line x1="20" y1="25" x2="30" y2="75" />
-            </svg>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // horror
   return (
-    <div className={styles.stage} style={box} data-style="horror" aria-hidden>
-      <div className={styles.horrorWall}>
-        <div className={styles.horrorCrack} />
-        <span className={styles.horrorPhoto} style={{ left: "10%", top: "14%", transform: "rotate(-8deg)" }}>
-          ?
-        </span>
-        <span className={styles.horrorPhoto} style={{ right: "12%", top: "22%", transform: "rotate(6deg)" }}>
-          …
-        </span>
-        <span className={styles.horrorPhoto} style={{ left: "40%", bottom: "16%", transform: "rotate(-3deg)" }}>
-          勿入
-        </span>
-        <p className={styles.horrorTitle}>此处无路标</p>
+    <div className={styles.stage} style={box} aria-hidden>
+      <div className={styles.hudFrame}>
+        <div className={styles.hudTop}>
+          <span className={styles.hudIdx}>LOC_MAP</span>
+          <p className={styles.hudTitle}>World Reference</p>
+        </div>
+        <div className={styles.hudBody}>
+          <div className={styles.hudBracket} data-corner="tl" />
+          <div className={styles.hudBracket} data-corner="tr" />
+          <div className={styles.hudBracket} data-corner="bl" />
+          <div className={styles.hudBracket} data-corner="br" />
+          <div className={styles.hudSlash} />
+        </div>
+        <div className={styles.hudFoot}>
+          <span>GRID · ACTIVE</span>
+          <em>REF / PIN / LINK</em>
+        </div>
       </div>
     </div>
   );

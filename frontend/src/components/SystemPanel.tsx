@@ -69,15 +69,6 @@ export function SystemPanel({ project, onChange, sub, onSub }: Props) {
 
   return (
     <section className={styles.panel}>
-      <div className={styles.sectionHead}>
-        <span className={styles.sectionIdx} aria-hidden>
-          05
-        </span>
-        <div>
-          <h3 className={styles.sectionTitle}>VN 状态</h3>
-          <p className={styles.sectionLead}>变量与立绘槽</p>
-        </div>
-      </div>
       <div className={styles.subNav}>
         <button
           type="button"

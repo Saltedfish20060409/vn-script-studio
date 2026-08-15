@@ -19,25 +19,51 @@ import {
   listProjects,
   listSnapshots,
   mapExtract,
+  mapExtractAccept,
   patchProject,
   putProject,
   putSettings,
   restoreSnapshot as apiRestoreSnapshot,
   revokeShare,
+  type MapExtractProposal,
   type MemoryArchiveDetail,
   type MemoryArchiveSummary,
   type ProjectSummary,
   type SnapshotSummary,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { ScriptEditor } from "./ScriptEditor";
 import { MapStudio } from "./MapStudio";
+import { MapExtractReview } from "./MapExtractReview";
 import { ColorPicker } from "./ColorPicker";
 import { AgentFloat } from "./AgentFloat";
 import { AnalysisPanels } from "./AnalysisPanels";
 import { SystemPanel } from "./SystemPanel";
 import { SettingsGear, SettingsModal } from "./SettingsModal";
 import { CharacterWorkshop } from "./CharacterWorkshop";
-import { blocksToEditable, editableToBlocks } from "../lib/scriptCodec";
+import { FocusChrome } from "./FocusChrome";
+import { useConfirm, usePrompt } from "./ConfirmDialog";
+import { EmptyStage } from "./EmptyStage";
+import { ProjectLibraryPanel } from "./ProjectLibraryPanel";
+import { StudioErrorBoundary } from "./StudioErrorBoundary";
+import {
+  SaveConflictDialog,
+  type SaveConflictChoice,
+} from "./SaveConflictDialog";
+import {
+  clearConflictDraft,
+  downloadProjectJson,
+  stashConflictDraft,
+} from "../lib/conflictDraft";
+import {
+  StatusToast,
+  classifyStatusToast,
+} from "./StatusToast";
+import {
+  blockTextRange,
+  blocksToEditable,
+  editableToBlocks,
+} from "../lib/scriptCodec";
 import { normalizeProject } from "../lib/vnLocal";
 import {
   applySettingsToDom,
@@ -55,6 +81,23 @@ import {
   workspaceDefaults,
   type StudioTab,
 } from "../lib/workspacePersist";
+import {
+  enterFullscreen,
+  exitFullscreen,
+  loadFocusMode,
+  loadFocusTimerPrefs,
+  saveFocusMode,
+  saveFocusTimerPrefs,
+  type FocusTimerPrefs,
+} from "../lib/focusMode";
+import {
+  clearChapterReviseDraft,
+  getChapterReviseDraft,
+  requestOpenReviseReview,
+  REVISE_DRAFT_EVENT,
+  type ChapterReviseDraft,
+} from "../lib/chapterReviseDraft";
+import { mascotLine } from "../lib/mascotCopy";
 import type { Character, Location, StoryBible, VnProject } from "../types/vn";
 import styles from "./StudioApp.module.css";
 
@@ -78,6 +121,8 @@ function downloadBlob(filename: string, blob: Blob) {
 export function StudioApp() {
   const { logout, user } = useAuth();
   const navigate = useNavigate();
+  const confirm = useConfirm();
+  const prompt = usePrompt();
   const cachedWs = useMemo(() => loadWorkspace(), []);
   const wsDefaults = workspaceDefaults();
 
@@ -106,6 +151,10 @@ export function StudioApp() {
   const [selection, setSelection] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [saveConflict, setSaveConflict] = useState<{
+    local: VnProject;
+    serverUpdatedAt?: string;
+  } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<AppSettings | null>(() => {
     const cached = loadAppearanceCache();
@@ -114,6 +163,12 @@ export function StudioApp() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [shareUrl, setShareUrl] = useState("");
+  const [mapExtractReview, setMapExtractReview] = useState<{
+    proposal: MapExtractProposal;
+    warnings?: string[];
+    modeLabel: string;
+  } | null>(null);
+  const [mapExtractBusy, setMapExtractBusy] = useState(false);
   const [snapLabel, setSnapLabel] = useState("");
   const [snapshots, setSnapshots] = useState<SnapshotSummary[]>([]);
   const [memoryArchives, setMemoryArchives] = useState<MemoryArchiveSummary[]>(
@@ -126,11 +181,26 @@ export function StudioApp() {
   /** 导出页：先生成预览，再允许下载 */
   const [rpyPreview, setRpyPreview] = useState<string | null>(null);
   const [rpyStale, setRpyStale] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [focusSetupOpen, setFocusSetupOpen] = useState(false);
+  const [focusPrefs, setFocusPrefs] = useState<FocusTimerPrefs | null>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   const editorRef = useRef("");
+  const editorTaRef = useRef<HTMLTextAreaElement | null>(null);
+  const pendingEditorFocus = useRef<{
+    chapterId: string;
+    blockIndex: number;
+  } | null>(null);
+  const [editorFocusNonce, setEditorFocusNonce] = useState(0);
+  const [mapFocus, setMapFocus] = useState<{
+    id: string;
+    tick: number;
+  } | null>(null);
+  const [reviseDraft, setReviseDraft] = useState<ChapterReviseDraft | null>(null);
   const editorCommitTimer = useRef<number | null>(null);
   const projectSaveTimer = useRef<number | null>(null);
   const skipNextProjectSave = useRef(false);
@@ -142,6 +212,24 @@ export function StudioApp() {
     if (settings) applySettingsToDom(settings);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Chapter revise preview chip (survives refresh via localStorage)
+  useEffect(() => {
+    if (!project?.id || !chapterId) {
+      setReviseDraft(null);
+      return;
+    }
+    function refresh() {
+      setReviseDraft(getChapterReviseDraft(project!.id, chapterId));
+    }
+    refresh();
+    window.addEventListener(REVISE_DRAFT_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(REVISE_DRAFT_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, [project?.id, chapterId]);
 
   const refreshProjectsList = useCallback(async () => {
     const list = await listProjects();
@@ -248,6 +336,41 @@ export function StudioApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.id, chapterId]);
 
+  // Map → write: scroll/select the target block after chapter text is ready.
+  useEffect(() => {
+    const pending = pendingEditorFocus.current;
+    if (!pending || !project) return;
+    if (pending.chapterId !== chapterId) return;
+    if (tab !== "write" || writeSub !== "script") return;
+    const ch = project.chapters.find((c) => c.id === chapterId);
+    if (!ch) return;
+    const range = blockTextRange(
+      ch.blocks,
+      project.characters,
+      pending.blockIndex
+    );
+    if (!range) {
+      pendingEditorFocus.current = null;
+      return;
+    }
+    const id = window.requestAnimationFrame(() => {
+      const ta = editorTaRef.current;
+      if (!ta) return;
+      pendingEditorFocus.current = null;
+      ta.focus();
+      ta.setSelectionRange(range.start, range.end);
+      setSelection(ta.value.slice(range.start, range.end));
+      const before = ta.value.slice(0, range.start);
+      const line = before.split("\n").length;
+      const styles = window.getComputedStyle(ta);
+      const lh = Number.parseFloat(styles.lineHeight);
+      const lineHeight = Number.isFinite(lh) && lh > 0 ? lh : 22;
+      const pad = Number.parseFloat(styles.paddingTop) || 0;
+      ta.scrollTop = Math.max(0, (line - 3) * lineHeight - pad);
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [project, chapterId, editor, tab, writeSub, editorFocusNonce]);
+
   // Flush draft when tab is hidden / page is closing so exit doesn't lose work
   useEffect(() => {
     const onHide = () => {
@@ -289,13 +412,17 @@ export function StudioApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project]);
 
-  async function persistProject(p: VnProject, opts?: { silent?: boolean }) {
+  async function persistProject(p: VnProject, opts?: { silent?: boolean; force?: boolean }) {
     const silent = opts?.silent ?? true;
     try {
       if (!silent) setStatus("保存中…");
-      const saved = await putProject(p.id, p, p.updatedAt);
+      const saved = await putProject(p.id, p, p.updatedAt, {
+        force: opts?.force,
+      });
       skipNextProjectSave.current = true;
       setProject(saved);
+      clearConflictDraft(saved.id);
+      setSaveConflict(null);
       setProjectsList((prev) =>
         prev.map((s) =>
           s.id === saved.id
@@ -313,11 +440,53 @@ export function StudioApp() {
       return true;
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
-        setError("项目已在别处更新，建议刷新页面查看最新版本");
-      } else {
-        setError(e instanceof Error ? e.message : "保存失败");
+        stashConflictDraft(p);
+        const detail = e.detail as
+          | { serverUpdatedAt?: string; message?: string }
+          | undefined;
+        if (projectSaveTimer.current) {
+          window.clearTimeout(projectSaveTimer.current);
+          projectSaveTimer.current = null;
+        }
+        setSaveConflict({
+          local: p,
+          serverUpdatedAt: detail?.serverUpdatedAt,
+        });
+        setError("");
+        setStatus("发现版本冲突 — 请选择保留本地或使用服务器");
+        return false;
       }
+      setError(e instanceof Error ? e.message : "保存失败");
       return false;
+    }
+  }
+
+  async function resolveSaveConflict(choice: SaveConflictChoice) {
+    const pending = saveConflict;
+    if (!pending) return;
+    if (choice === "download") {
+      downloadProjectJson(pending.local);
+      setStatus("已下载本地稿 JSON，冲突对话框仍打开");
+      return;
+    }
+    if (choice === "keep_local") {
+      setSaveConflict(null);
+      const ok = await persistProject(pending.local, {
+        silent: false,
+        force: true,
+      });
+      if (ok) setStatus("已用本地稿覆盖服务器版本");
+      return;
+    }
+    // take_server
+    try {
+      const fresh = await getProject(pending.local.id);
+      skipNextProjectSave.current = true;
+      setProject(fresh);
+      setSaveConflict(null);
+      setStatus("已载入服务器版本（本地稿仍暂存在浏览器）");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "拉取服务器版本失败");
     }
   }
 
@@ -399,6 +568,23 @@ export function StudioApp() {
     });
   }
 
+  /** Apply a project snapshot already persisted on the server (preserve updatedAt). */
+  function applyRemoteProject(nextProject: VnProject) {
+    if (projectSaveTimer.current) {
+      window.clearTimeout(projectSaveTimer.current);
+      projectSaveTimer.current = null;
+    }
+    skipNextProjectSave.current = true;
+    setError("");
+    setProject((prev) => {
+      if (!prev) return prev;
+      return normalizeProject({
+        ...nextProject,
+        id: prev.id,
+      });
+    });
+  }
+
   const chapter = useMemo(
     () => project?.chapters.find((c) => c.id === chapterId),
     [project, chapterId]
@@ -442,6 +628,8 @@ export function StudioApp() {
     if (!latest) return;
     commitEditor();
     try {
+      setStatus("生成导出中…");
+      setError("");
       const saved = await putProject(latest.id, latest, latest.updatedAt);
       skipNextProjectSave.current = true;
       setProject(saved);
@@ -449,9 +637,9 @@ export function StudioApp() {
       setRpyPreview(text);
       setRpyStale(false);
       setStatus("已根据当前剧本生成 .rpy，可预览后下载");
-      setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "生成失败");
+      setStatus("");
     }
   }
 
@@ -470,7 +658,11 @@ export function StudioApp() {
   }
 
   async function createBlank() {
-    const title = window.prompt("新剧本标题", "未命名剧本");
+    const title = await prompt({
+      title: "新剧本标题",
+      defaultValue: "未命名剧本",
+      confirmLabel: "创建",
+    });
     if (title === null) return;
     try {
       const created = await createProject({ title: title.trim() || "未命名剧本" });
@@ -519,7 +711,13 @@ export function StudioApp() {
       return;
     }
     const target = projectsList.find((p) => p.id === id);
-    if (!window.confirm(`确定删除「${target?.title ?? ""}」？`)) return;
+    const ok = await confirm({
+      title: `删除剧本「${target?.title ?? ""}」？`,
+      body: "云端工程将被移除，此操作不可从列表撤销。",
+      danger: true,
+      confirmLabel: "确认删除",
+    });
+    if (!ok) return;
     try {
       await apiDeleteProject(id);
       const list = await refreshProjectsList();
@@ -629,8 +827,14 @@ export function StudioApp() {
     });
   }
 
-  function deleteCharacter(id: string) {
-    if (!window.confirm("删除该角色？剧本中相关对白不会自动改写。")) return;
+  async function deleteCharacter(id: string) {
+    const ok = await confirm({
+      title: "删除该角色？",
+      body: "剧本中相关对白不会自动改写，需手动处理残留指称。",
+      danger: true,
+      confirmLabel: "确认删除",
+    });
+    if (!ok) return;
     updateActive((p) => ({
       ...p,
       characters: p.characters.filter((c) => c.id !== id),
@@ -638,15 +842,24 @@ export function StudioApp() {
   }
 
   function updateBible(patch: Partial<StoryBible>) {
-    updateActive((p) => ({
-      ...p,
-      bible: { ...(p.bible ?? {}), ...patch },
-      lore: patch.world !== undefined ? patch.world : p.bible?.world ?? p.lore,
-    }));
+    updateActive((p) => {
+      const nextBible = { ...(p.bible ?? {}), ...patch };
+      const world = nextBible.world ?? p.bible?.world ?? "";
+      return {
+        ...p,
+        bible: nextBible,
+        // Deprecated mirror of bible.world for older saves / exports
+        lore: world,
+      };
+    });
   }
 
-  function addChapter() {
-    const title = window.prompt("章节标题", `第${(project?.chapters.length ?? 0) + 1}章`);
+  async function addChapter() {
+    const title = await prompt({
+      title: "章节标题",
+      defaultValue: `第${(project?.chapters.length ?? 0) + 1}章`,
+      confirmLabel: "添加",
+    });
     if (title === null) return;
     const id = `ch-${Date.now().toString(36)}`;
     updateActive((p) => ({
@@ -664,12 +877,18 @@ export function StudioApp() {
     setChapterId(id);
   }
 
-  function deleteChapter(id: string) {
+  async function deleteChapter(id: string) {
     if (!project || project.chapters.length <= 1) {
       setError("至少保留一章");
       return;
     }
-    if (!window.confirm("删除该章节？")) return;
+    const ok = await confirm({
+      title: "删除该章节？",
+      body: "章节正文将一并移除，请确认已不需要此稿。",
+      danger: true,
+      confirmLabel: "确认删除",
+    });
+    if (!ok) return;
     const next = project.chapters.filter((c) => c.id !== id);
     updateActive((p) => ({ ...p, chapters: next }));
     if (chapterId === id) setChapterId(next[0].id);
@@ -700,36 +919,71 @@ export function StudioApp() {
     try {
       setStatus(mode === "smart" ? "智能提取地图中…" : "按 scene 提取中…");
       const latest = buildLatestProject();
+      const projectId = latest?.id ?? project.id;
       if (latest) {
         const saved = await putProject(latest.id, latest, latest.updatedAt);
         skipNextProjectSave.current = true;
         setProject(saved);
       }
-      const result = await mapExtract(project.id, { mode });
-      skipNextProjectSave.current = true;
-      setProject(result.project);
+      const result = await mapExtract(projectId, { mode });
       const warn =
         result.warnings && result.warnings.length
           ? `（${result.warnings[0]}）`
           : "";
-      if (result.addedCount === 0 && result.linkCount === 0) {
+      const newPlaces = result.proposal?.newPlaceIds?.length ?? result.addedCount;
+      const newLinks = result.proposal?.newLinkIds?.length ?? result.linkCount;
+      if (newPlaces === 0 && newLinks === 0) {
         setStatus(
-          `未发现新地点。可在剧本写 scene bg xxx，或在对白/设定中出现明确场所。${warn}`
+          `未发现新地点或通路。可在剧本写 scene bg xxx，或在对白/设定中出现明确场所。${warn}`
         );
-      } else {
-        const llmBit =
-          result.llmUsed && (result.llmAddedCount || result.llmLinkCount)
-            ? `，其中模型补充地点 ${result.llmAddedCount ?? 0}、通路 ${result.llmLinkCount ?? 0}`
-            : result.llmUsed
-              ? "（已调用模型）"
-              : "";
-        setStatus(
-          `地图提取完成（${result.mode ?? mode}）：新增地点 ${result.addedCount}，通路 ${result.linkCount}${llmBit}${warn}`
-        );
+        setTab("map");
+        return;
       }
+      setMapExtractReview({
+        proposal: result.proposal,
+        warnings: result.warnings,
+        modeLabel:
+          mode === "smart"
+            ? `智能提取${result.llmUsed ? "（含模型）" : ""}`
+            : "仅 scene",
+      });
+      setStatus(
+        `找到候选：地点 ${newPlaces}、通路 ${newLinks}，请勾选后写入${warn}`
+      );
       setTab("map");
     } catch (e) {
       setError(e instanceof Error ? e.message : "提取失败");
+    }
+  }
+
+  async function confirmMapExtract(
+    placeIds: string[],
+    linkIds: string[]
+  ) {
+    if (!project || !mapExtractReview) return;
+    if (placeIds.length === 0 && linkIds.length === 0) {
+      setMapExtractReview(null);
+      setStatus("已取消写入（未选择任何候选）");
+      return;
+    }
+    setMapExtractBusy(true);
+    try {
+      const result = await mapExtractAccept(project.id, {
+        placeIds,
+        linkIds,
+        proposal: mapExtractReview.proposal,
+      });
+      skipNextProjectSave.current = true;
+      setProject(result.project);
+      setMapExtractReview(null);
+      setStatus(
+        `已写入地图：新增地点 ${result.addedCount}，通路 ${result.linkCount}`
+      );
+      setTab("map");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "写入地图失败");
+    } finally {
+      setMapExtractBusy(false);
     }
   }
 
@@ -798,7 +1052,13 @@ export function StudioApp() {
     if (!project) return;
     const snap = snapshots.find((s) => s.id === snapId);
     if (!snap) return;
-    if (!window.confirm(`回退到「${snap.label}」？当前未快照的改动会丢失。`)) {
+    const ok = await confirm({
+      title: `回退到「${snap.label}」？`,
+      body: "当前未快照的改动会丢失。",
+      danger: true,
+      confirmLabel: "确认回退",
+    });
+    if (!ok) {
       return;
     }
     try {
@@ -882,6 +1142,8 @@ export function StudioApp() {
     if (!project) return;
     commitEditor();
     try {
+      setStatus("导出工程中…");
+      setError("");
       const latest = buildLatestProject();
       if (latest) {
         const saved = await putProject(latest.id, latest, latest.updatedAt);
@@ -890,10 +1152,93 @@ export function StudioApp() {
       }
       const blob = await exportJson(project.id);
       downloadBlob(`${project.title || "project"}.json`, blob);
+      setStatus("已下载工程 .json");
     } catch (e) {
       setError(e instanceof Error ? e.message : "导出失败");
+      setStatus("");
     }
   }
+
+  // Fullscreen cannot resume without a gesture; clear sticky flag from older sessions.
+  useEffect(() => {
+    if (loadFocusMode()) saveFocusMode(false);
+  }, []);
+
+  async function exitFocusSession() {
+    setFocusMode(false);
+    saveFocusMode(false);
+    setFocusPrefs(null);
+    setFocusSetupOpen(false);
+    try {
+      await exitFullscreen();
+    } catch {
+      /* user gesture / browser policy */
+    }
+  }
+
+  async function startFocusSession(prefs: FocusTimerPrefs) {
+    saveFocusTimerPrefs(prefs);
+    setFocusPrefs(prefs);
+    setFocusSetupOpen(false);
+    setFocusMode(true);
+    saveFocusMode(true);
+    setTab("write");
+    setWriteSub("script");
+    try {
+      await enterFullscreen(shellRef.current ?? document.documentElement);
+    } catch {
+      setStatus("浏览器拒绝全屏，仍以专注界面继续（可再试一次）");
+    }
+  }
+
+  function requestFocusSession() {
+    if (focusMode) {
+      void exitFocusSession();
+      return;
+    }
+    if (tab !== "write" || writeSub !== "script") {
+      commitEditor();
+      setTab("write");
+      setWriteSub("script");
+    }
+    setFocusSetupOpen(true);
+  }
+
+  useEffect(() => {
+    function onFsChange() {
+      if (!document.fullscreenElement && focusMode) {
+        setFocusMode(false);
+        saveFocusMode(false);
+        setFocusPrefs(null);
+      }
+    }
+    document.addEventListener("fullscreenchange", onFsChange);
+    document.addEventListener("webkitfullscreenchange", onFsChange as EventListener);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFsChange);
+      document.removeEventListener(
+        "webkitfullscreenchange",
+        onFsChange as EventListener
+      );
+    };
+  }, [focusMode]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== "\\") return;
+      if (tab !== "write" || writeSub !== "script") return;
+      e.preventDefault();
+      requestFocusSession();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusMode, tab, writeSub]);
+
+  const dismissToast = useCallback(() => {
+    setStatus("");
+    setError("");
+  }, []);
 
   function handleLogout() {
     void (async () => {
@@ -908,35 +1253,74 @@ export function StudioApp() {
   }
 
   if (bootLoading) {
-    return <div className={styles.boot}>加载中…</div>;
+    return (
+      <div className={`vnss-app ${styles.boot}`}>
+        <div className={styles.bootArc} aria-hidden>
+          <span>LOAD</span>
+        </div>
+        <p className={styles.bootKicker}>SCRIPT STUDIO</p>
+        <p className={styles.bootTitle}>加载中</p>
+      </div>
+    );
   }
 
   if (projectsList.length === 0) {
     return (
-      <div className={styles.boot}>
-        <p>还没有剧本，先创建一个吧</p>
-        <div className={styles.aiQuick} style={{ marginTop: "1rem" }}>
-          <button type="button" onClick={() => void createBlank()}>
-            空白剧本
-          </button>
-          <button type="button" onClick={() => void createDemo()}>
-            示例《雨夜车站》
-          </button>
+      <div className={`vnss-app ${styles.boot}`}>
+        <div className={styles.bootArc} aria-hidden>
+          <span>LIB</span>
+        </div>
+        <p className={styles.bootKicker}>SCRIPT STUDIO</p>
+        <h1 className={styles.bootTitle}>还没有剧本</h1>
+        <p className={styles.bootLead}>先建一个空白工程，或载入示例开场。</p>
+        <div className={styles.bootEmpty}>
+          <EmptyStage
+            stamp="LIB"
+            title="项目库空着"
+            line={mascotLine("emptyLibrary")}
+          >
+            <div className={styles.aiQuick}>
+              <button type="button" onClick={() => void createBlank()}>
+                空白剧本
+              </button>
+              <button type="button" onClick={() => void createDemo()}>
+                示例《雨夜车站》
+              </button>
+            </div>
+          </EmptyStage>
         </div>
       </div>
     );
   }
 
   if (!project || projectLoading) {
-    return <div className={styles.boot}>加载中…</div>;
+    return (
+      <div className={`vnss-app ${styles.boot}`}>
+        <div className={styles.bootArc} aria-hidden>
+          <span>LOAD</span>
+        </div>
+        <p className={styles.bootKicker}>SCRIPT STUDIO</p>
+        <p className={styles.bootTitle}>加载中</p>
+      </div>
+    );
   }
 
   const locations = project.locations ?? [];
   const links = project.locationLinks ?? [];
   const bible = project.bible ?? {};
+  const toast = classifyStatusToast(status, error);
+  const writeQuiet = tab === "write" && writeSub === "script";
 
   return (
     <>
+      <SaveConflictDialog
+        open={Boolean(saveConflict)}
+        localTitle={saveConflict?.local.title}
+        serverUpdatedAt={saveConflict?.serverUpdatedAt}
+        onChoose={(c) => {
+          void resolveSaveConflict(c);
+        }}
+      />
       {settings?.bgImage ? (
         <>
           <div className="vnss-wallpaper" aria-hidden />
@@ -945,16 +1329,41 @@ export function StudioApp() {
         </>
       ) : null}
       <div
+        ref={shellRef}
         className={`vnss-app ${styles.shell} ${
           tab === "write" && writeSub === "script" ? styles.writeQuiet : ""
-        }`}
+        } ${
+          tab === "write" && writeSub === "script" && focusMode
+            ? styles.focusMode
+            : ""
+        } ${tab !== "write" ? styles.menuStage : ""}`}
       >
+      <FocusChrome
+        setupOpen={focusSetupOpen}
+        initialPrefs={loadFocusTimerPrefs()}
+        onSetupCancel={() => setFocusSetupOpen(false)}
+        onSetupConfirm={(prefs) => void startFocusSession(prefs)}
+        active={Boolean(focusMode && tab === "write" && writeSub === "script")}
+        prefs={focusPrefs}
+        draft={editor}
+        onExit={() => void exitFocusSession()}
+      />
+      {toast ? (
+        <StatusToast
+          message={toast.message}
+          kind={toast.kind}
+          quiet={writeQuiet && toast.kind !== "error"}
+          onDismiss={dismissToast}
+        />
+      ) : null}
       <header className={`${styles.top} vnss-frost`}>
         <div className={styles.brandBlock}>
           <span className={styles.brandMark} aria-hidden>
-            VN
+            <em>SS</em>
+            <span>VN</span>
           </span>
           <div className={styles.brandText}>
+            <p className={styles.brandKicker}>VISUAL NOVEL</p>
             <p className={styles.brand}>Script Studio</p>
             <input
               className={styles.titleInput}
@@ -968,6 +1377,17 @@ export function StudioApp() {
           </div>
         </div>
         <div className={styles.topActions}>
+          {tab === "write" && writeSub === "script" && !focusMode ? (
+            <button
+              type="button"
+              className={styles.focusToggle}
+              aria-pressed={false}
+              onClick={requestFocusSession}
+              title="专注全屏写作 (Ctrl+\\)"
+            >
+              专注
+            </button>
+          ) : null}
           <details className={styles.moreMenu}>
             <summary>更多</summary>
             <div className={styles.morePanel} role="menu">
@@ -1023,29 +1443,10 @@ export function StudioApp() {
         </div>
       </header>
 
-      {(status || error) && (
-        <div className={styles.banner}>
-          {error ? (
-            <span className={styles.error}>{error}</span>
-          ) : (
-            <span>{status}</span>
-          )}
-          <button
-            type="button"
-            className={styles.ghost}
-            onClick={() => {
-              setStatus("");
-              setError("");
-            }}
-          >
-            关闭
-          </button>
-        </div>
-      )}
-
       <div className={styles.layout}>
         <main className={styles.main}>
-          <nav className={`${styles.tabs} vnss-frost`} aria-label="工作室篇章">
+          <nav className={`${styles.tabs} vnss-frost`} aria-label="剧本篇章">
+            <span className={styles.tabsRail} aria-hidden />
             {(
               [
                 ["write", "01", "写作"],
@@ -1096,112 +1497,24 @@ export function StudioApp() {
                 ))}
               </div>
 
-              {projectSub === "library" && (
-                <>
-              <header className={styles.sectionHead}>
-                <span className={styles.sectionIdx} aria-hidden>
-                  06
-                </span>
-                <div>
-                  <h2 className={styles.sectionTitle}>剧本库</h2>
-                  <p className={styles.sectionLead}>
-                    管理多部剧本：新建、导入或载入示例。
-                  </p>
-                </div>
-              </header>
-              <div className={styles.toolbar}>
-                <span>管理多个剧本：新建、导入 Word/文本/JSON，或载入示例</span>
-                <div className={styles.aiQuick}>
-                  <button type="button" onClick={() => void createBlank()}>
-                    空白剧本
-                  </button>
-                  <button type="button" onClick={() => void createDemo()}>
-                    示例《雨夜车站》
-                  </button>
-                  <button type="button" onClick={() => fileRef.current?.click()}>
-                    导入文件
-                  </button>
-                </div>
-              </div>
-              <p className={styles.hint}>
-                支持 .docx / .txt / .md / .rpy / 工程 .json。卡片可点「重命名」或双击标题改名；顶栏标题也可随时改。
-              </p>
-              <div className={styles.libraryGrid}>
-                {projectsList.map((p) => (
-                  <article
-                    key={p.id}
-                    className={
-                      p.id === project.id
-                        ? styles.libraryCardActive
-                        : styles.libraryCard
-                    }
-                  >
-                    {renamingId === p.id ? (
-                      <input
-                        ref={renameInputRef}
-                        className={styles.libraryRename}
-                        value={renameDraft}
-                        onChange={(e) => setRenameDraft(e.target.value)}
-                        onBlur={() => void commitRename()}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            void commitRename();
-                          }
-                          if (e.key === "Escape") {
-                            e.preventDefault();
-                            cancelRename();
-                          }
-                        }}
-                        aria-label="重命名剧本"
-                      />
-                    ) : (
-                      <h3
-                        className={styles.libraryTitle}
-                        title="双击重命名"
-                        onDoubleClick={() => startRename(p.id)}
-                      >
-                        {p.title}
-                      </h3>
-                    )}
-                    <p>{p.logline || "暂无简介"}</p>
-                    <p className={styles.meta}>
-                      更新于 {new Date(p.updated_at).toLocaleString()}
-                    </p>
-                    <div className={styles.cardActions}>
-                      <button
-                        type="button"
-                        className={styles.primary}
-                        onClick={() => void switchProject(p.id)}
-                      >
-                        打开
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.ghost}
-                        onClick={() => startRename(p.id)}
-                      >
-                        重命名
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.ghost}
-                        onClick={() => void duplicateProjectById(p.id)}
-                      >
-                        复制
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.ghost}
-                        onClick={() => void deleteProjectById(p.id)}
-                      >
-                        删除
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-                </>
+              {projectSub === "library" && project && (
+                <ProjectLibraryPanel
+                  projectsList={projectsList}
+                  activeId={project.id}
+                  renamingId={renamingId}
+                  renameDraft={renameDraft}
+                  renameInputRef={renameInputRef}
+                  onRenameDraftChange={setRenameDraft}
+                  onStartRename={startRename}
+                  onCommitRename={() => void commitRename()}
+                  onCancelRename={cancelRename}
+                  onOpen={(id) => void switchProject(id)}
+                  onCreateBlank={() => void createBlank()}
+                  onCreateDemo={() => void createDemo()}
+                  onImportClick={() => fileRef.current?.click()}
+                  onDuplicate={(id) => void duplicateProjectById(id)}
+                  onDelete={(id) => void deleteProjectById(id)}
+                />
               )}
 
               {projectSub === "export" && (
@@ -1243,9 +1556,19 @@ export function StudioApp() {
                     </p>
                   )}
                   {!rpyPreview ? (
-                    <p className={styles.hint}>
-                      尚未生成。点击「生成 .rpy」会从当前章节与角色设定编译 Ren&apos;Py 脚本。
-                    </p>
+                    <EmptyStage
+                      stamp="EXP"
+                      title="尚无导出预览"
+                      line={mascotLine("emptyExport")}
+                    >
+                      <button
+                        type="button"
+                        className={styles.primary}
+                        onClick={() => void generateRpy()}
+                      >
+                        生成 .rpy
+                      </button>
+                    </EmptyStage>
                   ) : (
                     <pre className={styles.pre}>{rpyPreview}</pre>
                   )}
@@ -1415,18 +1738,21 @@ export function StudioApp() {
                     writeSub === "analysis" ? styles.subActive : styles.subTab
                   }
                   onClick={() => {
-                    commitEditor();
-                    setWriteSub("analysis");
+                    void (async () => {
+                      commitEditor();
+                      await flushPendingSave();
+                      setWriteSub("analysis");
+                    })();
                   }}
                 >
                   分析
                 </button>
                 <div className={styles.chapterBar}>
-                  <span className={styles.inlineLabel}>章节</span>
+                  <span className={styles.inlineLabel}>篇章</span>
                   <div
                     className={styles.chapterStrip}
                     role="listbox"
-                    aria-label="章节列表"
+                    aria-label="篇章"
                   >
                     {project.chapters.map((c, i) => (
                       <button
@@ -1446,14 +1772,14 @@ export function StudioApp() {
                         }}
                       >
                         <em>{String(i + 1).padStart(2, "0")}</em>
-                        {c.title || `第 ${i + 1} 章`}
+                        <span>{c.title || `第 ${i + 1} 章`}</span>
                       </button>
                     ))}
                   </div>
                   <button
                     type="button"
                     className={styles.ghost}
-                    onClick={addChapter}
+                    onClick={() => void addChapter()}
                   >
                     + 章
                   </button>
@@ -1461,7 +1787,7 @@ export function StudioApp() {
                     type="button"
                     className={styles.ghost}
                     disabled={project.chapters.length <= 1}
-                    onClick={() => deleteChapter(chapterId)}
+                    onClick={() => void deleteChapter(chapterId)}
                   >
                     删章
                   </button>
@@ -1485,16 +1811,56 @@ export function StudioApp() {
                     }}
                   />
                 </label>
-                <span className={styles.hintInline}>
-                  续写 / 改写 / 润色请用右下角审稿 Agent · 换剧本在「项目」
-                </span>
+                {reviseDraft ? (
+                  <div className={styles.reviseDraftActions}>
+                    <button
+                      type="button"
+                      className={styles.reviseDraftBtn}
+                      title="打开未写入的改稿对照（刷新后仍可进入）"
+                      onClick={() => {
+                        if (focusMode) {
+                          setStatus("请先退出专注模式，再打开改稿对照");
+                          return;
+                        }
+                        requestOpenReviseReview(project.id, chapterId);
+                      }}
+                    >
+                      改稿对照
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.ghost}
+                      title="丢弃本章未写入的改稿预览"
+                      onClick={() => {
+                        clearChapterReviseDraft(project.id, chapterId);
+                        setReviseDraft(null);
+                        setStatus("已丢弃本章改稿预览");
+                      }}
+                    >
+                      丢弃预览
+                    </button>
+                  </div>
+                ) : (
+                  <span className={styles.hintInline}>
+                    地名会高亮，点击可跳到地图 · 续写用右下角 Agent
+                  </span>
+                )}
               </div>
-              <textarea
-                className={styles.editor}
+              <StudioErrorBoundary label="写作编辑器">
+              <ScriptEditor
+                textareaRef={editorTaRef}
+                frameClassName={styles.scriptEditor}
                 value={editor}
-                onChange={(e) => {
-                  editorRef.current = e.target.value;
-                  setEditor(e.target.value);
+                locations={project.locations ?? []}
+                onPlaceClick={(locationId, label) => {
+                  commitEditor();
+                  setMapFocus({ id: locationId, tick: Date.now() });
+                  setTab("map");
+                  setStatus(`已在地图定位「${label}」`);
+                }}
+                onChange={(next) => {
+                  editorRef.current = next;
+                  setEditor(next);
                   if (rpyPreview) setRpyStale(true);
                   scheduleEditorCommit();
                 }}
@@ -1504,28 +1870,18 @@ export function StudioApp() {
                     t.value.slice(t.selectionStart, t.selectionEnd)
                   );
                 }}
-                spellCheck={false}
               />
+              </StudioErrorBoundary>
             </section>
               )}
               {writeSub === "analysis" && (
                 <section className={styles.panel}>
-                  <header className={styles.sectionHead}>
-                    <span className={styles.sectionIdx} aria-hidden>
-                      01
-                    </span>
-                    <div>
-                      <h2 className={styles.sectionTitle}>分析</h2>
-                      <p className={styles.sectionLead}>
-                        结构、节奏与一致性检查。
-                      </p>
-                    </div>
-                  </header>
                   <AnalysisPanels
                     project={project}
                     chapterId={chapterId}
                     draft={editor}
                     onChange={updateActive}
+                    onRemoteProject={applyRemoteProject}
                   />
                 </section>
               )}
@@ -1556,17 +1912,6 @@ export function StudioApp() {
               </div>
               {worldSub === "characters" && (
             <section className={styles.panel}>
-              <header className={styles.sectionHead}>
-                <span className={styles.sectionIdx} aria-hidden>
-                  02
-                </span>
-                <div>
-                  <h2 className={styles.sectionTitle}>角色卡</h2>
-                  <p className={styles.sectionLead}>
-                    定义显示名、语气与关系；删除不会自动改写对白。
-                  </p>
-                </div>
-              </header>
               <div className={styles.toolbar}>
                 <span>角色卡（删除不会自动改写对白）</span>
                 <button
@@ -1585,7 +1930,7 @@ export function StudioApp() {
                       <button
                         type="button"
                         className={styles.danger}
-                        onClick={() => deleteCharacter(c.id)}
+                        onClick={() => void deleteCharacter(c.id)}
                       >
                         删除
                       </button>
@@ -1663,17 +2008,6 @@ export function StudioApp() {
               )}
               {worldSub === "bible" && (
             <section className={styles.panel}>
-              <header className={styles.sectionHead}>
-                <span className={styles.sectionIdx} aria-hidden>
-                  02
-                </span>
-                <div>
-                  <h2 className={styles.sectionTitle}>世界观</h2>
-                  <p className={styles.sectionLead}>
-                    故事设定独立于角色卡，会进入 AI 上下文。
-                  </p>
-                </div>
-              </header>
               <div className={styles.toolbar}>
                 <span>故事设定独立于角色卡，会进入 AI 上下文</span>
               </div>
@@ -1758,36 +2092,44 @@ export function StudioApp() {
 
           {tab === "map" && (
             <section className={styles.panel}>
-              <header className={styles.sectionHead}>
-                <span className={styles.sectionIdx} aria-hidden>
-                  04
-                </span>
-                <div>
-                  <h2 className={styles.sectionTitle}>地图</h2>
-                  <p className={styles.sectionLead}>
-                    地点与通路；可从剧本智能提取。
-                  </p>
-                </div>
-              </header>
               <MapStudio
                 locations={locations}
                 links={links}
-                mapStyle={project.mapStyle ?? "campus"}
+                chapters={project.chapters}
                 customElements={project.customMapElements ?? []}
                 strokes={project.mapStrokes ?? []}
+                focusLocationId={mapFocus?.id ?? null}
+                focusTick={mapFocus?.tick ?? 0}
                 onChangeLocations={(locs) =>
                   updateActive((p) => ({ ...p, locations: locs }))
                 }
                 onChangeLinks={(nextLinks) =>
                   updateActive((p) => ({ ...p, locationLinks: nextLinks }))
                 }
-                onChangeStyle={(mapStyle) => updateActive((p) => ({ ...p, mapStyle }))}
                 onChangeCustomElements={(customMapElements) =>
                   updateActive((p) => ({ ...p, customMapElements }))
                 }
                 onChangeStrokes={(mapStrokes) =>
                   updateActive((p) => ({ ...p, mapStrokes }))
                 }
+                onJumpToChapter={(id, blockIndex) => {
+                  commitEditor();
+                  if (typeof blockIndex === "number") {
+                    pendingEditorFocus.current = { chapterId: id, blockIndex };
+                    setEditorFocusNonce((n) => n + 1);
+                  } else {
+                    pendingEditorFocus.current = null;
+                  }
+                  setChapterId(id);
+                  saveWorkspace({
+                    projectId: project.id,
+                    chapterId: id,
+                    tab: "write",
+                    writeSub: "script",
+                  });
+                  setTab("write");
+                  setWriteSub("script");
+                }}
                 onExtractFromScript={() => void extractLocs("smart")}
                 onExtractRulesOnly={() => void extractLocs("rules")}
               />
@@ -1805,29 +2147,35 @@ export function StudioApp() {
         </main>
       </div>
 
-      <AgentFloat
-        project={project}
-        chapterId={chapterId}
-        selection={selection}
-        draft={editor}
-        prepareProject={() => buildLatestProject() ?? project}
-        onProjectChange={(p) => {
-          replaceActiveProject(p);
-          const ch = p.chapters.find((c) => c.id === chapterId) ?? p.chapters[0];
-          if (ch) {
-            setChapterId(ch.id);
-            editorRef.current = blocksToEditable(ch.blocks, p.characters);
-            setEditor(editorRef.current);
-          }
-        }}
-        onChapterFocus={(id) => {
-          setChapterId(id);
-          setTab("write");
-          setWriteSub("script");
-        }}
-      />
+      {!focusMode ? (
+        <StudioErrorBoundary label="审稿 Agent">
+        <AgentFloat
+          project={project}
+          chapterId={chapterId}
+          selection={selection}
+          draft={editor}
+          prepareProject={() => buildLatestProject() ?? project}
+          onProjectChange={(p) => {
+            applyRemoteProject(p);
+            const ch = p.chapters.find((c) => c.id === chapterId) ?? p.chapters[0];
+            if (ch) {
+              setChapterId(ch.id);
+              editorRef.current = blocksToEditable(ch.blocks, p.characters);
+              setEditor(editorRef.current);
+            }
+          }}
+          onChapterFocus={(id) => {
+            setChapterId(id);
+            setTab("write");
+            setWriteSub("script");
+          }}
+        />
+        </StudioErrorBoundary>
+      ) : null}
 
-      <SettingsGear onClick={() => setSettingsOpen(true)} />
+      {!focusMode ? (
+        <SettingsGear onClick={() => setSettingsOpen(true)} />
+      ) : null}
       {settings && (
         <SettingsModal
           open={settingsOpen}
@@ -1836,6 +2184,22 @@ export function StudioApp() {
           onChange={setSettings}
         />
       )}
+      {mapExtractReview ? (
+        <MapExtractReview
+          proposal={mapExtractReview.proposal}
+          warnings={mapExtractReview.warnings}
+          modeLabel={mapExtractReview.modeLabel}
+          busy={mapExtractBusy}
+          onCancel={() => {
+            if (mapExtractBusy) return;
+            setMapExtractReview(null);
+            setStatus("已取消写入地图候选");
+          }}
+          onConfirm={(placeIds, linkIds) => {
+            void confirmMapExtract(placeIds, linkIds);
+          }}
+        />
+      ) : null}
       </div>
     </>
   );

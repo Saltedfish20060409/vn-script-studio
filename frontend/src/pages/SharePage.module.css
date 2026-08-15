@@ -1,28 +1,90 @@
 .wrap {
+  position: relative;
+  z-index: 1;
   max-width: 880px;
   margin: 0 auto;
   padding: clamp(1.5rem, 4vw, 2.75rem) 1.25rem 4rem;
   color: var(--ink);
-  animation: rise 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: rise 260ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .head {
+  position: relative;
   margin-bottom: 2rem;
-  padding-bottom: 1.25rem;
-  border-bottom: 1px solid var(--line);
+  padding: 1.15rem 1.1rem 1.25rem;
+  border: 2px solid var(--rail-border);
+  border-radius: var(--radius-sm);
+  background: var(--rail-grad);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+  backdrop-filter: var(--rail-blur);
+  -webkit-backdrop-filter: var(--rail-blur);
+  animation: var(--slash-in);
+}
+
+.arc {
+  position: absolute;
+  top: -18%;
+  right: -4%;
+  width: min(42vw, 220px);
+  height: min(42vw, 220px);
+  border: 3px solid color-mix(in srgb, var(--line) 70%, var(--accent));
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.55;
+  z-index: 0;
+}
+
+.arc::after {
+  content: "";
+  position: absolute;
+  inset: 18%;
+  border: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 50%;
+}
+
+.headInner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: stretch;
+  gap: 0.85rem;
+}
+
+.headIdx {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  min-width: 2.4rem;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  line-height: 1;
+  border-right: 2px solid color-mix(in srgb, var(--line) 55%, transparent);
+  padding-right: 0.75rem;
+}
+
+.headCopy {
+  min-width: 0;
+  flex: 1;
 }
 
 .badge {
   display: inline-block;
-  margin: 0 0 0.65rem;
-  padding: 0.3rem 0.7rem;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
+  margin: 0 0 0.55rem;
+  padding: 0.28rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--line);
+  background: color-mix(in srgb, var(--accent) 10%, var(--field-bg));
+  box-shadow: 2px 2px 0 color-mix(in srgb, var(--accent) 18%, transparent);
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--accent);
 }
 
@@ -31,7 +93,9 @@
   font-family: var(--font-display);
   font-size: clamp(2rem, 4.5vw, 2.75rem);
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.12;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .meta {
@@ -49,16 +113,49 @@
 }
 
 .section {
-  margin: 1.75rem 0;
-  padding-top: 1.15rem;
-  border-top: 1px solid var(--line);
+  margin: 1.5rem 0;
 }
 
-.section h2 {
-  margin: 0 0 0.85rem;
+.sectionHead {
+  display: flex;
+  align-items: stretch;
+  gap: 0.85rem;
+  margin-bottom: 0.95rem;
+  padding: 0.7rem 0.85rem;
+  border: 2px solid var(--line);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel-bg));
+  box-shadow: var(--shadow-sm);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+}
+
+.sectionIdx {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  min-width: 2.2rem;
   font-family: var(--font-display);
-  font-size: 1.25rem;
-  font-weight: 650;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  line-height: 1;
+  border-right: 2px solid color-mix(in srgb, var(--line) 55%, transparent);
+  padding-right: 0.75rem;
+}
+
+.sectionTitle {
+  margin: 0;
+  align-self: center;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.sectionBody {
+  min-width: 0;
 }
 
 .section pre {
@@ -68,9 +165,10 @@
   margin: 0 0 0.75rem;
   line-height: 1.6;
   padding: 1rem;
-  border-radius: 12px;
-  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--line);
   background: var(--panel-bg);
+  box-shadow: var(--shadow-sm);
 }
 
 .grid {
@@ -80,8 +178,8 @@
 }
 
 .card {
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
   padding: 0.95rem;
   background: var(--panel-bg);
   box-shadow: var(--shadow-sm);
@@ -91,6 +189,8 @@
   margin: 0 0 0.4rem;
   font-size: 1rem;
   font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .muted {
@@ -104,28 +204,45 @@
   line-height: 1.65;
 }
 
+.list li {
+  margin: 0.2rem 0;
+}
+
 .fileBtn {
   display: inline-block;
   margin-top: 1rem;
   padding: 0.65rem 1.1rem;
   min-height: 44px;
-  border-radius: 10px;
-  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--line);
   cursor: pointer;
   background: var(--accent);
   color: var(--on-accent, #fff);
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-decoration: none;
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .fileBtn:hover {
   background: color-mix(in srgb, var(--accent) 88%, #000);
 }
 
+.statusMsg {
+  margin: 0.75rem 0 0;
+  padding: 0.85rem 1rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-sm);
+  color: var(--ink-soft);
+}
+
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;

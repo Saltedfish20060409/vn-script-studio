@@ -3,6 +3,8 @@ import type {
   AgentChatMessage,
   AgentContextMeta,
   AgentTaskKind,
+  Location,
+  LocationLink,
   VnProject,
   VoiceReport,
 } from "../types/vn";
@@ -37,10 +39,13 @@ export function clearToken() {
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** Parsed JSON `detail` when the API returns an object (e.g. 409 conflict). */
+  detail?: unknown;
+  constructor(status: number, message: string, detail?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -49,23 +54,38 @@ interface ApiFetchOptions extends RequestInit {
   skipAuthRedirect?: boolean;
 }
 
-async function readErrorDetail(res: Response): Promise<string> {
+async function readErrorPayload(
+  res: Response
+): Promise<{ message: string; detail?: unknown }> {
   try {
     const data = await res.clone().json();
     if (data && typeof data === "object") {
-      if (typeof data.detail === "string") return data.detail;
-      if (typeof data.message === "string") return data.message;
+      const d = (data as { detail?: unknown }).detail;
+      if (typeof d === "string") return { message: d, detail: d };
+      if (d && typeof d === "object") {
+        const obj = d as { message?: string };
+        return {
+          message:
+            typeof obj.message === "string"
+              ? obj.message
+              : JSON.stringify(d),
+          detail: d,
+        };
+      }
+      if (typeof (data as { message?: string }).message === "string") {
+        return { message: (data as { message: string }).message };
+      }
     }
   } catch {
     /* not JSON */
   }
   try {
     const text = await res.text();
-    if (text) return text;
+    if (text) return { message: text };
   } catch {
     /* ignore */
   }
-  return res.statusText || `请求失败 (${res.status})`;
+  return { message: res.statusText || `请求失败 (${res.status})` };
 }
 
 function redirectToLogin() {
@@ -97,7 +117,8 @@ export async function apiFetch<T = unknown>(
   }
 
   if (!res.ok) {
-    throw new ApiError(res.status, await readErrorDetail(res));
+    const err = await readErrorPayload(res);
+    throw new ApiError(res.status, err.message, err.detail);
   }
 
   if (res.status === 204) return undefined as T;
@@ -124,7 +145,8 @@ async function authedRawFetch(
     throw new ApiError(401, "未登录或登录已过期");
   }
   if (!res.ok) {
-    throw new ApiError(res.status, await readErrorDetail(res));
+    const err = await readErrorPayload(res);
+    throw new ApiError(res.status, err.message, err.detail);
   }
   return res;
 }
@@ -207,11 +229,16 @@ export function createProject(
 export function putProject(
   id: string,
   data: VnProject,
-  updatedAt?: string
+  updatedAt?: string,
+  opts?: { force?: boolean }
 ): Promise<VnProject> {
   return apiFetch<VnProject>(`/projects/${id}`, {
     method: "PUT",
-    body: JSON.stringify({ data, updated_at: updatedAt }),
+    body: JSON.stringify({
+      data,
+      updated_at: updatedAt,
+      force: Boolean(opts?.force),
+    }),
   });
 }
 
@@ -282,11 +309,16 @@ export async function exportJson(id: string): Promise<Blob> {
   return res.blob();
 }
 
-export function mapExtract(
-  id: string,
-  opts?: { mode?: "smart" | "rules" }
-): Promise<{
+export type MapExtractProposal = {
+  locations: Location[];
+  locationLinks: LocationLink[];
+  newPlaceIds: string[];
+  newLinkIds: string[];
+};
+
+export type MapExtractPreviewResult = {
   project: VnProject;
+  proposal: MapExtractProposal;
   addedCount: number;
   linkCount: number;
   llmAddedCount?: number;
@@ -294,10 +326,33 @@ export function mapExtract(
   mode?: string;
   llmUsed?: boolean;
   warnings?: string[];
-}> {
+};
+
+export function mapExtract(
+  id: string,
+  opts?: { mode?: "smart" | "rules" }
+): Promise<MapExtractPreviewResult> {
   return apiFetch(`/projects/${id}/map/extract`, {
     method: "POST",
     body: JSON.stringify({ mode: opts?.mode ?? "smart" }),
+  });
+}
+
+export function mapExtractAccept(
+  id: string,
+  body: {
+    placeIds: string[];
+    linkIds: string[];
+    proposal: MapExtractProposal;
+  }
+): Promise<{
+  project: VnProject;
+  addedCount: number;
+  linkCount: number;
+}> {
+  return apiFetch(`/projects/${id}/map/extract/accept`, {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }
 
@@ -388,20 +443,6 @@ export function getChapterMemoryArchive(
   return apiFetch(`/projects/${id}/memory/archives/${archiveId}`);
 }
 
-export function latestChapterMemory(id: string): Promise<{
-  latest: {
-    archiveId: string;
-    label: string;
-    rangeFrom: number;
-    rangeTo: number;
-    spine: unknown[];
-    continuityText: string;
-    agentBlock: string;
-  } | null;
-}> {
-  return apiFetch(`/projects/${id}/memory/latest`);
-}
-
 // ---------------------------------------------------------------------------
 // Snapshots
 // ---------------------------------------------------------------------------
@@ -458,6 +499,128 @@ export interface AgentRunInBody {
   apply_actions?: boolean;
   lens_ids?: string[];
   lens_intent?: string;
+  attachments?: AgentAttachment[];
+}
+
+export type AgentAttachment = {
+  id?: string | null;
+  filename: string;
+  text: string;
+  chars?: number;
+  warning?: string | null;
+};
+
+export function uploadAgentAttachment(
+  projectId: string,
+  file: File,
+  persist = true
+): Promise<AgentAttachment> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("persist", persist ? "true" : "false");
+  return apiFetch(`/projects/${projectId}/agent/attachments`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+export function ingestAttachmentSettings(
+  projectId: string,
+  body: {
+    attachments: AgentAttachment[];
+    note?: string;
+    conversation_id?: string;
+  }
+): Promise<{
+  message: string;
+  actions: AgentAction[];
+  applied: string[];
+  skipped: string[];
+  project: VnProject;
+  wrote: boolean;
+}> {
+  return apiFetch(`/projects/${projectId}/agent/ingest-settings`, {
+    method: "POST",
+    body: JSON.stringify({
+      attachments: body.attachments.map((a) => ({
+        filename: a.filename,
+        text: a.text,
+        id: a.id,
+      })),
+      note: body.note,
+      conversation_id: body.conversation_id,
+    }),
+  });
+}
+
+export function chapterRevise(
+  projectId: string,
+  body: {
+    chapter_id?: string;
+    note?: string;
+    conversation_id?: string;
+    attachments?: AgentAttachment[];
+    mode?: "cut_lecture" | "human_warmth" | "light_touch";
+    preferences?: {
+      lockedNames?: string[];
+      preferKeepOriginal?: boolean;
+      notes?: string[];
+      mode?: string;
+    };
+    async_mode?: boolean;
+  }
+): Promise<
+  | {
+      message: string;
+      diagnosis: Record<string, unknown>;
+      diagnosisMd: string;
+      revisedText: string;
+      sourceText?: string;
+      chapterId: string | null;
+      chapterTitle: string;
+      sourceChars: number;
+      warnings: string[];
+      model?: string;
+      criticNote?: string;
+      lintIssues?: unknown[];
+      llmCalls?: unknown[];
+      elapsedMs?: number;
+      wrote?: boolean;
+      debugTrace?: unknown[];
+    }
+  | { jobId: string; async: true; status: string }
+> {
+  return apiFetch(`/projects/${projectId}/agent/chapter-revise`, {
+    method: "POST",
+    body: JSON.stringify({
+      ...body,
+      attachments: body.attachments?.map((a) => ({
+        filename: a.filename,
+        text: a.text,
+        id: a.id,
+      })),
+    }),
+  });
+}
+
+export function chapterReviseApply(
+  projectId: string,
+  body: {
+    chapter_id?: string;
+    text: string;
+    conversation_id?: string;
+  }
+): Promise<{
+  message: string;
+  applied: string[];
+  skipped: string[];
+  project: VnProject;
+  wrote: boolean;
+}> {
+  return apiFetch(`/projects/${projectId}/agent/chapter-revise/apply`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export interface AgentRunOut {
@@ -469,6 +632,8 @@ export interface AgentRunOut {
   applied: boolean;
   warnings: string[];
   conversation_id?: string | null;
+  inbox_added?: number;
+  trace?: import("../types/vn").AgentTraceEvent[];
 }
 
 export function runAgent(
@@ -603,6 +768,91 @@ export function voiceCheck(
   });
 }
 
+
+export type FactsChanged = {
+  chapters: string[];
+  bible: boolean;
+  characters: string[];
+  isFirstScan: boolean;
+};
+
+export function factsReconcile(id: string): Promise<{
+  project: import("../types/vn").VnProject;
+  changed: FactsChanged;
+  staleCount: number;
+  wrote?: boolean;
+}> {
+  return apiFetch(`/projects/${id}/analysis/facts/reconcile`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export function factsScan(
+  id: string,
+  body?: {
+    chapter_id?: string;
+    paste_text?: string;
+    full?: boolean;
+    persist_paste?: boolean;
+  }
+): Promise<{
+  project: import("../types/vn").VnProject;
+  changed: FactsChanged;
+  summary: {
+    added: number;
+    characterLinks: number;
+    timelineEvents: number;
+  };
+  inbox: import("../types/vn").FactInboxItem[];
+}> {
+  return apiFetch(`/projects/${id}/analysis/facts/scan`, {
+    method: "POST",
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
+export function factsInbox(
+  id: string
+): Promise<{ items: import("../types/vn").FactInboxItem[] }> {
+  return apiFetch(`/projects/${id}/analysis/facts/inbox`);
+}
+
+export function factsAccept(
+  id: string,
+  ids: string[]
+): Promise<{
+  acceptedIds: string[];
+  skippedIds?: string[];
+  project: import("../types/vn").VnProject;
+}> {
+  return apiFetch(`/projects/${id}/analysis/facts/accept`, {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export function factsReject(
+  id: string,
+  ids: string[]
+): Promise<{ rejectedIds: string[] }> {
+  return apiFetch(`/projects/${id}/analysis/facts/reject`, {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export function factsAckStale(
+  id: string,
+  body: { linkIds?: string[]; timelineIds?: string[]; all?: boolean }
+): Promise<{ project: import("../types/vn").VnProject }> {
+  return apiFetch(`/projects/${id}/analysis/facts/ack-stale`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+
 export interface HarnessLintResult {
   issues: Array<{
     severity: string;
@@ -674,10 +924,35 @@ export interface PipelineRunResult {
     pass?: boolean;
     errorCount?: number;
     warnCount?: number;
+    notes?: string[];
     issues?: Array<{ severity: string; code: string; message: string }>;
+    beatMode?: string;
+    voiceChecked?: boolean;
   };
   revise?: { content?: string; skipped?: boolean; message?: string };
+  reviseRounds?: number;
+  runId?: string;
   gate?: PipelineGate;
+  applied?: boolean;
+  applyError?: string;
+  project?: VnProject;
+  enrichMeta?: {
+    enrich?: boolean;
+    factCount?: number;
+    stateCount?: number;
+    foreshadowCount?: number;
+    error?: string | null;
+  };
+  trace?: Array<{
+    stage?: string;
+    ms?: number;
+    ok?: boolean;
+    errorCount?: number;
+    warnCount?: number;
+    beatMode?: string;
+    blockTypes?: string[];
+    [key: string]: unknown;
+  }>;
 }
 
 export function pipelineMeta(): Promise<{
@@ -685,6 +960,12 @@ export function pipelineMeta(): Promise<{
   styleSkill: Record<string, unknown>;
   styleConfirm: string;
   defaultStages: string[];
+  defaults?: {
+    maxReviseRounds?: number;
+    voiceCheck?: boolean;
+    semanticBeats?: boolean;
+    enrichLedgerOnFinalize?: boolean;
+  };
 }> {
   return apiFetch("/pipeline/meta");
 }
@@ -697,12 +978,64 @@ export function pipelineRun(
     selection?: string;
     chapter_id?: string;
     stages?: Array<"plan" | "write" | "check" | "revise">;
+    apply_to_chapter?: boolean;
+    apply_mode?: "replace" | "append";
+    max_revise_rounds?: number;
+    voice_check?: boolean;
+    voice_hard?: boolean;
+    semantic_beats?: boolean;
+    async_mode?: boolean;
   }
-): Promise<PipelineRunResult> {
+): Promise<PipelineRunResult | { jobId: string; async: true; status: string }> {
   return apiFetch(`/projects/${id}/pipeline/run`, {
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+export type JobStatus = {
+  id: string;
+  kind: string;
+  projectId: string;
+  status: "queued" | "running" | "done" | "error" | string;
+  stage?: string;
+  progress?: number;
+  message?: string;
+  error?: string | null;
+  result?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export function getProjectJob(
+  projectId: string,
+  jobId: string
+): Promise<JobStatus> {
+  return apiFetch(`/projects/${projectId}/jobs/${jobId}`);
+}
+
+/** Poll until job done/error or timeout. */
+export async function waitProjectJob(
+  projectId: string,
+  jobId: string,
+  opts?: {
+    intervalMs?: number;
+    timeoutMs?: number;
+    onTick?: (job: JobStatus) => void;
+  }
+): Promise<JobStatus> {
+  const interval = opts?.intervalMs ?? 1200;
+  const timeout = opts?.timeoutMs ?? 15 * 60 * 1000;
+  const start = Date.now();
+  for (;;) {
+    const job = await getProjectJob(projectId, jobId);
+    opts?.onTick?.(job);
+    if (job.status === "done" || job.status === "error") return job;
+    if (Date.now() - start > timeout) {
+      throw new Error("任务等待超时，请稍后在运行记录中查看");
+    }
+    await new Promise((r) => setTimeout(r, interval));
+  }
 }
 
 export function pipelineGate(
@@ -713,6 +1046,11 @@ export function pipelineGate(
     require_zero_warn?: boolean;
     finalize?: boolean;
     update_ledger?: boolean;
+    apply_draft?: boolean;
+    enrich_ledger?: boolean;
+    voice_check?: boolean;
+    voice_hard?: boolean;
+    semantic_beats?: boolean;
   }
 ): Promise<{
   check?: PipelineRunResult["check"];
@@ -720,6 +1058,8 @@ export function pipelineGate(
   qualityGate?: Record<string, unknown>;
   project?: VnProject | null;
   ledgerUpdated?: boolean;
+  applied?: boolean;
+  enrichMeta?: PipelineRunResult["enrichMeta"];
 }> {
   return apiFetch(`/projects/${id}/pipeline/gate`, {
     method: "POST",
@@ -727,13 +1067,35 @@ export function pipelineGate(
   });
 }
 
+export function pipelineRuns(
+  id: string,
+  limit = 12
+): Promise<{ runs: Array<Record<string, unknown>> }> {
+  return apiFetch(`/projects/${id}/pipeline/runs?limit=${limit}`);
+}
+
 export function pipelineLedgerDigest(
   id: string,
-  chapterId: string
-): Promise<{ ledger: unknown; agentBlock: string; project: VnProject }> {
+  chapterId: string,
+  opts?: { enrich?: boolean }
+): Promise<{
+  ledger: unknown;
+  agentBlock: string;
+  project: VnProject;
+  enrichMeta?: {
+    enrich?: boolean;
+    factCount?: number;
+    stateCount?: number;
+    foreshadowCount?: number;
+    error?: string | null;
+  };
+}> {
   return apiFetch(`/projects/${id}/pipeline/ledger/digest`, {
     method: "POST",
-    body: JSON.stringify({ chapter_id: chapterId }),
+    body: JSON.stringify({
+      chapter_id: chapterId,
+      enrich: opts?.enrich !== false,
+    }),
   });
 }
 
@@ -791,16 +1153,6 @@ export function putProjectMentors(
   });
 }
 
-export function matchMentors(
-  id: string,
-  text: string
-): Promise<{ ids: string[]; text: string }> {
-  return apiFetch(`/projects/${id}/mentors/match`, {
-    method: "POST",
-    body: JSON.stringify({ text }),
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Author lenses (作家思维)
 // ---------------------------------------------------------------------------
@@ -846,16 +1198,6 @@ export function putProjectLenses(
   });
 }
 
-export function matchLenses(
-  id: string,
-  text: string
-): Promise<{ ids: string[]; text: string }> {
-  return apiFetch(`/projects/${id}/lenses/match`, {
-    method: "POST",
-    body: JSON.stringify({ text }),
-  });
-}
-
 export interface BrainstormPerspective {
   id: string;
   name: string;
@@ -893,21 +1235,6 @@ export function runBrainstorm(
   });
 }
 
-export function runAi(
-  id: string,
-  body: {
-    action: string;
-    selection?: string;
-    instruction?: string;
-    format?: "renpy" | "blocks-json";
-  }
-): Promise<{ content: string; model: string }> {
-  return apiFetch(`/projects/${id}/ai`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Character workshop (角色工坊)
 // ---------------------------------------------------------------------------
@@ -916,6 +1243,13 @@ export interface VoiceScenario {
   id: string;
   label: string;
   prompt: string;
+  longSuitable?: boolean;
+}
+
+export interface VoiceAxisTag {
+  id: string;
+  label: string;
+  hint: string;
 }
 
 export interface VoiceVariant {
@@ -934,6 +1268,11 @@ export interface VoiceCorpusStats {
   interviewCount?: number;
   readyForMind: boolean;
   hasMindPack?: boolean;
+  confirmedAxes?: string[];
+}
+
+export function getVoiceAxisTags(): Promise<{ tags: VoiceAxisTag[] }> {
+  return apiFetch("/voice/axis-tags");
 }
 
 export function getCharacterVoiceState(
@@ -949,6 +1288,7 @@ export function getCharacterVoiceState(
     voiceMind?: string;
     voiceRejectNotes: string[];
     scenarios: VoiceScenario[];
+    axisTags?: VoiceAxisTag[];
   }
 > {
   return apiFetch(`/projects/${projectId}/characters/${characterId}/voice`);
@@ -965,6 +1305,7 @@ export function generateCharacterVoice(
     kind?: "preference" | "scene" | "interview";
     turns?: number;
     question?: string;
+    axis_tags?: string[];
   }
 ): Promise<{
   kind?: string;
@@ -972,9 +1313,12 @@ export function generateCharacterVoice(
   scenarioLabel: string;
   scenarioPrompt?: string;
   question?: string;
+  axes?: VoiceAxisTag[];
   variants?: VoiceVariant[];
   lines?: Array<{ speaker: string; text: string }>;
   model?: string;
+  confirmedAxes?: string[];
+  pinnedTags?: string[];
 }> {
   return apiFetch(
     `/projects/${projectId}/characters/${characterId}/voice/generate`,
@@ -988,16 +1332,19 @@ export function acceptCharacterVoiceSample(
   body: {
     scenario_id?: string;
     scenario_label?: string;
+    scenario_prompt?: string;
     axis?: string;
     hypothesis?: string;
     lines: Array<{ speaker: string; text: string }>;
     user_note?: string;
+    preference_note?: string;
     rejected_summary?: string;
     source?: string;
   }
 ): Promise<
   VoiceCorpusStats & {
     sample: import("../types/vn").VoiceCorpusSample;
+    voicePreferNotes?: string[];
     project: VnProject;
   }
 > {

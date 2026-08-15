@@ -1,47 +1,65 @@
 import type { Character, ScriptBlock } from "../types/vn";
 
+function blockToEditableChunk(
+  b: ScriptBlock,
+  characters: Character[]
+): string {
+  switch (b.type) {
+    case "label":
+      return `label ${b.name}:`;
+    case "scene":
+      return `scene ${b.image}${b.transition ? ` with ${b.transition}` : ""}`;
+    case "show":
+      return `show ${b.image}${b.at ? ` at ${b.at}` : ""}`;
+    case "hide":
+      return `hide ${b.image}`;
+    case "narration":
+      return `"${b.text}"`;
+    case "dialogue": {
+      const c = characters.find((x) => x.id === b.characterId);
+      return `${c?.defineName ?? b.characterId} "${b.text}"`;
+    }
+    case "menu": {
+      const head = `menu ${b.id}:`;
+      const prompt = b.prompt ? `  "${b.prompt}"` : "";
+      const choices = b.choices
+        .map((ch) => `  "${ch.text}":\n    jump ${ch.jump ?? "start"}`)
+        .join("\n");
+      return [head, prompt, choices].filter(Boolean).join("\n");
+    }
+    case "jump":
+      return `jump ${b.target}`;
+    case "return":
+      return "return";
+    case "comment":
+      return `# ${b.text}`;
+    case "raw":
+      return b.code;
+    default:
+      return "";
+  }
+}
+
 export function blocksToEditable(
   blocks: ScriptBlock[],
   characters: Character[]
 ): string {
-  return blocks
-    .map((b) => {
-      switch (b.type) {
-        case "label":
-          return `label ${b.name}:`;
-        case "scene":
-          return `scene ${b.image}${b.transition ? ` with ${b.transition}` : ""}`;
-        case "show":
-          return `show ${b.image}${b.at ? ` at ${b.at}` : ""}`;
-        case "hide":
-          return `hide ${b.image}`;
-        case "narration":
-          return `"${b.text}"`;
-        case "dialogue": {
-          const c = characters.find((x) => x.id === b.characterId);
-          return `${c?.defineName ?? b.characterId} "${b.text}"`;
-        }
-        case "menu": {
-          const head = `menu ${b.id}:`;
-          const prompt = b.prompt ? `  "${b.prompt}"` : "";
-          const choices = b.choices
-            .map((ch) => `  "${ch.text}":\n    jump ${ch.jump ?? "start"}`)
-            .join("\n");
-          return [head, prompt, choices].filter(Boolean).join("\n");
-        }
-        case "jump":
-          return `jump ${b.target}`;
-        case "return":
-          return "return";
-        case "comment":
-          return `# ${b.text}`;
-        case "raw":
-          return b.code;
-        default:
-          return "";
-      }
-    })
-    .join("\n");
+  return blocks.map((b) => blockToEditableChunk(b, characters)).join("\n");
+}
+
+/** Character range of a block inside `blocksToEditable` output. */
+export function blockTextRange(
+  blocks: ScriptBlock[],
+  characters: Character[],
+  blockIndex: number
+): { start: number; end: number } | null {
+  if (blockIndex < 0 || blockIndex >= blocks.length) return null;
+  let start = 0;
+  for (let i = 0; i < blockIndex; i++) {
+    start += blockToEditableChunk(blocks[i], characters).length + 1; // join('\n')
+  }
+  const chunk = blockToEditableChunk(blocks[blockIndex], characters);
+  return { start, end: start + chunk.length };
 }
 
 export function editableToBlocks(text: string): ScriptBlock[] {

@@ -1,41 +1,87 @@
 .wrap {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.5rem;
 }
 
 .row {
   display: flex;
-  align-items: center;
-  gap: 0.45rem;
+  align-items: stretch;
+  gap: 0.55rem;
+}
+
+.preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  width: 4.5rem;
+  min-height: 3.4rem;
+  padding: 0.3rem;
+  border: 2px solid var(--line);
+  background: color-mix(in srgb, var(--paper-deep) 55%, var(--panel-bg));
+  cursor: pointer;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+  overflow: hidden;
+}
+
+.previewLabel {
+  position: absolute;
+  top: 0.25rem;
+  left: 0.35rem;
+  z-index: 1;
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--on-accent);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.previewFill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 2.6rem;
+  border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
 }
 
 .native {
-  width: 42px;
-  height: 34px;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--field-bg);
+  margin: 0;
+  border: none;
+  opacity: 0;
   cursor: pointer;
 }
 
-.hex {
+.hexField {
   flex: 1;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0.4rem 0.55rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.hexLabel {
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+
+.hex {
+  width: 100%;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.55rem;
   font-family: var(--font-mono);
   font-size: 0.85rem;
   background: var(--field-bg);
-}
-
-.swatch {
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  flex-shrink: 0;
+  min-height: 40px;
 }
 
 .presets {
@@ -44,15 +90,23 @@
   gap: 0.35rem;
 }
 
-.preset {
+.preset,
+.presetOn {
   width: 22px;
   height: 22px;
-  border-radius: 999px;
-  border: 1px solid rgba(26, 23, 20, 0.2);
+  border-radius: 2px;
+  border: 2px solid color-mix(in srgb, var(--line) 55%, transparent);
   padding: 0;
   cursor: pointer;
+  clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 0 100%);
 }
 
 .preset:hover {
-  transform: scale(1.12);
+  transform: scale(1.1);
+  border-color: var(--accent);
+}
+
+.presetOn {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
 }

@@ -47,6 +47,9 @@ export function normalizeProject(raw: Partial<VnProject> & { title?: string }): 
     variables: raw.variables ?? [],
     sprites: raw.sprites ?? [],
     snapshots: raw.snapshots ?? [],
+    chapterIndex: raw.chapterIndex,
+    analysisMeta: raw.analysisMeta,
+    voiceReports: raw.voiceReports,
     shareId: raw.shareId,
     updatedAt: raw.updatedAt || new Date().toISOString(),
   };

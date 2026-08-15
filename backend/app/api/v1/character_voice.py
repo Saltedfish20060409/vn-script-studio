@@ -19,6 +19,7 @@ from app.core.character_voice import (
     generate_interview_round,
     generate_long_scene,
     generate_voice_variants,
+    list_axis_tags,
     list_scenarios,
     parse_mind_import,
     patch_character,
@@ -26,7 +27,7 @@ from app.core.character_voice import (
     synthesize_voice_mind,
     workshop_chat,
 )
-from app.core.character_voice.corpus import make_sample
+from app.core.character_voice.corpus import append_prefer_note, make_sample
 from app.core.project import touch_project
 from app.db import get_db
 from app.models import User
@@ -81,15 +82,17 @@ class GenerateIn(BaseModel):
     kind: str = "preference"  # preference | scene | interview
     turns: int = 10
     question: str = ""
-
+    axis_tags: List[str] = Field(default_factory=list)
 
 class AcceptIn(BaseModel):
     scenario_id: str = ""
     scenario_label: str = ""
+    scenario_prompt: str = ""
     axis: Optional[str] = None
     hypothesis: Optional[str] = None
     lines: List[Dict[str, str]] = Field(default_factory=list)
     user_note: Optional[str] = None
+    preference_note: str = ""
     rejected_summary: Optional[str] = None
     source: str = "preference"
 
@@ -128,12 +131,18 @@ def _stats_payload(char) -> Dict[str, Any]:
         "voiceCorpus": [s.model_dump(mode="json") for s in (char.voiceCorpus or [])],
         "voiceMind": char.voiceMind,
         "voiceRejectNotes": char.voiceRejectNotes or [],
+        "voicePreferNotes": char.voicePreferNotes or [],
     }
 
 
 @router.get("/voice/scenarios")
 async def get_voice_scenarios():
     return {"scenarios": list_scenarios()}
+
+
+@router.get("/voice/axis-tags")
+async def get_voice_axis_tags():
+    return {"tags": list_axis_tags()}
 
 
 @router.get("/projects/{project_id}/characters/{character_id}/voice")
@@ -153,6 +162,7 @@ async def get_character_voice_state(
         "bio": char.bio,
         **_stats_payload(char),
         "scenarios": list_scenarios(),
+        "axisTags": list_axis_tags(),
     }
 
 
@@ -189,6 +199,7 @@ async def generate_character_voice_samples(
                 character_id=character_id,
                 question=body.question,
                 extra_constraints=body.extra_constraints,
+                axis_tags=body.axis_tags,
             )
         return await generate_voice_variants(
             cfg,
@@ -198,6 +209,7 @@ async def generate_character_voice_samples(
             scenario_prompt=body.scenario_prompt,
             scenario_label=body.scenario_label,
             extra_constraints=body.extra_constraints,
+            axis_tags=body.axis_tags,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -219,6 +231,7 @@ async def accept_character_voice_sample(
     if not body.lines:
         raise HTTPException(status_code=400, detail="lines 不能为空")
     src = body.source if body.source in _VALID_SOURCES else "preference"
+    prefer = (body.preference_note or body.user_note or "").strip()
     sample = make_sample(
         scenario=body.scenario_id,
         scenario_label=body.scenario_label or body.scenario_id,
@@ -226,12 +239,16 @@ async def accept_character_voice_sample(
         hypothesis=body.hypothesis,
         lines=body.lines,
         source=src,
-        user_note=body.user_note,
+        user_note=prefer or None,
         rejected_summary=body.rejected_summary,
+        scenario_prompt=body.scenario_prompt or "",
     )
     corpus = list(char.voiceCorpus or [])
     corpus.append(sample)
-    vn = patch_character(vn, character_id, voiceCorpus=corpus)
+    updates: Dict[str, Any] = {"voiceCorpus": corpus}
+    if prefer:
+        updates["voicePreferNotes"] = append_prefer_note(char, prefer)
+    vn = patch_character(vn, character_id, **updates)
     vn = touch_project(vn)
     sync_row_from_vn(row, vn)
     await db.commit()
@@ -242,6 +259,7 @@ async def accept_character_voice_sample(
     return {
         "sample": sample.model_dump(mode="json"),
         **{k: st[k] for k in ("sampleCount", "scenarioCoverage", "volumeChars", "sceneCount", "interviewCount", "readyForMind")},
+        "voicePreferNotes": c.voicePreferNotes or [],
         "project": project_to_dict(out),
     }
 

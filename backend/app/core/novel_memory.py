@@ -171,12 +171,65 @@ def group_label(group: List[NumberedChapter]) -> str:
     return f"chapters_{group[0].index:03d}_{group[-1].index:03d}"
 
 
+def _bullet_or_none(items: List[str]) -> List[str]:
+    cleaned = [str(x).strip() for x in items if str(x).strip()]
+    return cleaned if cleaned else ["（无自动检出）"]
+
+
+def _build_range_deltas(
+    project: VnProject,
+    group: List[NumberedChapter],
+) -> Dict[str, List[str]]:
+    digests = {d.chapterId: d for d in digest_all_chapters(project)}
+    speakers: List[str] = []
+    seen_sp: set = set()
+    open_hooks: List[str] = []
+    for c in group:
+        dig = digests.get(c.chapter.id)
+        for name in c.speakers or (list(dig.speakers) if dig else []):
+            if name and name not in seen_sp:
+                seen_sp.add(name)
+                speakers.append(name)
+        if dig and dig.closeHook:
+            open_hooks.append(f"{c.chapter.title}: {dig.closeHook}")
+        elif dig and dig.openHook:
+            open_hooks.append(f"{c.chapter.title}: {dig.openHook}")
+
+    char_deltas = [f"出场/活跃：{'、'.join(speakers)}"] if speakers else []
+    name_by_id = {ch.id: ch.displayName or ch.defineName for ch in project.characters}
+    rels: List[str] = []
+    for link in project.characterLinks or []:
+        a = name_by_id.get(link.fromId) or link.fromId
+        b = name_by_id.get(link.toId) or link.toId
+        if speakers and a not in seen_sp and b not in seen_sp:
+            continue
+        label = (link.label or "关系").strip()
+        rels.append(f"{a} → {b}（{label}）")
+
+    power: List[str] = []
+    # Heuristic: timeline events in this chapter range
+    ch_ids = {c.chapter.id for c in group}
+    for ev in project.timeline or []:
+        if ev.chapterRef and ev.chapterRef in ch_ids:
+            title = (ev.title or "").strip()
+            if title:
+                power.append(title + (f"：{ev.summary}" if ev.summary else ""))
+
+    return {
+        "character": char_deltas,
+        "relationship": rels,
+        "power_item_secret": power,
+        "open_hooks": open_hooks,
+    }
+
+
 def build_continuity_text(
     project: VnProject,
     group: List[NumberedChapter],
 ) -> str:
     """Markdown continuity memory (logical doc); stored as TEXT slices in PG."""
     bible = project.bible
+    deltas = _build_range_deltas(project, group)
     lines = [
         f"# Continuity Memory {group[0].index:03d}-{group[-1].index:03d}",
         "",
@@ -199,29 +252,18 @@ def build_continuity_text(
             f"{_one_line_recall(c.plain_text)}{dig_note}"
         )
 
-    lines.extend(
-        [
-            "",
-            "## Character And Plot Memory To Preserve",
-            "",
-            "### Character deltas",
-            "",
-            "- TBD",
-            "",
-            "### Relationship deltas",
-            "",
-            "- TBD",
-            "",
-            "### Power / item / secret deltas",
-            "",
-            "- TBD",
-            "",
-            "### Open hooks after this range",
-            "",
-            "- TBD",
-            "",
-        ]
-    )
+    def _section(title: str, items: List[str]) -> None:
+        lines.append("")
+        lines.append(f"### {title}")
+        lines.append("")
+        for bullet in _bullet_or_none(items):
+            lines.append(f"- {bullet}")
+
+    lines.extend(["", "## Character And Plot Memory To Preserve", ""])
+    _section("Character deltas", deltas["character"])
+    _section("Relationship deltas", deltas["relationship"])
+    _section("Power / item / secret deltas", deltas["power_item_secret"])
+    _section("Open hooks after this range", deltas["open_hooks"])
 
     if bible:
         snap_parts = []
@@ -236,6 +278,7 @@ def build_continuity_text(
         if snap_parts:
             lines.extend(
                 [
+                    "",
                     "## Current Rolling Context Snapshot",
                     "",
                     "```markdown",
@@ -289,6 +332,7 @@ def build_archive_draft(
     slices: List[Tuple[str, int, str]] = [
         ("continuity", i, chunk) for i, chunk in enumerate(cont_slices)
     ]
+    deltas = _build_range_deltas(project, group)
 
     return MemoryArchiveDraft(
         label=group_label(group),
@@ -299,12 +343,7 @@ def build_archive_draft(
         chapter_ids=[c.chapter.id for c in group],
         spine=spine,
         summaries=summaries,
-        deltas={
-            "character": [],
-            "relationship": [],
-            "power_item_secret": [],
-            "open_hooks": [],
-        },
+        deltas=deltas,
         continuity_text=continuity,
         slices=slices,
     )

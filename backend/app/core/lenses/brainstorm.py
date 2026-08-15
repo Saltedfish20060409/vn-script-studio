@@ -198,7 +198,17 @@ async def run_brainstorm(
     perspectives_list = list(perspectives)
     ok_views = [p for p in perspectives_list if p.get("ok") and (p.get("content") or "").strip()]
     if not ok_views:
-        raise RuntimeError("所有作家视角调用均失败，请检查 API Key / 网络")
+        # Surface real failure reasons — generic "API Key / 网络" alone is often wrong
+        # (rate limit, 401, timeout, empty content, wrong base URL, etc.).
+        details: List[str] = []
+        for p in perspectives_list:
+            name = p.get("name") or p.get("id") or "?"
+            err = (p.get("error") or "").strip()
+            if p.get("ok") and not (p.get("content") or "").strip():
+                err = err or "模型返回空内容"
+            details.append(f"{name}: {err or 'unknown'}")
+        joined = "；".join(details)[:700]
+        raise RuntimeError(f"所有作家视角调用均失败。详情：{joined}")
 
     joined = "\n\n".join(
         f"### 作家：{p['name']}（`{p['id']}`）\n{p['content']}" for p in ok_views

@@ -1,16 +1,20 @@
-"""Ported from packages/core/src/voiceCheck.ts"""
+"""Ported from packages/core/src/voiceCheck.ts
+
+Persists reports on project.voiceReports keyed by chapterId + content fingerprint.
+Mark stale when chapter fingerprint drifts; never write characterLinks/timeline.
+"""
 from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional
-
-import httpx
 
 from app.domain.types import VnProject
 
 from .ai import DeepSeekConfig
+from .llm_http import content_from_response
+from .llm_provider import LlmProvider, provider_from_config
 from .renpy import project_to_context
 
 
@@ -34,32 +38,25 @@ _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
 
 
 async def run_voice_check(
-    config: DeepSeekConfig, project: VnProject, chapterId: Optional[str] = None
+    config: DeepSeekConfig,
+    project: VnProject,
+    chapterId: Optional[str] = None,
+    *,
+    provider: Optional[LlmProvider] = None,
 ) -> VoiceReport:
     if not config.apiKey or "your-key" in config.apiKey:
         raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
-    base_url = (config.baseUrl or "https://api.deepseek.com").rstrip("/")
-    model = config.model or "deepseek-chat"
 
     focus_chapter = (
         next((c for c in project.chapters if c.id == chapterId), None) if chapterId else None
     )
 
-    async with httpx.AsyncClient(timeout=120) as client:
-        res = await client.post(
-            f"{base_url}/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {config.apiKey}",
-            },
-            json={
-                "model": model,
-                "temperature": 0.3,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": """你是视觉小说对白审稿编辑。根据角色 voice/bio、角色思维卡与口吻正例，检查对白是否破人设。
+    llm = provider or provider_from_config(config)
+    res = await llm.chat_completions(
+        messages=[
+            {
+                "role": "system",
+                "content": """你是视觉小说对白审稿编辑。根据角色 voice/bio、角色思维卡与口吻正例，检查对白是否破人设。
 只输出 JSON：
 {
   "summary": "总体评价（中文）",
@@ -68,32 +65,29 @@ async def run_voice_check(
   ]
 }
 若整体稳定，issues 可为空，summary 给鼓励与微调建议。优先对照思维卡/正例中的表达 DNA，勿只看形容词人设。""",
-                    },
-                    {
-                        "role": "user",
-                        "content": (
-                            f"{project_to_context(project, 10000)}\n\n"
-                            f"重点检查章节: {focus_chapter.title if focus_chapter else '全部'}"
-                        ),
-                    },
-                ],
             },
-        )
+            {
+                "role": "user",
+                "content": (
+                    f"{project_to_context(project, 10000)}\n\n"
+                    f"重点检查章节: {focus_chapter.title if focus_chapter else '全部'}"
+                ),
+            },
+        ],
+        temperature=0.3,
+        response_format={"type": "json_object"},
+        timeout=120,
+    )
 
-    if res.status_code >= 400:
-        err_text = res.text
-        raise RuntimeError(f"DeepSeek API {res.status_code}: {err_text[:400]}")
-
-    data = res.json()
-    choices = data.get("choices") or []
-    raw = "{}"
-    if choices:
-        raw = ((choices[0] or {}).get("message") or {}).get("content", "{}") or "{}"
-        raw = raw.strip() or "{}"
+    raw, used_model = content_from_response(res)
+    raw = (raw or "{}").strip() or "{}"
     fence = _FENCE_RE.search(raw)
     if fence:
         raw = fence.group(1).strip()
-    parsed = json.loads(raw)
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"声线检查 JSON 解析失败：{exc}") from exc
     issues_raw = parsed.get("issues")
     issues = (
         [
@@ -105,10 +99,13 @@ async def run_voice_check(
                 suggestion=i.get("suggestion"),
             )
             for i in issues_raw
+            if isinstance(i, dict)
         ]
         if isinstance(issues_raw, list)
         else []
     )
     return VoiceReport(
-        summary=parsed.get("summary") or "无摘要", issues=issues, model=data.get("model") or model
+        summary=parsed.get("summary") or "无摘要",
+        issues=issues,
+        model=used_model or (config.model or "deepseek-chat"),
     )

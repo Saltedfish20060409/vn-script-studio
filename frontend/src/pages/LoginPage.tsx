@@ -7,9 +7,26 @@ import {
   DEFAULT_SETTINGS,
   loadAppearanceCache,
 } from "../lib/settings";
+import { MascotFigure } from "../components/MascotFigure";
+import { MASCOT_MOODS, type MascotMood } from "../lib/mascotArt";
+import { mascotLine } from "../lib/mascotCopy";
 import styles from "./LoginPage.module.css";
 
 type Mode = "login" | "register";
+
+const LOGIN_MOOD_CYCLE: MascotMood[] = MASCOT_MOODS.filter((m) => m !== "focus");
+
+const MOOD_LINE: Partial<Record<MascotMood, string>> = {
+  idle: "点我换表情，先模拟看板娘站桩。",
+  think: "在想你的下一章怎么写…",
+  cheer: "写得不错的话，我会这样笑。",
+  angel: "小天使模式——夸你两句也可以。",
+  wince: "这句有点尬，要不改改？",
+  angry: "说明书腔太多，我有点火。",
+  fluster: "等等，设定是不是对不上？",
+  worry: "这一章节奏我有点担心。",
+  puzzled: "这里的分支……我没太看懂。",
+};
 
 export default function LoginPage() {
   const { login, register } = useAuth();
@@ -22,6 +39,10 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [hasWallpaper, setHasWallpaper] = useState(false);
+  const [mascotMood, setMascotMood] = useState<MascotMood>("idle");
+  const [mascotSpeech, setMascotSpeech] = useState(
+    () => MOOD_LINE.idle || mascotLine("idle")
+  );
 
   const redirectTo =
     (location.state as { from?: string } | null)?.from || "/";
@@ -33,6 +54,15 @@ export default function LoginPage() {
     applySettingsToDom(s);
     setHasWallpaper(Boolean(s.bgImage));
   }, []);
+
+  function cycleMascotLine() {
+    setMascotMood((prev) => {
+      const i = LOGIN_MOOD_CYCLE.indexOf(prev);
+      const next = LOGIN_MOOD_CYCLE[(i + 1) % LOGIN_MOOD_CYCLE.length] || "idle";
+      setMascotSpeech(MOOD_LINE[next] || mascotLine("idle"));
+      return next;
+    });
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -84,9 +114,15 @@ export default function LoginPage() {
         <span className={`${styles.shard} ${styles.shardA}`} aria-hidden />
         <span className={`${styles.shard} ${styles.shardB}`} aria-hidden />
         <span className={`${styles.shard} ${styles.shardC}`} aria-hidden />
-        <div className={styles.portraitSlot} aria-hidden>
-          <span>立绘位</span>
-        </div>
+        <button
+          type="button"
+          className={styles.portraitSlot}
+          onClick={cycleMascotLine}
+          title="点我切换表情"
+          aria-label="点击切换看板娘表情与旁白"
+        >
+          <MascotFigure size="fill" mood={mascotMood} line={mascotSpeech} />
+        </button>
         <div className={styles.heroInner}>
           <p className={styles.kicker}>VISUAL NOVEL</p>
           <h1 className={styles.brand}>

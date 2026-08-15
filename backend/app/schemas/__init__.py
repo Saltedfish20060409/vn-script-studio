@@ -44,6 +44,8 @@ class ProjectPutIn(BaseModel):
 
     data: Dict[str, Any]
     updated_at: Optional[str] = None  # client version for optimistic concurrency
+    # When true, skip updated_at check and overwrite server (user chose "keep local")
+    force: bool = False
 
 
 class ProjectPatchIn(BaseModel):
@@ -70,6 +72,8 @@ class AgentRunIn(BaseModel):
     apply_actions: bool = True
     lens_ids: Optional[List[str]] = None
     lens_intent: Optional[str] = None
+    # Pre-extracted attachment texts from /agent/attachments or client
+    attachments: Optional[List[Dict[str, Any]]] = None
 
 
 class AgentRunOut(BaseModel):
@@ -81,6 +85,8 @@ class AgentRunOut(BaseModel):
     applied: bool = False
     warnings: List[str] = Field(default_factory=list)
     conversation_id: Optional[str] = None
+    inbox_added: int = 0
+    trace: Optional[List[Dict[str, Any]]] = None
 
 
 class AgentConversationSummary(BaseModel):
@@ -177,3 +183,59 @@ class MapExtractIn(BaseModel):
     """mode=smart: scene rules + lexicon + LLM; mode=rules: scene tags only."""
 
     mode: Literal["smart", "rules"] = "smart"
+
+
+class MapExtractProposalIn(BaseModel):
+    locations: List[Dict[str, Any]] = Field(default_factory=list)
+    locationLinks: List[Dict[str, Any]] = Field(default_factory=list)
+    newPlaceIds: List[str] = Field(default_factory=list)
+    newLinkIds: List[str] = Field(default_factory=list)
+
+
+class MapExtractAcceptIn(BaseModel):
+    placeIds: List[str] = Field(default_factory=list)
+    linkIds: List[str] = Field(default_factory=list)
+    proposal: MapExtractProposalIn
+
+
+class FactsScanIn(BaseModel):
+    chapter_id: Optional[str] = None
+    paste_text: Optional[str] = None
+    full: bool = False
+    persist_paste: bool = False
+
+
+class FactsAcceptIn(BaseModel):
+    ids: List[str] = Field(default_factory=list)
+
+
+class FactsRejectIn(BaseModel):
+    ids: List[str] = Field(default_factory=list)
+
+
+class FactsAckStaleIn(BaseModel):
+    linkIds: List[str] = Field(default_factory=list)
+    timelineIds: List[str] = Field(default_factory=list)
+    all: bool = False
+
+
+class ChapterReviseIn(BaseModel):
+    chapter_id: Optional[str] = None
+    note: Optional[str] = None
+    conversation_id: Optional[str] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
+    mode: Optional[str] = None  # cut_lecture | human_warmth | light_touch
+    preferences: Optional[Dict[str, Any]] = None
+    async_mode: bool = False
+
+
+class ChapterReviseApplyIn(BaseModel):
+    chapter_id: Optional[str] = None
+    text: str
+    conversation_id: Optional[str] = None
+
+
+class AgentIngestSettingsIn(BaseModel):
+    attachments: List[Dict[str, Any]] = Field(default_factory=list)
+    note: Optional[str] = None
+    conversation_id: Optional[str] = None

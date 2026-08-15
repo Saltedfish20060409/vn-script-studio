@@ -1,0 +1,78 @@
+name: harness-ci
+
+on:
+  push:
+    paths:
+      - "backend/app/core/**"
+      - "backend/tests/test_harness*.py"
+      - "backend/tests/test_pipeline_e2e.py"
+      - "backend/tests/test_jobs.py"
+      - "backend/tests/test_llm_http.py"
+      - "backend/tests/test_llm_provider.py"
+      - "backend/tests/test_narrative_review_parse.py"
+      - "backend/tests/test_chapter_revise.py"
+      - "backend/tests/test_chapter_index.py"
+      - "backend/tests/test_snapshots_addressed.py"
+      - "backend/tests/test_voice_reports.py"
+      - "backend/tests/test_novel_memory_deltas.py"
+      - "backend/tests/test_core_smoke.py"
+      - "backend/tests/fixtures/harness_golden.json"
+      - ".github/workflows/harness-ci.yml"
+  pull_request:
+    paths:
+      - "backend/app/core/**"
+      - "backend/tests/test_harness*.py"
+      - "backend/tests/test_pipeline_e2e.py"
+      - "backend/tests/test_jobs.py"
+      - "backend/tests/test_llm_http.py"
+      - "backend/tests/test_llm_provider.py"
+      - "backend/tests/test_narrative_review_parse.py"
+      - "backend/tests/test_chapter_revise.py"
+      - "backend/tests/test_chapter_index.py"
+      - "backend/tests/test_snapshots_addressed.py"
+      - "backend/tests/test_voice_reports.py"
+      - "backend/tests/test_novel_memory_deltas.py"
+      - "backend/tests/test_core_smoke.py"
+      - "backend/tests/fixtures/harness_golden.json"
+      - ".github/workflows/harness-ci.yml"
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install deps
+        run: |
+          python -m pip install -U pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pytest
+      - name: P1/P2 reliability + revise + jobs
+        run: |
+          python -m pytest \
+            tests/test_jobs.py \
+            tests/test_llm_http.py \
+            tests/test_llm_provider.py \
+            tests/test_narrative_review_parse.py \
+            tests/test_chapter_revise.py \
+            tests/test_chapter_index.py \
+            tests/test_snapshots_addressed.py \
+            tests/test_voice_reports.py \
+            tests/test_novel_memory_deltas.py \
+            tests/test_core_smoke.py \
+            -q --tb=short
+      - name: Harness golden + E2E (mock)
+        run: |
+          python -m pytest \
+            tests/test_harness_complete.py \
+            tests/test_harness_golden.py \
+            tests/test_harness_industrial.py \
+            tests/test_pipeline_e2e.py \
+            -q --tb=short
