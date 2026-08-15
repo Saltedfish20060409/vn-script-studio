@@ -5,10 +5,10 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List
 
-import httpx
-
 from app.core.ai import DeepSeekConfig
 from app.core.character_voice.corpus import corpus_stats, find_character
+from app.core.llm_http import content_from_response
+from app.core.llm_provider import provider_from_config
 from app.domain.types import VnProject
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
@@ -76,30 +76,18 @@ async def synthesize_voice_mind(
 
     if not cfg.apiKey or "your-key" in cfg.apiKey:
         raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
-    base = (cfg.baseUrl or "https://api.deepseek.com").rstrip("/")
-    model = cfg.model or "deepseek-chat"
 
-    async with httpx.AsyncClient(timeout=120) as client:
-        res = await client.post(
-            f"{base}/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {cfg.apiKey}",
-            },
-            json={
-                "model": model,
-                "temperature": 0.55,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-            },
-        )
-    if res.status_code >= 400:
-        raise RuntimeError(f"DeepSeek API {res.status_code}: {res.text[:400]}")
-    data = res.json()
-    content = (((data.get("choices") or [{}])[0].get("message") or {}).get("content")) or ""
-    content = content.strip()
+    provider = provider_from_config(cfg)
+    res = await provider.chat_completions(
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=0.55,
+        timeout=120,
+    )
+    content, used_model = content_from_response(res)
+    content = (content or "").strip()
     m = _FENCE_RE.search(content)
     if m and "视角" not in content[:80]:
         inner = m.group(1).strip()
@@ -129,6 +117,6 @@ async def synthesize_voice_mind(
             "readyForMind",
         )},
         "suggestedVoice": voice_line or None,
-        "model": data.get("model") or model,
+        "model": used_model or (cfg.model or "deepseek-chat"),
         "ready": True,
     }

@@ -6,8 +6,6 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-import httpx
-
 from app.core.agent import (
     AGENT_SYSTEM,
     ApplyAgentResult,
@@ -27,6 +25,8 @@ from app.core.agent_tools import (
     tool_catalog_for_prompt,
 )
 from app.core.ai import DeepSeekConfig
+from app.core.llm_http import content_from_response
+from app.core.llm_provider import LlmProvider, provider_from_config
 from app.core.lenses import (
     build_lens_prompt_for_project,
     infer_lens_intent,
@@ -116,35 +116,19 @@ def _normalize_tool_calls(raw: Any) -> List[Dict[str, Any]]:
 
 
 async def _chat_json(
-    client: httpx.AsyncClient,
+    provider: LlmProvider,
     *,
-    base_url: str,
-    api_key: str,
-    model: str,
     temperature: float,
     messages: List[Dict[str, str]],
 ) -> str:
-    res = await client.post(
-        f"{base_url}/v1/chat/completions",
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        json={
-            "model": model,
-            "temperature": temperature,
-            "response_format": {"type": "json_object"},
-            "messages": messages,
-        },
+    res = await provider.chat_completions(
+        messages=messages,
+        temperature=temperature,
+        response_format={"type": "json_object"},
+        timeout=180,
     )
-    if res.status_code >= 400:
-        raise RuntimeError(f"DeepSeek API {res.status_code}: {res.text[:400]}")
-    data = res.json()
-    choices = data.get("choices") or []
-    content = "{}"
-    if choices:
-        content = ((choices[0] or {}).get("message") or {}).get("content", "{}") or "{}"
-    return content.strip() or "{}"
+    content, _ = content_from_response(res)
+    return (content or "{}").strip() or "{}"
 
 
 async def run_agent_loop(
@@ -155,8 +139,8 @@ async def run_agent_loop(
 ) -> AgentResponse:
     if not config.apiKey or "your-key" in config.apiKey:
         raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
-    base_url = (config.baseUrl or "https://api.deepseek.com").rstrip("/")
     model = config.model or "deepseek-chat"
+    provider = provider_from_config(config)
 
     last_user = next(
         (m.content for m in reversed(request.messages) if m.role == "user"), None
@@ -242,93 +226,89 @@ async def run_agent_loop(
     final_message = ""
     steps = max(1, min(12, int(max_steps or DEFAULT_MAX_STEPS)))
 
-    async with httpx.AsyncClient(timeout=180) as client:
-        for step in range(steps):
-            content = await _chat_json(
-                client,
-                base_url=base_url,
-                api_key=config.apiKey,
-                model=model,
-                temperature=temperature,
-                messages=messages,
+    for step in range(steps):
+        content = await _chat_json(
+            provider,
+            temperature=temperature,
+            messages=messages,
+        )
+        parsed = _parse_loop_json(content)
+        message = parsed.get("message")
+        if not isinstance(message, str) or not message.strip():
+            # fallback to legacy empty-message handling
+            msg2, acts2 = _parse_agent_json(content)
+            message = msg2
+            if not parsed.get("actions"):
+                parsed["actions"] = acts2
+        message = message.strip()
+        final_message = message or final_message
+        if message:
+            trace.append({"type": "thought", "text": message[:2000]})
+
+        tool_calls = _normalize_tool_calls(parsed.get("tool_calls"))
+        actions = _normalize_agent_actions(parsed.get("actions"))
+        done_flag = bool(parsed.get("done"))
+
+        if actions:
+            accumulated.extend(actions)
+            apply_res: ApplyAgentResult = apply_agent_actions(
+                working, actions, defaultChapterId=request.chapterId
             )
-            parsed = _parse_loop_json(content)
-            message = parsed.get("message")
-            if not isinstance(message, str) or not message.strip():
-                # fallback to legacy empty-message handling
-                msg2, acts2 = _parse_agent_json(content)
-                message = msg2
-                if not parsed.get("actions"):
-                    parsed["actions"] = acts2
-            message = message.strip()
-            final_message = message or final_message
-            if message:
-                trace.append({"type": "thought", "text": message[:2000]})
+            working = apply_res.project
+            trace.append(
+                {
+                    "type": "actions",
+                    "actions": actions,
+                    "skipped": list(apply_res.skipped or []),
+                }
+            )
 
-            tool_calls = _normalize_tool_calls(parsed.get("tool_calls"))
-            actions = _normalize_agent_actions(parsed.get("actions"))
-            done_flag = bool(parsed.get("done"))
-
-            if actions:
-                accumulated.extend(actions)
-                apply_res: ApplyAgentResult = apply_agent_actions(
-                    working, actions, defaultChapterId=request.chapterId
-                )
-                working = apply_res.project
+        if tool_calls and not done_flag:
+            result_chunks: List[str] = []
+            for tc in tool_calls:
+                name = tc["name"]
+                tid = tc["id"]
+                args = tc["arguments"]
                 trace.append(
                     {
-                        "type": "actions",
-                        "actions": actions,
-                        "skipped": list(apply_res.skipped or []),
+                        "type": "tool_call",
+                        "id": tid,
+                        "name": name,
+                        "arguments": args,
                     }
                 )
-
-            if tool_calls and not done_flag:
-                result_chunks: List[str] = []
-                for tc in tool_calls:
-                    name = tc["name"]
-                    tid = tc["id"]
-                    args = tc["arguments"]
-                    trace.append(
-                        {
-                            "type": "tool_call",
-                            "id": tid,
-                            "name": name,
-                            "arguments": args,
-                        }
-                    )
-                    ok, preview = run_agent_tool(
-                        name,
-                        args,
-                        project=working,
-                        chapter_id=request.chapterId,
-                    )
-                    trace.append(
-                        {
-                            "type": "tool_result",
-                            "id": tid,
-                            "name": name,
-                            "ok": ok,
-                            "preview": preview[:2500],
-                        }
-                    )
-                    result_chunks.append(format_tool_result_message(name, ok, preview))
-                # Keep assistant JSON in history for continuity, then tool results
-                messages.append({"role": "assistant", "content": content})
-                messages.append(
+                ok, preview = run_agent_tool(
+                    name,
+                    args,
+                    project=working,
+                    chapter_id=request.chapterId,
+                )
+                trace.append(
                     {
-                        "role": "user",
-                        "content": "工具结果如下，请继续（可再调工具，或 done=true 收工）：\n\n"
-                        + "\n\n".join(result_chunks),
+                        "type": "tool_result",
+                        "id": tid,
+                        "name": name,
+                        "ok": ok,
+                        "preview": preview[:2500],
                     }
                 )
-                continue
+                result_chunks.append(format_tool_result_message(name, ok, preview))
+            # Keep assistant JSON in history for continuity, then tool results
+            messages.append({"role": "assistant", "content": content})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "工具结果如下，请继续（可再调工具，或 done=true 收工）：\n\n"
+                    + "\n\n".join(result_chunks),
+                }
+            )
+            continue
 
-            # No more tools → finish
-            break
-        else:
-            if not final_message:
-                final_message = "已达本轮最大工具步数，以下为目前进展。"
+        # No more tools → finish
+        break
+    else:
+        if not final_message:
+            final_message = "已达本轮最大工具步数，以下为目前进展。"
 
     review_note = ""
     review_pref = request.selfReview or "auto"

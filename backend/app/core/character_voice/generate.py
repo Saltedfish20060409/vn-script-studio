@@ -10,9 +10,9 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Sequence
 
-import httpx
-
 from app.core.ai import DeepSeekConfig
+from app.core.llm_http import content_from_response
+from app.core.llm_provider import provider_from_config
 from app.core.character_voice.corpus import (
     confirmed_axes,
     find_character,
@@ -550,32 +550,18 @@ async def _post_json_with_model(
     user: str,
     temperature: float = 0.8,
 ) -> tuple[Dict[str, Any], str]:
-    if not cfg.apiKey or "your-key" in cfg.apiKey:
-        raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
-    base = (cfg.baseUrl or "https://api.deepseek.com").rstrip("/")
-    model = cfg.model or "deepseek-chat"
-    async with httpx.AsyncClient(timeout=120) as client:
-        res = await client.post(
-            f"{base}/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {cfg.apiKey}",
-            },
-            json={
-                "model": model,
-                "temperature": temperature,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-            },
-        )
-    if res.status_code >= 400:
-        raise RuntimeError(f"DeepSeek API {res.status_code}: {res.text[:400]}")
-    data = res.json()
-    content = (((data.get("choices") or [{}])[0].get("message") or {}).get("content")) or "{}"
-    content = content.strip()
+    provider = provider_from_config(cfg)
+    res = await provider.chat_completions(
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=temperature,
+        response_format={"type": "json_object"},
+        timeout=120,
+    )
+    content, model_name = content_from_response(res)
+    content = (content or "{}").strip()
     m = _FENCE_RE.search(content)
     if m:
         content = m.group(1).strip()
@@ -585,7 +571,7 @@ async def _post_json_with_model(
         raise RuntimeError("模型未返回有效 JSON") from exc
     if not isinstance(parsed, dict):
         raise RuntimeError("模型返回非对象 JSON")
-    model_name = str(data.get("model") or model)
+    model_name = model_name or (cfg.model or "deepseek-chat")
     parsed["_model"] = model_name
     return parsed, model_name
 
@@ -605,39 +591,10 @@ def _chat_json(cfg: DeepSeekConfig, *, system: str, user: str, temperature: floa
 
 
 async def _post_json(cfg: DeepSeekConfig, *, system: str, user: str, temperature: float = 0.8) -> Dict[str, Any]:
-    meta = _chat_json(cfg, system=system, user=user, temperature=temperature)
-    async with httpx.AsyncClient(timeout=150) as client:
-        res = await client.post(
-            f"{meta['base']}/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {cfg.apiKey}",
-            },
-            json={
-                "model": meta["model"],
-                "temperature": temperature,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-            },
-        )
-    if res.status_code >= 400:
-        raise RuntimeError(f"DeepSeek API {res.status_code}: {res.text[:400]}")
-    data = res.json()
-    content = (((data.get("choices") or [{}])[0].get("message") or {}).get("content")) or "{}"
-    content = content.strip()
-    m = _FENCE_RE.search(content)
-    if m:
-        content = m.group(1).strip()
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("模型未返回有效 JSON") from exc
-    if not isinstance(parsed, dict):
-        raise RuntimeError("JSON 根须为对象")
-    parsed["_model"] = data.get("model") or meta["model"]
+    parsed, model_name = await _post_json_with_model(
+        cfg, system=system, user=user, temperature=temperature
+    )
+    parsed["_model"] = model_name
     return parsed
 
 

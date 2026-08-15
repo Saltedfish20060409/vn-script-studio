@@ -57,8 +57,8 @@ def test_process_faq_hard_fail_is_genre_agnostic():
     assert "process_faq" in hits
     assert "cooking_faq" not in hits
 
-    # Residual demo cooking lines still trip process_faq
-    demo = "即食味增会冒大泡泡，盐是现在撒吗？"
+    # Generic process FAQ (not cooking-branded)
+    demo = "盐是现在撒吗？先焯水再下锅。"
     assert "process_faq" in _hard_fail_snippets(demo)
 
     draft = ("旁白。\n\n" * 20) + "她问你叫什么名字。\n\n然后你们安静了一会儿。\n\n" + (
