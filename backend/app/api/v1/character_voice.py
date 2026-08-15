@@ -230,6 +230,8 @@ async def accept_character_voice_sample(
     char = _char_or_404(vn, character_id)
     if not body.lines:
         raise HTTPException(status_code=400, detail="lines 不能为空")
+    if any("请重新生成" in str(ln.get("text") or "") for ln in body.lines if isinstance(ln, dict)):
+        raise HTTPException(status_code=400, detail="该变体未生成完整（占位内容），不能入库；请重新生成")
     src = body.source if body.source in _VALID_SOURCES else "preference"
     prefer = (body.preference_note or body.user_note or "").strip()
     sample = make_sample(

@@ -5,10 +5,9 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List, Optional
 
-import httpx
-
 from app.core.ai import DeepSeekConfig
 from app.core.agent_context import _blocks_to_plain
+from app.core.llm_http import chat_completions, content_from_response
 from app.core.lenses import (
     MentorPack,
     custom_lenses_for_project,
@@ -29,35 +28,17 @@ async def _chat(
     user: str,
     temperature: float = 0.75,
 ) -> Dict[str, Any]:
-    if not cfg.apiKey or "your-key" in cfg.apiKey:
-        raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
-    base = (cfg.baseUrl or "https://api.deepseek.com").rstrip("/")
-    model = cfg.model or "deepseek-chat"
-    async with httpx.AsyncClient(timeout=120) as client:
-        res = await client.post(
-            f"{base}/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {cfg.apiKey}",
-            },
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "temperature": temperature,
-                "stream": False,
-            },
-        )
-    if res.status_code >= 400:
-        raise RuntimeError(f"DeepSeek API {res.status_code}: {res.text[:400]}")
-    data = res.json()
-    choices = data.get("choices") or []
-    content = ""
-    if choices:
-        content = ((choices[0] or {}).get("message") or {}).get("content", "") or ""
-    return {"content": content.strip(), "model": data.get("model") or model}
+    res = await chat_completions(
+        cfg,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=temperature,
+        timeout=120,
+    )
+    content, model = content_from_response(res)
+    return {"content": content.strip(), "model": model or (cfg.model or "deepseek-chat")}
 
 
 def _work_snippet(

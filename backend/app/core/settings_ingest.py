@@ -6,13 +6,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-import httpx
-
 from app.domain.types import AgentAction, Character, VnProject
 
 from .agent import apply_agent_actions, _normalize_bible_patch
 from .ai import DeepSeekConfig
 from .file_text import format_attachment_block
+from .llm_http import chat_completions, content_from_response
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
 
@@ -169,39 +168,24 @@ async def ingest_attachments_to_settings(
     if not docs.strip():
         raise RuntimeError("没有可用的附件正文")
 
-    base_url = (config.baseUrl or "https://api.deepseek.com").rstrip("/")
-    model = config.model or "deepseek-chat"
     user_content = (
         f"## 当前工程摘要\n{_project_digest(project)}\n\n"
         f"{docs}\n\n"
         f"## 用户说明\n{(user_note or '请把附件信息写入设定页与角色卡').strip()}"
     )
 
-    async with httpx.AsyncClient(timeout=120) as client:
-        res = await client.post(
-            f"{base_url}/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {config.apiKey}",
-            },
-            json={
-                "model": model,
-                "temperature": 0.2,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {"role": "system", "content": INGEST_SYSTEM},
-                    {"role": "user", "content": user_content},
-                ],
-            },
-        )
-    if res.status_code >= 400:
-        raise RuntimeError(f"DeepSeek API {res.status_code}: {res.text[:400]}")
-
-    data = res.json()
-    choices = data.get("choices") or []
-    raw = "{}"
-    if choices:
-        raw = ((choices[0] or {}).get("message") or {}).get("content", "{}") or "{}"
+    res = await chat_completions(
+        config,
+        messages=[
+            {"role": "system", "content": INGEST_SYSTEM},
+            {"role": "user", "content": user_content},
+        ],
+        temperature=0.2,
+        response_format={"type": "json_object"},
+        timeout=120,
+    )
+    raw, _model = content_from_response(res)
+    raw = (raw or "{}").strip() or "{}"
     plan = _parse_json_obj(raw)
     actions = plan_to_actions(project, plan)
     if not actions:

@@ -6,6 +6,7 @@ from app.models.tables import (
     ChapterMemorySlice,
     LoreCraftCard,
     Project,
+    ProjectSnapshotRow,
     Share,
     User,
     UserSettings,
@@ -21,4 +22,5 @@ __all__ = [
     "ChapterMemorySlice",
     "LoreCraftCard",
     "AnalysisInboxItem",
+    "ProjectSnapshotRow",
 ]

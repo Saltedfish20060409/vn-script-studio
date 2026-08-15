@@ -18,6 +18,7 @@ from app.models import (  # noqa: F401
     ChapterMemorySlice,
     LoreCraftCard,
     Project,
+    ProjectSnapshotRow,
     Share,
     User,
     UserSettings,

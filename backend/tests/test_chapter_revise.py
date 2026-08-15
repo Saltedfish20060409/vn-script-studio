@@ -183,3 +183,14 @@ def test_resolve_chapter_source_from_demo():
     assert isinstance(text, str)
     assert title
     assert isinstance(warnings, list)
+
+
+def test_hard_fail_patterns_are_demo_free():
+    """The revision protocol must not hardcode demo-story tokens."""
+    import inspect
+
+    from app.core import chapter_revise as cr
+
+    src = inspect.getsource(cr)
+    for token in ("味增", "大泡泡", "雪菜", "雨夜车站"):
+        assert token not in src, f"demo token {token!r} still hardcoded in chapter_revise"

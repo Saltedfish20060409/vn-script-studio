@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 from datetime import datetime, timezone
-from typing import Any, List, Optional
+from typing import Any, AsyncIterator, List, Optional
 
 from docx import Document
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,15 +31,10 @@ from app.core import (
     uid,
 )
 from app.core.ai import DeepSeekConfig
-from app.core.snapshots import (
-    content_hash_for_payload,
-    decode_snapshot_payload,
-    latest_content_hash,
-    snapshot_payload_dict,
-)
+from app.core.snapshots import decode_snapshot_payload
 from app.core.voice_reports import persist_voice_report
 from app.db import get_db
-from app.domain.types import AgentRequest, AiRequest, ProjectSnapshot, VnProject
+from app.domain.types import AgentRequest, AiRequest, VnProject
 from app.models import AgentSession, Project, Share, User
 from app.schemas import (
     AgentConversationCreateIn,
@@ -78,6 +74,12 @@ from app.services.projects import (
     row_to_vn,
     server_llm_credentials,
     sync_row_from_vn,
+)
+from app.services.snapshots import (
+    create_snapshot as create_snapshot_row,
+    delete_snapshot as delete_snapshot_row,
+    get_snapshot_payload,
+    list_snapshots as list_snapshot_rows,
 )
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -463,6 +465,7 @@ async def analysis_facts_scan(
     body: FactsScanIn = FactsScanIn(),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     from app.core.fact_extract import build_scan_candidates, filter_new_candidates
     from app.services import analysis_inbox as inbox_svc
@@ -480,6 +483,29 @@ async def analysis_facts_scan(
     )
     pending_keys = await inbox_svc.blocked_dedupe_keys(db, project_id)
     fresh = filter_new_candidates(vn, cands, pending_keys)
+    llm_info: Optional[Dict[str, Any]] = None
+    if body.llm and fresh:
+        from app.core.fact_llm import enrich_fact_candidates
+
+        creds = server_llm_credentials(settings)
+        cfg = DeepSeekConfig(
+            apiKey=creds["api_key"],
+            baseUrl=creds["base_url"],
+            model=creds["model"],
+        )
+        enriched = await enrich_fact_candidates(cfg, vn, fresh)
+        # Refined labels may collide with accepted/pending keys → re-filter.
+        fresh = filter_new_candidates(vn, enriched.candidates, pending_keys)
+        s = enriched.stats
+        llm_info = {
+            "used": s.llm_used,
+            "sent": s.sent,
+            "kept": s.kept,
+            "dropped": s.dropped,
+            "refined": s.refined,
+            "model": s.model or None,
+            "error": s.error,
+        }
     created = await inbox_svc.insert_candidates(db, project_id, fresh)
     vn = vn.model_copy(update={"analysisMeta": fresh_meta})
     sync_row_from_vn(row, vn)
@@ -498,6 +524,7 @@ async def analysis_facts_scan(
             "characterLinks": sum(1 for c in created if c.kind == "character_link"),
             "timelineEvents": sum(1 for c in created if c.kind == "timeline_event"),
         },
+        "llm": llm_info,
         "inbox": [inbox_svc.inbox_row_to_dict(r) for r in created],
     }
 
@@ -663,13 +690,8 @@ async def list_snapshots(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    row = await get_owned_project(db, user, project_id)
-    vn = row_to_vn(row)
-    snaps = vn.snapshots or []
-    return [
-        {"id": s.id, "label": s.label, "createdAt": s.createdAt}
-        for s in snaps
-    ]
+    await get_owned_project(db, user, project_id)
+    return await list_snapshot_rows(db, project_id)
 
 
 @router.post("/{project_id}/snapshots")
@@ -681,39 +703,7 @@ async def create_snapshot(
 ):
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
-    snaps = list(vn.snapshots or [])
-    payload = snapshot_payload_dict(vn)
-    content_hash = content_hash_for_payload(payload)
-    prev_hash = latest_content_hash(snaps)
-    if prev_hash and prev_hash == content_hash and snaps:
-        last = snaps[-1]
-        return {
-            "id": last.id,
-            "label": last.label,
-            "createdAt": last.createdAt,
-            "contentHash": last.contentHash or content_hash,
-            "deduped": True,
-        }
-    snap = {
-        "id": uid("snap"),
-        "label": body.label,
-        "createdAt": datetime.now(timezone.utc).isoformat(),
-        "payload": payload,
-        "contentHash": content_hash,
-    }
-    snaps.append(ProjectSnapshot(**snap))
-    # keep last 20
-    snaps = snaps[-20:]
-    vn.snapshots = snaps
-    sync_row_from_vn(row, vn)
-    await db.commit()
-    return {
-        "id": snap["id"],
-        "label": snap["label"],
-        "createdAt": snap["createdAt"],
-        "contentHash": content_hash,
-        "deduped": False,
-    }
+    return await create_snapshot_row(db, project_id, vn, label=body.label)
 
 
 @router.post("/{project_id}/snapshots/{snap_id}/restore", response_model=dict)
@@ -724,18 +714,15 @@ async def restore_snapshot(
     db: AsyncSession = Depends(get_db),
 ):
     row = await get_owned_project(db, user, project_id)
-    vn = row_to_vn(row)
-    snaps = vn.snapshots or []
-    target = next((s for s in snaps if s.id == snap_id), None)
-    if target is None:
+    payload = await get_snapshot_payload(db, project_id, snap_id)
+    if payload is None:
         raise HTTPException(status_code=404, detail="快照不存在")
     try:
-        decoded = decode_snapshot_payload(target.payload)
+        decoded = decode_snapshot_payload(payload)
     except (TypeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail=f"快照损坏：{exc}") from exc
     restored = normalize_project(decoded)
     restored.id = project_id
-    restored.snapshots = snaps
     sync_row_from_vn(row, restored)
     await db.commit()
     await db.refresh(row)
@@ -749,10 +736,10 @@ async def delete_snapshot(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    row = await get_owned_project(db, user, project_id)
-    vn = row_to_vn(row)
-    vn.snapshots = [s for s in (vn.snapshots or []) if s.id != snap_id]
-    sync_row_from_vn(row, vn)
+    await get_owned_project(db, user, project_id)
+    ok = await delete_snapshot_row(db, project_id, snap_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="快照不存在")
     await db.commit()
     return {"ok": True}
 
@@ -1280,27 +1267,15 @@ async def upload_agent_attachment(
     }
 
 
-@router.post("/{project_id}/agent", response_model=AgentRunOut)
-async def run_project_agent(
+async def _build_agent_request(
+    db: AsyncSession,
     project_id: str,
+    vn: VnProject,
     body: AgentRunIn,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
-):
-    row = await get_owned_project(db, user, project_id)
-    vn = row_to_vn(row)
-    creds = server_llm_credentials(settings)
-    if not creds["api_key"]:
-        raise HTTPException(
-            status_code=400,
-            detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
-        )
-
-    critic_key = settings.critic_api_key or None
-    critic_base = settings.critic_api_base_url or None
-    critic_model = settings.critic_api_model or None
-
+    settings: Settings,
+    creds: dict[str, str],
+) -> tuple[AgentRequest, str]:
+    """Assemble the AgentRequest (lore / ledger / continuity / attachments)."""
     last_user = ""
     for m in reversed(body.messages or []):
         content = getattr(m, "content", None)
@@ -1342,24 +1317,26 @@ async def run_project_agent(
         craftMode=settings.agent_craft_mode,
         selfReview=settings.agent_self_review,
         lensIds=body.lens_ids,
-        criticApiKey=critic_key,
-        criticApiBaseUrl=critic_base,
-        criticApiModel=critic_model,
+        criticApiKey=settings.critic_api_key or None,
+        criticApiBaseUrl=settings.critic_api_base_url or None,
+        criticApiModel=settings.critic_api_model or None,
         apiKey=creds["api_key"],
         apiBaseUrl=creds["base_url"],
         apiModel=creds["model"],
     )
+    return req, last_user
 
-    cfg = DeepSeekConfig(
-        apiKey=creds["api_key"],
-        baseUrl=creds["base_url"],
-        model=creds["model"],
-    )
-    try:
-        result = await run_agent(cfg, req)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+async def _finalize_agent_run(
+    db: AsyncSession,
+    project_id: str,
+    row: Project,
+    vn: VnProject,
+    body: AgentRunIn,
+    result: Any,
+    last_user: str,
+) -> AgentRunOut:
+    """Persist agent results: undo stack, actions, inbox proposals, fact scan, session."""
     message = result.message
     actions = result.actions or []
     model = result.model
@@ -1462,6 +1439,120 @@ async def run_project_agent(
         conversation_id=sess.id,
         inbox_added=inbox_added,
         trace=trace if isinstance(trace, list) else [],
+    )
+
+
+@router.post("/{project_id}/agent", response_model=AgentRunOut)
+async def run_project_agent(
+    project_id: str,
+    body: AgentRunIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    creds = server_llm_credentials(settings)
+    if not creds["api_key"]:
+        raise HTTPException(
+            status_code=400,
+            detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
+        )
+
+    req, last_user = await _build_agent_request(db, project_id, vn, body, settings, creds)
+
+    cfg = DeepSeekConfig(
+        apiKey=creds["api_key"],
+        baseUrl=creds["base_url"],
+        model=creds["model"],
+    )
+    try:
+        result = await run_agent(cfg, req)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return await _finalize_agent_run(db, project_id, row, vn, body, result, last_user)
+
+
+@router.post("/{project_id}/agent/stream")
+async def run_project_agent_stream(
+    project_id: str,
+    body: AgentRunIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """SSE streaming agent run: task/thought/tool/actions events, then final result.
+
+    Event data is JSON: {"type":"task"|"thought"|"tool_call"|"tool_result"|
+    "actions"|"review"|"done"|"error", ...}. The final `done` event carries the
+    full AgentRunOut payload (same shape as POST /agent).
+    """
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    creds = server_llm_credentials(settings)
+    if not creds["api_key"]:
+        raise HTTPException(
+            status_code=400,
+            detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
+        )
+
+    req, last_user = await _build_agent_request(db, project_id, vn, body, settings, creds)
+    cfg = DeepSeekConfig(
+        apiKey=creds["api_key"],
+        baseUrl=creds["base_url"],
+        model=creds["model"],
+    )
+
+    async def event_stream() -> AsyncIterator[str]:
+        q: asyncio.Queue[dict] = asyncio.Queue()
+
+        async def sink(evt: dict) -> None:
+            await q.put(evt)
+
+        async def _sse(data: dict) -> str:
+            return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+        runner = asyncio.create_task(
+            run_agent(cfg, req, on_event=sink),
+            name=f"agent-stream-{project_id}",
+        )
+        try:
+            while True:
+                try:
+                    evt = await asyncio.wait_for(q.get(), timeout=20)
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
+                yield await _sse(evt)
+                if evt.get("type") == "done":
+                    break
+            result = await runner
+        except asyncio.CancelledError:
+            runner.cancel()
+            raise
+        except Exception as exc:  # noqa: BLE001 - stream errors as SSE events
+            if not runner.done():
+                runner.cancel()
+            yield await _sse({"type": "error", "message": str(exc)[:500]})
+            return
+        else:
+            # Persist + finalize AFTER the loop finished (same as non-streaming).
+            final = await _finalize_agent_run(
+                db, project_id, row, vn, body, result, last_user
+            )
+            yield await _sse(
+                {"type": "final", "result": final.model_dump(mode="json", by_alias=True)}
+            )
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

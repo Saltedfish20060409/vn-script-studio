@@ -136,11 +136,21 @@ async def run_agent_loop(
     request: AgentRequest,
     *,
     max_steps: int = DEFAULT_MAX_STEPS,
+    on_event=None,
 ) -> AgentResponse:
     if not config.apiKey or "your-key" in config.apiKey:
         raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
     model = config.model or "deepseek-chat"
     provider = provider_from_config(config)
+
+    async def emit(evt: Dict[str, Any]) -> None:
+        """Fire a stream event; a failing sink must never break the loop."""
+        if on_event is None:
+            return
+        try:
+            await on_event(evt)
+        except Exception:  # noqa: BLE001 - sink failure is not agent failure
+            pass
 
     last_user = next(
         (m.content for m in reversed(request.messages) if m.role == "user"), None
@@ -153,6 +163,7 @@ async def run_agent_loop(
         chapter_id=request.chapterId,
         preference=request.craftMode,
     )
+    await emit({"type": "task", "task": task, "craftMode": craft.mode})
     ctx = build_agent_context(
         request.project,
         chapterId=request.chapterId,
@@ -244,6 +255,7 @@ async def run_agent_loop(
         final_message = message or final_message
         if message:
             trace.append({"type": "thought", "text": message[:2000]})
+            await emit({"type": "thought", "text": message[:2000]})
 
         tool_calls = _normalize_tool_calls(parsed.get("tool_calls"))
         actions = _normalize_agent_actions(parsed.get("actions"))
@@ -256,6 +268,13 @@ async def run_agent_loop(
             )
             working = apply_res.project
             trace.append(
+                {
+                    "type": "actions",
+                    "actions": actions,
+                    "skipped": list(apply_res.skipped or []),
+                }
+            )
+            await emit(
                 {
                     "type": "actions",
                     "actions": actions,
@@ -277,6 +296,7 @@ async def run_agent_loop(
                         "arguments": args,
                     }
                 )
+                await emit({"type": "tool_call", "id": tid, "name": name, "arguments": args})
                 ok, preview = run_agent_tool(
                     name,
                     args,
@@ -284,6 +304,15 @@ async def run_agent_loop(
                     chapter_id=request.chapterId,
                 )
                 trace.append(
+                    {
+                        "type": "tool_result",
+                        "id": tid,
+                        "name": name,
+                        "ok": ok,
+                        "preview": preview[:2500],
+                    }
+                )
+                await emit(
                     {
                         "type": "tool_result",
                         "id": tid,
@@ -349,6 +378,7 @@ async def run_agent_loop(
                         f"{final_message}\n\n（自检修订：{'；'.join(review.issues[:3])}）"
                     )
                 trace.append({"type": "thought", "text": f"自检：{review_note or '已改写'}"})
+                await emit({"type": "review", "note": review_note or "已改写"})
             elif lint_has_blockers(lint_issues) and not review.revisedText:
                 error_msgs = [i.message for i in lint_issues if i.severity == "error"][:2]
                 review_note = review_note or f"规则未过：{'；'.join(error_msgs)}"
@@ -361,7 +391,7 @@ async def run_agent_loop(
 
     trace.append({"type": "done", "message": final_message[:2000]})
 
-    return AgentResponse(
+    response = AgentResponse(
         message=final_message,
         actions=actions_out,
         model=model,
@@ -377,3 +407,5 @@ async def run_agent_loop(
         ),
         trace=trace,
     )
+    await emit({"type": "done", "result": response.model_dump(mode="json", by_alias=True)})
+    return response

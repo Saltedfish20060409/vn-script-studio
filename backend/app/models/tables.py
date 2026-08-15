@@ -48,6 +48,9 @@ class Project(Base):
     agent_sessions: Mapped[list["AgentSession"]] = relationship(
         back_populates="project"
     )
+    snapshot_rows: Mapped[list["ProjectSnapshotRow"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
 
 
 class Share(Base):
@@ -174,6 +177,25 @@ class AnalysisInboxItem(Base):
     dedupe_key: Mapped[str] = mapped_column(String(255), default="", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ProjectSnapshotRow(Base):
+    """Version snapshots stored outside the project blob (content-addressed)."""
+
+    __tablename__ = "project_snapshots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("projects.id"), index=True
+    )
+    label: Mapped[str] = mapped_column(String(255), default="")
+    # sha256[:32] of the canonical payload — used for dedupe
+    content_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
+    # Full project payload (snapshots field stripped)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    project: Mapped["Project"] = relationship(back_populates="snapshot_rows")
 
 
 class LoreCraftCard(Base):

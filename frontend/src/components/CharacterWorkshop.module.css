@@ -1360,6 +1360,15 @@
   margin-bottom: 0.85rem;
 }
 
+.placeholderHint {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  background: var(--bg-soft, rgba(128, 128, 128, 0.08));
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
 .line {
   margin: 0;
   display: grid;

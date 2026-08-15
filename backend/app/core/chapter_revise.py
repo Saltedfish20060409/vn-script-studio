@@ -156,16 +156,17 @@ def _hard_fail_snippets(text: str) -> List[str]:
         hits.append("task_summary_ack")
     if re.search(r"私人空间.{0,20}尊重", text):
         hits.append("respect_lecture")
+    # Scene/setting tour lecture (genre-agnostic; examples are illustrative only).
     if re.search(
-        r"这里是(?:厨房|客厅|卧室|我的工作区)|带你熟悉一下这里|熟悉一下这个空间|"
-        r"那边是吃饭的地方|冰箱里有食材.?饿了|带你熟悉一下|我来给你介绍一下这里",
+        r"这里是(?:厨房|客厅|卧室|工作区|房间)|带你熟悉一下|熟悉一下这个空间|"
+        r"那边是(?:吃饭|睡觉|办公)的地方|我来给你介绍一下这里",
         text,
     ):
         hits.append("apartment_tour")
-    # Genre-agnostic process / encyclopedia Q&A (not cooking-demo-bound).
+    # Process / encyclopedia Q&A (genre-agnostic; not cooking-demo-bound).
     if re.search(
-        r"为什么要分开|什么时候(?:放|撒|加)|盐是现在撒|先焯水再|"
-        r"原理是什么|简单来说就是|换句话说就是|需要先了解",
+        r"为什么要(?:这样|分开|这么做)|什么时候(?:放|加|设置|调整|开始)|"
+        r"原理是什么|简单来说就是|换句话说就是|需要先了解|先(?:焯水|这样|做这个)再",
         text,
     ):
         hits.append("process_faq")
@@ -237,8 +238,8 @@ def _force_rough_in_menu(menu: str) -> str:
 
 
 def _find_menu_insert_pos(draft: str) -> int:
-    """Prefer after naming/call beat; else ~35% into draft."""
-    for pat in (r"起名", r"叫什么", r"给你取", r"名字", r"编号"):
+    """Prefer after naming/relationship beat; else ~35% into draft."""
+    for pat in (r"起名", r"叫什么", r"给你取", r"名字", r"称呼", r"怎么称呼"):
         m = re.search(pat, draft)
         if m and m.end() > 40:
             nl = draft.find("\n\n", m.end())
@@ -1050,7 +1051,7 @@ async def run_chapter_revise(
             f"## 规则引擎已坐实\n{json.dumps(smell_notes, ensure_ascii=False)}\n\n"
             f"## 回炉稿\n{revised}\n\n"
             "请输出 ok=false 的完整 revised_text：删掉导览课、工序百科、任务总结句；"
-            "起名保留毛边与菜单；晚饭留感受；锁门只留错位一句。"
+            "关系推进处保留毛边与菜单；日常互动过程一句带过、只留感受与错位。"
             "改稿不是缩写：不要为了变短而抽干人味。"
         )
         raw_c, model_c, tok_c = await _chat_json(

@@ -203,6 +203,8 @@ class FactsScanIn(BaseModel):
     paste_text: Optional[str] = None
     full: bool = False
     persist_paste: bool = False
+    # Optional LLM semantic layer: verify/refine heuristic candidates first.
+    llm: bool = False
 
 
 class FactsAcceptIn(BaseModel):

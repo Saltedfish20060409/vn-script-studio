@@ -35,7 +35,6 @@ import { useAuth } from "../auth/AuthContext";
 import { ScriptEditor } from "./ScriptEditor";
 import { MapStudio } from "./MapStudio";
 import { MapExtractReview } from "./MapExtractReview";
-import { ColorPicker } from "./ColorPicker";
 import { AgentFloat } from "./AgentFloat";
 import { AnalysisPanels } from "./AnalysisPanels";
 import { SystemPanel } from "./SystemPanel";
@@ -45,6 +44,14 @@ import { FocusChrome } from "./FocusChrome";
 import { useConfirm, usePrompt } from "./ConfirmDialog";
 import { EmptyStage } from "./EmptyStage";
 import { ProjectLibraryPanel } from "./ProjectLibraryPanel";
+import { ProjectExportPanel } from "./ProjectExportPanel";
+import { ProjectHistoryPanel } from "./ProjectHistoryPanel";
+import { StudioBootScreen } from "./StudioBootScreen";
+import { StudioChapterBar } from "./StudioChapterBar";
+import { StudioTabs } from "./StudioTabs";
+import { StudioTopBar } from "./StudioTopBar";
+import { WorldPanel } from "./WorldPanel";
+import { WriteToolbar } from "./WriteToolbar";
 import { StudioErrorBoundary } from "./StudioErrorBoundary";
 import {
   SaveConflictDialog,
@@ -137,7 +144,7 @@ export function StudioApp() {
   const [writeSub, setWriteSub] = useState<"script" | "analysis">(
     cachedWs.writeSub || wsDefaults.writeSub
   );
-  const [worldSub, setWorldSub] = useState<"characters" | "bible">(
+  const [worldSub, setWorldSub] = useState<"characters" | "bible" | "lore">(
     cachedWs.worldSub || wsDefaults.worldSub
   );
   const [systemSub, setSystemSub] = useState<"variables" | "sprites">(
@@ -1254,54 +1261,39 @@ export function StudioApp() {
 
   if (bootLoading) {
     return (
-      <div className={`vnss-app ${styles.boot}`}>
-        <div className={styles.bootArc} aria-hidden>
-          <span>LOAD</span>
-        </div>
-        <p className={styles.bootKicker}>SCRIPT STUDIO</p>
-        <p className={styles.bootTitle}>加载中</p>
-      </div>
+      <StudioBootScreen stamp="LOAD" title="加载中" />
     );
   }
 
   if (projectsList.length === 0) {
     return (
-      <div className={`vnss-app ${styles.boot}`}>
-        <div className={styles.bootArc} aria-hidden>
-          <span>LIB</span>
-        </div>
-        <p className={styles.bootKicker}>SCRIPT STUDIO</p>
-        <h1 className={styles.bootTitle}>还没有剧本</h1>
-        <p className={styles.bootLead}>先建一个空白工程，或载入示例开场。</p>
-        <div className={styles.bootEmpty}>
-          <EmptyStage
-            stamp="LIB"
-            title="项目库空着"
-            line={mascotLine("emptyLibrary")}
-          >
-            <div className={styles.aiQuick}>
-              <button type="button" onClick={() => void createBlank()}>
-                空白剧本
-              </button>
-              <button type="button" onClick={() => void createDemo()}>
-                示例《雨夜车站》
-              </button>
-            </div>
-          </EmptyStage>
-        </div>
-      </div>
+      <StudioBootScreen
+        stamp="LIB"
+        title="还没有剧本"
+        titleTag="h1"
+        lead="先建一个空白工程，或载入示例开场。"
+      >
+        <EmptyStage
+          stamp="LIB"
+          title="项目库空着"
+          line={mascotLine("emptyLibrary")}
+        >
+          <div className={styles.aiQuick}>
+            <button type="button" onClick={() => void createBlank()}>
+              空白剧本
+            </button>
+            <button type="button" onClick={() => void createDemo()}>
+              示例《雨夜车站》
+            </button>
+          </div>
+        </EmptyStage>
+      </StudioBootScreen>
     );
   }
 
   if (!project || projectLoading) {
     return (
-      <div className={`vnss-app ${styles.boot}`}>
-        <div className={styles.bootArc} aria-hidden>
-          <span>LOAD</span>
-        </div>
-        <p className={styles.bootKicker}>SCRIPT STUDIO</p>
-        <p className={styles.bootTitle}>加载中</p>
-      </div>
+      <StudioBootScreen stamp="LOAD" title="加载中" />
     );
   }
 
@@ -1356,123 +1348,38 @@ export function StudioApp() {
           onDismiss={dismissToast}
         />
       ) : null}
-      <header className={`${styles.top} vnss-frost`}>
-        <div className={styles.brandBlock}>
-          <span className={styles.brandMark} aria-hidden>
-            <em>SS</em>
-            <span>VN</span>
-          </span>
-          <div className={styles.brandText}>
-            <p className={styles.brandKicker}>VISUAL NOVEL</p>
-            <p className={styles.brand}>Script Studio</p>
-            <input
-              className={styles.titleInput}
-              value={project.title}
-              onChange={(e) =>
-                updateActive((p) => ({ ...p, title: e.target.value }))
-              }
-              aria-label="作品标题"
-              placeholder="作品标题"
-            />
-          </div>
-        </div>
-        <div className={styles.topActions}>
-          {tab === "write" && writeSub === "script" && !focusMode ? (
-            <button
-              type="button"
-              className={styles.focusToggle}
-              aria-pressed={false}
-              onClick={requestFocusSession}
-              title="专注全屏写作 (Ctrl+\\)"
-            >
-              专注
-            </button>
-          ) : null}
-          <details className={styles.moreMenu}>
-            <summary>更多</summary>
-            <div className={styles.morePanel} role="menu">
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => void createBlank()}
-              >
-                新建剧本
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => fileRef.current?.click()}
-              >
-                导入文件
-              </button>
-              <button type="button" role="menuitem" onClick={commitEditor}>
-                保存章节
-              </button>
-            </div>
-          </details>
-          <input
-            ref={fileRef}
-            type="file"
-            hidden
-            accept=".docx,.txt,.md,.rpy,.json,.fountain"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void handleImportFile(f);
-              e.target.value = "";
-            }}
-          />
-          <button
-            type="button"
-            className={styles.primary}
-            onClick={() => {
-              setTab("project");
-              setProjectSub("export");
-              void generateRpy();
-            }}
-          >
-            导出 .rpy
-          </button>
-          {user?.username ? (
-            <span className={styles.userChip} title={user.username}>
-              {user.username}
-            </span>
-          ) : null}
-          <button type="button" className={styles.ghost} onClick={handleLogout}>
-            退出
-          </button>
-        </div>
-      </header>
+      <StudioTopBar
+        title={project.title}
+        username={user?.username}
+        showFocusToggle={tab === "write" && writeSub === "script" && !focusMode}
+        fileInputRef={fileRef}
+        onTitleChange={(value) => updateActive((p) => ({ ...p, title: value }))}
+        onFocusToggle={requestFocusSession}
+        onNewProject={() => void createBlank()}
+        onImportClick={() => fileRef.current?.click()}
+        onFileChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void handleImportFile(f);
+          e.target.value = "";
+        }}
+        onSaveChapter={commitEditor}
+        onExportRpy={() => {
+          setTab("project");
+          setProjectSub("export");
+          void generateRpy();
+        }}
+        onLogout={handleLogout}
+      />
 
       <div className={styles.layout}>
         <main className={styles.main}>
-          <nav className={`${styles.tabs} vnss-frost`} aria-label="剧本篇章">
-            <span className={styles.tabsRail} aria-hidden />
-            {(
-              [
-                ["write", "01", "写作"],
-                ["world", "02", "设定"],
-                ["voice", "03", "角色工坊"],
-                ["map", "04", "地图"],
-                ["system", "05", "VN状态"],
-                ["project", "06", "项目"],
-              ] as const
-            ).map(([id, idx, label]) => (
-              <button
-                key={id}
-                type="button"
-                className={tab === id ? styles.tabActive : styles.tab}
-                onClick={() => {
-                  if (id !== "write" || writeSub !== "script") commitEditor();
-                  setTab(id);
-                }}
-              >
-                <span className={styles.tabIdx} aria-hidden>
-                  {idx}
-                </span>
-                <span className={styles.tabLabel}>{label}</span>
-              </button>
-            ))}
-          </nav>
+          <StudioTabs
+            tab={tab}
+            onSelect={(id) => {
+              if (id !== "write" || writeSub !== "script") commitEditor();
+              setTab(id);
+            }}
+          />
 
           {tab === "project" && (
             <section className={styles.panel}>
@@ -1518,334 +1425,86 @@ export function StudioApp() {
               )}
 
               {projectSub === "export" && (
-                <>
-                  <div className={styles.toolbar}>
-                    <span>
-                      先根据当前剧本生成 .rpy 预览，确认无误后再下载；工程 JSON 可随时导出。
-                    </span>
-                    <div className={styles.aiQuick}>
-                      <button
-                        type="button"
-                        className={styles.primary}
-                        onClick={() => void generateRpy()}
-                      >
-                        生成 .rpy
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!rpyPreview || rpyStale}
-                        onClick={downloadRpy}
-                        title={
-                          !rpyPreview
-                            ? "请先生成"
-                            : rpyStale
-                              ? "剧本已改动，请重新生成"
-                              : "下载预览中的 .rpy"
-                        }
-                      >
-                        下载 .rpy
-                      </button>
-                      <button type="button" onClick={() => void downloadJson()}>
-                        下载工程 .json
-                      </button>
-                    </div>
-                  </div>
-                  {rpyStale && rpyPreview && (
-                    <p className={styles.hint}>
-                      剧本已修改，预览已过期 — 请重新点击「生成 .rpy」。
-                    </p>
-                  )}
-                  {!rpyPreview ? (
-                    <EmptyStage
-                      stamp="EXP"
-                      title="尚无导出预览"
-                      line={mascotLine("emptyExport")}
-                    >
-                      <button
-                        type="button"
-                        className={styles.primary}
-                        onClick={() => void generateRpy()}
-                      >
-                        生成 .rpy
-                      </button>
-                    </EmptyStage>
-                  ) : (
-                    <pre className={styles.pre}>{rpyPreview}</pre>
-                  )}
-                </>
+                <ProjectExportPanel
+                  rpyPreview={rpyPreview}
+                  rpyStale={rpyStale}
+                  onGenerateRpy={() => void generateRpy()}
+                  onDownloadRpy={downloadRpy}
+                  onDownloadJson={() => void downloadJson()}
+                />
               )}
 
               {projectSub === "history" && (
-                <>
-                  <div className={styles.toolbar}>
-                    <span>版本快照可回退大改稿；只读链接给画师 / 配音看设定</span>
-                  </div>
-                  <div className={styles.shareBox}>
-                    <strong>长程章节记忆</strong>
-                    <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--ink-soft)" }}>
-                      借鉴 NovelMaster：每 10 章一段 continuity，拆成 PostgreSQL TEXT
-                      切片；Agent 会自动注入最新段。
-                    </p>
-                    <div className={styles.aiQuick}>
-                      <button
-                        type="button"
-                        className={styles.primary}
-                        onClick={() => void archiveLongMemory()}
-                      >
-                        归档长程记忆
-                      </button>
-                    </div>
-                    <ul className={styles.snapList}>
-                      {memoryArchives.map((a) => (
-                        <li key={a.id}>
-                          <span>
-                            {a.label}
-                            {a.isLatest ? " · 最新" : ""}
-                            <br />
-                            <small>
-                              第 {a.rangeFrom}–{a.rangeTo} 章 · {a.wordCount} 字
-                            </small>
-                          </span>
-                          <button
-                            type="button"
-                            className={styles.ghost}
-                            disabled={memoryDetailBusy}
-                            onClick={() => void openMemoryArchive(a.id)}
-                          >
-                            查看
-                          </button>
-                        </li>
-                      ))}
-                      {memoryArchives.length === 0 && (
-                        <li>尚未归档。章节较多时点上方按钮生成。</li>
-                      )}
-                    </ul>
-                    {memoryDetail && (
-                      <div className={styles.memoryPeek}>
-                        <div className={styles.toolbar}>
-                          <strong>{memoryDetail.label}</strong>
-                          <button
-                            type="button"
-                            className={styles.ghost}
-                            onClick={() => setMemoryDetail(null)}
-                          >
-                            关闭
-                          </button>
-                        </div>
-                        <p className={styles.hint}>
-                          continuity 切片预览（Agent 注入用最新段）
-                        </p>
-                        <pre className={styles.pre}>
-                          {(memoryDetail.continuityText || "").slice(0, 4000) ||
-                            "（无 continuity 正文）"}
-                          {(memoryDetail.continuityText || "").length > 4000
-                            ? "\n…(已截断)"
-                            : ""}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                  <div className={styles.shareBox}>
-                    <strong>快照</strong>
-                    <div className={styles.aiQuick}>
-                      <input
-                        value={snapLabel}
-                        onChange={(e) => setSnapLabel(e.target.value)}
-                        placeholder="快照备注（可选）"
-                      />
-                      <button
-                        type="button"
-                        className={styles.primary}
-                        onClick={() => void takeSnapshot()}
-                      >
-                        保存当前快照
-                      </button>
-                    </div>
-                    <ul className={styles.snapList}>
-                      {snapshots.map((s) => (
-                        <li key={s.id}>
-                          <span>
-                            {s.label}
-                            <br />
-                            <small>
-                              {new Date(s.createdAt).toLocaleString()}
-                            </small>
-                          </span>
-                          <span>
-                            <button
-                              type="button"
-                              className={styles.ghost}
-                              onClick={() => void restoreSnapshotById(s.id)}
-                            >
-                              回退到此
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.ghost}
-                              onClick={() => void deleteSnapshotById(s.id)}
-                            >
-                              删除
-                            </button>
-                          </span>
-                        </li>
-                      ))}
-                      {snapshots.length === 0 && <li>尚无快照</li>}
-                    </ul>
-                  </div>
-                  <div className={styles.shareBox}>
-                    <strong>只读分享</strong>
-                    <p className={styles.hint}>
-                      生成链接后任何人都可打开只读页面查看设定摘要；可随时撤销。
-                    </p>
-                    <div className={styles.aiQuick}>
-                      <button
-                        type="button"
-                        className={styles.primary}
-                        onClick={() => void createShareLink()}
-                      >
-                        生成并复制链接
-                      </button>
-                      {project.shareId && (
-                        <button type="button" onClick={() => void revokeShareLink()}>
-                          撤销分享
-                        </button>
-                      )}
-                    </div>
-                    {shareUrl && (
-                      <input readOnly value={shareUrl} onFocus={(e) => e.target.select()} />
-                    )}
-                  </div>
-                </>
+                <ProjectHistoryPanel
+                  memoryArchives={memoryArchives}
+                  memoryDetailBusy={memoryDetailBusy}
+                  memoryDetail={memoryDetail}
+                  snapLabel={snapLabel}
+                  snapshots={snapshots}
+                  shareUrl={shareUrl}
+                  hasShare={Boolean(project.shareId)}
+                  onArchiveMemory={() => void archiveLongMemory()}
+                  onOpenMemoryArchive={(id) => void openMemoryArchive(id)}
+                  onCloseMemoryDetail={() => setMemoryDetail(null)}
+                  onSnapLabelChange={setSnapLabel}
+                  onTakeSnapshot={() => void takeSnapshot()}
+                  onRestoreSnapshot={(id) => void restoreSnapshotById(id)}
+                  onDeleteSnapshot={(id) => void deleteSnapshotById(id)}
+                  onCreateShare={() => void createShareLink()}
+                  onRevokeShare={() => void revokeShareLink()}
+                />
               )}
             </section>
           )}
 
           {tab === "write" && (
             <>
-              <div className={styles.subNav} style={{ padding: "0.75rem 1.1rem 0" }}>
-                <button
-                  type="button"
-                  className={
-                    writeSub === "script" ? styles.subActive : styles.subTab
-                  }
-                  onClick={() => setWriteSub("script")}
-                >
-                  剧本
-                </button>
-                <button
-                  type="button"
-                  className={
-                    writeSub === "analysis" ? styles.subActive : styles.subTab
-                  }
-                  onClick={() => {
-                    void (async () => {
-                      commitEditor();
-                      await flushPendingSave();
-                      setWriteSub("analysis");
-                    })();
-                  }}
-                >
-                  分析
-                </button>
-                <div className={styles.chapterBar}>
-                  <span className={styles.inlineLabel}>篇章</span>
-                  <div
-                    className={styles.chapterStrip}
-                    role="listbox"
-                    aria-label="篇章"
-                  >
-                    {project.chapters.map((c, i) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        role="option"
-                        aria-selected={c.id === chapterId}
-                        className={
-                          c.id === chapterId
-                            ? styles.chapterChipOn
-                            : styles.chapterChip
-                        }
-                        onClick={() => {
-                          if (c.id === chapterId) return;
-                          commitEditor();
-                          setChapterId(c.id);
-                        }}
-                      >
-                        <em>{String(i + 1).padStart(2, "0")}</em>
-                        <span>{c.title || `第 ${i + 1} 章`}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    className={styles.ghost}
-                    onClick={() => void addChapter()}
-                  >
-                    + 章
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.ghost}
-                    disabled={project.chapters.length <= 1}
-                    onClick={() => void deleteChapter(chapterId)}
-                  >
-                    删章
-                  </button>
-                </div>
-              </div>
+              <StudioChapterBar
+                writeSub={writeSub}
+                chapterId={chapterId}
+                chapters={project.chapters}
+                onSelectScript={() => setWriteSub("script")}
+                onSelectAnalysis={() => {
+                  void (async () => {
+                    commitEditor();
+                    await flushPendingSave();
+                    setWriteSub("analysis");
+                  })();
+                }}
+                onSelectChapter={(id) => {
+                  if (id === chapterId) return;
+                  commitEditor();
+                  setChapterId(id);
+                }}
+                onAddChapter={() => void addChapter()}
+                onDeleteChapter={() => void deleteChapter(chapterId)}
+              />
               {writeSub === "script" && (
             <section className={styles.panel}>
-              <div className={styles.toolbar}>
-                <label className={styles.inlineLabel}>
-                  章节名
-                  <input
-                    value={chapter?.title ?? ""}
-                    onChange={(e) => {
-                      const title = e.target.value;
-                      updateActive((p) => ({
-                        ...p,
-                        chapters: p.chapters.map((c) =>
-                          c.id === chapterId ? { ...c, title } : c
-                        ),
-                      }));
-                    }}
-                  />
-                </label>
-                {reviseDraft ? (
-                  <div className={styles.reviseDraftActions}>
-                    <button
-                      type="button"
-                      className={styles.reviseDraftBtn}
-                      title="打开未写入的改稿对照（刷新后仍可进入）"
-                      onClick={() => {
-                        if (focusMode) {
-                          setStatus("请先退出专注模式，再打开改稿对照");
-                          return;
-                        }
-                        requestOpenReviseReview(project.id, chapterId);
-                      }}
-                    >
-                      改稿对照
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.ghost}
-                      title="丢弃本章未写入的改稿预览"
-                      onClick={() => {
-                        clearChapterReviseDraft(project.id, chapterId);
-                        setReviseDraft(null);
-                        setStatus("已丢弃本章改稿预览");
-                      }}
-                    >
-                      丢弃预览
-                    </button>
-                  </div>
-                ) : (
-                  <span className={styles.hintInline}>
-                    地名会高亮，点击可跳到地图 · 续写用右下角 Agent
-                  </span>
-                )}
-              </div>
+              <WriteToolbar
+                chapterTitle={chapter?.title ?? ""}
+                showReviseActions={Boolean(reviseDraft)}
+                onChapterTitleChange={(title) => {
+                  updateActive((p) => ({
+                    ...p,
+                    chapters: p.chapters.map((c) =>
+                      c.id === chapterId ? { ...c, title } : c
+                    ),
+                  }));
+                }}
+                onOpenRevise={() => {
+                  if (focusMode) {
+                    setStatus("请先退出专注模式，再打开改稿对照");
+                    return;
+                  }
+                  requestOpenReviseReview(project.id, chapterId);
+                }}
+                onDiscardRevise={() => {
+                  clearChapterReviseDraft(project.id, chapterId);
+                  setReviseDraft(null);
+                  setStatus("已丢弃本章改稿预览");
+                }}
+              />
               <StudioErrorBoundary label="写作编辑器">
               <ScriptEditor
                 textareaRef={editorTaRef}
@@ -1889,196 +1548,27 @@ export function StudioApp() {
           )}
 
           {tab === "world" && (
-            <>
-              <div className={styles.subNav} style={{ padding: "0.75rem 1.1rem 0" }}>
-                <button
-                  type="button"
-                  className={
-                    worldSub === "characters" ? styles.subActive : styles.subTab
-                  }
-                  onClick={() => setWorldSub("characters")}
-                >
-                  角色卡
-                </button>
-                <button
-                  type="button"
-                  className={
-                    worldSub === "bible" ? styles.subActive : styles.subTab
-                  }
-                  onClick={() => setWorldSub("bible")}
-                >
-                  世界观 / 大纲
-                </button>
-              </div>
-              {worldSub === "characters" && (
-            <section className={styles.panel}>
-              <div className={styles.toolbar}>
-                <span>角色卡（删除不会自动改写对白）</span>
-                <button
-                  type="button"
-                  className={styles.primary}
-                  onClick={addCharacter}
-                >
-                  添加角色
-                </button>
-              </div>
-              <div className={styles.charGrid}>
-                {project.characters.map((c) => (
-                  <article key={c.id} className={styles.charCard}>
-                    <div className={styles.cardHead}>
-                      <strong>{c.displayName || "未命名"}</strong>
-                      <button
-                        type="button"
-                        className={styles.danger}
-                        onClick={() => void deleteCharacter(c.id)}
-                      >
-                        删除
-                      </button>
-                    </div>
-                    <label>
-                      显示名
-                      <input
-                        value={c.displayName}
-                        onChange={(e) =>
-                          updateCharacter(c.id, {
-                            displayName: e.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      define 名
-                      <input
-                        value={c.defineName}
-                        onChange={(e) =>
-                          updateCharacter(c.id, {
-                            defineName: e.target.value.replace(
-                              /[^A-Za-z0-9_]/g,
-                              ""
-                            ),
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      颜色
-                      <ColorPicker
-                        value={c.color ?? "#6b7280"}
-                        onChange={(color) =>
-                          updateCharacter(c.id, { color })
-                        }
-                      />
-                    </label>
-                    <label>
-                      语气
-                      <textarea
-                        rows={2}
-                        value={c.voice ?? ""}
-                        onChange={(e) =>
-                          updateCharacter(c.id, { voice: e.target.value })
-                        }
-                      />
-                    </label>
-                    <label>
-                      简介
-                      <textarea
-                        rows={3}
-                        value={c.bio ?? ""}
-                        onChange={(e) =>
-                          updateCharacter(c.id, { bio: e.target.value })
-                        }
-                      />
-                    </label>
-                    <label>
-                      人物关系
-                      <textarea
-                        rows={2}
-                        value={c.relationships ?? ""}
-                        onChange={(e) =>
-                          updateCharacter(c.id, {
-                            relationships: e.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                  </article>
-                ))}
-              </div>
-            </section>
-              )}
-              {worldSub === "bible" && (
-            <section className={styles.panel}>
-              <div className={styles.toolbar}>
-                <span>故事设定独立于角色卡，会进入 AI 上下文</span>
-              </div>
-              <div className={styles.bibleGrid}>
-                <label>
-                  Logline（一句话）
-                  <input
-                    value={project.logline ?? ""}
-                    onChange={(e) =>
-                      updateActive((p) => ({ ...p, logline: e.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  类型 / 题材
-                  <input
-                    value={project.genre ?? ""}
-                    onChange={(e) =>
-                      updateActive((p) => ({ ...p, genre: e.target.value }))
-                    }
-                  />
-                </label>
-                <label className={styles.full}>
-                  世界观
-                  <textarea
-                    rows={4}
-                    value={bible.world ?? ""}
-                    onChange={(e) => updateBible({ world: e.target.value })}
-                    placeholder="世界规则、时代、超自然设定…"
-                  />
-                </label>
-                <label className={styles.full}>
-                  故事背景 / 前情
-                  <textarea
-                    rows={4}
-                    value={bible.background ?? ""}
-                    onChange={(e) =>
-                      updateBible({ background: e.target.value })
-                    }
-                    placeholder="开场前发生了什么…"
-                  />
-                </label>
-                <label className={styles.full}>
-                  大纲 / 节拍
-                  <textarea
-                    rows={6}
-                    value={bible.outline ?? ""}
-                    onChange={(e) => updateBible({ outline: e.target.value })}
-                    placeholder="分幕或章节节拍…"
-                  />
-                </label>
-                <label className={styles.full}>
-                  主题 / 基调 / 禁忌
-                  <textarea
-                    rows={3}
-                    value={bible.themes ?? ""}
-                    onChange={(e) => updateBible({ themes: e.target.value })}
-                  />
-                </label>
-                <label className={styles.full}>
-                  其他备忘
-                  <textarea
-                    rows={3}
-                    value={bible.notes ?? ""}
-                    onChange={(e) => updateBible({ notes: e.target.value })}
-                  />
-                </label>
-              </div>
-            </section>
-              )}
-            </>
+            <WorldPanel
+              worldSub={worldSub}
+              projectId={project.id}
+              characters={project.characters}
+              logline={project.logline ?? ""}
+              genre={project.genre ?? ""}
+              bible={bible}
+              onSelectCharacters={() => setWorldSub("characters")}
+              onSelectBible={() => setWorldSub("bible")}
+              onSelectLore={() => setWorldSub("lore")}
+              onAddCharacter={addCharacter}
+              onDeleteCharacter={(id) => void deleteCharacter(id)}
+              onUpdateCharacter={updateCharacter}
+              onLoglineChange={(value) =>
+                updateActive((p) => ({ ...p, logline: value }))
+              }
+              onGenreChange={(value) =>
+                updateActive((p) => ({ ...p, genre: value }))
+              }
+              onBibleChange={updateBible}
+            />
           )}
 
           {tab === "voice" && (

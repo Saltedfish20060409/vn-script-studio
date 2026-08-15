@@ -16,7 +16,7 @@ import {
   listAgentConversations,
   putAgentConversation,
   renameAgentConversation,
-  runAgent,
+  runAgentStream,
   uploadAgentAttachment,
   ingestAttachmentSettings,
   chapterRevise,
@@ -426,6 +426,10 @@ export function AgentChat({
   const [lastContext, setLastContext] = useState<string>("");
   const [undoCount, setUndoCount] = useState(0);
   const [thinking, setThinking] = useState("编辑正在检索设定 / 读当前章…");
+  const [liveStream, setLiveStream] = useState<{
+    events: AgentTraceEvent[];
+    text: string;
+  } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [personaOpen, setPersonaOpen] = useState(false);
   const [harnessPrefs, setHarnessPrefsState] = useState<HarnessPrefs>(() =>
@@ -981,7 +985,9 @@ export function AgentChat({
         .filter((m) => m.role === "user" || m.role === "assistant")
         .slice(-20);
 
-      const res = await runAgent(projectId, {
+      const streamEvents: AgentTraceEvent[] = [];
+      setLiveStream({ events: [], text: "" });
+      const res = await runAgentStream(projectId, {
         messages: apiMessages,
         chapter_id: chapterId,
         selection: selection || undefined,
@@ -995,6 +1001,20 @@ export function AgentChat({
           text: a.text,
           id: a.id,
         })),
+      }, (evt) => {
+        if (evt.type === "thought") {
+          setLiveStream((p) => ({ events: p?.events ?? [], text: evt.text ?? "" }));
+          return;
+        }
+        if (
+          evt.type === "task" ||
+          evt.type === "tool_call" ||
+          evt.type === "tool_result" ||
+          evt.type === "actions"
+        ) {
+          streamEvents.push(evt as unknown as AgentTraceEvent);
+          setLiveStream((p) => ({ events: [...streamEvents], text: p?.text ?? "" }));
+        }
       });
 
       const actions = res.actions ?? [];
@@ -1080,6 +1100,7 @@ export function AgentChat({
       ]);
     } finally {
       setBusy(false);
+      setLiveStream(null);
     }
   }
 
@@ -2151,6 +2172,14 @@ export function AgentChat({
               );
             })}
             {busy && <p className={styles.thinking}>{thinking}</p>}
+            {busy && liveStream && (liveStream.events.length > 0 || liveStream.text) && (
+              <div className={styles.liveStream}>
+                {liveStream.events.length > 0 && (
+                  <AgentTracePanel events={liveStream.events} />
+                )}
+                {liveStream.text && <p className={styles.liveText}>{liveStream.text}</p>}
+              </div>
+            )}
           </div>
 
           {(selection || lastContext) && (

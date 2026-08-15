@@ -303,11 +303,16 @@ def _parse_agent_json(raw: str) -> Tuple[str, List[AgentAction]]:
     )
 
 
-async def run_agent(config: DeepSeekConfig, request: AgentRequest) -> AgentResponse:
+async def run_agent(
+    config: DeepSeekConfig,
+    request: AgentRequest,
+    *,
+    on_event=None,
+) -> AgentResponse:
     """Editor agent entry — multi-step tool loop with trajectory."""
     from app.core.agent_loop import run_agent_loop
 
-    return await run_agent_loop(config, request)
+    return await run_agent_loop(config, request, on_event=on_event)
 
 
 @dataclass

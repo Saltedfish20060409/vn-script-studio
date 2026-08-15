@@ -154,6 +154,8 @@ class FactCandidate:
     payload: Dict[str, Any]
     evidence: List[Dict[str, Any]]
     dedupe_key: str
+    # Optional LLM semantic-layer confidence (0..1); None for pure heuristic.
+    confidence: Optional[float] = None
 
 
 def _char_index(project: VnProject) -> Dict[str, Character]:
@@ -702,9 +704,12 @@ def clear_stale_flags(
 
 
 def candidate_to_dict(c: FactCandidate) -> Dict[str, Any]:
-    return {
+    out = {
         "kind": c.kind,
         "payload": c.payload,
         "evidence": c.evidence,
         "dedupeKey": c.dedupe_key,
     }
+    if c.confidence is not None:
+        out["confidence"] = c.confidence
+    return out

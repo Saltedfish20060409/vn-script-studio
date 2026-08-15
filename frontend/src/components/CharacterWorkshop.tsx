@@ -1319,15 +1319,21 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
                       <h3>{v.axisLabel || v.axisId}</h3>
                       <p>{v.hypothesis}</p>
                     </header>
-                    <div className={styles.cardBody}>{linesBlock(v.lines)}</div>
+                    <div className={styles.cardBody}>
+                      {v.placeholder ? (
+                        <p className={styles.placeholderHint}>模型未生成完整，请重新生成本组</p>
+                      ) : (
+                        linesBlock(v.lines)
+                      )}
+                    </div>
                     <footer className={styles.cardFoot}>
                       <button
                         type="button"
                         className={styles.primary}
-                        disabled={!!busy}
+                        disabled={!!busy || !!v.placeholder}
                         onClick={() => void onAcceptVariant(v, i, "preference")}
                       >
-                        {busy === `accept-${i}` ? "写入语料…" : "选这组入库"}
+                        {busy === `accept-${i}` ? "写入语料…" : v.placeholder ? "不可入库" : "选这组入库"}
                       </button>
                     </footer>
                   </article>

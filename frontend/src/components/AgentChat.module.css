@@ -1425,6 +1425,35 @@ html[data-panel-glass="ink"] .stageOverlay {
   color: var(--accent);
 }
 
+.liveStream {
+  margin: 0.5rem 0 0;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel-bg));
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.liveText {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--ink);
+  animation: livePulse 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes livePulse {
+  from {
+    opacity: 0.92;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .error {
   color: var(--danger);
   margin: 0;

@@ -163,6 +163,10 @@ _FALLBACK_AXES = [
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
 
+# Sentinel used to mark variants the model failed to produce. Such variants are
+# never acceptable as corpus samples (frontend hides them, API rejects them).
+_PLACEHOLDER_MARKER = "（请重新生成）"
+
 
 def list_scenarios() -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
@@ -504,7 +508,7 @@ def _parse_preference_variants(
             if not isinstance(ln, dict):
                 continue
             text = str(ln.get("text") or "").strip()
-            if not text:
+            if not text or _PLACEHOLDER_MARKER in text:
                 continue
             speaker = str(ln.get("speaker") or "self").strip() or "self"
             lines.append({"speaker": speaker, "text": text})
@@ -534,10 +538,9 @@ def _parse_preference_variants(
                 "axisId": axis["id"],
                 "axisLabel": axis["label"],
                 "hypothesis": axis.get("hint") or axis["label"],
-                "lines": [
-                    {"speaker": "other", "text": "……你到底怎么想的？"},
-                    {"speaker": "self", "text": "（请重新生成）"},
-                ],
+                # placeholder: model returned fewer than 3 — never accept this as a sample
+                "placeholder": True,
+                "lines": [],
             }
         )
     return variants[:3], axes[:3]
@@ -574,20 +577,6 @@ async def _post_json_with_model(
     model_name = model_name or (cfg.model or "deepseek-chat")
     parsed["_model"] = model_name
     return parsed, model_name
-
-
-def _chat_json(cfg: DeepSeekConfig, *, system: str, user: str, temperature: float = 0.8) -> Dict[str, Any]:
-    if not cfg.apiKey or "your-key" in cfg.apiKey:
-        raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
-    base = (cfg.baseUrl or "https://api.deepseek.com").rstrip("/")
-    model = cfg.model or "deepseek-chat"
-    return {
-        "base": base,
-        "model": model,
-        "system": system,
-        "user": user,
-        "temperature": temperature,
-    }
 
 
 async def _post_json(cfg: DeepSeekConfig, *, system: str, user: str, temperature: float = 0.8) -> Dict[str, Any]:

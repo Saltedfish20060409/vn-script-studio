@@ -5,11 +5,10 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-import httpx
-
 from app.domain.types import Location, LocationLink, ScriptBlock, VnProject
 
 from .ai import DeepSeekConfig
+from .llm_http import chat_completions, content_from_response
 from .map_catalog import MAP_ELEMENT_PRESETS, preset_by_kind
 from .project import (
     extract_map_from_script,
@@ -314,8 +313,6 @@ async def _call_llm_map_extract(
     if not config.apiKey or "your-key" in config.apiKey:
         raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
 
-    base_url = (config.baseUrl or "https://api.deepseek.com").rstrip("/")
-    model = config.model or "deepseek-chat"
     known = [
         {
             "name": l.name,
@@ -361,34 +358,20 @@ async def _call_llm_map_extract(
             ],
         },
     }
-    async with httpx.AsyncClient(timeout=120) as client:
-        res = await client.post(
-            f"{base_url}/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {config.apiKey}",
+    res = await chat_completions(
+        config,
+        messages=[
+            {"role": "system", "content": system},
+            {
+                "role": "user",
+                "content": json.dumps(user, ensure_ascii=False),
             },
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {
-                        "role": "user",
-                        "content": json.dumps(user, ensure_ascii=False),
-                    },
-                ],
-                "temperature": 0.2,
-                "response_format": {"type": "json_object"},
-                "stream": False,
-            },
-        )
-    if res.status_code >= 400:
-        raise RuntimeError(f"DeepSeek API {res.status_code}: {res.text[:400]}")
-    data = res.json()
-    choices = data.get("choices") or []
-    content = ""
-    if choices:
-        content = ((choices[0] or {}).get("message") or {}).get("content", "") or ""
+        ],
+        temperature=0.2,
+        response_format={"type": "json_object"},
+        timeout=120,
+    )
+    content, _model = content_from_response(res)
     return _parse_llm_json(content)
 
 
