@@ -102,6 +102,7 @@ jobs:
     env:
       E2E_DATABASE_URL: postgresql+asyncpg://vnss:vnss@localhost:54102/vnss_e2e
       DEEPSEEK_API_KEY: e2e-placeholder-key
+      SECRET_KEY: e2e-test-secret-key-0123456789abcdef0123456789abcdef
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
