@@ -99,6 +99,9 @@ set PYTHONPATH=.
 python -m app demo out.json
 python -m app export out.json out.rpy
 python -m app ai out.json continue --instruction "更压抑"
+# 生成质量评测（对写作任务跑目标模型，用确定性 lint 自动评分）
+python -m app eval
+python -m app eval -m qwen2.5:7b --base-url http://localhost:11434 --api-key ollama
 ```
 
 ## 环境变量（backend/.env）
