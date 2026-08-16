@@ -108,16 +108,25 @@ python -m app eval -m qwen2.5:7b --base-url http://localhost:11434 --api-key oll
 
 | 变量 | 说明 |
 |------|------|
-| `DATABASE_URL` | 默认 `postgresql+asyncpg://vnss:vnss@localhost:5432/vnss` |
-| `SECRET_KEY` | JWT 签名密钥 |
-| `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` | **服务端** LLM 凭据（前端不参与） |
+| `DATABASE_URL` | 默认 `postgresql+asyncpg://vnss:vnss@localhost:54102/vnss`（宿主机端口与 docker-compose 一致） |
+| `SECRET_KEY` | JWT 签名密钥，**必须**设为强随机值（至少 32 字符），否则启动拒绝 |
+| `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` | **服务端** LLM 凭据（前端不参与）；用户也可在「设置 → 模型」页签按账号配置自己的 Key（加密存储，优先于服务端） |
 | `LLM_PROVIDER` | `openai`（默认）/ `ollama`；或把 `DEEPSEEK_BASE_URL` 设为 `http://localhost:11434` 自动走本地 Ollama |
 | `AGENT_CRAFT_MODE` | 写作工艺：`auto` / `off` / `lite` / `full` |
 | `AGENT_SELF_REVIEW` | 自检：`auto` / `on` / `off` |
 | `CRITIC_API_KEY` / `CRITIC_API_BASE_URL` / `CRITIC_API_MODEL` | 可选责编模型（空则复用写作模型） |
 | `CORS_ORIGINS` | 前端源，逗号分隔 |
+| `REDIS_URL` | 可选：多 worker 部署时跨 worker SSE 广播（`redis://localhost:6379/0`）；留空 = 单 worker 进程内 |
+| `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` | 可选：pgvector 语义搜索的 embedding 端点；留空 = 启发式关键词检索 |
+| `LLM_DAILY_TOKEN_CAP` | 每日 LLM 用量上限（0 = 不限） |
+| `RATE_LIMIT_ENABLED` | 登录/注册按 IP 限速（默认 true；测试或已有限速的反代可关） |
 
-前端「设置」仅含外观与工具背景；模型接入一律改 `backend/.env` 后重启 API。
+前端「设置」含外观、工具背景、用量与**模型凭据**（用户级 Key 按账号加密存储）；服务端级模型接入改 `backend/.env` 后重启 API。
+
+## 可选功能：多 worker SSE 与语义搜索
+
+- **多 worker 协作事件**：`uvicorn app.main:app --workers N` 时，设 `REDIS_URL` 即可让锁/成员/批注事件跨 worker 实时广播；不设则回退单 worker 进程内（docker-compose 已含 redis 服务）。
+- **pgvector 语义搜索**：将 docker-compose 的 postgres 镜像换成 `pgvector/pgvector:pg16` 并 `CREATE EXTENSION vector`，再配置 `EMBEDDING_*` 环境变量，`POST /analysis/semantic-search` 即用向量相似度；缺省自动回落启发式关键词排序（无需额外配置）。
 
 ## 测试
 
@@ -131,10 +140,12 @@ pytest tests/ -q
 > `DATABASE_URL_TEST`（默认 `postgresql+asyncpg://vnss:vnss@localhost:54102/vnss_test`）。
 > 连不上时这些用例自动跳过；CI 会起一个 Postgres service 全量运行。
 > 前端：`cd frontend && npm test`（vitest，纯函数单测）。
+> 前端 e2e：`cd frontend && npm run build && npm run test:e2e`（需本地 PG 可达，见 playwright.config.ts）。
 
 ## 备份 / 恢复
 
 ```powershell
+cd backend
 # 备份（默认 backend/backups/，保留最近 14 份）
 .\scripts\backup.ps1
 

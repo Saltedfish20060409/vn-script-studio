@@ -17,3 +17,6 @@ cryptography>=43.0.0
 email-validator>=2.2.0
 # Optional: cross-worker SSE bridge when REDIS_URL is set (multi-worker deploys)
 redis>=5.0.0
+# scripts/eval_*.py load .env via python-dotenv (declared explicitly — it is
+# currently only a transitive dep of pydantic-settings)
+python-dotenv>=1.0.0

@@ -7,7 +7,7 @@ echo Starting VN Script Studio...
 echo If this window closes with errors, read the lines above.
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0dev.ps1" -KeepOpen %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0dev.ps1" %*
 set ERR=%ERRORLEVEL%
 
 if %ERR% neq 0 (

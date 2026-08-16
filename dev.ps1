@@ -42,6 +42,13 @@ function Wait-Port([int]$Port, [int]$TimeoutSec = 45) {
 }
 
 function Wait-IfNeeded([int]$Code = 0) {
+  # -KeepOpen keeps the console window alive after finish/error (e.g. when
+  # launched from an already-open terminal that should not close).
+  if ($KeepOpen) {
+    Write-Host ""
+    Write-Host ("Press any key to exit... (code $Code)") -ForegroundColor DarkGray
+    try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Start-Sleep -Seconds 2 }
+  }
   exit $Code
 }
 

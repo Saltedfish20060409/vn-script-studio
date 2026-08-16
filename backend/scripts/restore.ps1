@@ -3,7 +3,6 @@
 VN Script Studio — PostgreSQL 恢复脚本
 用法：  .\scripts\restore.ps1 -File .\backups\vnss-20260815-120000.dump
 注意： 会**清空并重建** vnss 数据库（先备份再恢复）。
-*/
 #>
 param(
   [Parameter(Mandatory = $true)]
@@ -20,24 +19,43 @@ $DbUser = "vnss"
 $DbName = "vnss"
 
 function Find-PgTools {
-  $candidates = @(
-    (Get-Command pg_restore -ErrorAction SilentlyContinue),
-    (Get-ChildItem "C:\Program Files\PostgreSQL" -Recurse -Filter pg_restore.exe -ErrorAction SilentlyContinue | Select-Object -First 1)
-  ) | Where-Object { $_ -ne $null } | Select-Object -First 1
-  if (-not $candidates) { throw "未找到 pg_restore。" }
-  return $candidates.Path
+  # 同时定位 psql 与 pg_restore，保证两个工具来自同一安装目录
+  $dirs = @(
+    (Split-Path (Get-Command psql -ErrorAction SilentlyContinue).Source -Parent),
+    (Split-Path (Get-Command pg_restore -ErrorAction SilentlyContinue).Source -Parent)
+  ) | Where-Object { $_ } | Select-Object -Unique
+  foreach ($d in $dirs) {
+    $psql = Join-Path $d "psql.exe"
+    $restore = Join-Path $d "pg_restore.exe"
+    if ((Test-Path $psql) -and (Test-Path $restore)) {
+      return @{ Psql = $psql; Restore = $restore }
+    }
+  }
+  $pgDir = Get-ChildItem "C:\Program Files\PostgreSQL" -Directory -ErrorAction SilentlyContinue |
+    Sort-Object Name -Descending | Select-Object -First 1
+  if ($pgDir) {
+    $bin = Join-Path $pgDir.FullName "bin"
+    $psql = Join-Path $bin "psql.exe"
+    $restore = Join-Path $bin "pg_restore.exe"
+    if ((Test-Path $psql) -and (Test-Path $restore)) {
+      return @{ Psql = $psql; Restore = $restore }
+    }
+  }
+  throw "未找到 psql 与 pg_restore，请安装 PostgreSQL 客户端。"
 }
 
+$tools = Find-PgTools
 $env:PGPASSWORD = "vnss"
 
 Write-Host "清空并重建 $DbName ..."
 # 先断开现有连接再 drop/create（幂等）
-psql -h $DbHost -p $DbPort -U $DbUser -d postgres -v ON_ERROR_STOP=1 -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$DbName' AND pid <> pg_backend_pid();" 2>$null
-psql -h $DbHost -p $DbPort -U $DbUser -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS $DbName;"
-psql -h $DbHost -p $DbPort -U $DbUser -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $DbName;"
+& $tools.Psql -h $DbHost -p $DbPort -U $DbUser -d postgres -v ON_ERROR_STOP=1 -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$DbName' AND pid <> pg_backend_pid();" 2>$null
+& $tools.Psql -h $DbHost -p $DbPort -U $DbUser -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS $DbName;"
+if ($LASTEXITCODE -ne 0) { throw "重建数据库失败 (exit $LASTEXITCODE)" }
+& $tools.Psql -h $DbHost -p $DbPort -U $DbUser -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $DbName;"
 if ($LASTEXITCODE -ne 0) { throw "重建数据库失败 (exit $LASTEXITCODE)" }
 
 Write-Host "恢复 -> $File"
-& (Find-PgTools) -h $DbHost -p $DbPort -U $DbUser -d $DbName --clean --if-exists -j 4 $File
+& $tools.Restore -h $DbHost -p $DbPort -U $DbUser -d $DbName --clean --if-exists -j 4 $File
 if ($LASTEXITCODE -ne 0) { throw "pg_restore 失败 (exit $LASTEXITCODE)" }
 Write-Host "恢复完成。"
