@@ -1,5 +1,13 @@
 import type { Character, ScriptBlock } from "../types/vn";
 
+function escapeQuote(text: string): string {
+  return text.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function unescapeQuote(text: string): string {
+  return text.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+}
+
 function blockToEditableChunk(b: ScriptBlock, characters: Character[]): string {
   switch (b.type) {
     case "label":
@@ -11,16 +19,19 @@ function blockToEditableChunk(b: ScriptBlock, characters: Character[]): string {
     case "hide":
       return `hide ${b.image}`;
     case "narration":
-      return `"${b.text}"`;
+      return `"${escapeQuote(b.text)}"`;
     case "dialogue": {
       const c = characters.find((x) => x.id === b.characterId);
-      return `${c?.defineName ?? b.characterId} "${b.text}"`;
+      // Prefer the stable defineName when present; fall back to characterId so
+      // a blanked defineName never collapses the line into a narration block.
+      const who = c?.defineName || b.characterId;
+      return `${who} "${escapeQuote(b.text)}"`;
     }
     case "menu": {
       const head = `menu ${b.id}:`;
-      const prompt = b.prompt ? `  "${b.prompt}"` : "";
+      const prompt = b.prompt ? `  "${escapeQuote(b.prompt)}"` : "";
       const choices = b.choices
-        .map((ch) => `  "${ch.text}":\n    jump ${ch.jump ?? "start"}`)
+        .map((ch) => `  "${escapeQuote(ch.text)}":\n    jump ${ch.jump ?? "start"}`)
         .join("\n");
       return [head, prompt, choices].filter(Boolean).join("\n");
     }
@@ -116,19 +127,23 @@ export function editableToBlocks(text: string): ScriptBlock[] {
       i += 1;
       continue;
     }
-    const dialogueMatch = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+"(.*)"\s*$/);
+    // Match a quoted string allowing escaped quotes inside: "...\"...".
+    const quoted = String.raw`(?:\\.|[^"\\])*`;
+    const dialogueMatch = trimmed.match(
+      new RegExp(`^([A-Za-z_][A-Za-z0-9_]*)\\s+"(${quoted})"\\s*$`)
+    );
     if (dialogueMatch) {
       blocks.push({
         type: "dialogue",
         characterId: dialogueMatch[1],
-        text: dialogueMatch[2],
+        text: unescapeQuote(dialogueMatch[2]),
       });
       i += 1;
       continue;
     }
-    const narrMatch = trimmed.match(/^"(.*)"\s*$/);
+    const narrMatch = trimmed.match(new RegExp(`^"(${quoted})"\\s*$`));
     if (narrMatch) {
-      blocks.push({ type: "narration", text: narrMatch[1] });
+      blocks.push({ type: "narration", text: unescapeQuote(narrMatch[1]) });
       i += 1;
       continue;
     }
@@ -147,13 +162,13 @@ export function editableToBlocks(text: string): ScriptBlock[] {
           i += 1;
           continue;
         }
-        const p = mt.match(/^"(.*)"\s*$/);
+        const p = mt.match(new RegExp(`^"(${quoted})"\\s*$`));
         if (p && !choices.length && !prompt) {
-          prompt = p[1];
+          prompt = unescapeQuote(p[1]);
           i += 1;
           continue;
         }
-        const c = mt.match(/^"(.*)"\s*:/);
+        const c = mt.match(new RegExp(`^"(${quoted})"\\s*:`));
         if (c) {
           let jump: string | undefined;
           i += 1;
@@ -172,7 +187,7 @@ export function editableToBlocks(text: string): ScriptBlock[] {
             }
             i += 1;
           }
-          choices.push({ text: c[1], jump });
+          choices.push({ text: unescapeQuote(c[1]), jump });
           continue;
         }
         i += 1;

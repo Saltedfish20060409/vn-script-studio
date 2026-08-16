@@ -416,11 +416,14 @@ export type AgentStreamEvent =
 /**
  * Streaming agent run. Resolves with the same AgentRunOut as runAgent();
  * `onEvent` receives each SSE event as it arrives (task / thought / tool / …).
+ * Pass `signal` to cancel the stream (e.g. on component unmount); the fetch
+ * and the read loop both observe it.
  */
 export async function runAgentStream(
   id: string,
   body: AgentRunInBody,
-  onEvent: (evt: AgentStreamEvent) => void
+  onEvent: (evt: AgentStreamEvent) => void,
+  signal?: AbortSignal
 ): Promise<AgentRunOut> {
   const token = getToken();
   const res = await fetch(`${API_BASE}/projects/${id}/agent/stream`, {
@@ -430,6 +433,7 @@ export async function runAgentStream(
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok || !res.body) {
     const payload = await readErrorPayload(res).catch(() => ({
@@ -443,6 +447,10 @@ export async function runAgentStream(
   let buffer = "";
   let finalResult: AgentRunOut | null = null;
   for (;;) {
+    if (signal?.aborted) {
+      reader.cancel().catch(() => undefined);
+      throw new ApiError(499, "请求已取消");
+    }
     const { done, value } = await reader.read();
     buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
     let idx: number;

@@ -42,6 +42,12 @@ export function ScriptEditor({
   const mirrorRef = useRef<HTMLPreElement | null>(null);
   const needles = useMemo(() => buildPlaceNeedles(locations), [locations]);
   const lines = useMemo(() => value.replace(/\r\n/g, "\n").split("\n"), [value]);
+  // Tokenize once per (lines, needles): the mirror re-renders on every keystroke
+  // but the token stream only changes when the text or location set changes.
+  const tokenized = useMemo(
+    () => lines.map((line) => tokenizeScriptLine(line, needles)),
+    [lines, needles]
+  );
 
   function setRefs(el: HTMLTextAreaElement | null) {
     localRef.current = el;
@@ -75,9 +81,9 @@ export function ScriptEditor({
   return (
     <div className={`${styles.frame} ${frameClassName}`.trim()}>
       <pre className={styles.mirror} ref={mirrorRef} aria-hidden>
-        {lines.map((line, li) => (
+        {tokenized.map((toks, li) => (
           <span key={li} className={styles.placeLine}>
-            {tokenizeScriptLine(line, needles).map((tok, ti) =>
+            {toks.map((tok, ti) =>
               tok.type === "place" ? (
                 <span key={`${li}-${ti}`} className={styles.place}>
                   {tok.value}

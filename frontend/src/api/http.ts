@@ -199,19 +199,28 @@ async function tryRefresh(): Promise<boolean> {
   const rt = getRefreshToken();
   if (!rt) return false;
   try {
-    const res = await fetch(`${API_BASE}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: rt }),
-    });
-    if (!res.ok) return false;
-    const data = (await res.json()) as TokenOut;
-    if (data.access_token) {
-      setToken(data.access_token);
-      if (data.refresh_token) setRefreshToken(data.refresh_token);
-      return true;
+    // A network blackhole must not leave every concurrent 401 replay waiting
+    // forever — cap the refresh round-trip at 10s.
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 10_000);
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: rt }),
+        signal: controller.signal,
+      });
+      if (!res.ok) return false;
+      const data = (await res.json()) as TokenOut;
+      if (data.access_token) {
+        setToken(data.access_token);
+        if (data.refresh_token) setRefreshToken(data.refresh_token);
+        return true;
+      }
+      return false;
+    } finally {
+      window.clearTimeout(timer);
     }
-    return false;
   } catch {
     return false;
   }

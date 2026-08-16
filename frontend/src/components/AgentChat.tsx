@@ -149,6 +149,10 @@ export function AgentChat({
   );
   const [reviseReviewOpen, setReviseReviewOpen] = useState(false);
   const [reviseModeOpen, setReviseModeOpen] = useState(false);
+  /** Aborts the in-flight streaming agent/pipeline request on unmount or when
+   * a new request supersedes the current one (prevents leaked streams that
+   * keep consuming LLM quota after the user navigates away). */
+  const streamAbortRef = useRef<AbortController | null>(null);
   const pendingReviseRef = useRef<ChapterReviseDraft | null>(pendingRevise);
   pendingReviseRef.current = pendingRevise;
 
@@ -223,6 +227,14 @@ export function AgentChat({
   useEffect(() => {
     setPendingReviseState(getChapterReviseDraft(projectId, chapterId));
   }, [projectId, chapterId]);
+
+  // Cancel any in-flight stream when the panel unmounts.
+  useEffect(() => {
+    return () => {
+      streamAbortRef.current?.abort();
+      streamAbortRef.current = null;
+    };
+  }, []);
 
   // Writing toolbar / short command: reopen对照 for a saved draft
   useEffect(() => {
@@ -785,6 +797,9 @@ export function AgentChat({
 
       const streamEvents: AgentTraceEvent[] = [];
       setLiveStream({ events: [], text: "" });
+      streamAbortRef.current?.abort();
+      const controller = new AbortController();
+      streamAbortRef.current = controller;
       const res = await runAgentStream(
         projectId,
         {
@@ -816,7 +831,8 @@ export function AgentChat({
             streamEvents.push(evt as unknown as AgentTraceEvent);
             setLiveStream((p) => ({ events: [...streamEvents], text: p?.text ?? "" }));
           }
-        }
+        },
+        controller.signal
       );
 
       const actions = res.actions ?? [];
@@ -895,6 +911,14 @@ export function AgentChat({
         if (last) onChapterFocus?.(last.id);
       }
     } catch (e) {
+      // Aborted by unmount / superseded request — stay quiet (no error bubble).
+      if (
+        (e instanceof Error && e.message === "请求已取消") ||
+        (e instanceof Error && e.name === "AbortError") ||
+        streamAbortRef.current?.signal.aborted
+      ) {
+        return;
+      }
       const msg = e instanceof Error ? e.message : "请求失败";
       setError(msg);
       setMessages((prev) => [
@@ -1116,8 +1140,12 @@ export function AgentChat({
       };
       let job: import("../api/pipeline").JobStatus;
       let liveDraft = "";
+      let controller: AbortController | undefined;
       try {
         setThinking("流水线启动（流式）…");
+        streamAbortRef.current?.abort();
+        controller = new AbortController();
+        streamAbortRef.current = controller;
         job = await pipelineRunStream(projectId, body, (evt) => {
           if (evt.type === "token") {
             liveDraft += evt.delta;
@@ -1135,15 +1163,23 @@ export function AgentChat({
                   : "";
             setThinking(`流水线：${label} 完成${ms}${extra}`);
           }
-        });
-      } catch {
+        }, controller.signal);
+      } catch (e) {
+        // User cancelled (component unmount / superseded request) — don't
+        // fall back to a polling job that would keep consuming quota.
+        if (
+          controller?.signal.aborted ||
+          (e instanceof Error && e.message === "请求已取消")
+        ) {
+          throw new Error("请求已取消", { cause: e });
+        }
         // Fallback: non-streaming kick + poll
         const kicked = await pipelineRun(projectId, {
           ...body,
           async_mode: true,
         });
         if (!("jobId" in kicked) || !kicked.jobId) {
-          throw new Error("流水线启动失败");
+          throw new Error("流水线启动失败", { cause: e });
         }
         setThinking("流水线已后台启动，正在等待各阶段…");
         job = await waitProjectJob(projectId, kicked.jobId, {
@@ -1181,6 +1217,12 @@ export function AgentChat({
             : `流水线完成 · 门禁未过（error ${data.gate?.errorCount ?? "?"}）`
       );
     } catch (e) {
+      if (
+        (e instanceof Error && e.message === "请求已取消") ||
+        streamAbortRef.current?.signal.aborted
+      ) {
+        return;
+      }
       const msg = e instanceof Error ? e.message : "流水线失败";
       setError(msg);
       setMessages((prev) => [

@@ -72,6 +72,8 @@ export function MapStudio({
   const [dragIds, setDragIds] = useState<string[]>([]);
   const dragPointerStart = useRef({ x: 0, y: 0 });
   const dragPosStart = useRef<Map<string, { x: number; y: number }>>(new Map());
+  /** rAF-throttle for drag commits (see onMove drag branch). */
+  const lastDragCommit = useRef(0);
   const [, setDrawing] = useState(false);
   const draftStroke = useRef<MapStroke | null>(null);
   const [draftPts, setDraftPts] = useState<{ x: number; y: number }[]>([]);
@@ -511,6 +513,11 @@ export function MapStudio({
       }
 
       if (session === "drag") {
+        // Throttle to once per animation frame: each commit bubbles up through
+        // StudioApp's setProject and re-renders the whole tree.
+        const now = performance.now();
+        if (now - (lastDragCommit.current ?? 0) < 16) return;
+        lastDragCommit.current = now;
         const w = live.screenToWorld(e.clientX, e.clientY);
         const dx = w.x - dragPointerStart.current.x;
         const dy = w.y - dragPointerStart.current.y;

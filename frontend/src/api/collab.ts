@@ -198,8 +198,11 @@ export function subscribeProjectEvents(
 ): () => void {
   let closed = false;
   let controller: AbortController | null = null;
+  let retryTimer: number | null = null;
+  let retryDelay = 1000;
 
   async function connect() {
+    if (closed) return;
     const token = localStorage.getItem("vnss-token") || "";
     controller = new AbortController();
     try {
@@ -230,18 +233,26 @@ export function subscribeProjectEvents(
           }
         }
       }
+      // Healthy disconnect (server closed) → reset backoff.
+      retryDelay = 1000;
     } catch {
       /* connection closed (expected on unmount/abort) */
     }
     if (!closed) {
-      // Reconnect after a short backoff (server keepalive gaps or transient drops).
-      setTimeout(() => void connect(), 3000);
+      // Exponential backoff with a cap; the timer handle is kept so
+      // unsubscribe can cancel a scheduled reconnect before it fires.
+      retryTimer = window.setTimeout(() => void connect(), retryDelay);
+      retryDelay = Math.min(retryDelay * 2, 15000);
     }
   }
 
   void connect();
   return () => {
     closed = true;
+    if (retryTimer !== null) {
+      window.clearTimeout(retryTimer);
+      retryTimer = null;
+    }
     controller?.abort();
   };
 }

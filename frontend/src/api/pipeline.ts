@@ -110,7 +110,8 @@ export type PipelineStreamEvent =
 export async function pipelineRunStream(
   id: string,
   body: Parameters<typeof pipelineRun>[1] & { stream?: boolean },
-  onEvent: (evt: PipelineStreamEvent) => void
+  onEvent: (evt: PipelineStreamEvent) => void,
+  signal?: AbortSignal
 ): Promise<JobStatus> {
   const token = getToken();
   const res = await fetch(`${API_BASE}/projects/${id}/pipeline/run`, {
@@ -120,6 +121,7 @@ export async function pipelineRunStream(
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ ...body, async_mode: true, stream: true }),
+    signal,
   });
   if (!res.ok || !res.body) {
     const detail = await res.text().catch(() => `HTTP ${res.status}`);
@@ -130,6 +132,10 @@ export async function pipelineRunStream(
   let buffer = "";
   let finalResult: JobStatus | null = null;
   for (;;) {
+    if (signal?.aborted) {
+      reader.cancel().catch(() => undefined);
+      throw new Error("请求已取消");
+    }
     const { done, value } = await reader.read();
     buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
     let idx: number;

@@ -198,6 +198,38 @@ describe("blocksToEditable：块序列 → 文本", () => {
     const text = blocksToEditable([{ type: "scene", image: "bg park" }], []);
     expect(text).toBe("scene bg park");
   });
+
+  it("dialogue/narration 含引号文本时转义并正确往返", () => {
+    const blocks: ScriptBlock[] = [
+      { type: "dialogue", characterId: "lx", text: '他说"不行"，然后走了' },
+      { type: "narration", text: '旁白说"雨夜"真冷' },
+    ];
+    const editable = blocksToEditable(blocks, []);
+    // 转义后的行不破坏解析（含 \" 不再截断）。
+    expect(editableToBlocks(editable)).toEqual(blocks);
+  });
+
+  it("空 defineName 回退 characterId，对白不塌成旁白", () => {
+    const chars: Character[] = [{ id: "lx", defineName: "", displayName: "林夏" }];
+    const editable = blocksToEditable(
+      [{ type: "dialogue", characterId: "lx", text: "喂" }],
+      chars
+    );
+    expect(editable).toBe('lx "喂"');
+    const parsed = editableToBlocks(editable);
+    expect(parsed[0]).toEqual({ type: "dialogue", characterId: "lx", text: "喂" });
+  });
+
+  it("menu prompt/选项含引号时转义并往返", () => {
+    const menu: ScriptBlock = {
+      type: "menu",
+      id: "m1",
+      prompt: '说"请"',
+      choices: [{ text: '他问"去吗"', jump: "yes" }],
+    };
+    const editable = blocksToEditable([menu], []);
+    expect(editableToBlocks(editable)).toEqual([menu]);
+  });
 });
 
 describe("完整双向编解码 roundtrip", () => {
