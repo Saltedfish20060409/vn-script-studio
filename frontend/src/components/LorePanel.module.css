@@ -221,3 +221,27 @@
   line-height: 1.6;
   padding-left: 1.2rem;
 }
+
+.manualForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0 0.2rem;
+}
+
+.manualForm textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg, #fff);
+  color: var(--ink);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  font-family: inherit;
+}
+
+.manualForm .primary {
+  align-self: flex-start;
+}

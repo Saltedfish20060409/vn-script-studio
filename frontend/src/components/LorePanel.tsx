@@ -36,6 +36,11 @@ export function LorePanel({ projectId }: Props) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [inspireBlock, setInspireBlock] = useState("");
+  // Manual card form (no Moegirl dependency)
+  const [manualTerm, setManualTerm] = useState("");
+  const [manualDo, setManualDo] = useState("");
+  const [manualDont, setManualDont] = useState("");
+  const [manualBeats, setManualBeats] = useState("");
 
   const refresh = useCallback(async () => {
     const [m, c, chk] = await Promise.all([
@@ -120,6 +125,31 @@ export function LorePanel({ projectId }: Props) {
     [projectId, refresh]
   );
 
+  const saveManual = useCallback(async () => {
+    const t = manualTerm.trim();
+    if (!t || busy) return;
+    setBusy("manual");
+    setError("");
+    try {
+      await loreSaveCard(projectId, {
+        term: t,
+        kind: "term",
+        do: manualDo.split("\n").map((x) => x.trim()).filter(Boolean),
+        dont: manualDont.split("\n").map((x) => x.trim()).filter(Boolean),
+        vn_beats: manualBeats.split("\n").map((x) => x.trim()).filter(Boolean),
+      });
+      setManualTerm("");
+      setManualDo("");
+      setManualDont("");
+      setManualBeats("");
+      await refresh();
+    } catch (e) {
+      setError(String((e as { message?: unknown } | null)?.message ?? e));
+    } finally {
+      setBusy("");
+    }
+  }, [projectId, busy, manualTerm, manualDo, manualDont, manualBeats, refresh]);
+
   const doInspire = useCallback(async () => {
     setBusy("inspire");
     setError("");
@@ -150,15 +180,53 @@ export function LorePanel({ projectId }: Props) {
   return (
     <section className={styles.panel}>
       <header className={styles.head}>
-        <h2>设定卡 · 工艺速查</h2>
+        <h2>写作参考卡</h2>
         <p className={styles.sub}>
-          {meta?.attribution ||
-            "萌百启发精炼卡（非原文库）；用于写作时注入 Agent 上下文。"}
-          {meta && !meta.moegirlEnabled && "（萌百未启用，仅离线种子与已存卡）"}
+          收藏的参考卡会在 <strong>Agent 写作时作为参考注入上下文</strong>
+          （指导套路怎么落地、什么该避免）。可手动添加，也可从萌百搜索精炼后收藏。
+          {meta && !meta.moegirlEnabled && "（萌百未启用，仅离线种子与手动添加）"}
         </p>
       </header>
 
       {error && <p className={styles.error}>{error}</p>}
+
+      <details className={styles.checklist}>
+        <summary>手动添加参考卡（不依赖萌百）</summary>
+        <div className={styles.manualForm}>
+          <input
+            className={styles.input}
+            value={manualTerm}
+            onChange={(e) => setManualTerm(e.target.value)}
+            placeholder="参考条目，如：傲娇、病娇、修罗场、放学后的屋顶"
+          />
+          <textarea
+            rows={2}
+            value={manualDo}
+            onChange={(e) => setManualDo(e.target.value)}
+            placeholder="要这样做（每行一条）：如「用动作/失言暴露在意，不让角色直接说」"
+          />
+          <textarea
+            rows={2}
+            value={manualDont}
+            onChange={(e) => setManualDont(e.target.value)}
+            placeholder="不要这样做（每行一条）：如「标签念经、告白太顺」"
+          />
+          <textarea
+            rows={2}
+            value={manualBeats}
+            onChange={(e) => setManualBeats(e.target.value)}
+            placeholder="可演节拍（每行一条，可选）：如「误会半揭 → 别扭关心 → 旁人点破」"
+          />
+          <button
+            type="button"
+            className={styles.primary}
+            disabled={busy !== "" || !manualTerm.trim()}
+            onClick={() => void saveManual()}
+          >
+            {busy === "manual" ? "保存中…" : "添加到本作"}
+          </button>
+        </div>
+      </details>
 
       <div className={styles.searchRow}>
         <input
@@ -184,7 +252,7 @@ export function LorePanel({ projectId }: Props) {
           disabled={busy !== ""}
           onClick={() => void doInspire()}
         >
-          {busy === "inspire" ? "生成中…" : "灵感抽查"}
+          {busy === "inspire" ? "生成中…" : "查看 Agent 注入"}
         </button>
       </div>
 
@@ -281,9 +349,11 @@ export function LorePanel({ projectId }: Props) {
       )}
 
       <div className={styles.saved}>
-        <h3>本作已收藏（{cards.length}）</h3>
+        <h3>本作参考卡（{cards.length}）· 写入时注入 Agent</h3>
         {grouped.length === 0 && (
-          <p className={styles.empty}>暂无收藏卡；搜索后点「收藏到本作」。</p>
+          <p className={styles.empty}>
+            暂无参考卡；可手动添加，或搜索萌百后「收藏到本作」。
+          </p>
         )}
         {grouped.map(([kind, list]) => (
           <div key={kind} className={styles.group}>
