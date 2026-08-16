@@ -60,6 +60,14 @@ export function MapStudio({
   const [didFit, setDidFit] = useState(false);
   const [, setPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, camX: 0, camY: 0 });
+  /** touch/pen pointers currently down, for two-finger pinch zoom */
+  const activePointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{
+    startDist: number;
+    startZoom: number;
+    anchorX: number;
+    anchorY: number;
+  } | null>(null);
   const [dragIds, setDragIds] = useState<string[]>([]);
   const dragPointerStart = useRef({ x: 0, y: 0 });
   const dragPosStart = useRef<Map<string, { x: number; y: number }>>(new Map());
@@ -379,10 +387,41 @@ export function MapStudio({
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
-      const session = sessionRef.current;
-      if (!session) return;
       const live = liveRef.current;
       if (!live) return;
+
+      // Two-finger pinch: zoom around the moving midpoint of both pointers.
+      const tracked = activePointers.current.get(e.pointerId);
+      if (tracked) {
+        tracked.x = e.clientX;
+        tracked.y = e.clientY;
+      }
+      const pinch = pinchRef.current;
+      if (pinch && activePointers.current.size >= 2) {
+        const pts = [...activePointers.current.values()];
+        const [a, b] = pts;
+        const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        const nextZoom = clamp(
+          pinch.startZoom * (dist / pinch.startDist),
+          0.22,
+          2.6
+        );
+        const el = viewportRef.current;
+        const rect = el?.getBoundingClientRect();
+        const next = {
+          zoom: nextZoom,
+          x: pinch.anchorX * nextZoom - mx,
+          y: pinch.anchorY * nextZoom - my,
+        };
+        if (rect) setCam(clampCamera(next, rect.width, rect.height));
+        else setCam(next);
+        return;
+      }
+
+      const session = sessionRef.current;
+      if (!session) return;
 
       if (session === "place" && placeGesture.current) {
         if (!placeGesture.current.becamePan) {
@@ -490,6 +529,14 @@ export function MapStudio({
     };
 
     const onUp = (e: PointerEvent) => {
+      activePointers.current.delete(e.pointerId);
+      if (pinchRef.current && activePointers.current.size < 2) {
+        pinchRef.current = null;
+        // The remaining finger must not start a single-pointer action.
+        sessionRef.current = null;
+        return;
+      }
+
       const session = sessionRef.current;
       if (!session) return;
       const live = liveRef.current;
@@ -559,9 +606,11 @@ export function MapStudio({
 
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
     };
   }, []);
 
@@ -655,6 +704,32 @@ export function MapStudio({
   function onViewportPointerDown(e: React.PointerEvent) {
     if ((e.target as Element).closest("[data-pin]")) return;
     viewportRef.current?.focus();
+
+    // Two-finger pinch zoom (mobile): once a second pointer lands, take over
+    // the gesture entirely and drop any single-pointer session.
+    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (activePointers.current.size >= 2) {
+      e.preventDefault();
+      const pts = [...activePointers.current.values()];
+      const [a, b] = pts;
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      pinchRef.current = {
+        startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+        startZoom: cam.zoom,
+        anchorX: (mx + cam.x) / cam.zoom,
+        anchorY: (my + cam.y) / cam.zoom,
+      };
+      sessionRef.current = null;
+      placeGesture.current = null;
+      selectGesture.current = null;
+      draftStroke.current = null;
+      setPanning(false);
+      setDrawing(false);
+      setDraftPts([]);
+      setDragIds([]);
+      return;
+    }
 
     const forcePan = e.button === 1 || e.altKey || spaceHeldRef.current || spaceHeld;
 

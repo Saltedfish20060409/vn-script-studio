@@ -254,6 +254,8 @@
   overflow: hidden;
   cursor: grab;
   background: color-mix(in srgb, var(--paper-deep) 70%, #1a2338);
+  /* Let the map own pan/pinch gestures; the browser must not scroll/zoom the page. */
+  touch-action: none;
 }
 
 .emptyOverlay {
