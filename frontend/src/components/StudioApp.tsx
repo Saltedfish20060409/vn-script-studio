@@ -140,9 +140,6 @@ export function StudioApp() {
   const [activeLocks, setActiveLocks] = useState<ChapterLockInfo[]>([]);
   const [collabNote, setCollabNote] = useState("");
   const myUserId = user?.id ?? "";
-  const otherLock = activeLocks.find(
-    (l) => l.chapterId === chapterId && l.userId !== myUserId
-  );
 
   const [tab, setTab] = useState<Tab>((cachedWs.tab as Tab) || wsDefaults.tab);
   const [writeSub, setWriteSub] = useState<"script" | "analysis">(
@@ -158,6 +155,9 @@ export function StudioApp() {
     cachedWs.projectSub || wsDefaults.projectSub
   );
   const [chapterId, setChapterId] = useState(cachedWs.chapterId || "");
+  const otherLock = activeLocks.find(
+    (l) => l.chapterId === chapterId && l.userId !== myUserId
+  );
   const [editor, setEditor] = useState("");
   const [selection, setSelection] = useState("");
   const [error, setError] = useState("");
