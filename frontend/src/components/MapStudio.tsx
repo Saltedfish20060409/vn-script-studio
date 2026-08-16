@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Location,
-  LocationLink,
   MapElementKind,
   MapLineStyle,
   MapStroke,
-  SceneChapter,
 } from "../types/vn";
 import { presetByKind } from "../lib/mapCatalog";
 import { findLocationOccurrences } from "../lib/mapOccurrences";
@@ -60,7 +58,7 @@ export function MapStudio({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [cam, setCam] = useState({ x: 0, y: 0, zoom: 0.5 });
   const [didFit, setDidFit] = useState(false);
-  const [panning, setPanning] = useState(false);
+  const [, setPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, camX: 0, camY: 0 });
   const [dragIds, setDragIds] = useState<string[]>([]);
   const dragPointerStart = useRef({ x: 0, y: 0 });

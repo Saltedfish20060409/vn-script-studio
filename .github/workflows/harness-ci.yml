@@ -46,8 +46,7 @@ jobs:
           python -m pip install -U pip
           pip install -r requirements.txt
           pip install pytest httpx ruff
-      - name: Ruff lint (report — not blocking while warnings exist)
-        continue-on-error: true
+      - name: Ruff lint (hard gate)
         run: |
           ruff check app/ --output-format=github
       - name: Full backend test suite (unit + API/DB integration)
