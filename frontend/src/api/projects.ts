@@ -38,6 +38,7 @@ export function createProject(
 ): Promise<VnProject> {
   return apiFetch<VnProject>("/projects", {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify(body),
   });
 }
@@ -82,6 +83,7 @@ export function importProjectFile(file: File, title?: string): Promise<VnProject
   if (title) form.append("title", title);
   return apiFetch<VnProject>("/projects/import", {
     method: "POST",
+    timeoutMs: 180000,
     body: form,
   });
 }
@@ -92,6 +94,7 @@ export function importProjectJson(obj: unknown, title?: string): Promise<VnProje
   if (title) form.append("title", title);
   return apiFetch<VnProject>("/projects/import", {
     method: "POST",
+    timeoutMs: 180000,
     body: form,
   });
 }
@@ -102,6 +105,7 @@ export function importProjectText(text: string, title?: string): Promise<VnProje
   if (title) form.append("title", title);
   return apiFetch<VnProject>("/projects/import", {
     method: "POST",
+    timeoutMs: 180000,
     body: form,
   });
 }
@@ -147,6 +151,7 @@ export function mapExtract(
 ): Promise<MapExtractPreviewResult> {
   return apiFetch(`/projects/${id}/map/extract`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify({ mode: opts?.mode ?? "smart" }),
   });
 }
@@ -165,6 +170,7 @@ export function mapExtractAccept(
 }> {
   return apiFetch(`/projects/${id}/map/extract/accept`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify(body),
   });
 }
@@ -186,6 +192,7 @@ export function lint(
 ): Promise<{ issues: Record<string, unknown>[] }> {
   return apiFetch(`/projects/${id}/analysis/lint`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify({ draft }),
   });
 }
@@ -203,6 +210,7 @@ export function listSnapshots(id: string): Promise<SnapshotSummary[]> {
 export function createSnapshot(id: string, label: string): Promise<SnapshotSummary> {
   return apiFetch(`/projects/${id}/snapshots`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify({ label }),
   });
 }
@@ -210,6 +218,7 @@ export function createSnapshot(id: string, label: string): Promise<SnapshotSumma
 export function restoreSnapshot(id: string, snapshotId: string): Promise<VnProject> {
   return apiFetch(`/projects/${id}/snapshots/${snapshotId}/restore`, {
     method: "POST",
+    timeoutMs: 180000,
   });
 }
 
@@ -253,6 +262,7 @@ export function uploadAgentAttachment(
   form.append("persist", persist ? "true" : "false");
   return apiFetch(`/projects/${projectId}/agent/attachments`, {
     method: "POST",
+    timeoutMs: 180000,
     body: form,
   });
 }
@@ -274,6 +284,7 @@ export function ingestAttachmentSettings(
 }> {
   return apiFetch(`/projects/${projectId}/agent/ingest-settings`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify({
       attachments: body.attachments.map((a) => ({
         filename: a.filename,
@@ -325,6 +336,7 @@ export function chapterRevise(
 > {
   return apiFetch(`/projects/${projectId}/agent/chapter-revise`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify({
       ...body,
       attachments: body.attachments?.map((a) => ({
@@ -352,6 +364,7 @@ export function chapterReviseApply(
 }> {
   return apiFetch(`/projects/${projectId}/agent/chapter-revise/apply`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify(body),
   });
 }
@@ -372,6 +385,7 @@ export interface AgentRunOut {
 export function runAgent(id: string, body: AgentRunInBody): Promise<AgentRunOut> {
   return apiFetch(`/projects/${id}/agent`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify(body),
   });
 }
@@ -479,6 +493,7 @@ export function createAgentConversation(
 ): Promise<AgentConversationOut> {
   return apiFetch(`/projects/${projectId}/agent/conversations`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify({
       title: title?.trim() || undefined,
     }),
@@ -558,6 +573,7 @@ export function voiceCheck(
 ): Promise<VoiceReport> {
   return apiFetch(`/projects/${id}/voice-check`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify(body),
   });
 }
@@ -577,6 +593,7 @@ export function factsReconcile(id: string): Promise<{
 }> {
   return apiFetch(`/projects/${id}/analysis/facts/reconcile`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify({}),
   });
 }
@@ -601,6 +618,7 @@ export function factsScan(
 }> {
   return apiFetch(`/projects/${id}/analysis/facts/scan`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify(body ?? {}),
   });
 }
@@ -621,6 +639,7 @@ export function factsAccept(
 }> {
   return apiFetch(`/projects/${id}/analysis/facts/accept`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify({ ids }),
   });
 }
@@ -631,6 +650,7 @@ export function factsReject(
 ): Promise<{ rejectedIds: string[] }> {
   return apiFetch(`/projects/${id}/analysis/facts/reject`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify({ ids }),
   });
 }
@@ -641,6 +661,7 @@ export function factsAckStale(
 ): Promise<{ project: import("../types/vn").VnProject }> {
   return apiFetch(`/projects/${id}/analysis/facts/ack-stale`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify(body),
   });
 }

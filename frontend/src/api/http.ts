@@ -71,6 +71,8 @@ export class ApiError extends Error {
 interface ApiFetchOptions extends RequestInit {
   /** Skip the auto clear-token + redirect-to-login behavior on 401 (used by public endpoints). */
   skipAuthRedirect?: boolean;
+  /** Override the per-request timeout (default 30s). Slow LLM endpoints set this higher. */
+  timeoutMs?: number;
 }
 
 export async function readErrorPayload(
@@ -110,6 +112,31 @@ export function redirectToLogin() {
   window.location.href = "/login";
 }
 
+/** Default per-request timeout — long LLM endpoints override via options. */
+const REQUEST_TIMEOUT_MS = 30000;
+
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit & { timeoutMs?: number }
+): Promise<Response> {
+  const timeout = init.timeoutMs ?? REQUEST_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeout);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (e) {
+    if ((e as { name?: string })?.name === "AbortError") {
+      throw new ApiError(
+        408,
+        `请求超时（${Math.round(timeout / 1000)}s）——请确认后端服务已启动`
+      );
+    }
+    throw new ApiError(0, "网络连接失败，请检查网络或后端服务");
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 /** Core fetch helper: prefixes /api/v1, attaches bearer token, handles JSON. */
 export async function apiFetch<T = unknown>(
   path: string,
@@ -124,7 +151,10 @@ export async function apiFetch<T = unknown>(
   }
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  let res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  let res = await fetchWithTimeout(`${API_BASE}${path}`, {
+    ...options,
+    headers,
+  });
 
   // Expired access token → try one refresh, then replay the request once.
   if (res.status === 401 && !options.skipAuthRedirect) {
@@ -135,7 +165,10 @@ export async function apiFetch<T = unknown>(
       }
       const t2 = getToken();
       if (t2) h2.set("Authorization", `Bearer ${t2}`);
-      res = await fetch(`${API_BASE}${path}`, { ...options, headers: h2 });
+      res = await fetchWithTimeout(`${API_BASE}${path}`, {
+        ...options,
+        headers: h2,
+      });
     }
   }
 

@@ -86,6 +86,7 @@ export function pipelineRun(
 ): Promise<PipelineRunResult | { jobId: string; async: true; status: string }> {
   return apiFetch(`/projects/${id}/pipeline/run`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify(body),
   });
 }
@@ -221,6 +222,7 @@ export function pipelineGate(
 }> {
   return apiFetch(`/projects/${id}/pipeline/gate`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify(body),
   });
 }
@@ -250,6 +252,7 @@ export function pipelineLedgerDigest(
 }> {
   return apiFetch(`/projects/${id}/pipeline/ledger/digest`, {
     method: "POST",
+    timeoutMs: 180000,
     body: JSON.stringify({
       chapter_id: chapterId,
       enrich: opts?.enrich !== false,
