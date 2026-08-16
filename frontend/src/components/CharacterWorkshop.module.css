@@ -889,6 +889,8 @@
   place-items: center;
   padding: 1.25rem;
   background: color-mix(in srgb, var(--ink) 45%, transparent);
+  /* Tall cards must remain scrollable on small screens (buttons reachable). */
+  overflow-y: auto;
 }
 
 .guideCard {
@@ -978,6 +980,26 @@
   background: var(--field-bg);
   color: var(--ink);
   cursor: pointer;
+}
+
+/* Mobile: single-column guide card, compact mascot, card scrolls internally */
+@media (max-width: 560px) {
+  .guideCard {
+    grid-template-columns: 1fr;
+    align-items: start;
+    max-height: calc(100dvh - 2.5rem);
+    overflow-y: auto;
+    padding: 1rem;
+  }
+
+  .guideMascot {
+    display: none;
+  }
+
+  .guideActions button {
+    flex: 1;
+    min-height: 44px;
+  }
 }
 
 .readyBanner,
