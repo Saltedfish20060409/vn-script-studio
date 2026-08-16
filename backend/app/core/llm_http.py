@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import random
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 import httpx
 
@@ -103,6 +104,64 @@ def _backoff_seconds(attempt: int) -> float:
     # 0.6, 1.2, 2.4 … + jitter
     base = 0.6 * (2**attempt)
     return min(20.0, base + random.uniform(0, 0.35))
+
+
+async def stream_chat_completions(
+    config: DeepSeekConfig,
+    *,
+    messages: List[Dict[str, str]],
+    temperature: float = 0.7,
+    response_format: Optional[Dict[str, Any]] = None,
+    max_tokens: Optional[int] = None,
+    timeout: float = 180.0,
+) -> AsyncIterator[str]:
+    """Stream an OpenAI-compatible chat completion; yields text deltas.
+
+    Errors surface as RuntimeError (raised from the generator). Caller is
+    responsible for accumulating the full text.
+    """
+    if not config.apiKey or "your-key" in config.apiKey:
+        raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
+    base_url = (config.baseUrl or "https://api.deepseek.com").rstrip("/")
+    model = config.model or "deepseek-chat"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {config.apiKey}",
+    }
+    body: Dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "stream": True,
+    }
+    if response_format is not None:
+        body["response_format"] = response_format
+    if max_tokens:
+        body["max_tokens"] = max_tokens
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream(
+            "POST", f"{base_url}/v1/chat/completions", headers=headers, json=body
+        ) as res:
+            if res.status_code >= 400:
+                err = (await res.aread()).decode("utf-8", "replace")
+                raise RuntimeError(f"DeepSeek API {res.status_code}: {err[:400]}")
+            async for line in res.aiter_lines():
+                if not line or not line.startswith("data:"):
+                    continue
+                payload = line[5:].strip()
+                if not payload or payload == "[DONE]":
+                    continue
+                try:
+                    data = json.loads(payload)
+                except json.JSONDecodeError:
+                    continue
+                choices = data.get("choices") or []
+                if not choices:
+                    continue
+                delta = ((choices[0] or {}).get("delta") or {}).get("content")
+                if delta:
+                    yield str(delta)
 
 
 def content_from_response(res: httpx.Response) -> tuple[str, str]:

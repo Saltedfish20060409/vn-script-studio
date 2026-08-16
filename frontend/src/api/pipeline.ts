@@ -92,6 +92,7 @@ export function pipelineRun(
 
 export type PipelineStreamEvent =
   | { type: "stage"; stage: string; ms?: number; ok?: boolean; errorCount?: number; warnCount?: number }
+  | { type: "token"; delta: string }
   | { type: "final"; result?: JobStatus };
 
 /**

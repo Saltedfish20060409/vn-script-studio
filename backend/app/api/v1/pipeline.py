@@ -153,13 +153,39 @@ async def pipeline_run(
         payload = body.model_dump()
         owner = SimpleNamespace(id=user.id)
         stage_queue: Optional[asyncio.Queue[dict]] = asyncio.Queue() if body.stream else None
+        # Throttle token deltas into ~40-char batches to keep SSE event volume sane.
+        _token_buf: list[str] = []
+        _token_lock = False
+
+        def _flush_tokens() -> None:
+            nonlocal _token_lock
+            if stage_queue is None or not _token_buf:
+                return
+            _token_lock = True
+            try:
+                stage_queue.put_nowait(
+                    {"type": "token", "delta": "".join(_token_buf)}
+                )
+                _token_buf.clear()
+            except Exception:  # noqa: BLE001
+                pass
+            finally:
+                _token_lock = False
 
         def _on_stage(stage: str, row: dict) -> None:
+            _flush_tokens()
             if stage_queue is not None:
                 try:
                     stage_queue.put_nowait({"type": "stage", "stage": stage, **row})
                 except Exception:  # noqa: BLE001
                     pass
+
+        def _on_token(delta: str) -> None:
+            if stage_queue is None or _token_lock:
+                return
+            _token_buf.append(delta)
+            if len("".join(_token_buf)) >= 40:
+                _flush_tokens()
 
         async def _runner(job):
             await job.touch(stage="pipeline", progress=0.1, message="流水线运行中…")
@@ -185,6 +211,7 @@ async def pipeline_run(
                     voice_hard=bool(payload.get("voice_hard", False)),
                     semantic_beats=bool(payload.get("semantic_beats", True)),
                     on_stage=_on_stage,
+                    on_token=_on_token,
                 )
                 if out.get("project") is not None:
                     sync_row_from_vn(row2, out["project"])

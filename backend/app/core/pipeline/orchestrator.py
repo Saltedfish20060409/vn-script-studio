@@ -86,6 +86,7 @@ async def stage_write(
     beat_sheet: Optional[Dict[str, Any]] = None,
     long_memory: str = "",
     db_continuity: Optional[Dict[str, Any]] = None,
+    on_token: Optional[Callable[[str], None]] = None,
 ) -> Dict[str, Any]:
     skill = load_style_skill()
     chapter_tail = ""
@@ -111,13 +112,41 @@ async def stage_write(
         lore_craft=ledger_block,
     )
     user = f"{skill.prompt_block(max_chars=2000)}\n\n{user}"
-    llm = await run_harness_llm(
-        cfg, role="writer", user_prompt=user, project=project, temperature=0.75
-    )
+
+    if on_token is not None:
+        # Token-level streaming: same prompt, SSE deltas forwarded to the sink.
+        from app.core.harness.roles import build_role_system
+        from app.core.llm_http import stream_chat_completions
+
+        extra = "作品上下文（节选）：\n" + project_to_context(project)[:3500]
+        system = build_role_system("writer", extra=extra, project=project)
+        chunks: List[str] = []
+        async for delta in stream_chat_completions(
+            cfg,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=0.75,
+        ):
+            chunks.append(delta)
+            try:
+                on_token(delta)
+            except Exception:  # noqa: BLE001 - token sink must not break run
+                pass
+        content = "".join(chunks)
+        model = cfg.model or "deepseek-chat"
+    else:
+        llm = await run_harness_llm(
+            cfg, role="writer", user_prompt=user, project=project, temperature=0.75
+        )
+        content = llm.get("content") or ""
+        model = llm.get("model")
+
     return {
         "stage": "write",
-        "content": llm.get("content") or "",
-        "model": llm.get("model"),
+        "content": content,
+        "model": model,
         "styleConfirmed": True,
     }
 
@@ -245,12 +274,14 @@ async def run_pipeline(
     voice_hard: bool = False,
     persist_run: bool = True,
     on_stage: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+    on_token: Optional[Callable[[str], None]] = None,
 ) -> Dict[str, Any]:
     """
     Run selected stages. Default: plan → write → check → revise×N → check.
     max_revise_rounds: after first check, revise+recheck until pass or cap.
     voice_check: character voice audit on the final check only.
     on_stage: sync callback fired after each stage completes (SSE progress).
+    on_token: sync callback fired per write-stage text delta (SSE typing).
     """
     wanted = stages or ["plan", "write", "check", "revise", "check"]
     trace: List[Dict[str, Any]] = []
@@ -325,6 +356,7 @@ async def run_pipeline(
             selection=selection,
             beat_sheet=beat_sheet,
             db_continuity=continuity,
+            on_token=on_token,
         )
         result["stages"].append("write")
         current = written.get("content") or current

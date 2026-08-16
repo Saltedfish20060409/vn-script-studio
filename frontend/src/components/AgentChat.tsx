@@ -1365,9 +1365,15 @@ export function AgentChat({
         done: "完成",
       };
       let job: import("../api/pipeline").JobStatus;
+      let liveDraft = "";
       try {
         setThinking("流水线启动（流式）…");
         job = await pipelineRunStream(projectId, body, (evt) => {
+          if (evt.type === "token") {
+            liveDraft += evt.delta;
+            setThinking(`生成中… ${liveDraft.slice(-160)}`);
+            return;
+          }
           if (evt.type === "stage") {
             const label = STAGE_LABEL[evt.stage] ?? evt.stage;
             const ms = evt.ms ? ` · ${evt.ms}ms` : "";
