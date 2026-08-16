@@ -1,5 +1,7 @@
 services:
   postgres:
+    # For pgvector semantic search, use:  image: pgvector/pgvector:pg16
+    # (then run `CREATE EXTENSION vector;` — the app detects it at runtime).
     image: postgres:16-alpine
     container_name: vnss-postgres
     environment:

@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     # single-worker (in-process) broadcasts.
     redis_url: str = ""
 
+    # Optional embedding endpoint for pgvector semantic search (OpenAI
+    # compatible). Leave empty to keep heuristic keyword retrieval.
+    embedding_base_url: str = ""
+    embedding_api_key: str = ""
+    embedding_model: str = "text-embedding-3-small"
+
     @property
     def cors_origin_list(self) -> List[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

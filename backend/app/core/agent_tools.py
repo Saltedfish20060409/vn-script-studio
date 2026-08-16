@@ -165,24 +165,19 @@ def run_agent_tool(
             if not q:
                 return False, "query 必填"
             limit = max(1, min(20, int(args.get("limit") or 8)))
-            hits: List[str] = []
-            ql = q.lower()
-            for ch in project.chapters or []:
-                plain = _blocks_to_plain(ch.blocks or [], project.characters or [])
-                if ql not in plain.lower() and q not in plain:
-                    continue
-                idx = plain.lower().find(ql) if ql in plain.lower() else plain.find(q)
-                if idx < 0:
-                    continue
-                start = max(0, idx - 40)
-                end = min(len(plain), idx + len(q) + 80)
-                snippet = plain[start:end].replace("\n", " ")
-                hits.append(f"[{ch.title or ch.id}] …{snippet}…")
-                if len(hits) >= limit:
-                    break
+            from app.core.retrieval import rank_texts
+
+            candidates = [
+                (
+                    ch.title or ch.id,
+                    _blocks_to_plain(ch.blocks or [], project.characters or []),
+                )
+                for ch in project.chapters or []
+            ]
+            hits = rank_texts(q, candidates, limit=limit, min_score=0.5)
             if not hits:
                 return True, f"无命中：{q}"
-            return True, "\n".join(hits)
+            return True, "\n".join(f"[{label}] …{snippet}…" for label, snippet, _ in hits)
 
         if name == "list_characters":
             rows = [
@@ -220,18 +215,13 @@ def run_agent_tool(
             q = str(args.get("query") or "").strip()
             if not q:
                 return False, "query 必填"
+            from app.core.retrieval import rank_texts
+
             blob = _bible_blob(project)
-            ql = q.lower()
-            hits = []
-            for k, v in blob.items():
-                if ql in v.lower() or q in v:
-                    idx = v.lower().find(ql)
-                    if idx < 0:
-                        idx = v.find(q)
-                    start = max(0, idx - 30)
-                    end = min(len(v), idx + len(q) + 70)
-                    hits.append(f"[{k}] …{v[start:end]}…")
-            return True, "\n".join(hits) if hits else f"设定中无命中：{q}"
+            hits = rank_texts(q, list(blob.items()), limit=8, min_score=0.4)
+            if not hits:
+                return True, f"设定中无命中：{q}"
+            return True, "\n".join(f"[{k}] …{snippet}…" for k, snippet, _ in hits)
 
         if name == "get_locations":
             q = str(args.get("query") or "").strip().lower()

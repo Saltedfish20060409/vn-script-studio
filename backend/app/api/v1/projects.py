@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from docx import Document
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -733,6 +734,89 @@ async def analysis_lint(
         else:
             out.append(getattr(i, "__dict__", {"raw": str(i)}))
     return {"issues": out}
+
+
+class SemanticSearchIn(BaseModel):
+    query: str = Field(default="", min_length=1, max_length=300)
+    limit: int = Field(default=8, ge=1, le=30)
+    # When true, also (re)index the project's text chunks before searching.
+    reindex: bool = False
+
+
+@router.post("/{project_id}/analysis/semantic-search")
+async def analysis_semantic_search(
+    project_id: str,
+    body: SemanticSearchIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Semantic search over project text (chapters + bible).
+
+    Uses pgvector similarity when the vector extension and an embedding
+    endpoint are configured; otherwise falls back to the heuristic keyword
+    ranker (always available). The response reports which engine served it.
+    """
+    from app.core.retrieval import rank_texts
+    from app.core.semantic_search import (
+        index_project_chunks,
+        is_vector_available,
+        semantic_search,
+    )
+
+    row = await get_project_readable(db, user, project_id)
+    vn = row_to_vn(row)
+    q = body.query.strip()
+
+    # Build chapter + bible chunks for fallback ranking / indexing.
+    from app.core.agent_context import _blocks_to_plain
+
+    chapters = list(vn.chapters or [])
+    chunks: list[dict] = []
+    for ch in chapters:
+        plain = _blocks_to_plain(ch.blocks or [], vn.characters or [])
+        if plain.strip():
+            chunks.append({"id": f"ch:{ch.id}", "kind": "chapter", "text": plain})
+    bible_blob = {}
+    b = vn.bible
+    if b is not None:
+        data = b.model_dump(mode="json") if hasattr(b, "model_dump") else dict(b)
+        for k in ("world", "background", "outline", "themes", "notes"):
+            v = data.get(k)
+            if isinstance(v, str) and v.strip():
+                bible_blob[k] = v.strip()
+                chunks.append({"id": f"bible:{k}", "kind": "bible", "text": v})
+
+    # Try vector search first.
+    vector = await is_vector_available(db)
+    if vector and body.reindex and chunks:
+        await index_project_chunks(db, project_id, chunks)
+    hits = await semantic_search(db, project_id, q, limit=body.limit) if vector else None
+
+    if hits:
+        return {
+            "query": q,
+            "engine": "pgvector",
+            "hits": [
+                {"id": h["id"], "kind": h["kind"], "text": h["text"], "score": h["score"]}
+                for h in hits
+            ],
+        }
+
+    # Fallback: heuristic ranking over current project text.
+    candidates: list[tuple[str, str]] = [
+        (f"chapter:{ch.id}", c["text"]) for ch, c in zip(chapters, chunks) if c["kind"] == "chapter"
+    ]
+    candidates += [(f"bible:{k}", v) for k, v in bible_blob.items()]
+    ranked = rank_texts(q, candidates, limit=body.limit, min_score=0.4)
+    return {
+        "query": q,
+        "engine": "heuristic",
+        "hits": [
+            {"id": cid, "kind": "chapter" if cid.startswith("chapter:") else "bible",
+             "text": snippet, "score": score}
+            for cid, snippet, score in ranked
+        ],
+    }
 
 
 @router.get("/{project_id}/snapshots")
