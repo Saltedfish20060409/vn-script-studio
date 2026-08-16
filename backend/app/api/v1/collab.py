@@ -32,6 +32,14 @@ class MemberRoleIn(BaseModel):
     role: str = Field(pattern="^(editor|viewer)$")
 
 
+class InviteIn(BaseModel):
+    role: str = "editor"
+
+
+class InviteAcceptIn(BaseModel):
+    token: str = Field(min_length=8, max_length=128)
+
+
 async def _owner_info(db: AsyncSession, project_id: str) -> dict:
     res = await db.execute(
         select(Project.owner_id, User.username)
@@ -175,3 +183,52 @@ async def project_events(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/{project_id}/invites")
+async def create_invite(
+    project_id: str,
+    body: InviteIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await get_owned_project(db, user, project_id)
+    actor_role = "owner" if row.owner_id == user.id else "editor"
+    out = await collab.create_invite(
+        db, project_id, role=body.role, created_by=user.id, actor_role=actor_role
+    )
+    collab.member_event(project_id, "invite_created", {"role": body.role})
+    return out
+
+
+@router.get("/{project_id}/invites")
+async def list_invites(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await get_project_readable(db, user, project_id)
+    return {"invites": await collab.list_invites(db, project_id)}
+
+
+@router.delete("/{project_id}/invites/{token}")
+async def revoke_invite(
+    project_id: str,
+    token: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await get_owned_project(db, user, project_id)
+    actor_role = "owner" if row.owner_id == user.id else "editor"
+    await collab.revoke_invite(db, project_id, token, actor_role=actor_role)
+    return {"ok": True}
+
+
+@router.post("/invites/accept")
+async def accept_invite(
+    body: InviteAcceptIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Join a project via invite token. The frontend routes invite links here."""
+    return await collab.accept_invite(db, body.token.strip(), user)

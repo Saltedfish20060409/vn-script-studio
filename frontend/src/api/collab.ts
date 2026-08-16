@@ -48,6 +48,54 @@ export function removeProjectMember(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Invite links
+// ---------------------------------------------------------------------------
+
+export interface InviteInfo {
+  token: string;
+  role: "editor" | "viewer";
+  expiresAt: string;
+}
+
+export function createProjectInvite(
+  projectId: string,
+  role: "editor" | "viewer"
+): Promise<InviteInfo> {
+  return apiFetch(`/projects/${projectId}/invites`, {
+    method: "POST",
+    body: JSON.stringify({ role }),
+  });
+}
+
+export function listProjectInvites(
+  projectId: string
+): Promise<{ invites: InviteInfo[] }> {
+  return apiFetch(`/projects/${projectId}/invites`);
+}
+
+export function revokeProjectInvite(
+  projectId: string,
+  token: string
+): Promise<{ ok: boolean }> {
+  return apiFetch(`/projects/${projectId}/invites/${token}`, {
+    method: "DELETE",
+  });
+}
+
+export function acceptProjectInvite(
+  token: string
+): Promise<{
+  projectId: string;
+  alreadyMember: boolean;
+  role: "editor" | "viewer" | null;
+}> {
+  return apiFetch(`/projects/invites/accept`, {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+}
+
 export interface ChapterLockInfo {
   chapterId: string;
   userId: string;

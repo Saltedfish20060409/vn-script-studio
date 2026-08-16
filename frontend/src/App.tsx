@@ -11,6 +11,9 @@ const LoginPage = lazy(() =>
 const SharePage = lazy(() =>
   import("./pages/SharePage").then((m) => ({ default: m.default }))
 );
+const InvitePage = lazy(() =>
+  import("./pages/InvitePage").then((m) => ({ default: m.default }))
+);
 const StudioApp = lazy(() =>
   import("./components/StudioApp").then((m) => ({ default: m.StudioApp }))
 );
@@ -41,6 +44,7 @@ export default function App() {
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/share/:token" element={<SharePage />} />
+              <Route path="/invite" element={<InvitePage />} />
               <Route
                 path="/"
                 element={

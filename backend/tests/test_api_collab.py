@@ -110,6 +110,69 @@ def test_member_crud_and_roles():
     _run(_scenario())
 
 
+def test_invite_link_joins_member():
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            owner_headers = await db_gate.register_headers(client, "inv_owner")
+            joiner_headers = await db_gate.register_headers(client, "inv_joiner")
+
+            r = await client.post(
+                "/api/v1/projects", json={"title": "邀请项目"}, headers=owner_headers
+            )
+            pid = r.json()["id"]
+
+            # owner creates invite
+            r = await client.post(
+                f"/api/v1/projects/{pid}/invites",
+                json={"role": "editor"},
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+            token = r.json()["token"]
+            assert token
+
+            # list invites shows it
+            r = await client.get(f"/api/v1/projects/{pid}/invites", headers=owner_headers)
+            assert r.status_code == 200
+            assert any(i["token"] == token for i in r.json()["invites"])
+
+            # joiner accepts → becomes editor, invite consumed
+            r = await client.post(
+                "/api/v1/projects/invites/accept",
+                json={"token": token},
+                headers=joiner_headers,
+            )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["projectId"] == pid
+            assert body["alreadyMember"] is False
+            assert body["role"] == "editor"
+
+            # joiner can now read + write
+            r = await client.get(f"/api/v1/projects/{pid}", headers=joiner_headers)
+            assert r.status_code == 200
+            r = await client.patch(
+                f"/api/v1/projects/{pid}",
+                json={"title": "改"},
+                headers=joiner_headers,
+            )
+            assert r.status_code == 200
+
+            # invite is one-time (consumed)
+            r = await client.get(f"/api/v1/projects/{pid}/invites", headers=owner_headers)
+            assert not any(i["token"] == token for i in r.json()["invites"])
+
+            # accepting again is idempotent (already member)
+            r = await client.post(
+                "/api/v1/projects/invites/accept",
+                json={"token": token},
+                headers=joiner_headers,
+            )
+            assert r.status_code == 404  # invite gone → invalid
+
+    _run(_scenario())
+
+
 def test_chapter_lock_lifecycle():
     async def _scenario():
         async with db_gate.make_client(APP) as client:

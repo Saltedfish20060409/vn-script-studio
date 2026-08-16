@@ -44,7 +44,10 @@ export default function LoginPage() {
     () => MOOD_LINE.idle || mascotLine("idle")
   );
 
-  const redirectTo = (location.state as { from?: string } | null)?.from || "/";
+  const redirectTo =
+    (location.state as { from?: string } | null)?.from ||
+    new URLSearchParams(location.search).get("return") ||
+    "/";
 
   // Align login chrome with last-used studio appearance (local cache)
   useEffect(() => {

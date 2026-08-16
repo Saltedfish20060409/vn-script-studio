@@ -21,6 +21,7 @@ from app.models import (  # noqa: F401
     LlmUsage,
     LoreCraftCard,
     Project,
+    ProjectInvite,
     ProjectMember,
     ProjectSnapshotRow,
     Share,

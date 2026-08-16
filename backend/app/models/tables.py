@@ -255,6 +255,23 @@ class ProjectMember(Base):
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class ProjectInvite(Base):
+    """Invite links — anyone with the token can join the project as a member."""
+
+    __tablename__ = "project_invites"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("projects.id"), index=True
+    )
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # editor | viewer
+    role: Mapped[str] = mapped_column(String(16), default="editor")
+    created_by: Mapped[str] = mapped_column(String(36), default="")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class ChapterLock(Base):
     """Chapter-level edit lock — prevents two editors clobbering the same chapter."""
 

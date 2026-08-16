@@ -7,6 +7,7 @@ single uvicorn worker, documented for multi-worker deployments.
 from __future__ import annotations
 
 import asyncio
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set
 from uuid import uuid4
@@ -15,10 +16,11 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import ChapterLock, ProjectMember, User
+from app.models import ChapterLock, ProjectInvite, ProjectMember, User
 
 LOCK_TTL = timedelta(minutes=10)
 LOCK_HEARTBEAT = timedelta(minutes=5)
+INVITE_TTL = timedelta(days=7)
 
 
 def _now() -> datetime:
@@ -210,6 +212,124 @@ async def list_locks(db: AsyncSession, project_id: str) -> List[Dict[str, Any]]:
         }
         for lock, username in res.all()
     ]
+
+
+# --------------------------------------------------------------------------
+# Invite links
+# --------------------------------------------------------------------------
+
+
+async def create_invite(
+    db: AsyncSession,
+    project_id: str,
+    *,
+    role: str,
+    created_by: str,
+    actor_role: str,
+    ttl: timedelta = INVITE_TTL,
+) -> Dict[str, Any]:
+    if actor_role != "owner":
+        raise HTTPException(status_code=403, detail="仅项目所有者可生成邀请链接")
+    if role not in ("editor", "viewer"):
+        raise HTTPException(status_code=400, detail="角色必须为 editor 或 viewer")
+    row = ProjectInvite(
+        id=str(uuid4()),
+        project_id=project_id,
+        token=secrets.token_urlsafe(32),
+        role=role,
+        created_by=created_by,
+        expires_at=_now() + ttl,
+        created_at=_now(),
+    )
+    db.add(row)
+    await db.commit()
+    return {
+        "token": row.token,
+        "role": row.role,
+        "expiresAt": row.expires_at.isoformat(),
+    }
+
+
+async def list_invites(db: AsyncSession, project_id: str) -> List[Dict[str, Any]]:
+    now = _now()
+    await db.execute(
+        delete(ProjectInvite).where(
+            ProjectInvite.project_id == project_id,
+            ProjectInvite.expires_at <= now,
+        )
+    )
+    await db.commit()
+    res = await db.execute(
+        select(ProjectInvite)
+        .where(ProjectInvite.project_id == project_id)
+        .order_by(ProjectInvite.created_at.desc())
+    )
+    return [
+        {
+            "token": r.token,
+            "role": r.role,
+            "expiresAt": r.expires_at.isoformat(),
+        }
+        for r in res.scalars().all()
+    ]
+
+
+async def revoke_invite(
+    db: AsyncSession,
+    project_id: str,
+    token: str,
+    *,
+    actor_role: str,
+) -> None:
+    if actor_role != "owner":
+        raise HTTPException(status_code=403, detail="仅项目所有者可撤销邀请")
+    res = await db.execute(
+        delete(ProjectInvite).where(
+            ProjectInvite.project_id == project_id,
+            ProjectInvite.token == token,
+        )
+    )
+    await db.commit()
+    if (res.rowcount or 0) == 0:
+        raise HTTPException(status_code=404, detail="邀请不存在")
+
+
+async def accept_invite(
+    db: AsyncSession,
+    token: str,
+    user: User,
+) -> Dict[str, Any]:
+    """Join a project via invite token (current authenticated user)."""
+    res = await db.execute(select(ProjectInvite).where(ProjectInvite.token == token))
+    invite = res.scalar_one_or_none()
+    if invite is None:
+        raise HTTPException(status_code=404, detail="邀请无效或已被撤销")
+    if invite.expires_at <= _now():
+        raise HTTPException(status_code=410, detail="邀请已过期")
+
+    # Already a member? Idempotent — just return the project.
+    existing = await db.execute(
+        select(ProjectMember).where(
+            ProjectMember.project_id == invite.project_id,
+            ProjectMember.user_id == user.id,
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        await db.commit()
+        return {"projectId": invite.project_id, "alreadyMember": True, "role": None}
+
+    row = ProjectMember(
+        id=str(uuid4()),
+        project_id=invite.project_id,
+        user_id=user.id,
+        role=invite.role,
+        joined_at=_now(),
+    )
+    db.add(row)
+    # One-time use: delete the invite after successful join.
+    await db.delete(invite)
+    await db.commit()
+    return {"projectId": invite.project_id, "alreadyMember": False, "role": invite.role}
 
 
 # --------------------------------------------------------------------------
