@@ -93,6 +93,7 @@ export function ScriptEditor({
       <textarea
         {...rest}
         ref={setRefs}
+        data-testid="script-editor"
         className={`${styles.input} ${className}`.trim()}
         value={value}
         spellCheck={false}

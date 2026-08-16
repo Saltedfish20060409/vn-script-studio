@@ -29,6 +29,11 @@ venv/
 .mypy_cache/
 .ruff_cache/
 
+# Playwright e2e artifacts
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+
 # Local scratch / agent dumps (do not publish)
 .backend-out.txt
 .grep-*.txt
