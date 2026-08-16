@@ -1,5 +1,5 @@
 import { MAP_LINE_STYLE_LABELS } from "../types/vn";
-import type { MapLineStyle, MapStroke } from "../types/vn";
+import type { MapLineStyle } from "../types/vn";
 import type { Tool } from "./mapStudioTypes";
 import styles from "./MapStudio.module.css";
 
@@ -10,7 +10,6 @@ type Props = {
   brushMode: "pen" | "eraser";
   brushColor: string;
   brushWidth: number;
-  strokes: MapStroke[];
   onSelectTool: (tool: Tool) => void;
   onSetLineStyle: (style: MapLineStyle) => void;
   onSetBrushMode: (mode: "pen" | "eraser") => void;
@@ -31,7 +30,6 @@ export function MapToolbar({
   brushMode,
   brushColor,
   brushWidth,
-  strokes,
   onSelectTool,
   onSetLineStyle,
   onSetBrushMode,

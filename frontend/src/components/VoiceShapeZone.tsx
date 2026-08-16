@@ -6,11 +6,8 @@ import { VoiceInterviewPanel } from "./VoiceInterviewPanel";
 import { VoicePreferenceCards } from "./VoicePreferenceCards";
 import { VoiceReadinessBanner, type ReadinessInfo } from "./VoiceReadinessBanner";
 import { VoiceSceneEditor } from "./VoiceSceneEditor";
-import {
-  VoiceScenarioControls,
-  ensureCustomScenario,
-  type ShapeMode,
-} from "./VoiceScenarioControls";
+import { ensureCustomScenario, type ShapeMode } from "../lib/voiceScenarios";
+import { VoiceScenarioControls } from "./VoiceScenarioControls";
 import type { PendingAccept } from "./VoiceWhyPanel";
 import styles from "./CharacterWorkshop.module.css";
 

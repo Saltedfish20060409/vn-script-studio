@@ -32,7 +32,7 @@ import {
   type ProjectSummary,
   type SnapshotSummary,
 } from "../api/client";
-import { useAuth } from "../auth/AuthContext";
+import { useAuth } from "../lib/authContext";
 import {
   getProjectLocks,
   lockChapter,
@@ -49,7 +49,7 @@ import { SystemPanel } from "./SystemPanel";
 import { SettingsGear, SettingsModal } from "./SettingsModal";
 import { CharacterWorkshop } from "./CharacterWorkshop";
 import { FocusChrome } from "./FocusChrome";
-import { useConfirm, usePrompt } from "./ConfirmDialog";
+import { useConfirm, usePrompt } from "../lib/confirmDialog";
 import { EmptyStage } from "./EmptyStage";
 import { ProjectLibraryPanel } from "./ProjectLibraryPanel";
 import { CollabPanel } from "./CollabPanel";
@@ -70,7 +70,8 @@ import {
   downloadProjectJson,
   stashConflictDraft,
 } from "../lib/conflictDraft";
-import { StatusToast, classifyStatusToast } from "./StatusToast";
+import { StatusToast } from "./StatusToast";
+import { classifyStatusToast } from "../lib/statusToast";
 import { blockTextRange, blocksToEditable, editableToBlocks } from "../lib/scriptCodec";
 import { normalizeProject } from "../lib/vnLocal";
 import { diffProjectAgainst } from "../lib/projectDiff";
@@ -107,7 +108,7 @@ import {
   type ChapterReviseDraft,
 } from "../lib/chapterReviseDraft";
 import { mascotLine } from "../lib/mascotCopy";
-import type { Character, Location, StoryBible, VnProject } from "../types/vn";
+import type { Character, StoryBible, VnProject } from "../types/vn";
 import styles from "./StudioApp.module.css";
 
 /** 顶栏只保留 5 组，细项用二级切换 */
@@ -242,6 +243,9 @@ export function StudioApp() {
       window.removeEventListener(REVISE_DRAFT_EVENT, refresh);
       window.removeEventListener("storage", refresh);
     };
+    // Intentionally keyed on project id / chapter only: the revise preview
+    // cache lives in localStorage and must not re-run on every project edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.id, chapterId]);
 
   const refreshProjectsList = useCallback(async () => {
@@ -449,6 +453,9 @@ export function StudioApp() {
       unsub();
       void unlockChapter(pid, cid).catch(() => undefined);
     };
+    // Intentionally keyed on project id / chapter only: the lock + SSE
+    // subscription must stay stable across project edits (autosaves).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.id, chapterId]);
 
   // Debounced autosave whenever the project object changes.
@@ -969,23 +976,6 @@ export function StudioApp() {
     const next = project.chapters.filter((c) => c.id !== id);
     updateActive((p) => ({ ...p, chapters: next }));
     if (chapterId === id) setChapterId(next[0].id);
-  }
-
-  function updateLocation(id: string, patch: Partial<Location>) {
-    updateActive((p) => ({
-      ...p,
-      locations: (p.locations ?? []).map((l) => (l.id === id ? { ...l, ...patch } : l)),
-    }));
-  }
-
-  function deleteLocation(id: string) {
-    updateActive((p) => ({
-      ...p,
-      locations: (p.locations ?? []).filter((l) => l.id !== id),
-      locationLinks: (p.locationLinks ?? []).filter(
-        (l) => l.fromId !== id && l.toId !== id
-      ),
-    }));
   }
 
   async function extractLocs(mode: "smart" | "rules" = "smart") {

@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { AuthProvider, useAuth } from "./auth/AuthContext";
+import { AuthProvider } from "./auth/AuthContext";
+import { useAuth } from "./lib/authContext";
 import { ConfirmProvider } from "./components/ConfirmDialog";
 import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 

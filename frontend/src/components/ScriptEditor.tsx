@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -54,13 +55,13 @@ export function ScriptEditor({
     mirror.scrollLeft = from.scrollLeft;
   }
 
-  function syncMirrorSize() {
+  const syncMirrorSize = useCallback(() => {
     const ta = localRef.current;
     const mirror = mirrorRef.current;
     if (!ta || !mirror) return;
     mirror.style.height = `${ta.offsetHeight}px`;
     syncScroll(ta);
-  }
+  }, []);
 
   useEffect(() => {
     const ta = localRef.current;
@@ -69,7 +70,7 @@ export function ScriptEditor({
     const ro = new ResizeObserver(() => syncMirrorSize());
     ro.observe(ta);
     return () => ro.disconnect();
-  }, [value]);
+  }, [value, syncMirrorSize]);
 
   return (
     <div className={`${styles.frame} ${frameClassName}`.trim()}>

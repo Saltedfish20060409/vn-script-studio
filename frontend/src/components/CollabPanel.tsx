@@ -10,7 +10,7 @@ import {
   type InviteInfo,
   type MemberInfo,
 } from "../api/collab";
-import { useAuth } from "../auth/AuthContext";
+import { useAuth } from "../lib/authContext";
 import styles from "./CollabPanel.module.css";
 
 type Props = {

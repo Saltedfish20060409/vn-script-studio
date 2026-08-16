@@ -1,6 +1,7 @@
 import type { CustomMapElementDef, MapElementKind } from "../types/vn";
 import { MAP_ELEMENT_PRESETS } from "../lib/mapCatalog";
-import { MapPinGlyph, isGlyphKey } from "./MapPinGlyph";
+import { isGlyphKey } from "../lib/mapGlyph";
+import { MapPinGlyph } from "./MapPinGlyph";
 import type { Tool } from "./mapStudioTypes";
 import styles from "./MapStudio.module.css";
 

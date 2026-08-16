@@ -23,7 +23,8 @@ import {
   resolvePin,
   strokeHitsPoint,
 } from "../lib/mapWorld";
-import { MapPinGlyph, isGlyphKey } from "./MapPinGlyph";
+import { MapPinGlyph } from "./MapPinGlyph";
+import { isGlyphKey } from "../lib/mapGlyph";
 import type { MapStudioProps, Tool } from "./mapStudioTypes";
 import { MapStage } from "./MapStage";
 import { MapPalette } from "./MapPalette";
@@ -71,7 +72,7 @@ export function MapStudio({
   const [dragIds, setDragIds] = useState<string[]>([]);
   const dragPointerStart = useRef({ x: 0, y: 0 });
   const dragPosStart = useRef<Map<string, { x: number; y: number }>>(new Map());
-  const [drawing, setDrawing] = useState(false);
+  const [, setDrawing] = useState(false);
   const draftStroke = useRef<MapStroke | null>(null);
   const [draftPts, setDraftPts] = useState<{ x: number; y: number }[]>([]);
   const [brushColor, setBrushColor] = useState("#002fa7");
@@ -197,7 +198,7 @@ export function MapStudio({
       y: cy * zoom - height / 2,
     });
     setDidFit(true);
-  }, [nodes, applyCam]);
+  }, [applyCam]);
 
   const focusPin = useCallback(
     (id: string) => {
@@ -932,7 +933,6 @@ export function MapStudio({
           brushMode={brushMode}
           brushColor={brushColor}
           brushWidth={brushWidth}
-          strokes={strokes}
           onSelectTool={handleSelectTool}
           onSetLineStyle={setLineStyle}
           onSetBrushMode={setBrushMode}

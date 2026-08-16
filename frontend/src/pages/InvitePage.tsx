@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
+import { useAuth } from "../lib/authContext";
 import { acceptProjectInvite } from "../api/collab";
 import { MascotFigure } from "../components/MascotFigure";
 import styles from "./InvitePage.module.css";

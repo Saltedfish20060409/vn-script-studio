@@ -72,7 +72,7 @@ import { AgentMessagesList } from "./AgentMessagesList";
 import { AgentPersonaOverlay } from "./AgentPersonaOverlay";
 import { ChapterReviseModePicker } from "./ChapterReviseModePicker";
 import { ChapterReviseReview } from "./ChapterReviseReview";
-import { useConfirm } from "./ConfirmDialog";
+import { useConfirm } from "../lib/confirmDialog";
 import { WriterPortrait } from "./WriterPortrait";
 import styles from "./AgentChat.module.css";
 

@@ -21,11 +21,7 @@ import { VoiceGuideOverlay } from "./VoiceGuideOverlay";
 import { VoicePackZone } from "./VoicePackZone";
 import { VoiceProgressRail } from "./VoiceProgressRail";
 import { VoiceRail } from "./VoiceRail";
-import {
-  ensureCustomScenario,
-  promptSlug,
-  type ShapeMode,
-} from "./VoiceScenarioControls";
+import { ensureCustomScenario, promptSlug, type ShapeMode } from "../lib/voiceScenarios";
 import { VoiceShapeZone } from "./VoiceShapeZone";
 import { VoiceWorkshopEmpty } from "./VoiceWorkshopEmpty";
 import { VoiceWorkshopHero } from "./VoiceWorkshopHero";

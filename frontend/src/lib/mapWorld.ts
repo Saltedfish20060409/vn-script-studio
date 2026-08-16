@@ -5,7 +5,7 @@ import type {
   MapStroke,
 } from "../types/vn";
 import { presetByKind } from "./mapCatalog";
-import { isGlyphKey } from "../components/MapPinGlyph";
+import { isGlyphKey } from "./mapGlyph";
 
 /** Large playable world — camera clamps so you never see empty void */
 export const WORLD_W = 4800;

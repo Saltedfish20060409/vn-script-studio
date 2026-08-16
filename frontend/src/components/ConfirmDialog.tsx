@@ -1,7 +1,5 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useId,
   useRef,
@@ -11,55 +9,14 @@ import {
 import { mascotLine } from "../lib/mascotCopy";
 import { MascotFigure } from "./MascotFigure";
 import styles from "./ConfirmDialog.module.css";
-
-export type ConfirmOptions = {
-  title: string;
-  body?: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  /** Stronger emphasis: red confirm, danger mascot line */
-  danger?: boolean;
-  /** Override mascot caption */
-  line?: string;
-};
-
-export type PromptOptions = {
-  title: string;
-  body?: string;
-  defaultValue?: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  placeholder?: string;
-  /** Override mascot caption */
-  line?: string;
-};
-
-type ConfirmFn = (opts: ConfirmOptions) => Promise<boolean>;
-type PromptFn = (opts: PromptOptions) => Promise<string | null>;
-
-const ConfirmCtx = createContext<ConfirmFn | null>(null);
-const PromptCtx = createContext<PromptFn | null>(null);
-
-export function useConfirm(): ConfirmFn {
-  const fn = useContext(ConfirmCtx);
-  if (!fn) {
-    return async (opts) =>
-      window.confirm([opts.title, opts.body].filter(Boolean).join("\n"));
-  }
-  return fn;
-}
-
-export function usePrompt(): PromptFn {
-  const fn = useContext(PromptCtx);
-  if (!fn) {
-    return async (opts) =>
-      window.prompt(
-        [opts.title, opts.body].filter(Boolean).join("\n"),
-        opts.defaultValue ?? ""
-      );
-  }
-  return fn;
-}
+import {
+  ConfirmCtx,
+  PromptCtx,
+  type ConfirmFn,
+  type ConfirmOptions,
+  type PromptFn,
+  type PromptOptions,
+} from "../lib/confirmDialog";
 
 type ConfirmPending = ConfirmOptions & {
   resolve: (v: boolean) => void;

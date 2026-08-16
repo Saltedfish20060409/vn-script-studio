@@ -21,7 +21,7 @@ import type {
 } from "../types/vn";
 import { EmptyStage } from "./EmptyStage";
 import { FactExtractReview } from "./FactExtractReview";
-import { usePrompt } from "./ConfirmDialog";
+import { usePrompt } from "../lib/confirmDialog";
 import styles from "./AnalysisPanels.module.css";
 
 type Props = {

@@ -24,7 +24,7 @@ type Props = {
 };
 
 /** Stable hue from string (writer id). */
-export function variantHue(id: string | null | undefined): number {
+function variantHue(id: string | null | undefined): number {
   if (!id) return 210;
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
