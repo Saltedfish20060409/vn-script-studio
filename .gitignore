@@ -13,6 +13,7 @@ packages/core/dist/
 data/
 *.rpy.bak
 .cache/
+.pip-tmp/
 .npm-cache/
 .cursor/*
 !.cursor/rules/

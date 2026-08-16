@@ -177,7 +177,9 @@ function readinessPaths(opts: {
 }
 
 export function CharacterWorkshop({ project, onProjectChange }: Props) {
-  const characters = project.characters || [];
+  // Stable reference: `|| []` alone would create a new array every render,
+  // churning useMemo/useEffect deps below.
+  const characters = useMemo(() => project.characters || [], [project.characters]);
   const [charId, setCharId] = useState(characters[0]?.id || "");
   const character = useMemo(
     () => characters.find((c) => c.id === charId) || characters[0] || null,
