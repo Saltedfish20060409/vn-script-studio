@@ -71,6 +71,7 @@ import {
 import { StatusToast, classifyStatusToast } from "./StatusToast";
 import { blockTextRange, blocksToEditable, editableToBlocks } from "../lib/scriptCodec";
 import { normalizeProject } from "../lib/vnLocal";
+import { diffProjectAgainst } from "../lib/projectDiff";
 import {
   applySettingsToDom,
   DEFAULT_SETTINGS,
@@ -212,6 +213,8 @@ export function StudioApp() {
   const editorCommitTimer = useRef<number | null>(null);
   const projectSaveTimer = useRef<number | null>(null);
   const skipNextProjectSave = useRef(false);
+  /** Last project snapshot the server confirmed — diff base for scoped saves. */
+  const lastSavedRef = useRef<VnProject | null>(null);
   const settingsSaveTimer = useRef<number | null>(null);
   const skipNextSettingsSave = useRef(true);
 
@@ -252,6 +255,7 @@ export function StudioApp() {
       try {
         const p = await getProject(id);
         setProject(p);
+        lastSavedRef.current = p;
         const ws = loadWorkspace();
         const wantChapter =
           preferredChapterId || (ws.projectId === id ? ws.chapterId : "") || "";
@@ -459,7 +463,6 @@ export function StudioApp() {
     return () => {
       if (projectSaveTimer.current) window.clearTimeout(projectSaveTimer.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project]);
 
   async function persistProject(
@@ -469,9 +472,21 @@ export function StudioApp() {
     const silent = opts?.silent ?? true;
     try {
       if (!silent) setStatus("保存中…");
+      // Collaboration stage B: compute which chapters / sections this save
+      // actually changed. The server merges only those, so concurrent edits
+      // to other chapters survive. Full-save (no base or force) stays as-is.
+      let scoped: { chapterIds?: string[]; sections?: string[] } = {};
+      if (!opts?.force) {
+        const diff = diffProjectAgainst(lastSavedRef.current, p);
+        if (diff.chapterIds.length > 0 || diff.sections.length > 0) {
+          scoped = { chapterIds: diff.chapterIds, sections: diff.sections };
+        }
+      }
       const saved = await putProject(p.id, p, p.updatedAt, {
         force: opts?.force,
+        ...scoped,
       });
+      lastSavedRef.current = saved;
       skipNextProjectSave.current = true;
       setProject(saved);
       clearConflictDraft(saved.id);
@@ -492,6 +507,19 @@ export function StudioApp() {
       if (!silent) setStatus("工程已同步到服务器");
       return true;
     } catch (e) {
+      if (e instanceof ApiError && e.status === 423) {
+        // Chapter locked by another member — scoped save rejected.
+        const detail = e.detail as
+          | { message?: string; username?: string; chapterId?: string }
+          | undefined;
+        const who = detail?.username ? `（${detail.username}）` : "";
+        setStatus("章节被其他成员锁定");
+        setError(
+          detail?.message ||
+            `该章节正被其他成员编辑${who}，请等待其释放锁后再保存`
+        );
+        return false;
+      }
       if (e instanceof ApiError && e.status === 409) {
         stashConflictDraft(p);
         const detail = e.detail as
@@ -534,6 +562,7 @@ export function StudioApp() {
     try {
       const fresh = await getProject(pending.local.id);
       skipNextProjectSave.current = true;
+      lastSavedRef.current = fresh;
       setProject(fresh);
       setSaveConflict(null);
       setStatus("已载入服务器版本（本地稿仍暂存在浏览器）");
@@ -580,7 +609,6 @@ export function StudioApp() {
     return () => {
       if (settingsSaveTimer.current) window.clearTimeout(settingsSaveTimer.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
 
   async function persistSettings(next: AppSettings) {
@@ -628,6 +656,7 @@ export function StudioApp() {
     }
     skipNextProjectSave.current = true;
     setError("");
+    lastSavedRef.current = nextProject;
     setProject((prev) => {
       if (!prev) return prev;
       return normalizeProject({
@@ -966,6 +995,7 @@ export function StudioApp() {
       const projectId = latest?.id ?? project.id;
       if (latest) {
         const saved = await putProject(latest.id, latest, latest.updatedAt);
+        lastSavedRef.current = saved;
         skipNextProjectSave.current = true;
         setProject(saved);
       }
@@ -1030,6 +1060,7 @@ export function StudioApp() {
       const latest = buildLatestProject();
       if (latest) {
         const saved = await putProject(latest.id, latest, latest.updatedAt);
+        lastSavedRef.current = saved;
         skipNextProjectSave.current = true;
         setProject(saved);
       }
@@ -1070,6 +1101,7 @@ export function StudioApp() {
       const latest = buildLatestProject();
       if (latest) {
         const saved = await putProject(latest.id, latest, latest.updatedAt);
+        lastSavedRef.current = saved;
         skipNextProjectSave.current = true;
         setProject(saved);
       }
@@ -1129,6 +1161,7 @@ export function StudioApp() {
       const latest = buildLatestProject();
       if (latest) {
         const saved = await putProject(latest.id, latest, latest.updatedAt);
+        lastSavedRef.current = saved;
         skipNextProjectSave.current = true;
         setProject(saved);
       }
@@ -1182,6 +1215,7 @@ export function StudioApp() {
       const latest = buildLatestProject();
       if (latest) {
         const saved = await putProject(latest.id, latest, latest.updatedAt);
+        lastSavedRef.current = saved;
         skipNextProjectSave.current = true;
         setProject(saved);
       }

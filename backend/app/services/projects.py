@@ -51,6 +51,76 @@ def sync_row_from_vn(row: Project, vn: VnProject) -> None:
     row.data = payload
 
 
+# Top-level fields that can be declared as "sections" in a chapter-scoped save.
+MERGE_SECTIONS = [
+    "title",
+    "logline",
+    "genre",
+    "characters",
+    "lore",
+    "bible",
+    "locations",
+    "locationLinks",
+    "mapStyle",
+    "customMapElements",
+    "mapStrokes",
+    "characterLinks",
+    "timeline",
+    "variables",
+    "sprites",
+    "writingLedger",
+    "writingMentors",
+    "authorLenses",
+    "voiceReports",
+]
+
+
+def merge_project_changes(
+    server: VnProject,
+    client: VnProject,
+    chapter_ids: List[str],
+    sections: List[str],
+) -> VnProject:
+    """Merge client changes into the server version, chapter-scoped.
+
+    ``chapter_ids`` lists the chapters this save actually touched (create /
+    update / delete). Unlisted chapters keep the server version untouched, so
+    concurrent edits to different chapters do not clobber each other. ``sections``
+    lists non-chapter top-level fields the client modified; anything unlisted is
+    kept from the server. The result keeps the server's updatedAt and id.
+    """
+    server_data = project_to_dict(server)
+    client_data = project_to_dict(client)
+
+    if chapter_ids:
+        wanted = set(chapter_ids)
+        client_by_id = {c.get("id"): c for c in client_data.get("chapters", [])}
+        merged_chapters: List[Any] = []
+        for ch in server_data.get("chapters", []):
+            cid = ch.get("id")
+            if cid in wanted:
+                replacement = client_by_id.get(cid)
+                if replacement is not None:
+                    merged_chapters.append(replacement)
+                # cid in wanted but absent from client → chapter was deleted
+            else:
+                merged_chapters.append(ch)
+        # Client-created chapters not present on the server are appended.
+        server_ids = {c.get("id") for c in server_data.get("chapters", [])}
+        for ch in client_data.get("chapters", []):
+            cid = ch.get("id")
+            if cid in wanted and cid not in server_ids:
+                merged_chapters.append(ch)
+        server_data["chapters"] = merged_chapters
+
+    allowed = set(sections) & set(MERGE_SECTIONS)
+    for key in allowed:
+        server_data[key] = client_data.get(key)
+
+    server_data["updatedAt"] = server_data.get("updatedAt") or client_data.get("updatedAt")
+    return normalize_project(server_data)
+
+
 async def get_owned_project(db: AsyncSession, user: User, project_id: str) -> Project:
     """Access control: project owner or a project member with write rights.
 

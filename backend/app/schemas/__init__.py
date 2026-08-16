@@ -52,6 +52,12 @@ class ProjectPutIn(BaseModel):
     updated_at: Optional[str] = None  # client version for optimistic concurrency
     # When true, skip updated_at check and overwrite server (user chose "keep local")
     force: bool = False
+    # Collaboration stage B: chapters this save actually modified (create/update/delete).
+    # When provided, the server merges only these chapters instead of replacing the
+    # whole project — so concurrent edits to different chapters do not clobber each other.
+    chapter_ids: Optional[List[str]] = None
+    # Top-level fields (non-chapter) this save actually modified, e.g. ["characters"].
+    sections: Optional[List[str]] = None
 
 
 class ProjectPatchIn(BaseModel):

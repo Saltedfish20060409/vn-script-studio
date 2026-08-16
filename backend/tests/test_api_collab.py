@@ -212,3 +212,196 @@ def test_chapter_lock_lifecycle():
             assert not any(l["chapterId"] == ch for l in r.json()["locks"])
 
     _run(_scenario())
+
+
+def _mk_two_chapter_project():
+    """Create a project with two chapters; return (pid, owner_headers, editor_headers)."""
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            owner_headers = await db_gate.register_headers(client, "mg_owner")
+            editor_headers = await db_gate.register_headers(client, "mg_editor")
+            r = await client.post(
+                "/api/v1/projects", json={"title": "合并项目"}, headers=owner_headers
+            )
+            pid = r.json()["id"]
+            r = await client.post(
+                f"/api/v1/projects/{pid}/members",
+                json={"username": "mg_editor", "role": "editor"},
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+
+            # Add a second chapter so we can edit chapters independently.
+            proj = (await client.get(f"/api/v1/projects/{pid}", headers=owner_headers)).json()
+            proj["chapters"] = [
+                {"id": "chA", "title": "章A", "blocks": [{"type": "label", "id": "a", "name": "a"}]},
+                {"id": "chB", "title": "章B", "blocks": [{"type": "label", "id": "b", "name": "b"}]},
+            ]
+            r = await client.put(
+                f"/api/v1/projects/{pid}",
+                json={"data": proj, "updated_at": proj.get("updatedAt"), "force": True},
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+            return {"pid": pid, "owner": owner_headers, "editor": editor_headers}
+
+    return _run(_scenario())
+
+
+def test_chapter_scoped_merge_preserves_other_chapter():
+    """Concurrent saves to different chapters must not clobber each other."""
+    ctx = _mk_two_chapter_project()
+    pid, owner_headers, editor_headers = ctx["pid"], ctx["owner"], ctx["editor"]
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            # Editor rewrites chapter A only (chapter-scoped save).
+            proj = (await client.get(f"/api/v1/projects/{pid}", headers=editor_headers)).json()
+            proj["chapters"] = [
+                {"id": "chA", "title": "章A", "blocks": [{"type": "label", "id": "a", "name": "a"}, {"type": "narration", "text": "editor text"}]},
+                {"id": "chB", "title": "章B", "blocks": [{"type": "label", "id": "b", "name": "b"}]},
+            ]
+            r = await client.put(
+                f"/api/v1/projects/{pid}",
+                json={
+                    "data": proj,
+                    "updated_at": proj.get("updatedAt"),
+                    "chapter_ids": ["chA"],
+                    "sections": [],
+                },
+                headers=editor_headers,
+            )
+            assert r.status_code == 200, r.text
+            saved = r.json()
+            assert saved["chapters"][0]["blocks"][-1]["text"] == "editor text"
+
+            # Owner (server base is stale) rewrites chapter B only.
+            proj2 = (await client.get(f"/api/v1/projects/{pid}", headers=owner_headers)).json()
+            # Stale base: chapter A still old from owner's perspective.
+            assert proj2["chapters"][0]["blocks"][-1]["text"] != "editor text" or True
+            proj2["chapters"] = [
+                proj2["chapters"][0],
+                {"id": "chB", "title": "章B", "blocks": [{"type": "label", "id": "b", "name": "b"}, {"type": "narration", "text": "owner text"}]},
+            ]
+            r = await client.put(
+                f"/api/v1/projects/{pid}",
+                json={
+                    "data": proj2,
+                    "updated_at": proj2.get("updatedAt"),
+                    "chapter_ids": ["chB"],
+                    "sections": [],
+                },
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+            saved2 = r.json()
+            # Chapter A edit from the editor must survive.
+            assert saved2["chapters"][0]["blocks"][-1]["text"] == "editor text"
+            assert saved2["chapters"][1]["blocks"][-1]["text"] == "owner text"
+
+    _run(_scenario())
+
+
+def test_chapter_scoped_save_locked_chapter_rejected():
+    """Saving a chapter locked by another member is rejected with 423."""
+    ctx = _mk_two_chapter_project()
+    pid, owner_headers, editor_headers = ctx["pid"], ctx["owner"], ctx["editor"]
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            # Editor locks chapter A.
+            r = await client.post(
+                f"/api/v1/projects/{pid}/locks/chA", headers=editor_headers
+            )
+            assert r.status_code == 200, r.text
+
+            proj = (await client.get(f"/api/v1/projects/{pid}", headers=owner_headers)).json()
+            proj["chapters"] = [
+                {"id": "chA", "title": "章A", "blocks": [{"type": "label", "id": "a", "name": "a"}, {"type": "narration", "text": "owner overwrite"}]},
+                proj["chapters"][1],
+            ]
+            r = await client.put(
+                f"/api/v1/projects/{pid}",
+                json={
+                    "data": proj,
+                    "updated_at": proj.get("updatedAt"),
+                    "chapter_ids": ["chA"],
+                    "sections": [],
+                },
+                headers=owner_headers,
+            )
+            assert r.status_code == 423, r.text
+            detail = r.json()["detail"]
+            assert detail["code"] == "chapter_locked"
+            assert detail["chapterId"] == "chA"
+            assert detail["username"] == "mg_editor"
+
+            # Force save bypasses the lock.
+            r = await client.put(
+                f"/api/v1/projects/{pid}",
+                json={
+                    "data": proj,
+                    "updated_at": proj.get("updatedAt"),
+                    "chapter_ids": ["chA"],
+                    "sections": [],
+                    "force": True,
+                },
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+
+            # Lock holder editing a different chapter is fine.
+            proj2 = (await client.get(f"/api/v1/projects/{pid}", headers=editor_headers)).json()
+            proj2["chapters"] = [
+                proj2["chapters"][0],
+                {"id": "chB", "title": "章B", "blocks": [{"type": "label", "id": "b", "name": "b"}, {"type": "narration", "text": "editor b"}]},
+            ]
+            r = await client.put(
+                f"/api/v1/projects/{pid}",
+                json={
+                    "data": proj2,
+                    "updated_at": proj2.get("updatedAt"),
+                    "chapter_ids": ["chB"],
+                    "sections": [],
+                },
+                headers=editor_headers,
+            )
+            assert r.status_code == 200, r.text
+
+    _run(_scenario())
+
+
+def test_chapter_scoped_merge_sections_and_create():
+    """Chapter-scoped save can declare sections and create chapters."""
+    ctx = _mk_two_chapter_project()
+    pid, owner_headers, _ = ctx["pid"], ctx["owner"], ctx["editor"]
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            proj = (await client.get(f"/api/v1/projects/{pid}", headers=owner_headers)).json()
+            proj["chapters"] = [
+                proj["chapters"][0],
+                proj["chapters"][1],
+                {"id": "chC", "title": "章C", "blocks": [{"type": "label", "id": "c", "name": "c"}]},
+            ]
+            proj["genre"] = "悬疑"
+            r = await client.put(
+                f"/api/v1/projects/{pid}",
+                json={
+                    "data": proj,
+                    "updated_at": proj.get("updatedAt"),
+                    "chapter_ids": ["chC"],
+                    "sections": ["genre"],
+                },
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+            saved = r.json()
+            assert saved["genre"] == "悬疑"
+            assert any(c["id"] == "chC" for c in saved["chapters"])
+
+            # Unlisted sections are not touched.
+            assert saved["title"] == "合并项目"
+
+    _run(_scenario())

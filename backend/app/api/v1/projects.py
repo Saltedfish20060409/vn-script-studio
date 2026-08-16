@@ -70,6 +70,7 @@ from app.services.projects import (
     create_project_row,
     get_owned_project,
     get_project_readable,
+    merge_project_changes,
     project_to_dict,
     row_to_vn,
     server_llm_credentials,
@@ -186,6 +187,26 @@ async def put_project(
     db: AsyncSession = Depends(get_db),
 ):
     row = await get_owned_project(db, user, project_id)
+
+    chapter_ids = body.chapter_ids or []
+    sections = body.sections or []
+
+    if chapter_ids or sections:
+        # Collaboration stage B: chapter-scoped save.
+        # Only the declared chapters / sections are merged; everything else keeps
+        # the server version so concurrent edits to other chapters survive.
+        if not body.force and chapter_ids:
+            from app.services import collab
+
+            await collab.assert_chapters_unlocked(db, project_id, chapter_ids, user.id)
+        server_vn = row_to_vn(row)
+        client_vn = normalize_project(dict(body.data))
+        merged = merge_project_changes(server_vn, client_vn, chapter_ids, sections)
+        sync_row_from_vn(row, merged)
+        await db.commit()
+        await db.refresh(row)
+        return project_to_dict(row_to_vn(row))
+
     if body.updated_at and not body.force:
         client_ts = body.updated_at.replace("Z", "+00:00")
         try:

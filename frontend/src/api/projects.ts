@@ -47,7 +47,13 @@ export function putProject(
   id: string,
   data: VnProject,
   updatedAt?: string,
-  opts?: { force?: boolean }
+  opts?: {
+    force?: boolean;
+    /** Chapters this save actually modified — server merges only these. */
+    chapterIds?: string[];
+    /** Non-chapter top-level fields this save modified. */
+    sections?: string[];
+  }
 ): Promise<VnProject> {
   return apiFetch<VnProject>(`/projects/${id}`, {
     method: "PUT",
@@ -55,6 +61,8 @@ export function putProject(
       data,
       updated_at: updatedAt,
       force: Boolean(opts?.force),
+      chapter_ids: opts?.chapterIds?.length ? opts.chapterIds : undefined,
+      sections: opts?.sections?.length ? opts.sections : undefined,
     }),
   });
 }

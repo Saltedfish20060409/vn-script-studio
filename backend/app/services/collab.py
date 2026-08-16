@@ -214,6 +214,45 @@ async def list_locks(db: AsyncSession, project_id: str) -> List[Dict[str, Any]]:
     ]
 
 
+async def assert_chapters_unlocked(
+    db: AsyncSession,
+    project_id: str,
+    chapter_ids: List[str],
+    user_id: str,
+) -> None:
+    """Raise 423 when any chapter is actively locked by another member.
+
+    Lock enforcement for chapter-scoped saves: a save that touches locked
+    chapters must be rejected (unless the caller explicitly forces).
+    """
+    now = _now()
+    for cid in chapter_ids:
+        res = await db.execute(
+            select(ChapterLock)
+            .where(
+                ChapterLock.project_id == project_id,
+                ChapterLock.chapter_id == cid,
+                ChapterLock.expires_at > now,
+            )
+        )
+        lock = res.scalar_one_or_none()
+        if lock is None or lock.user_id == user_id:
+            continue
+        ures = await db.execute(select(User.username).where(User.id == lock.user_id))
+        username = ures.scalar_one_or_none() or "其他成员"
+        raise HTTPException(
+            status_code=423,
+            detail={
+                "code": "chapter_locked",
+                "message": f"章节正被 {username} 编辑，请等待其释放锁后再保存",
+                "chapterId": cid,
+                "userId": lock.user_id,
+                "username": username,
+                "expiresAt": lock.expires_at.isoformat(),
+            },
+        )
+
+
 # --------------------------------------------------------------------------
 # Invite links
 # --------------------------------------------------------------------------
