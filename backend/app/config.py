@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://vnss:vnss@localhost:15432/vnss"
     secret_key: str = "change-me-to-a-long-random-string"
     access_token_expire_minutes: int = 60 * 24 * 7
+    refresh_token_expire_days: int = 30
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     deepseek_api_key: str = ""
@@ -44,6 +45,9 @@ class Settings(BaseSettings):
         "VNScriptStudio/0.1 (self-use writing aid; "
         "+https://github.com/Saltedfish20060409/vn-script-studio)"
     )
+
+    # LLM usage accounting / quota. 0 = unlimited (soft cap per user per day).
+    llm_daily_token_cap: int = 0
 
     @property
     def cors_origin_list(self) -> List[str]:

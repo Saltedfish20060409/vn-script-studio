@@ -64,6 +64,20 @@ async def chat_completions(
                 continue
 
             if res.status_code < 400:
+                # Best-effort per-user usage accounting (fire-and-forget).
+                try:
+                    from app.core.usage import current_usage_user, record_usage_later
+
+                    uid = current_usage_user()
+                    if uid:
+                        record_usage_later(
+                            user_id=uid,
+                            kind="llm",
+                            model=model,
+                            usage=usage_from_response(res),
+                        )
+                except Exception:  # noqa: BLE001 - accounting never breaks calls
+                    pass
                 return res
 
             if res.status_code in _RETRY_STATUSES and attempt + 1 < max_retries:

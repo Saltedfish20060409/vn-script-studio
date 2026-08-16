@@ -1,9 +1,11 @@
 """SQLAlchemy ORM models."""
 from app.models.tables import (
+    AgentJob,
     AgentSession,
     AnalysisInboxItem,
     ChapterMemoryArchive,
     ChapterMemorySlice,
+    LlmUsage,
     LoreCraftCard,
     Project,
     ProjectSnapshotRow,
@@ -23,4 +25,6 @@ __all__ = [
     "LoreCraftCard",
     "AnalysisInboxItem",
     "ProjectSnapshotRow",
+    "AgentJob",
+    "LlmUsage",
 ]

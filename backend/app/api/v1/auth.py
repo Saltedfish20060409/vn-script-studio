@@ -1,13 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.db import get_db
 from app.models import User, UserSettings
-from app.schemas import LoginIn, RegisterIn, TokenOut, UserOut
+from app.schemas import LoginIn, RefreshIn, RegisterIn, TokenOut, UserOut
 from app.security import (
     create_access_token,
+    create_refresh_token,
+    decode_token,
     get_current_user,
     hash_password,
     verify_password,
@@ -15,6 +18,15 @@ from app.security import (
 from app.services.settings import DEFAULT_BG
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _tokens(user_id: str, settings: Settings) -> TokenOut:
+    return TokenOut(
+        access_token=create_access_token(user_id, settings),
+        refresh_token=create_refresh_token(user_id, settings),
+        token_type="bearer",
+        expires_in=settings.access_token_expire_minutes * 60,
+    )
 
 
 @router.post("/register", response_model=TokenOut)
@@ -36,8 +48,7 @@ async def register(
     db.add(UserSettings(user_id=user.id, bg=dict(DEFAULT_BG)))
     await db.commit()
     await db.refresh(user)
-    token = create_access_token(user.id, settings)
-    return TokenOut(access_token=token)
+    return _tokens(user.id, settings)
 
 
 @router.post("/login", response_model=TokenOut)
@@ -53,7 +64,27 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用户名或密码错误",
         )
-    return TokenOut(access_token=create_access_token(user.id, settings))
+    return _tokens(user.id, settings)
+
+
+@router.post("/refresh", response_model=TokenOut)
+async def refresh(
+    body: RefreshIn,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Exchange a valid refresh token for a fresh access token (+ rotated refresh)."""
+    try:
+        payload = decode_token(body.refresh_token.strip(), settings)
+    except JWTError as exc:
+        raise HTTPException(status_code=401, detail="刷新令牌无效或已过期") from exc
+    if payload.get("typ") != "refresh" or not payload.get("sub"):
+        raise HTTPException(status_code=401, detail="刷新令牌无效")
+    user_id = str(payload["sub"])
+    result = await db.execute(select(User).where(User.id == user_id))
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=401, detail="用户不存在")
+    return _tokens(user_id, settings)
 
 
 @router.get("/me", response_model=UserOut)

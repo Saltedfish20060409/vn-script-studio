@@ -703,7 +703,9 @@ async def create_snapshot(
 ):
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
-    return await create_snapshot_row(db, project_id, vn, label=body.label)
+    out = await create_snapshot_row(db, project_id, vn, label=body.label)
+    await db.commit()
+    return out
 
 
 @router.post("/{project_id}/snapshots/{snap_id}/restore", response_model=dict)
@@ -1006,6 +1008,10 @@ async def agent_chapter_revise(
             status_code=400,
             detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
         )
+    from app.core.usage import quota_exceeded
+
+    if await quota_exceeded(db, user.id, settings.llm_daily_token_cap):
+        raise HTTPException(status_code=429, detail="今日 LLM 用量已达上限，请明日再试")
     cfg = DeepSeekConfig(
         apiKey=creds["api_key"],
         baseUrl=creds["base_url"],
@@ -1020,10 +1026,9 @@ async def agent_chapter_revise(
     if body.async_mode:
         from types import SimpleNamespace
 
-        from app.core.jobs import get_job_store
+        from app.core.jobs import create_job
         from app.db import AsyncSessionLocal
 
-        store = get_job_store()
         owner = SimpleNamespace(id=user.id)
         payload = {
             "chapter_id": body.chapter_id,
@@ -1035,7 +1040,7 @@ async def agent_chapter_revise(
         }
 
         async def _runner(job):
-            job.touch(stage="revise", progress=0.1, message="章节回炉运行中…")
+            await job.touch(stage="revise", progress=0.1, message="章节回炉运行中…")
             async with AsyncSessionLocal() as session:
                 row2 = await get_owned_project(session, owner, project_id)
                 vn2 = row_to_vn(row2)
@@ -1055,7 +1060,7 @@ async def agent_chapter_revise(
                     )
                     sess.updated_at = datetime.now(timezone.utc)
                     await session.commit()
-                job.result = {
+                await job.set_result({
                     "message": result.message,
                     "diagnosis": result.diagnosis,
                     "diagnosisMd": result.diagnosis_md,
@@ -1072,10 +1077,11 @@ async def agent_chapter_revise(
                     "llmCalls": list(result.llm_calls),
                     "elapsedMs": result.elapsed_ms,
                     "wrote": False,
-                }
-                job.touch(stage="done", progress=0.95, message="回炉预览已生成")
+                })
+                await job.touch(stage="done", progress=0.95, message="回炉预览已生成")
 
-        job = await store.create(
+        job = await create_job(
+            db,
             kind="chapter_revise",
             project_id=project_id,
             user_id=user.id,
@@ -1458,6 +1464,10 @@ async def run_project_agent(
             status_code=400,
             detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
         )
+    from app.core.usage import quota_exceeded
+
+    if await quota_exceeded(db, user.id, settings.llm_daily_token_cap):
+        raise HTTPException(status_code=429, detail="今日 LLM 用量已达上限，请明日再试")
 
     req, last_user = await _build_agent_request(db, project_id, vn, body, settings, creds)
 
@@ -1496,6 +1506,10 @@ async def run_project_agent_stream(
             status_code=400,
             detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
         )
+    from app.core.usage import quota_exceeded
+
+    if await quota_exceeded(db, user.id, settings.llm_daily_token_cap):
+        raise HTTPException(status_code=429, detail="今日 LLM 用量已达上限，请明日再试")
 
     req, last_user = await _build_agent_request(db, project_id, vn, body, settings, creds)
     cfg = DeepSeekConfig(

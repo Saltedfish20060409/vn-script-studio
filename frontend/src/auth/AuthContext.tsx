@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  clearRefreshToken,
   clearToken,
   getToken,
   login as apiLogin,
@@ -49,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         if (!cancelled) {
           clearToken();
+          clearRefreshToken();
           setTokenState(null);
           setUser(null);
         }
@@ -78,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     clearToken();
+    clearRefreshToken();
     setTokenState(null);
     setUser(null);
   }, []);

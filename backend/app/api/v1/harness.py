@@ -91,6 +91,10 @@ async def harness_run(
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     cfg = _cfg(settings)
+    from app.core.usage import quota_exceeded
+
+    if await quota_exceeded(db, user.id, settings.llm_daily_token_cap):
+        raise HTTPException(status_code=429, detail="今日 LLM 用量已达上限，请明日再试")
 
     if body.mode == "audit" or (
         body.role == "editor" and body.mode == "generate" and body.draft

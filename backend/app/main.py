@@ -67,6 +67,32 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def usage_context_middleware(request, call_next):
+        """Carry the authenticated user id for LLM usage accounting."""
+        from app.core.usage import set_usage_user
+
+        user_id: str | None = None
+        auth = request.headers.get("Authorization") or ""
+        if auth.lower().startswith("bearer "):
+            token = auth[7:].strip()
+            if token:
+                try:
+                    from jose import jwt as jose_jwt
+
+                    payload = jose_jwt.decode(
+                        token, settings.secret_key, algorithms=[settings.algorithm]
+                    )
+                    user_id = str(payload.get("sub") or "") or None
+                except Exception:  # noqa: BLE001 - invalid token falls through
+                    user_id = None
+        set_usage_user(user_id)
+        try:
+            return await call_next(request)
+        finally:
+            set_usage_user(None)
+
     app.include_router(api_router)
 
     @app.get("/health")

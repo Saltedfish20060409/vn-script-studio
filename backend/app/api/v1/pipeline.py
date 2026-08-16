@@ -130,6 +130,10 @@ async def pipeline_run(
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     cfg = _cfg(settings)
+    from app.core.usage import quota_exceeded
+
+    if await quota_exceeded(db, user.id, settings.llm_daily_token_cap):
+        raise HTTPException(status_code=429, detail="今日 LLM 用量已达上限，请明日再试")
     stages = body.stages
     if stages is None:
         run_stages = ["plan", "write", "check", "revise", "check"]
@@ -139,15 +143,14 @@ async def pipeline_run(
     if body.async_mode:
         from types import SimpleNamespace
 
-        from app.core.jobs import get_job_store
+        from app.core.jobs import create_job
         from app.db import AsyncSessionLocal
 
-        store = get_job_store()
         payload = body.model_dump()
         owner = SimpleNamespace(id=user.id)
 
         async def _runner(job):
-            job.touch(stage="pipeline", progress=0.1, message="流水线运行中…")
+            await job.touch(stage="pipeline", progress=0.1, message="流水线运行中…")
             async with AsyncSessionLocal() as session:
                 row2 = await get_owned_project(session, owner, project_id)
                 vn2 = row_to_vn(row2)
@@ -175,14 +178,15 @@ async def pipeline_run(
                     await session.commit()
                     await session.refresh(row2)
                     out["project"] = project_to_dict(row_to_vn(row2))
-                job.result = out
-                job.touch(
+                await job.set_result(out)
+                await job.touch(
                     stage="done",
                     progress=0.95,
                     message="流水线完成" if out.get("gate", {}).get("pass") else "流水线结束（门禁未过）",
                 )
 
-        job = await store.create(
+        job = await create_job(
+            db,
             kind="pipeline",
             project_id=project_id,
             user_id=user.id,
@@ -226,9 +230,9 @@ async def project_job_status(
     db: AsyncSession = Depends(get_db),
 ):
     await get_owned_project(db, user, project_id)
-    from app.core.jobs import get_job_store
+    from app.core.jobs import get_job
 
-    job = await get_job_store().get(job_id)
+    job = await get_job(db, job_id)
     if not job or job.project_id != project_id or job.user_id != user.id:
         raise HTTPException(status_code=404, detail="任务不存在")
     return job.to_dict(include_result=job.status in ("done", "error"))

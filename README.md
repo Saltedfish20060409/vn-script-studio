@@ -124,6 +124,23 @@ set PYTHONPATH=.
 pytest tests/ -q
 ```
 
+> API/DB 集成测试（`tests/test_api_*.py`）需要测试库 `vnss_test`：连接串来自
+> `DATABASE_URL_TEST`（默认 `postgresql+asyncpg://vnss:vnss@localhost:15432/vnss_test`）。
+> 连不上时这些用例自动跳过；CI 会起一个 Postgres service 全量运行。
+> 前端：`cd frontend && npm test`（vitest，纯函数单测）。
+
+## 备份 / 恢复
+
+```powershell
+# 备份（默认 backend/backups/，保留最近 14 份）
+.\scripts\backup.ps1
+
+# 恢复（会清空并重建 vnss 库，先备份再恢复）
+.\scripts\restore.ps1 -File .\backups\vnss-20260815-120000.dump
+```
+
+依赖本机可用的 `pg_dump` / `pg_restore`（或 PostgreSQL 客户端安装目录）。
+
 ## 与旧版差异
 
 - 工程与 Agent 会话进入 PostgreSQL，不再依赖浏览器 localStorage 作为主存储

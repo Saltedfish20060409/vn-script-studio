@@ -1,62 +1,72 @@
-"""P0: in-process async jobs."""
+"""Job model + runner lifecycle (unit level, no DB)."""
 from __future__ import annotations
 
 import asyncio
 
-from app.core.jobs import Job, get_job_store
+from app.core.jobs import Job, _run
 
 
-def test_job_store_runs_and_finishes():
-    store = get_job_store()
+def _noop_job() -> Job:
+    return Job(id="job_unit1", kind="test", project_id="p1", user_id="u1")
 
+
+def test_job_touch_updates_fields():
+    async def main():
+        job = _noop_job()
+        await job.touch(stage="work", progress=0.5, message="halfway")
+        assert job.status == "queued"
+        assert job.stage == "work"
+        assert job.progress == 0.5
+        assert job.message == "halfway"
+        await job.touch(status="running")
+        assert job.status == "running"
+        return job
+
+    job = asyncio.run(main())
+    d = job.to_dict()
+    assert d["id"] == job.id
+    assert d["stage"] == "work"
+    assert d["progress"] == 0.5
+
+
+def test_job_set_result_and_to_dict():
+    async def main():
+        job = _noop_job()
+        await job.set_result({"ok": True})
+        return job
+
+    job = asyncio.run(main())
+    assert job.to_dict(include_result=True)["result"] == {"ok": True}
+    assert "result" not in job.to_dict(include_result=False)
+
+
+def test_runner_finishes_done():
     async def _runner(job: Job):
-        job.touch(stage="work", progress=0.5, message="halfway")
-        await asyncio.sleep(0.05)
-        job.result = {"ok": True}
-        job.touch(stage="done", progress=0.9, message="almost")
+        await job.touch(stage="work", progress=0.5, message="halfway")
+        await asyncio.sleep(0.01)
+        await job.set_result({"ok": True})
+        await job.touch(stage="done", progress=0.9, message="almost")
 
-    async def _run():
-        job = await store.create(
-            kind="test",
-            project_id="p1",
-            user_id="u1",
-            runner=_runner,
-        )
-        for _ in range(40):
-            cur = await store.get(job.id)
-            assert cur is not None
-            if cur.status in ("done", "error"):
-                return cur
-            await asyncio.sleep(0.05)
-        raise AssertionError("job did not finish")
+    async def main():
+        job = _noop_job()
+        await _run(job, _runner)
+        return job
 
-    done = asyncio.run(_run())
+    done = asyncio.run(main())
     assert done.status == "done"
-    assert done.result == {"ok": True}
-    assert done.to_dict()["id"] == done.id
+    assert done.progress == 1.0
+    assert done._result == {"ok": True}
 
 
-def test_job_store_captures_error():
-    store = get_job_store()
-
+def test_runner_captures_error():
     async def _boom(_job: Job):
         raise RuntimeError("boom")
 
-    async def _run():
-        job = await store.create(
-            kind="test",
-            project_id="p1",
-            user_id="u1",
-            runner=_boom,
-        )
-        for _ in range(40):
-            cur = await store.get(job.id)
-            assert cur is not None
-            if cur.status in ("done", "error"):
-                return cur
-            await asyncio.sleep(0.05)
-        raise AssertionError("job did not finish")
+    async def main():
+        job = _noop_job()
+        await _run(job, _boom)
+        return job
 
-    done = asyncio.run(_run())
+    done = asyncio.run(main())
     assert done.status == "error"
     assert "boom" in (done.error or "")

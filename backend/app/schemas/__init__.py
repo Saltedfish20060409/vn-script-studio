@@ -6,7 +6,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class TokenOut(BaseModel):
     access_token: str
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
+    expires_in: Optional[int] = None
+
+
+class RefreshIn(BaseModel):
+    refresh_token: str
 
 
 class RegisterIn(BaseModel):

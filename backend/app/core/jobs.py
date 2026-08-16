@@ -1,13 +1,24 @@
-"""In-process async job store for long LLM runs (pipeline / chapter revise)."""
+"""Persistent async job store for long LLM runs (pipeline / chapter revise).
+
+Jobs live in PostgreSQL (agent_jobs) so they survive restarts and are visible
+across workers. The runner itself still executes in the current process; each
+status update commits a fresh row write.
+"""
+
 from __future__ import annotations
 
 import asyncio
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 JobRunner = Callable[["Job"], Awaitable[None]]
+
+# (job) -> None — injected persistence hook; None = no-op (unit tests)
+PersistFn = Callable[["Job"], Awaitable[None]]
 
 
 def _now() -> str:
@@ -24,12 +35,13 @@ class Job:
     stage: str = ""
     progress: float = 0.0
     message: str = ""
-    result: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+    error: str = ""
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
+    _result: Optional[Dict[str, Any]] = field(default=None, repr=False)
+    _persist: Optional[PersistFn] = field(default=None, repr=False)
 
-    def touch(
+    async def touch(
         self,
         *,
         status: Optional[str] = None,
@@ -46,6 +58,14 @@ class Job:
         if message is not None:
             self.message = message
         self.updated_at = _now()
+        if self._persist is not None:
+            await self._persist(self)
+
+    async def set_result(self, value: Optional[Dict[str, Any]]) -> None:
+        self._result = value
+        self.updated_at = _now()
+        if self._persist is not None:
+            await self._persist(self)
 
     def to_dict(self, *, include_result: bool = True) -> Dict[str, Any]:
         out: Dict[str, Any] = {
@@ -60,75 +80,106 @@ class Job:
             "createdAt": self.created_at,
             "updatedAt": self.updated_at,
         }
-        if include_result and self.result is not None:
-            out["result"] = self.result
+        if include_result and self._result is not None:
+            out["result"] = self._result
         return out
 
 
-class JobStore:
-    """Process-local job registry. Survives within one API worker process."""
+def _job_from_row(row) -> Job:
+    return Job(
+        id=row.id,
+        kind=row.kind or "",
+        project_id=row.project_id,
+        user_id=row.user_id,
+        status=row.status or "queued",
+        stage=row.stage or "",
+        progress=float(row.progress or 0.0),
+        message=row.message or "",
+        error=row.error or "",
+        created_at=row.created_at.isoformat() if row.created_at else _now(),
+        updated_at=row.updated_at.isoformat() if row.updated_at else _now(),
+        _result=dict(row.result) if isinstance(row.result, dict) else row.result,
+    )
 
-    def __init__(self, *, max_jobs: int = 200) -> None:
-        self._jobs: Dict[str, Job] = {}
-        self._lock = asyncio.Lock()
-        self._max = max_jobs
 
-    async def create(
-        self,
-        *,
-        kind: str,
-        project_id: str,
-        user_id: str,
-        runner: JobRunner,
-    ) -> Job:
-        job = Job(
-            id=f"job_{uuid.uuid4().hex[:16]}",
+async def _persist_job(job: Job) -> None:
+    """Write the current job state to PostgreSQL (fresh session per write)."""
+    from app.db import AsyncSessionLocal
+    from app.models.tables import AgentJob as AgentJobRow
+
+    async with AsyncSessionLocal() as session:
+        row = await session.get(AgentJobRow, job.id)
+        if row is None:
+            return
+        row.status = job.status
+        row.stage = job.stage
+        row.progress = job.progress
+        row.message = job.message
+        row.error = job.error
+        row.result = job._result
+        row.updated_at = datetime.now(timezone.utc)
+        await session.commit()
+
+
+async def create_job(
+    db: AsyncSession,
+    *,
+    kind: str,
+    project_id: str,
+    user_id: str,
+    runner: JobRunner,
+) -> Job:
+    """Insert a queued job row and start the runner in a background task."""
+    from app.models.tables import AgentJob as AgentJobRow
+
+    job_id = f"job_{uuid.uuid4().hex[:16]}"
+    now = datetime.now(timezone.utc)
+    db.add(
+        AgentJobRow(
+            id=job_id,
             kind=kind,
             project_id=project_id,
             user_id=user_id,
+            status="queued",
+            created_at=now,
+            updated_at=now,
         )
-        async with self._lock:
-            self._jobs[job.id] = job
-            self._trim_locked()
-        asyncio.create_task(self._run(job, runner))
-        return job
+    )
+    await db.commit()
 
-    async def get(self, job_id: str) -> Optional[Job]:
-        return self._jobs.get(job_id)
-
-    def _trim_locked(self) -> None:
-        if len(self._jobs) <= self._max:
-            return
-        # Drop oldest finished jobs first
-        finished = sorted(
-            (
-                j
-                for j in self._jobs.values()
-                if j.status in ("done", "error")
-            ),
-            key=lambda j: j.updated_at,
-        )
-        for j in finished:
-            if len(self._jobs) <= self._max:
-                break
-            self._jobs.pop(j.id, None)
-
-    async def _run(self, job: Job, runner: JobRunner) -> None:
-        job.touch(status="running", stage="start", progress=0.05, message="开始执行")
-        try:
-            await runner(job)
-            if job.status != "error":
-                job.touch(status="done", progress=1.0, message=job.message or "完成")
-        except Exception as exc:  # noqa: BLE001
-            job.error = str(exc)[:800]
-            job.touch(status="error", message="失败", progress=job.progress)
+    job = Job(
+        id=job_id,
+        kind=kind,
+        project_id=project_id,
+        user_id=user_id,
+        created_at=now.isoformat(),
+        updated_at=now.isoformat(),
+        _persist=_persist_job,
+    )
+    asyncio.create_task(
+        _run(job, runner),
+        name=f"job-{kind}-{job_id}",
+    )
+    return job
 
 
-_STORE: Optional[JobStore] = None
+async def get_job(db: AsyncSession, job_id: str) -> Optional[Job]:
+    from app.models.tables import AgentJob as AgentJobRow
+
+    row = await db.get(AgentJobRow, job_id)
+    if row is None:
+        return None
+    job = _job_from_row(row)
+    job._persist = _persist_job
+    return job
 
 
-def get_job_store() -> JobStore:
-    global _STORE
-    if _STORE is None:
-        _STORE = JobStore()
-    return _STORE
+async def _run(job: Job, runner: JobRunner) -> None:
+    await job.touch(status="running", stage="start", progress=0.05, message="开始执行")
+    try:
+        await runner(job)
+        if job.status != "error":
+            await job.touch(status="done", progress=1.0, message=job.message or "完成")
+    except Exception as exc:  # noqa: BLE001
+        job.error = str(exc)[:800]
+        await job.touch(status="error", message="失败", progress=job.progress)

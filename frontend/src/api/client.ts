@@ -11,6 +11,7 @@ import type {
 import type { ServerSettingsOut } from "../lib/settings";
 
 export const TOKEN_KEY = "vnss-token";
+export const REFRESH_TOKEN_KEY = "vnss-refresh-token";
 const API_BASE = "/api/v1";
 
 export function getToken(): string | null {
@@ -32,6 +33,30 @@ export function setToken(token: string) {
 export function clearToken() {
   try {
     localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getRefreshToken(): string | null {
+  try {
+    return localStorage.getItem(REFRESH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setRefreshToken(token: string) {
+  try {
+    localStorage.setItem(REFRESH_TOKEN_KEY, token);
+  } catch {
+    /* ignore quota */
+  }
+}
+
+export function clearRefreshToken() {
+  try {
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
   } catch {
     /* ignore */
   }
@@ -108,10 +133,24 @@ export async function apiFetch<T = unknown>(
   }
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  let res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+
+  // Expired access token → try one refresh, then replay the request once.
+  if (res.status === 401 && !options.skipAuthRedirect) {
+    if (await refreshOnce()) {
+      const h2 = new Headers(options.headers);
+      if (!isFormData && options.body != null && !h2.has("Content-Type")) {
+        h2.set("Content-Type", "application/json");
+      }
+      const t2 = getToken();
+      if (t2) h2.set("Authorization", `Bearer ${t2}`);
+      res = await fetch(`${API_BASE}${path}`, { ...options, headers: h2 });
+    }
+  }
 
   if (res.status === 401) {
     clearToken();
+    clearRefreshToken();
     if (!options.skipAuthRedirect) redirectToLogin();
     throw new ApiError(401, "未登录或登录已过期");
   }
@@ -130,6 +169,40 @@ export async function apiFetch<T = unknown>(
   return (await res.text()) as unknown as T;
 }
 
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+  const rt = getRefreshToken();
+  if (!rt) return false;
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: rt }),
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as TokenOut;
+    if (data.access_token) {
+      setToken(data.access_token);
+      if (data.refresh_token) setRefreshToken(data.refresh_token);
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/** Deduped refresh — concurrent 401s share one refresh round-trip. */
+export function refreshOnce(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = tryRefresh().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 /** Raw fetch for binary/text downloads (keeps headers/blob semantics intact). */
 async function authedRawFetch(
   path: string,
@@ -138,9 +211,18 @@ async function authedRawFetch(
   const token = getToken();
   const headers = new Headers(options.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  let res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  if (res.status === 401) {
+    if (await refreshOnce()) {
+      const h2 = new Headers(options.headers);
+      const t2 = getToken();
+      if (t2) h2.set("Authorization", `Bearer ${t2}`);
+      res = await fetch(`${API_BASE}${path}`, { ...options, headers: h2 });
+    }
+  }
   if (res.status === 401) {
     clearToken();
+    clearRefreshToken();
     redirectToLogin();
     throw new ApiError(401, "未登录或登录已过期");
   }
@@ -157,7 +239,9 @@ async function authedRawFetch(
 
 export interface TokenOut {
   access_token: string;
+  refresh_token?: string | null;
   token_type: string;
+  expires_in?: number | null;
 }
 
 export interface UserOut {
@@ -176,6 +260,7 @@ export async function register(
     skipAuthRedirect: true,
   });
   setToken(data.access_token);
+  if (data.refresh_token) setRefreshToken(data.refresh_token);
   return data;
 }
 
@@ -189,6 +274,7 @@ export async function login(
     skipAuthRedirect: true,
   });
   setToken(data.access_token);
+  if (data.refresh_token) setRefreshToken(data.refresh_token);
   return data;
 }
 

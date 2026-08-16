@@ -198,6 +198,48 @@ class ProjectSnapshotRow(Base):
     project: Mapped["Project"] = relationship(back_populates="snapshot_rows")
 
 
+class AgentJob(Base):
+    """Persistent async job rows (pipeline / chapter revise) — survives restarts."""
+
+    __tablename__ = "agent_jobs"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    # pipeline | chapter_revise
+    kind: Mapped[str] = mapped_column(String(32), default="", index=True)
+    project_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("projects.id"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    # queued | running | done | error
+    status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
+    stage: Mapped[str] = mapped_column(String(64), default="")
+    progress: Mapped[float] = mapped_column(Float, default=0.0)
+    message: Mapped[str] = mapped_column(Text, default="")
+    result: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class LlmUsage(Base):
+    """Per-user LLM token accounting (written fire-and-forget from llm_http)."""
+
+    __tablename__ = "llm_usage"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    project_id: Mapped[Optional[str]] = mapped_column(
+        String(64), ForeignKey("projects.id"), nullable=True, index=True
+    )
+    # coarse call kind: agent | pipeline | revise | harness | voice | brainstorm | map | settings | llm
+    kind: Mapped[str] = mapped_column(String(32), default="llm", index=True)
+    model: Mapped[str] = mapped_column(String(128), default="")
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class LoreCraftCard(Base):
     """Distilled ACG craft card (萌百启发精炼，非百科原文库)."""
 

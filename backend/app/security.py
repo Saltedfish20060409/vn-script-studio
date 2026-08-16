@@ -35,10 +35,30 @@ def create_access_token(
         or timedelta(minutes=settings.access_token_expire_minutes)
     )
     return jwt.encode(
-        {"sub": subject, "exp": expire},
+        {"sub": subject, "typ": "access", "exp": expire},
         settings.secret_key,
         algorithm=settings.algorithm,
     )
+
+
+def create_refresh_token(
+    subject: str,
+    settings: Settings,
+    expires_delta: Optional[timedelta] = None,
+) -> str:
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(days=settings.refresh_token_expire_days)
+    )
+    return jwt.encode(
+        {"sub": subject, "typ": "refresh", "exp": expire},
+        settings.secret_key,
+        algorithm=settings.algorithm,
+    )
+
+
+def decode_token(token: str, settings: Settings) -> dict[str, Any]:
+    """Decode a JWT, raising JWTError on invalid/expired."""
+    return jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
 
 
 def _fernet(settings: Settings) -> Optional[Fernet]:
@@ -101,7 +121,7 @@ async def get_current_user(
             algorithms=[settings.algorithm],
         )
         user_id = payload.get("sub")
-        if not user_id:
+        if not user_id or payload.get("typ") == "refresh":
             raise HTTPException(status_code=401, detail="无效令牌")
     except JWTError as exc:
         raise HTTPException(status_code=401, detail="无效令牌") from exc

@@ -12,10 +12,12 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from app.config import get_settings
 from app.db import Base
 from app.models import (  # noqa: F401
+    AgentJob,
     AgentSession,
     AnalysisInboxItem,
     ChapterMemoryArchive,
     ChapterMemorySlice,
+    LlmUsage,
     LoreCraftCard,
     Project,
     ProjectSnapshotRow,
