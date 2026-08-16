@@ -5,7 +5,7 @@ import random
 import re
 import time
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Set
 
 from app.domain.types import (
     Location,

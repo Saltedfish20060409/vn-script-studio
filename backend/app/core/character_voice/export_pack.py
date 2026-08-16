@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from app.core.character_voice.corpus import find_character, sample_count, scenario_coverage
 from app.domain.types import VnProject

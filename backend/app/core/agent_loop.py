@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 from app.core.agent import (
     AGENT_SYSTEM,
@@ -25,15 +25,15 @@ from app.core.agent_tools import (
     tool_catalog_for_prompt,
 )
 from app.core.ai import DeepSeekConfig
-from app.core.llm_http import content_from_response
-from app.core.llm_provider import LlmProvider, provider_from_config
+from app.core.harness.audit_full import full_audit_draft
 from app.core.lenses import (
     build_lens_prompt_for_project,
     infer_lens_intent,
     resolve_project_lenses,
 )
+from app.core.llm_http import content_from_response
+from app.core.llm_provider import LlmProvider, provider_from_config
 from app.core.mentors import build_mentor_prompt_for_project, resolve_project_mentors
-from app.core.harness.audit_full import full_audit_draft
 from app.core.narrative_lint import NarrativeLintIssue, lint_has_blockers
 from app.core.narrative_review import (
     apply_reviewed_script,

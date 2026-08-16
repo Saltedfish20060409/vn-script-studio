@@ -9,7 +9,7 @@ from app.core.character_voice.corpus import (
     select_corpus_for_prompt,
 )
 from app.core.character_voice.extract import format_script_anchors_for_prompt
-from app.domain.types import Character, VoiceCorpusLine, VoiceCorpusSample, VnProject
+from app.domain.types import Character, VnProject, VoiceCorpusLine, VoiceCorpusSample
 
 
 def _sample(

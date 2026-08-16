@@ -10,7 +10,7 @@ rank the same candidates with vector similarity instead (or in addition).
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Sequence, Tuple
+from typing import List, Sequence, Tuple
 
 _WORD_RE = re.compile(r"[\w\u4e00-\u9fff]+", re.UNICODE)
 

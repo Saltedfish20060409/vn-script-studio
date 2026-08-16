@@ -1,4 +1,6 @@
 from .types import (
+    LOCATION_RELATION_LABELS,
+    MAP_LINE_STYLE_LABELS,
     AgentAction,
     AgentChatMessage,
     AgentContextMeta,
@@ -18,10 +20,8 @@ from .types import (
     LocationId,
     LocationLink,
     LocationRelation,
-    LOCATION_RELATION_LABELS,
     MapElementKind,
     MapLineStyle,
-    MAP_LINE_STYLE_LABELS,
     MapStroke,
     MapStyleId,
     MenuChoice,

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from app.core.project import uid
-from app.domain.types import Character, VoiceCorpusLine, VoiceCorpusSample, VnProject
+from app.domain.types import Character, VnProject, VoiceCorpusLine, VoiceCorpusSample
 
 # Higher = prefer when building generation context
 SOURCE_WEIGHT: Dict[str, float] = {

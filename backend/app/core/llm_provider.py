@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 import httpx
 
-from app.core.ai import DeepSeekConfig
 from app.core import llm_http
+from app.core.ai import DeepSeekConfig
 
 
 @runtime_checkable

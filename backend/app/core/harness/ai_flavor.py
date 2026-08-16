@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from typing import List, Tuple
 
-from app.core.narrative_lint import NarrativeLintIssue, lint_narrative_draft
+from app.core.narrative_lint import lint_narrative_draft
 
 
 @dataclass

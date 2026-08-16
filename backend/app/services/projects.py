@@ -78,8 +78,8 @@ MERGE_SECTIONS = [
 def merge_project_changes(
     server: VnProject,
     client: VnProject,
-    chapter_ids: List[str],
-    sections: List[str],
+    chapter_ids: list[str],
+    sections: list[str],
 ) -> VnProject:
     """Merge client changes into the server version, chapter-scoped.
 
@@ -95,7 +95,7 @@ def merge_project_changes(
     if chapter_ids:
         wanted = set(chapter_ids)
         client_by_id = {c.get("id"): c for c in client_data.get("chapters", [])}
-        merged_chapters: List[Any] = []
+        merged_chapters: list[Any] = []
         for ch in server_data.get("chapters", []):
             cid = ch.get("id")
             if cid in wanted:
@@ -176,7 +176,7 @@ def _chapter_row_id(project_id: str, chapter_id: str) -> str:
 async def upsert_chapter_rows(
     db: AsyncSession,
     project_id: str,
-    chapters: List[dict],
+    chapters: list[dict],
 ) -> None:
     """Write chapters into project_chapter_rows (upsert by id).
 
@@ -241,7 +241,7 @@ async def sync_chapter_rows_from_vn(
 async def load_chapter_rows(
     db: AsyncSession,
     project_id: str,
-) -> List[dict]:
+) -> list[dict]:
     """Read chapters from project_chapter_rows (ordered), None-safe.
 
     NOTE: the blob remains the authoritative chapter source until stage 2

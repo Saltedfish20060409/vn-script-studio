@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 import db_gate
+import pytest
 
 pytestmark = [
     pytest.mark.db,
@@ -328,9 +327,9 @@ def test_chapter_rows_persist_on_scoped_save():
             assert r.status_code == 200, r.text
 
             # Rows exist for both chapters, mirroring the blob.
-            from app.models import ProjectChapterRow
-
             from sqlalchemy import select
+
+            from app.models import ProjectChapterRow
 
             async with db_gate.SessionLocal() as session:
                 res = await session.execute(
@@ -487,7 +486,6 @@ def test_user_llm_api_key_settings():
 
 def test_user_llm_credentials_resolution():
     """resolve_llm_credentials prefers the user's own key, else server env."""
-    from app.services.settings import user_llm_credentials
     from app.services.projects import resolve_llm_credentials
 
     async def _scenario():
@@ -508,9 +506,9 @@ def test_user_llm_credentials_resolution():
             # covered indirectly by the masked echo test. Smoke-test the
             # decrypt path through the service with a fresh session:
             async with db_gate.SessionLocal() as session:
-                from app.models import User
-
                 from sqlalchemy import select
+
+                from app.models import User
 
                 res = await session.execute(
                     select(User).where(User.username == "cred_u1")
@@ -599,7 +597,6 @@ def test_comments_crud_and_roles():
                 headers=editor_headers,
             )
             assert r.status_code == 200, r.text
-            c2 = r.json()
 
             # list all comments for the project
             r = await client.get(f"/api/v1/projects/{pid}/comments", headers=owner_headers)

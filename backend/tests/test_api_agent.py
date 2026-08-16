@@ -11,9 +11,9 @@ import asyncio
 import json
 from unittest.mock import patch
 
+import db_gate
 import pytest
 
-import db_gate
 from app.domain.types import AgentResponse
 
 pytestmark = [

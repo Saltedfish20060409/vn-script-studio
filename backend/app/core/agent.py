@@ -9,38 +9,20 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-import httpx
-
 from app.domain.types import (
     AgentAction,
-    AgentContextMeta,
     AgentRequest,
     AgentResponse,
     Character,
     Location,
-    ScriptBlock,
     SceneChapter,
+    ScriptBlock,
     StoryBible,
     VnProject,
 )
 
-from .agent_context import build_agent_context, infer_agent_task, is_agent_task, task_hint
 from .ai import DeepSeekConfig
-from .mentors import build_mentor_prompt_for_project, resolve_project_mentors
-from .lenses import (
-    build_lens_prompt_for_project,
-    infer_lens_intent,
-    resolve_project_lenses,
-)
-from .narrative_review import (
-    apply_reviewed_script,
-    chapter_tail_plain,
-    extract_script_from_actions,
-    run_narrative_self_review,
-    should_self_review,
-)
 from .project import _to_base36, new_location_link, uid
-from .writing_craft import build_writing_craft_prompt, select_craft_mode
 
 AGENT_SYSTEM = """你是「VN Script Studio」的驻场轻小说 / 视觉小说责编（Editor Agent）。
 

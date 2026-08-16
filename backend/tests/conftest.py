@@ -12,9 +12,8 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 import db_gate
+import pytest
 
 
 def pytest_configure(config):

@@ -11,14 +11,14 @@ import re
 from typing import Any, Dict, List, Optional, Sequence
 
 from app.core.ai import DeepSeekConfig
-from app.core.llm_http import content_from_response
-from app.core.llm_provider import provider_from_config
 from app.core.character_voice.corpus import (
     confirmed_axes,
     find_character,
     format_corpus_for_prompt,
 )
 from app.core.character_voice.extract import format_script_anchors_for_prompt
+from app.core.llm_http import content_from_response
+from app.core.llm_provider import provider_from_config
 from app.domain.types import Character, VnProject
 
 # longSuitable: better for multi-turn「长场次」; still usable in 三选一.

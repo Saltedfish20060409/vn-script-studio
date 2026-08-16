@@ -36,7 +36,7 @@ jobs:
       DATABASE_URL_TEST: postgresql+asyncpg://vnss:vnss@localhost:15432/vnss_test
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -101,7 +101,7 @@ jobs:
       DEEPSEEK_API_KEY: e2e-placeholder-key
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip

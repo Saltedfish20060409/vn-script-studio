@@ -10,12 +10,12 @@ from app.domain.types import Location, LocationLink, ScriptBlock, VnProject
 from .ai import DeepSeekConfig
 from .llm_http import chat_completions, content_from_response
 from .map_catalog import MAP_ELEMENT_PRESETS, preset_by_kind
+from .map_layout import layout_project_map, pinned_location_ids
 from .project import (
     extract_map_from_script,
     new_location_link,
     uid,
 )
-from .map_layout import layout_project_map, pinned_location_ids
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
 _KNOWN_KINDS = {p["kind"] for p in MAP_ELEMENT_PRESETS}

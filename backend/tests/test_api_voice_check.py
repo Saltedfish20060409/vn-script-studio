@@ -5,9 +5,9 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import patch
 
+import db_gate
 import pytest
 
-import db_gate
 from app.core.voice_check import VoiceIssue, VoiceReport
 
 pytestmark = [

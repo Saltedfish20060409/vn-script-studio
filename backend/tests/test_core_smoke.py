@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from app.core import create_demo_project, export_to_renpy, lint_narrative_draft, normalize_project
-from app.core.project import extract_map_from_script
 from app.core.branch_tree import build_branch_tree
+from app.core.project import extract_map_from_script
 
 
 def test_demo_normalize_export():

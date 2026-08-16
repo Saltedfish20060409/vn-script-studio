@@ -4,7 +4,7 @@ import asyncio
 
 from app.core import create_demo_project
 from app.core.map_extract_smart import extract_map_smart
-from app.core.project import extract_map_from_script, _pretty_scene_name
+from app.core.project import _pretty_scene_name, extract_map_from_script
 
 
 def test_pretty_scene_names_are_chinese():

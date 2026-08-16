@@ -22,7 +22,12 @@ from app.core.project import touch_project
 from app.db import get_db
 from app.models import User
 from app.security import get_current_user
-from app.services.projects import get_owned_project, resolve_llm_credentials, row_to_vn, sync_row_from_vn
+from app.services.projects import (
+    get_owned_project,
+    resolve_llm_credentials,
+    row_to_vn,
+    sync_chapter_rows_from_vn,
+)
 
 router = APIRouter(tags=["lenses"])
 
@@ -156,7 +161,7 @@ async def put_project_lenses(
         "customPacks": body.customPacks if body.customPacks is not None else state["customPacks"],
     }
     vn = touch_project(vn)
-    sync_row_from_vn(row, vn)
+    await sync_chapter_rows_from_vn(db, row, vn)
     await db.commit()
     await db.refresh(row)
     active = resolve_project_lenses(vn)
@@ -202,7 +207,7 @@ async def import_project_lens(
         active_ids = active_ids[:3]
     vn.authorLenses = {"activeIds": active_ids, "customPacks": customs}
     vn = touch_project(vn)
-    sync_row_from_vn(row, vn)
+    await sync_chapter_rows_from_vn(db, row, vn)
     await db.commit()
     await db.refresh(row)
     return {

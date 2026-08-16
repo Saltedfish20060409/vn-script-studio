@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
 import io
 import json
+import re
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional
+
 from docx import Document
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
@@ -18,9 +20,9 @@ from app.core import (
     apply_agent_actions,
     build_branch_tree,
     build_map_extract_proposal,
+    export_to_renpy,
     extract_map_from_script,
     extract_map_smart,
-    export_to_renpy,
     lint_narrative_draft,
     normalize_project,
     project_from_plain_text,
@@ -42,19 +44,19 @@ from app.schemas import (
     AgentConversationPutIn,
     AgentConversationRenameIn,
     AgentConversationSummary,
+    AgentIngestSettingsIn,
     AgentRunIn,
     AgentRunOut,
     AgentSessionOut,
     AgentSessionPutIn,
     AiRunIn,
-    LintIn,
+    ChapterReviseApplyIn,
+    ChapterReviseIn,
     FactsAcceptIn,
     FactsAckStaleIn,
     FactsRejectIn,
     FactsScanIn,
-    AgentIngestSettingsIn,
-    ChapterReviseIn,
-    ChapterReviseApplyIn,
+    LintIn,
     MapExtractAcceptIn,
     MapExtractIn,
     ProjectCreateIn,
@@ -79,8 +81,14 @@ from app.services.projects import (
 )
 from app.services.snapshots import (
     create_snapshot as create_snapshot_row,
+)
+from app.services.snapshots import (
     delete_snapshot as delete_snapshot_row,
+)
+from app.services.snapshots import (
     get_snapshot_payload,
+)
+from app.services.snapshots import (
     list_snapshots as list_snapshot_rows,
 )
 

@@ -66,6 +66,8 @@ from .narrative_review import (
 )
 from .novel_memory import (
     DEFAULT_SPAN as MEMORY_ARCHIVE_SPAN,
+)
+from .novel_memory import (
     build_all_archive_drafts,
     format_memory_for_agent,
     slice_text,

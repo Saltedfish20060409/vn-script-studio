@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from app.core.mentors import (
+    _FRONTMATTER_RE,
     MentorPack,
     _clip,
     _parse_frontmatter,
-    _FRONTMATTER_RE,
     _split_sections,
 )
 

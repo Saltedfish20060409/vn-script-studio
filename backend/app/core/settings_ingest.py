@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from app.domain.types import AgentAction, Character, VnProject
 
-from .agent import apply_agent_actions, _normalize_bible_patch
+from .agent import _normalize_bible_patch, apply_agent_actions
 from .ai import DeepSeekConfig
 from .file_text import format_attachment_block
 from .llm_http import chat_completions, content_from_response

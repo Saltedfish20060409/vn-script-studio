@@ -313,7 +313,7 @@ def distill_from_extract(
             ],
             "vn_beats": [
                 f"用一个日常物件触发「{term}」相关的态度反差",
-                f"选项分叉：迎合该类型期待 / 故意颠覆期待",
+                "选项分叉：迎合该类型期待 / 故意颠覆期待",
             ],
             "source_title": source_title or term,
             "source_url": source_url,

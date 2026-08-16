@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.domain.types import Character, Location, ScriptBlock, VnProject
@@ -486,7 +486,7 @@ def build_agent_context(
             if chatMemory and chatMemory.strip()
             else ""
         ),
-        f"\n## 章节目录（含本地摘要）\n" + "\n".join(index_lines),
+        "\n## 章节目录（含本地摘要）\n" + "\n".join(index_lines),
         (
             "\n## Characters（内部参考：只校准语气与行为，禁止写入对白当说明书）\n"
             + "\n".join(_char_card(r[0]) for r in picked_chars)
@@ -496,17 +496,17 @@ def build_agent_context(
         (
             "\n## Locations（内部参考：氛围与走位，勿念地名百科）\n"
             + "\n".join(_loc_card(r[0]) for r in picked_locs)
-            + (f"\n通路:\n" + "\n".join(link_lines) if link_lines else "")
+            + ("\n通路:\n" + "\n".join(link_lines) if link_lines else "")
             if picked_locs
             else ""
         ),
         (
-            f"\n## Variables / 状态机\n" + "\n".join(var_lines)
+            "\n## Variables / 状态机\n" + "\n".join(var_lines)
             if show_vars
             else (f"\n## Variables / 状态机\n{_clip(chr(10).join(var_lines), 600)}" if show_vars_chat_clipped else "")
         ),
         f"\n## Sprites\n{_clip(chr(10).join(sprite_lines), 400)}" if sprite_lines else "",
-        f"\n## 其他章节（摘要优先）\n" + "\n\n".join(other_chapter_blocks) if other_chapter_blocks else "",
+        "\n## 其他章节（摘要优先）\n" + "\n\n".join(other_chapter_blocks) if other_chapter_blocks else "",
         (
             f"\n{focus_body}" + (f"\n（章摘要备忘: {focus_digest.beatSummary}）" if focus_digest and focus_digest.beatSummary else "")
             if focus_body

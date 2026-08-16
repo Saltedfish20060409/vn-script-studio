@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import asyncio
 
-from app.core.ai import DeepSeekConfig
 from app.core.agent_loop import run_agent_loop
+from app.core.ai import DeepSeekConfig
 from app.domain.types import AgentRequest, VnProject
 
 

@@ -6,8 +6,8 @@ import re
 import time
 from typing import Any, Callable, Dict, List, Optional
 
-from app.core.ai import DeepSeekConfig
 from app.core.agent_context import _blocks_to_plain
+from app.core.ai import DeepSeekConfig
 from app.core.harness.audit_full import full_audit_draft
 from app.core.harness.pipeline import build_writer_user_prompt, run_harness_llm
 from app.core.pipeline.apply_draft import apply_draft_to_chapter, extract_script_body
@@ -117,6 +117,7 @@ async def stage_write(
         # Token-level streaming: same prompt, SSE deltas forwarded to the sink.
         from app.core.harness.roles import build_role_system
         from app.core.llm_http import stream_chat_completions
+        from app.core.renpy import project_to_context
 
         extra = "作品上下文（节选）：\n" + project_to_context(project)[:3500]
         system = build_role_system("writer", extra=extra, project=project)

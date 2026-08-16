@@ -241,7 +241,6 @@ def extract_from_bible(project: VnProject) -> List[FactCandidate]:
     if not text.strip():
         return []
     fp = bible_fingerprint(project)
-    idx = _char_index(project)
     out: List[FactCandidate] = []
     chars = [c for c in project.characters if c.displayName]
     for i, a in enumerate(chars):

@@ -2,19 +2,18 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from app.core.ai import DeepSeekConfig
 from app.core.harness.ai_flavor import (
-    HarnessIssue,
     issues_to_dict,
     lint_vn_harness,
     summarize_issues,
 )
 from app.core.harness.roles import build_role_system
 from app.core.llm_http import chat_completions, content_from_response
-from app.domain.types import VnProject
 from app.core.renpy import project_to_context
+from app.domain.types import VnProject
 
 
 async def run_harness_llm(

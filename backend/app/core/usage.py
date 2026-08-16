@@ -7,7 +7,6 @@ inherit the context via asyncio.create_task, so their LLM calls are counted too.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from contextvars import ContextVar
 from datetime import datetime, timezone
@@ -121,7 +120,8 @@ async def user_usage_totals(
 
 
 async def today_usage(db, user_id: str) -> Dict[str, Any]:
-    from datetime import datetime as _dt, time as _time
+    from datetime import datetime as _dt
+    from datetime import time as _time
 
     start = _dt.combine(_dt.now(timezone.utc).date(), _time.min, tzinfo=timezone.utc)
     return await user_usage_totals(db, user_id, since=start)

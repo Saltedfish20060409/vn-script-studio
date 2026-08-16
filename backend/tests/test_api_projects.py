@@ -5,9 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 
-import pytest
-
 import db_gate
+import pytest
 
 pytestmark = [
     pytest.mark.db,

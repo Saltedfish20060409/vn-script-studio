@@ -31,8 +31,8 @@ def test_format_diagnosis_md_basic():
 def test_fake_choice_and_rough_patch():
     from app.core.chapter_revise import (
         _ensure_rough_choice,
-        _has_fake_choice,
         _hard_fail_snippets,
+        _has_fake_choice,
     )
 
     menu = """
@@ -104,12 +104,12 @@ def test_needs_smooth_and_soft_critic_gate():
 
 def test_menu_reseed_and_qa_compress():
     from app.core.chapter_revise import (
+        _apply_diagnosis_patches,
+        _build_user_notes,
         _commercial_score,
         _compress_qa_pingpong,
         _has_choice_menu,
         _reseed_menus_from_source,
-        _apply_diagnosis_patches,
-        _build_user_notes,
         format_diagnosis_md,
     )
 
