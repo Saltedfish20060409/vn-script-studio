@@ -68,6 +68,18 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
 
+_DEFAULT_SECRET = "change-me-to-a-long-random-string"
+
+
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    # Hard-fail on the publicly-known default or an obviously weak key: a
+    # guessable JWT signing secret allows forging any user's tokens.
+    if settings.secret_key == _DEFAULT_SECRET or len(settings.secret_key) < 32:
+        raise RuntimeError(
+            "SECRET_KEY 未配置为强随机值：请在 backend/.env 设置 "
+            "SECRET_KEY=$(openssl rand -hex 64)（至少 32 字符），"
+            "并轮换所有已签发令牌。"
+        )
+    return settings

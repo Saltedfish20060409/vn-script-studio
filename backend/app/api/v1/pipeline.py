@@ -190,41 +190,51 @@ async def pipeline_run(
 
         async def _runner(job):
             await job.touch(stage="pipeline", progress=0.1, message="流水线运行中…")
-            async with AsyncSessionLocal() as session:
-                row2 = await get_owned_project(session, owner, project_id)
-                vn2 = row_to_vn(row2)
-                out = await run_pipeline(
-                    cfg,
-                    vn2,
-                    instruction=payload.get("instruction") or "",
-                    chapter_id=payload.get("chapter_id"),
-                    selection=payload.get("selection") or "",
-                    draft=payload.get("draft") or "",
-                    stages=run_stages,
-                    db=session,
-                    project_id=project_id,
-                    apply_to_chapter=bool(
-                        payload.get("apply_to_chapter") and payload.get("chapter_id")
-                    ),
-                    apply_mode=payload.get("apply_mode") or "replace",
-                    max_revise_rounds=int(payload.get("max_revise_rounds") or 2),
-                    voice_check=bool(payload.get("voice_check", True)),
-                    voice_hard=bool(payload.get("voice_hard", False)),
-                    semantic_beats=bool(payload.get("semantic_beats", True)),
-                    on_stage=_on_stage,
-                    on_token=_on_token,
-                )
-                if out.get("project") is not None:
-                    sync_row_from_vn(row2, out["project"])
-                    await session.commit()
-                    await session.refresh(row2)
-                    out["project"] = project_to_dict(row_to_vn(row2))
-                await job.set_result(out)
-                await job.touch(
-                    stage="done",
-                    progress=0.95,
-                    message="流水线完成" if out.get("gate", {}).get("pass") else "流水线结束（门禁未过）",
-                )
+            try:
+                async with AsyncSessionLocal() as session:
+                    row2 = await get_owned_project(session, owner, project_id)
+                    vn2 = row_to_vn(row2)
+                    out = await run_pipeline(
+                        cfg,
+                        vn2,
+                        instruction=payload.get("instruction") or "",
+                        chapter_id=payload.get("chapter_id"),
+                        selection=payload.get("selection") or "",
+                        draft=payload.get("draft") or "",
+                        stages=run_stages,
+                        db=session,
+                        project_id=project_id,
+                        apply_to_chapter=bool(
+                            payload.get("apply_to_chapter") and payload.get("chapter_id")
+                        ),
+                        apply_mode=payload.get("apply_mode") or "replace",
+                        max_revise_rounds=int(payload.get("max_revise_rounds") or 2),
+                        voice_check=bool(payload.get("voice_check", True)),
+                        voice_hard=bool(payload.get("voice_hard", False)),
+                        semantic_beats=bool(payload.get("semantic_beats", True)),
+                        on_stage=_on_stage,
+                        on_token=_on_token,
+                    )
+                    if out.get("project") is not None:
+                        sync_row_from_vn(row2, out["project"])
+                        await session.commit()
+                        await session.refresh(row2)
+                        out["project"] = project_to_dict(row_to_vn(row2))
+                    await job.set_result(out)
+                    await job.touch(
+                        stage="done",
+                        progress=0.95,
+                        message="流水线完成" if out.get("gate", {}).get("pass") else "流水线结束（门禁未过）",
+                    )
+            finally:
+                # The SSE event stream terminates on stage=done — without this
+                # push it would hang on keepalives forever and the final result
+                # would never reach the client.
+                if stage_queue is not None:
+                    try:
+                        stage_queue.put_nowait({"type": "stage", "stage": "done"})
+                    except asyncio.QueueFull:
+                        pass
 
         job = await create_job(
             db,

@@ -178,3 +178,92 @@ def test_projects_require_auth_401():
             assert r.status_code == 401
 
     _run(_scenario())
+
+
+def test_delete_project_with_children_cascades():
+    """Deleting a project that has been actively used must succeed and clean
+    up child rows (chapter rows, members, comments, locks, snapshots, shares)."""
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            owner_headers = await db_gate.register_headers(client, "del_owner")
+            member_headers = await db_gate.register_headers(client, "del_member")
+
+            r = await client.post(
+                "/api/v1/projects", json={"title": "要删除的项目"}, headers=owner_headers
+            )
+            pid = r.json()["id"]
+
+            # Save a chapter (writes project_chapter_rows)
+            proj = r.json()
+            proj["chapters"] = [
+                {"id": "ch1", "title": "第一章", "blocks": [{"type": "label", "id": "a", "name": "a"}]}
+            ]
+            r = await client.put(
+                f"/api/v1/projects/{pid}",
+                json={"data": proj, "updated_at": proj.get("updatedAt"), "force": True},
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+
+            # Add a member, a lock, a comment, a snapshot, a share
+            r = await client.post(
+                f"/api/v1/projects/{pid}/members",
+                json={"username": "del_member", "role": "editor"},
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+            r = await client.post(
+                f"/api/v1/projects/{pid}/locks/ch1", headers=member_headers
+            )
+            assert r.status_code == 200, r.text
+            r = await client.post(
+                f"/api/v1/projects/{pid}/comments",
+                json={"chapter_id": "ch1", "text": "批注"},
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+            r = await client.post(
+                f"/api/v1/projects/{pid}/snapshots",
+                json={"label": "v1"},
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+            r = await client.post(
+                f"/api/v1/projects/{pid}/shares", headers=owner_headers
+            )
+            assert r.status_code == 200, r.text
+
+            # Now delete — must succeed and cascade everything.
+            r = await client.delete(f"/api/v1/projects/{pid}", headers=owner_headers)
+            assert r.status_code == 200, r.text
+
+            # Project gone.
+            r = await client.get(f"/api/v1/projects/{pid}", headers=owner_headers)
+            assert r.status_code == 404
+
+            # Child rows gone from the DB.
+            from sqlalchemy import text
+            from sqlalchemy.ext.asyncio import create_async_engine
+
+            engine = create_async_engine(
+                db_gate.TEST_DB_URL
+                if hasattr(db_gate, "TEST_DB_URL")
+                else "postgresql+asyncpg://vnss:vnss@localhost:54102/vnss_test"
+            )
+            async with engine.connect() as conn:
+                for table in (
+                    "project_chapter_rows",
+                    "project_members",
+                    "chapter_locks",
+                    "project_comments",
+                    "project_snapshots",
+                    "shares",
+                ):
+                    r2 = await conn.execute(
+                        text(f"SELECT count(*) FROM {table} WHERE project_id = :p"),
+                        {"p": pid},
+                    )
+                    assert r2.scalar() == 0, f"{table} 残留行"
+            await engine.dispose()
+
+    _run(_scenario())

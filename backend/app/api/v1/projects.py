@@ -278,15 +278,10 @@ async def delete_project(
     db: AsyncSession = Depends(get_db),
 ):
     row = await get_owned_project(db, user, project_id)
-    # cascade-ish cleanup
-    sess = await db.execute(
-        select(AgentSession).where(AgentSession.project_id == project_id)
-    )
-    for s in sess.scalars().all():
-        await db.delete(s)
-    shares = await db.execute(select(Share).where(Share.project_id == project_id))
-    for s in shares.scalars().all():
-        await db.delete(s)
+    # All child tables (chapter rows, members, comments, locks, snapshots,
+    # invites, inbox, memory archives, jobs, usage, lore cards, shares,
+    # agent sessions) reference projects.id with ON DELETE CASCADE — removing
+    # the project row cleans everything up.
     await db.delete(row)
     await db.commit()
     return {"ok": True}

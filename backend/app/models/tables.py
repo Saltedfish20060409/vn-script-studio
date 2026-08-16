@@ -44,12 +44,14 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     owner: Mapped["User"] = relationship(back_populates="projects")
-    shares: Mapped[list["Share"]] = relationship(back_populates="project")
+    shares: Mapped[list["Share"]] = relationship(
+        back_populates="project", passive_deletes=True
+    )
     agent_sessions: Mapped[list["AgentSession"]] = relationship(
-        back_populates="project"
+        back_populates="project", passive_deletes=True
     )
     snapshot_rows: Mapped[list["ProjectSnapshotRow"]] = relationship(
-        back_populates="project", cascade="all, delete-orphan"
+        back_populates="project", passive_deletes=True
     )
 
 
@@ -57,7 +59,7 @@ class Share(Base):
     __tablename__ = "shares"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(64), ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     title_snapshot: Mapped[str] = mapped_column(String(255), default="")
     data_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
@@ -74,7 +76,7 @@ class AgentSession(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("projects.id"), index=True
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     title: Mapped[str] = mapped_column(String(255), default="新对话")
     messages: Mapped[list[Any]] = mapped_column(JSONB, default=list)
@@ -114,7 +116,7 @@ class ChapterMemoryArchive(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("projects.id"), index=True
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     # e.g. chapters_001_010
     label: Mapped[str] = mapped_column(String(64))
@@ -166,7 +168,7 @@ class AnalysisInboxItem(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("projects.id"), index=True
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     # character_link | timeline_event | source_snippet
     kind: Mapped[str] = mapped_column(String(32), index=True)
@@ -186,7 +188,7 @@ class ProjectSnapshotRow(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("projects.id"), index=True
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     label: Mapped[str] = mapped_column(String(255), default="")
     # sha256[:32] of the canonical payload — used for dedupe
@@ -207,7 +209,7 @@ class AgentJob(Base):
     # pipeline | chapter_revise
     kind: Mapped[str] = mapped_column(String(32), default="", index=True)
     project_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("projects.id"), index=True
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     user_id: Mapped[str] = mapped_column(String(36), index=True)
     # queued | running | done | error
@@ -229,7 +231,7 @@ class LlmUsage(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String(36), index=True)
     project_id: Mapped[Optional[str]] = mapped_column(
-        String(64), ForeignKey("projects.id"), nullable=True, index=True
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
     # coarse call kind: agent | pipeline | revise | harness | voice | brainstorm | map | settings | llm
     kind: Mapped[str] = mapped_column(String(32), default="llm", index=True)
@@ -247,7 +249,7 @@ class ProjectMember(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("projects.id"), index=True
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     user_id: Mapped[str] = mapped_column(String(36), index=True)
     # owner | editor | viewer
@@ -262,7 +264,7 @@ class ProjectInvite(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("projects.id"), index=True
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     # editor | viewer
@@ -279,7 +281,7 @@ class ChapterLock(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("projects.id"), index=True
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     chapter_id: Mapped[str] = mapped_column(String(64), index=True)
     user_id: Mapped[str] = mapped_column(String(36), index=True)
@@ -296,7 +298,7 @@ class LoreCraftCard(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     # empty/null = global library; else project-scoped favorites
     project_id: Mapped[Optional[str]] = mapped_column(
-        String(64), ForeignKey("projects.id"), nullable=True, index=True
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
     term: Mapped[str] = mapped_column(String(128), index=True)
     aliases: Mapped[list[Any]] = mapped_column(JSONB, default=list)
@@ -325,7 +327,7 @@ class ProjectComment(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("projects.id"), index=True
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     chapter_id: Mapped[str] = mapped_column(String(64), index=True)
     # chapter-level when empty; else block:<id> or text range
@@ -351,7 +353,7 @@ class ProjectChapterRow(Base):
 
     id: Mapped[str] = mapped_column(String(96), primary_key=True)
     project_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("projects.id"), index=True
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     chapter_id: Mapped[str] = mapped_column(String(64), index=True)
     title: Mapped[str] = mapped_column(String(255), default="")
