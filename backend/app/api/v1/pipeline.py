@@ -29,6 +29,7 @@ from app.models import User
 from app.security import get_current_user
 from app.services.projects import (
     get_owned_project,
+    get_project_readable,
     project_to_dict,
     row_to_vn,
     server_llm_credentials,
@@ -304,7 +305,7 @@ async def project_job_status(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await get_owned_project(db, user, project_id)
+    await get_project_readable(db, user, project_id)
     from app.core.jobs import get_job
 
     job = await get_job(db, job_id)
@@ -427,7 +428,7 @@ async def pipeline_runs_list(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    row = await get_owned_project(db, user, project_id)
+    row = await get_project_readable(db, user, project_id)
     vn = row_to_vn(row)
     return {"runs": list_harness_runs(vn, limit=min(max(limit, 1), 24))}
 
@@ -438,7 +439,7 @@ async def pipeline_ledger_get(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    row = await get_owned_project(db, user, project_id)
+    row = await get_project_readable(db, user, project_id)
     vn = row_to_vn(row)
     ledger = get_ledger(vn)
     return {

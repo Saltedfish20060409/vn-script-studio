@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     auth,
     character_voice,
+    collab,
     harness,
     lenses,
     lore,
@@ -28,3 +29,4 @@ api_router.include_router(lore.router)
 api_router.include_router(settings.router)
 api_router.include_router(shares.router)
 api_router.include_router(usage.router)
+api_router.include_router(collab.router)

@@ -15,7 +15,7 @@ from app.services.novel_memory import (
     get_latest_continuity,
     list_memory_archives,
 )
-from app.services.projects import get_owned_project, row_to_vn
+from app.services.projects import get_owned_project, get_project_readable, row_to_vn
 
 router = APIRouter(prefix="/projects", tags=["memory"])
 
@@ -50,7 +50,7 @@ async def memory_list(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await get_owned_project(db, user, project_id)
+    await get_project_readable(db, user, project_id)
     return {"archives": await list_memory_archives(db, project_id)}
 
 
@@ -60,7 +60,7 @@ async def memory_latest(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await get_owned_project(db, user, project_id)
+    await get_project_readable(db, user, project_id)
     latest = await get_latest_continuity(db, project_id)
     if not latest:
         return {"latest": None}
@@ -74,7 +74,7 @@ async def memory_detail(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await get_owned_project(db, user, project_id)
+    await get_project_readable(db, user, project_id)
     detail = await get_archive_detail(db, project_id, archive_id)
     if not detail:
         raise HTTPException(status_code=404, detail="记忆归档不存在")

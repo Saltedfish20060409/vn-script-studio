@@ -34,6 +34,7 @@ from app.models import User
 from app.security import get_current_user
 from app.services.projects import (
     get_owned_project,
+    get_project_readable,
     project_to_dict,
     row_to_vn,
     server_llm_credentials,
@@ -152,7 +153,7 @@ async def get_character_voice_state(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    row = await get_owned_project(db, user, project_id)
+    row = await get_project_readable(db, user, project_id)
     vn = row_to_vn(row)
     char = _char_or_404(vn, character_id)
     return {
@@ -467,7 +468,7 @@ async def export_character_voice_pack(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    row = await get_owned_project(db, user, project_id)
+    row = await get_project_readable(db, user, project_id)
     vn = row_to_vn(row)
     _char_or_404(vn, character_id)
     try:
@@ -486,7 +487,7 @@ async def export_character_voice_pack_md(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    row = await get_owned_project(db, user, project_id)
+    row = await get_project_readable(db, user, project_id)
     vn = row_to_vn(row)
     _char_or_404(vn, character_id)
     pack = build_nuwa_export_markdown(vn, character_id=character_id)

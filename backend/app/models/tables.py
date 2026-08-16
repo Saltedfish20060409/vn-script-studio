@@ -240,6 +240,37 @@ class LlmUsage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class ProjectMember(Base):
+    """Collaborative membership — owner | editor | viewer (owner is the creator)."""
+
+    __tablename__ = "project_members"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("projects.id"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    # owner | editor | viewer
+    role: Mapped[str] = mapped_column(String(16), default="editor")
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ChapterLock(Base):
+    """Chapter-level edit lock — prevents two editors clobbering the same chapter."""
+
+    __tablename__ = "chapter_locks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("projects.id"), index=True
+    )
+    chapter_id: Mapped[str] = mapped_column(String(64), index=True)
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    # Heartbeat expiry — stale locks are reclaimable.
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class LoreCraftCard(Base):
     """Distilled ACG craft card (萌百启发精炼，非百科原文库)."""
 

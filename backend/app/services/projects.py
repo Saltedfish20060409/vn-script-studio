@@ -52,13 +52,54 @@ def sync_row_from_vn(row: Project, vn: VnProject) -> None:
 
 
 async def get_owned_project(db: AsyncSession, user: User, project_id: str) -> Project:
-    result = await db.execute(
-        select(Project).where(Project.id == project_id, Project.owner_id == user.id)
-    )
-    row = result.scalar_one_or_none()
+    """Access control: project owner or a project member with write rights.
+
+    Backward compatible — owner behaviour unchanged; editors are now allowed.
+    Non-members get 404 (project existence is not leaked); viewers get 403.
+    """
+    row = await get_project_row(db, project_id)
     if row is None:
         raise HTTPException(status_code=404, detail="项目不存在")
-    return row
+    if row.owner_id == user.id:
+        return row
+    role = await member_role(db, project_id, user.id)
+    if role in ("owner", "editor"):
+        return row
+    if role == "viewer":
+        raise HTTPException(status_code=403, detail="无编辑权限（只读成员）")
+    raise HTTPException(status_code=404, detail="项目不存在")
+
+
+async def get_project_readable(db: AsyncSession, user: User, project_id: str) -> Project:
+    """Read access: project owner or any member (editor / viewer)."""
+    row = await get_project_row(db, project_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    if row.owner_id == user.id:
+        return row
+    role = await member_role(db, project_id, user.id)
+    if role in ("owner", "editor", "viewer"):
+        return row
+    raise HTTPException(status_code=404, detail="项目不存在")
+
+
+async def get_project_row(db: AsyncSession, project_id: str) -> Optional[Project]:
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    return result.scalar_one_or_none()
+
+
+async def member_role(db: AsyncSession, project_id: str, user_id: str) -> Optional[str]:
+    """Return the member role for (project, user) or None."""
+    from app.models import ProjectMember
+
+    result = await db.execute(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == user_id,
+        )
+    )
+    row = result.scalar_one_or_none()
+    return row.role if row else None
 
 
 async def create_project_row(

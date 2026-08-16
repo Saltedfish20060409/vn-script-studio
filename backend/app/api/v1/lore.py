@@ -13,7 +13,7 @@ from app.db import get_db
 from app.models import User
 from app.security import get_current_user
 from app.services import lore as lore_svc
-from app.services.projects import get_owned_project, row_to_vn
+from app.services.projects import get_owned_project, get_project_readable, row_to_vn
 
 router = APIRouter(prefix="/projects", tags=["lore"])
 
@@ -51,7 +51,7 @@ async def lore_meta(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    await get_owned_project(db, user, project_id)
+    await get_project_readable(db, user, project_id)
     return {
         "attribution": ATTRIBUTION,
         "licenseNote": "CC BY-NC-SA 3.0（以萌娘百科页面标注为准）；自用精炼，勿商业整页复用。",
@@ -67,7 +67,7 @@ async def lore_checklist(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await get_owned_project(db, user, project_id)
+    await get_project_readable(db, user, project_id)
     kind_list = [k.strip() for k in (kinds or "").split(",") if k.strip()] or None
     return {"cards": lore_svc.checklist(kind_list), "attribution": ATTRIBUTION}
 
@@ -78,7 +78,7 @@ async def lore_list_cards(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await get_owned_project(db, user, project_id)
+    await get_project_readable(db, user, project_id)
     return {"cards": await lore_svc.list_project_cards(db, project_id)}
 
 

@@ -69,6 +69,7 @@ from app.services.novel_memory import get_latest_continuity
 from app.services.projects import (
     create_project_row,
     get_owned_project,
+    get_project_readable,
     project_to_dict,
     row_to_vn,
     server_llm_credentials,
@@ -173,7 +174,7 @@ async def get_project(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    row = await get_owned_project(db, user, project_id)
+    row = await get_project_readable(db, user, project_id)
     return project_to_dict(row_to_vn(row))
 
 
@@ -280,7 +281,7 @@ async def export_rpy(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    row = await get_owned_project(db, user, project_id)
+    row = await get_project_readable(db, user, project_id)
     text = export_to_renpy(row_to_vn(row))
     return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
 
@@ -297,7 +298,7 @@ async def export_bundle(
 
     from app.core.renpy import export_project_bundle
 
-    row = await get_owned_project(db, user, project_id)
+    row = await get_project_readable(db, user, project_id)
     vn = row_to_vn(row)
     files = export_project_bundle(vn)
     buf = _io.BytesIO()
@@ -321,7 +322,7 @@ async def export_json(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    row = await get_owned_project(db, user, project_id)
+    row = await get_project_readable(db, user, project_id)
     payload = json.dumps(project_to_dict(row_to_vn(row)), ensure_ascii=False, indent=2)
     return Response(
         content=payload,
@@ -566,7 +567,7 @@ async def analysis_facts_inbox(
 ):
     from app.services import analysis_inbox as inbox_svc
 
-    await get_owned_project(db, user, project_id)
+    await get_project_readable(db, user, project_id)
     rows = await inbox_svc.list_inbox(
         db,
         project_id,
@@ -719,7 +720,7 @@ async def list_snapshots(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await get_owned_project(db, user, project_id)
+    await get_project_readable(db, user, project_id)
     return await list_snapshot_rows(db, project_id)
 
 
@@ -863,7 +864,7 @@ async def list_agent_conversations(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await get_owned_project(db, user, project_id)
+    await get_project_readable(db, user, project_id)
     rows = await _list_sessions(db, project_id)
     return [
         AgentConversationSummary(
@@ -902,7 +903,7 @@ async def get_agent_conversation(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await get_owned_project(db, user, project_id)
+    await get_project_readable(db, user, project_id)
     sess = await _get_session(db, project_id, conversation_id)
     return _conversation_out(sess)
 
@@ -987,7 +988,7 @@ async def get_agent_session(
     db: AsyncSession = Depends(get_db),
 ):
     """Back-compat: returns the most recently updated conversation."""
-    await get_owned_project(db, user, project_id)
+    await get_project_readable(db, user, project_id)
     sess = await _get_or_create_latest_session(db, project_id)
     return _conversation_out(sess)
 

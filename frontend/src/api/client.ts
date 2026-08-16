@@ -13,3 +13,4 @@ export * from "./pipeline";
 export * from "./voice";
 export * from "./lore";
 export * from "./misc";
+export * from "./collab";

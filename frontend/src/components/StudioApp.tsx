@@ -33,6 +33,13 @@ import {
   type SnapshotSummary,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import {
+  getProjectLocks,
+  lockChapter,
+  subscribeProjectEvents,
+  unlockChapter,
+  type ChapterLockInfo,
+} from "../api/collab";
 import { ScriptEditor } from "./ScriptEditor";
 import { MapStudio } from "./MapStudio";
 import { MapExtractReview } from "./MapExtractReview";
@@ -45,6 +52,7 @@ import { FocusChrome } from "./FocusChrome";
 import { useConfirm, usePrompt } from "./ConfirmDialog";
 import { EmptyStage } from "./EmptyStage";
 import { ProjectLibraryPanel } from "./ProjectLibraryPanel";
+import { CollabPanel } from "./CollabPanel";
 import { ProjectExportPanel } from "./ProjectExportPanel";
 import { ProjectHistoryPanel } from "./ProjectHistoryPanel";
 import { StudioBootScreen } from "./StudioBootScreen";
@@ -128,6 +136,13 @@ export function StudioApp() {
   const [projectsList, setProjectsList] = useState<ProjectSummary[]>([]);
   const [project, setProject] = useState<VnProject | null>(null);
   const [projectLoading, setProjectLoading] = useState(false);
+  /** Collaboration: chapter lock held by another member + live member/lock events. */
+  const [activeLocks, setActiveLocks] = useState<ChapterLockInfo[]>([]);
+  const [collabNote, setCollabNote] = useState("");
+  const myUserId = user?.id ?? "";
+  const otherLock = activeLocks.find(
+    (l) => l.chapterId === chapterId && l.userId !== myUserId
+  );
 
   const [tab, setTab] = useState<Tab>((cachedWs.tab as Tab) || wsDefaults.tab);
   const [writeSub, setWriteSub] = useState<"script" | "analysis">(
@@ -139,7 +154,7 @@ export function StudioApp() {
   const [systemSub, setSystemSub] = useState<"variables" | "sprites">(
     cachedWs.systemSub || wsDefaults.systemSub
   );
-  const [projectSub, setProjectSub] = useState<"library" | "export" | "history">(
+  const [projectSub, setProjectSub] = useState<"library" | "export" | "history" | "members">(
     cachedWs.projectSub || wsDefaults.projectSub
   );
   const [chapterId, setChapterId] = useState(cachedWs.chapterId || "");
@@ -376,6 +391,59 @@ export function StudioApp() {
     setRpyPreview(null);
     setRpyStale(false);
   }, [project?.id]);
+
+  // Collaboration: claim current-chapter lock, watch live member/lock events.
+  useEffect(() => {
+    if (!project || !chapterId) return;
+    let cancelled = false;
+    const pid = project.id;
+    const cid = chapterId;
+
+    const refreshLocks = async () => {
+      try {
+        const data = await getProjectLocks(pid);
+        if (!cancelled) setActiveLocks(data.locks);
+      } catch {
+        /* member without read rights or transient — ignore */
+      }
+    };
+
+    const note = (text: string) => {
+      if (cancelled) return;
+      setCollabNote(text);
+      window.setTimeout(() => {
+        if (!cancelled) setCollabNote("");
+      }, 5000);
+    };
+
+    const unsub = subscribeProjectEvents(pid, (evt) => {
+      if (cancelled) return;
+      if (evt.type === "lock" || evt.type === "member") {
+        void refreshLocks();
+        if (evt.type === "lock") {
+          note(
+            evt.kind === "acquired"
+              ? `${evt.username || "有成员"} 开始编辑${evt.chapterId ? "该章" : ""}`
+              : "有成员释放了章节锁"
+          );
+        } else {
+          note("项目成员有变化");
+        }
+      }
+    });
+
+    // Claim this chapter (viewer/member failures are ignored).
+    void lockChapter(pid, cid)
+      .catch(() => undefined)
+      .then(() => void refreshLocks());
+    void refreshLocks();
+
+    return () => {
+      cancelled = true;
+      unsub();
+      void unlockChapter(pid, cid).catch(() => undefined);
+    };
+  }, [project?.id, chapterId]);
 
   // Debounced autosave whenever the project object changes.
   useEffect(() => {
@@ -1357,6 +1425,7 @@ export function StudioApp() {
                       ["library", "剧本库"],
                       ["export", "导出"],
                       ["history", "快照 / 分享"],
+                      ["members", "成员"],
                     ] as const
                   ).map(([id, label]) => (
                     <button
@@ -1422,11 +1491,24 @@ export function StudioApp() {
                     onRevokeShare={() => void revokeShareLink()}
                   />
                 )}
+
+                {projectSub === "members" && project && (
+                  <CollabPanel projectId={project.id} />
+                )}
               </section>
             )}
 
             {tab === "write" && (
               <>
+                {otherLock || collabNote ? (
+                  <div className={styles.collabNote} role="status">
+                    {otherLock
+                      ? `${otherLock.username} 正在编辑本章（锁至 ${new Date(
+                          otherLock.expiresAt
+                        ).toLocaleTimeString()}）`
+                      : collabNote}
+                  </div>
+                ) : null}
                 <StudioChapterBar
                   writeSub={writeSub}
                   chapterId={chapterId}

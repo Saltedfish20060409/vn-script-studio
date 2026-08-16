@@ -1272,6 +1272,16 @@
   margin: 0 0 1rem;
 }
 
+.collabNote {
+  margin: 0.35rem 1.1rem 0;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel-bg));
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
 .hintInline {
   color: var(--ink-soft);
   font-size: 0.84rem;
