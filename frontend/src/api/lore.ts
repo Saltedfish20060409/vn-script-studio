@@ -24,7 +24,12 @@ export interface LoreLookupResult {
 
 export function loreMeta(
   id: string
-): Promise<{ attribution: string; licenseNote: string; moegirlEnabled: boolean; checklistKinds: string[] }> {
+): Promise<{
+  attribution: string;
+  licenseNote: string;
+  moegirlEnabled: boolean;
+  checklistKinds: string[];
+}> {
   return apiFetch(`/projects/${id}/lore/meta`);
 }
 
@@ -32,7 +37,9 @@ export function loreChecklist(
   id: string,
   kinds?: string
 ): Promise<{ cards: LoreCard[]; attribution: string }> {
-  return apiFetch(`/projects/${id}/lore/checklist${kinds ? `?kinds=${encodeURIComponent(kinds)}` : ""}`);
+  return apiFetch(
+    `/projects/${id}/lore/checklist${kinds ? `?kinds=${encodeURIComponent(kinds)}` : ""}`
+  );
 }
 
 export function loreListCards(id: string): Promise<{ cards: LoreCard[] }> {
@@ -42,7 +49,11 @@ export function loreListCards(id: string): Promise<{ cards: LoreCard[] }> {
 export function loreSearch(
   id: string,
   term: string
-): Promise<{ hits: Array<{ title: string; snippet?: string }>; moegirlEnabled: boolean; attribution?: string }> {
+): Promise<{
+  hits: Array<{ title: string; snippet?: string }>;
+  moegirlEnabled: boolean;
+  attribution?: string;
+}> {
   return apiFetch(`/projects/${id}/lore/search`, {
     method: "POST",
     body: JSON.stringify({ term, prefer_live: true }),
@@ -83,10 +94,7 @@ export function loreSaveCard(
   });
 }
 
-export function loreDeleteCard(
-  id: string,
-  cardId: string
-): Promise<{ ok: boolean }> {
+export function loreDeleteCard(id: string, cardId: string): Promise<{ ok: boolean }> {
   return apiFetch(`/projects/${id}/lore/cards/${cardId}`, {
     method: "DELETE",
   });

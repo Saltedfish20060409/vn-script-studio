@@ -39,11 +39,7 @@ export function MapInspector({
       {selectedIds.length > 1 ? (
         <div className={styles.inspector}>
           <p className={styles.empty}>已选 {selectedIds.length} 个地点</p>
-          <button
-            type="button"
-            className={styles.danger}
-            onClick={onDeleteSelected}
-          >
+          <button type="button" className={styles.danger} onClick={onDeleteSelected}>
             删除全部选中
           </button>
         </div>
@@ -87,9 +83,7 @@ export function MapInspector({
             <textarea
               rows={3}
               value={selected.description ?? ""}
-              onChange={(e) =>
-                onPatchSelected({ description: e.target.value })
-              }
+              onChange={(e) => onPatchSelected({ description: e.target.value })}
             />
           </label>
           <label>
@@ -100,9 +94,7 @@ export function MapInspector({
               max={1.8}
               step={0.05}
               value={selected.scale ?? 1}
-              onChange={(e) =>
-                onPatchSelected({ scale: Number(e.target.value) })
-              }
+              onChange={(e) => onPatchSelected({ scale: Number(e.target.value) })}
             />
           </label>
           <label>
@@ -113,16 +105,10 @@ export function MapInspector({
               max={45}
               step={1}
               value={selected.rotation ?? 0}
-              onChange={(e) =>
-                onPatchSelected({ rotation: Number(e.target.value) })
-              }
+              onChange={(e) => onPatchSelected({ rotation: Number(e.target.value) })}
             />
           </label>
-          <button
-            type="button"
-            className={styles.danger}
-            onClick={onDeleteSelected}
-          >
+          <button type="button" className={styles.danger} onClick={onDeleteSelected}>
             删除此地点
           </button>
         </div>
@@ -148,9 +134,7 @@ export function MapInspector({
                   type="button"
                   className={styles.occBtn}
                   disabled={!onJumpToChapter}
-                  onClick={() =>
-                    onJumpToChapter?.(occ.chapterId, primary.blockIndex)
-                  }
+                  onClick={() => onJumpToChapter?.(occ.chapterId, primary.blockIndex)}
                   title="跳到写作区并定位到对应段落"
                 >
                   <strong>{occ.chapterTitle}</strong>
@@ -177,10 +161,7 @@ export function MapInspector({
                 {from} — {to}
                 <small> · {MAP_LINE_STYLE_LABELS[ls]}</small>
               </span>
-              <button
-                type="button"
-                onClick={() => onRemoveLink(l.id)}
-              >
+              <button type="button" onClick={() => onRemoveLink(l.id)}>
                 ×
               </button>
             </li>

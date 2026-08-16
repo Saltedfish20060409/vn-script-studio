@@ -89,7 +89,8 @@ export function AgentFloat(props: Props) {
   useEffect(() => {
     try {
       const narrow = window.innerWidth < 900;
-      const raw = localStorage.getItem(POS_KEY) || localStorage.getItem("vnss-agent-float-v5");
+      const raw =
+        localStorage.getItem(POS_KEY) || localStorage.getItem("vnss-agent-float-v5");
       if (raw) {
         const p = JSON.parse(raw) as {
           mode?: string;
@@ -130,11 +131,7 @@ export function AgentFloat(props: Props) {
           inited.current = true;
           return;
         }
-        if (
-          p.mode === "free" &&
-          typeof p.x === "number" &&
-          typeof p.y === "number"
-        ) {
+        if (p.mode === "free" && typeof p.x === "number" && typeof p.y === "number") {
           const c = clampFree(p.x, p.y, PANEL_W, PANEL_H);
           lastFree.current = c;
           setPos({ mode: "free", ...c });
@@ -251,7 +248,10 @@ export function AgentFloat(props: Props) {
       return {
         mode: "docked",
         edge,
-        along: edge === "right" || edge === "left" ? Math.max(96, window.innerHeight / 2 - 70) : 96,
+        along:
+          edge === "right" || edge === "left"
+            ? Math.max(96, window.innerHeight / 2 - 70)
+            : 96,
       };
     });
   }
@@ -263,7 +263,12 @@ export function AgentFloat(props: Props) {
   const docked = pos.mode === "docked";
   const nearEdgeHint =
     pos.mode === "free" &&
-    detectEdge(pos.x, pos.y, drag.current.w || panelSize.w, drag.current.h || panelSize.h);
+    detectEdge(
+      pos.x,
+      pos.y,
+      drag.current.w || panelSize.w,
+      drag.current.h || panelSize.h
+    );
 
   const sizeStyle =
     large || docked

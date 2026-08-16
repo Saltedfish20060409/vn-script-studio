@@ -16,9 +16,7 @@ export function VoiceReadinessBanner({ info, narrow, compact }: Props) {
   return (
     <div className={info.ready ? styles.readyBannerOk : styles.readyBanner}>
       <p className={styles.readyTitle}>
-        {info.ready
-          ? "可以合成思维包了"
-          : "合成门槛（满足任一路径即可）"}
+        {info.ready ? "可以合成思维包了" : "合成门槛（满足任一路径即可）"}
       </p>
       {!compact && (
         <ul className={styles.readyPaths}>

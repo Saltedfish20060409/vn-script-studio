@@ -54,15 +54,11 @@ export function ProjectHistoryPanel({
       <div className={styles.shareBox}>
         <strong>长程章节记忆</strong>
         <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--ink-soft)" }}>
-          借鉴 NovelMaster：每 10 章一段 continuity，拆成 PostgreSQL TEXT
-          切片；Agent 会自动注入最新段。
+          借鉴 NovelMaster：每 10 章一段 continuity，拆成 PostgreSQL TEXT 切片；Agent
+          会自动注入最新段。
         </p>
         <div className={styles.aiQuick}>
-          <button
-            type="button"
-            className={styles.primary}
-            onClick={onArchiveMemory}
-          >
+          <button type="button" className={styles.primary} onClick={onArchiveMemory}>
             归档长程记忆
           </button>
         </div>
@@ -87,9 +83,7 @@ export function ProjectHistoryPanel({
               </button>
             </li>
           ))}
-          {memoryArchives.length === 0 && (
-            <li>尚未归档。章节较多时点上方按钮生成。</li>
-          )}
+          {memoryArchives.length === 0 && <li>尚未归档。章节较多时点上方按钮生成。</li>}
         </ul>
         {memoryDetail && (
           <div className={styles.memoryPeek}>
@@ -103,15 +97,11 @@ export function ProjectHistoryPanel({
                 关闭
               </button>
             </div>
-            <p className={styles.hint}>
-              continuity 切片预览（Agent 注入用最新段）
-            </p>
+            <p className={styles.hint}>continuity 切片预览（Agent 注入用最新段）</p>
             <pre className={styles.pre}>
               {(memoryDetail.continuityText || "").slice(0, 4000) ||
                 "（无 continuity 正文）"}
-              {(memoryDetail.continuityText || "").length > 4000
-                ? "\n…(已截断)"
-                : ""}
+              {(memoryDetail.continuityText || "").length > 4000 ? "\n…(已截断)" : ""}
             </pre>
           </div>
         )}
@@ -124,11 +114,7 @@ export function ProjectHistoryPanel({
             onChange={(e) => onSnapLabelChange(e.target.value)}
             placeholder="快照备注（可选）"
           />
-          <button
-            type="button"
-            className={styles.primary}
-            onClick={onTakeSnapshot}
-          >
+          <button type="button" className={styles.primary} onClick={onTakeSnapshot}>
             保存当前快照
           </button>
         </div>
@@ -138,9 +124,7 @@ export function ProjectHistoryPanel({
               <span>
                 {s.label}
                 <br />
-                <small>
-                  {new Date(s.createdAt).toLocaleString()}
-                </small>
+                <small>{new Date(s.createdAt).toLocaleString()}</small>
               </span>
               <span>
                 <button
@@ -169,11 +153,7 @@ export function ProjectHistoryPanel({
           生成链接后任何人都可打开只读页面查看设定摘要；可随时撤销。
         </p>
         <div className={styles.aiQuick}>
-          <button
-            type="button"
-            className={styles.primary}
-            onClick={onCreateShare}
-          >
+          <button type="button" className={styles.primary} onClick={onCreateShare}>
             生成并复制链接
           </button>
           {hasShare && (

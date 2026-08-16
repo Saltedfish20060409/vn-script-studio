@@ -1,8 +1,10 @@
 """Lore craft cards — Moegirl-inspired, project-scoped storage."""
 from __future__ import annotations
 
+import copy
+import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -21,6 +23,30 @@ from app.core.lore import (
 )
 from app.domain.types import VnProject
 from app.models.tables import LoreCraftCard
+
+# --------------------------------------------------------------------------
+# In-process TTL cache for live Moegirl lookups — keeps distilled cards usable
+# offline / on flaky networks without polluting the project card tables.
+# --------------------------------------------------------------------------
+_CACHE_TTL_SECONDS = 24 * 3600
+_lookup_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+
+
+def _cache_get(term: str) -> Optional[Dict[str, Any]]:
+    hit = _lookup_cache.get(term)
+    if not hit:
+        return None
+    ts, payload = hit
+    if time.time() - ts > _CACHE_TTL_SECONDS:
+        _lookup_cache.pop(term, None)
+        return None
+    return copy.deepcopy(payload)
+
+
+def _cache_put(term: str, payload: Dict[str, Any]) -> None:
+    if len(_lookup_cache) > 512:
+        _lookup_cache.clear()
+    _lookup_cache[term] = (time.time(), copy.deepcopy(payload))
 
 
 def card_to_dict(row: LoreCraftCard) -> Dict[str, Any]:
@@ -141,10 +167,18 @@ async def lookup_term(
     *,
     prefer_live: bool = True,
 ) -> Dict[str, Any]:
-    """Resolve a craft card: seed first, then optional Moegirl distill."""
+    """Resolve a craft card: cache → seed → live Moegirl distill.
+
+    Successful live lookups are cached in-process (TTL 24h) so offline /
+    flaky-network requests still return the distilled card.
+    """
     t = (term or "").strip()
     if not t:
         raise ValueError("请输入术语")
+
+    cached = _cache_get(t)
+    if cached is not None:
+        return {**cached, "cached": True}
 
     seed = seed_by_term(t)
     if seed and not prefer_live:
@@ -184,7 +218,13 @@ async def lookup_term(
                     card["kind"] = seed.get("kind") or card["kind"]
                     if seed.get("definition_short"):
                         card["definition_short"] = seed["definition_short"]
-                return {"card": card, "source": "moegirl+seed" if seed else "moegirl", "hits": hits}
+                result = {
+                    "card": card,
+                    "source": "moegirl+seed" if seed else "moegirl",
+                    "hits": hits,
+                }
+                _cache_put(t, result)
+                return result
         except Exception:
             pass
 

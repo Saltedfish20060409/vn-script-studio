@@ -6,11 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import type { MapStyleId } from "../types/vn";
-import {
-  normalizeProject,
-  emptyProject,
-  projectFromPlainText,
-} from "./vnLocal";
+import { normalizeProject, emptyProject, projectFromPlainText } from "./vnLocal";
 
 describe("normalizeProject：默认值补齐", () => {
   it("空输入生成完整工程骨架", () => {

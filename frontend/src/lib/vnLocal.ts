@@ -10,7 +10,9 @@ export function uid(prefix: string): string {
  * UI never crashes on partially-loaded server payloads. The server performs
  * the authoritative normalization; this is just a defensive mirror.
  */
-export function normalizeProject(raw: Partial<VnProject> & { title?: string }): VnProject {
+export function normalizeProject(
+  raw: Partial<VnProject> & { title?: string }
+): VnProject {
   const bible: StoryBible = {
     world: raw.bible?.world ?? raw.lore ?? "",
     background: raw.bible?.background ?? "",

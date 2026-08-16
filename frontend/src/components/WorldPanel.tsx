@@ -49,27 +49,21 @@ export function WorldPanel({
       <div className={styles.subNav} style={{ padding: "0.75rem 1.1rem 0" }}>
         <button
           type="button"
-          className={
-            worldSub === "characters" ? styles.subActive : styles.subTab
-          }
+          className={worldSub === "characters" ? styles.subActive : styles.subTab}
           onClick={onSelectCharacters}
         >
           角色卡
         </button>
         <button
           type="button"
-          className={
-            worldSub === "bible" ? styles.subActive : styles.subTab
-          }
+          className={worldSub === "bible" ? styles.subActive : styles.subTab}
           onClick={onSelectBible}
         >
           世界观 / 大纲
         </button>
         <button
           type="button"
-          className={
-            worldSub === "lore" ? styles.subActive : styles.subTab
-          }
+          className={worldSub === "lore" ? styles.subActive : styles.subTab}
           onClick={onSelectLore}
         >
           设定卡
@@ -79,11 +73,7 @@ export function WorldPanel({
         <section className={styles.panel}>
           <div className={styles.toolbar}>
             <span>角色卡（删除不会自动改写对白）</span>
-            <button
-              type="button"
-              className={styles.primary}
-              onClick={onAddCharacter}
-            >
+            <button type="button" className={styles.primary} onClick={onAddCharacter}>
               添加角色
             </button>
           </div>
@@ -117,10 +107,7 @@ export function WorldPanel({
                     value={c.defineName}
                     onChange={(e) =>
                       onUpdateCharacter(c.id, {
-                        defineName: e.target.value.replace(
-                          /[^A-Za-z0-9_]/g,
-                          ""
-                        ),
+                        defineName: e.target.value.replace(/[^A-Za-z0-9_]/g, ""),
                       })
                     }
                   />
@@ -129,9 +116,7 @@ export function WorldPanel({
                   颜色
                   <ColorPicker
                     value={c.color ?? "#6b7280"}
-                    onChange={(color) =>
-                      onUpdateCharacter(c.id, { color })
-                    }
+                    onChange={(color) => onUpdateCharacter(c.id, { color })}
                   />
                 </label>
                 <label>
@@ -139,9 +124,7 @@ export function WorldPanel({
                   <textarea
                     rows={2}
                     value={c.voice ?? ""}
-                    onChange={(e) =>
-                      onUpdateCharacter(c.id, { voice: e.target.value })
-                    }
+                    onChange={(e) => onUpdateCharacter(c.id, { voice: e.target.value })}
                   />
                 </label>
                 <label>
@@ -149,9 +132,7 @@ export function WorldPanel({
                   <textarea
                     rows={3}
                     value={c.bio ?? ""}
-                    onChange={(e) =>
-                      onUpdateCharacter(c.id, { bio: e.target.value })
-                    }
+                    onChange={(e) => onUpdateCharacter(c.id, { bio: e.target.value })}
                   />
                 </label>
                 <label>
@@ -186,10 +167,7 @@ export function WorldPanel({
             </label>
             <label>
               类型 / 题材
-              <input
-                value={genre}
-                onChange={(e) => onGenreChange(e.target.value)}
-              />
+              <input value={genre} onChange={(e) => onGenreChange(e.target.value)} />
             </label>
             <label className={styles.full}>
               世界观
@@ -205,9 +183,7 @@ export function WorldPanel({
               <textarea
                 rows={4}
                 value={bible.background ?? ""}
-                onChange={(e) =>
-                  onBibleChange({ background: e.target.value })
-                }
+                onChange={(e) => onBibleChange({ background: e.target.value })}
                 placeholder="开场前发生了什么…"
               />
             </label>

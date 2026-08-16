@@ -34,9 +34,7 @@ export function StatusToast({ message, kind, quiet, onDismiss }: Props) {
       <span className={styles.stamp} aria-hidden>
         {KIND_STAMP[kind]}
       </span>
-      {kind === "busy" ? (
-        <span className={styles.busyPulse} aria-hidden />
-      ) : null}
+      {kind === "busy" ? <span className={styles.busyPulse} aria-hidden /> : null}
       <p className={styles.msg}>{message}</p>
       <button
         type="button"

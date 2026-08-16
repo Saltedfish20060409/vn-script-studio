@@ -14,11 +14,7 @@ export function VoiceAxisTagPanel({ tags, selectedIds, onToggle, onClear }: Prop
       <div className={styles.tagPanelHead}>
         <span>方向标签（可选，最多 3）</span>
         {selectedIds.length > 0 && (
-          <button
-            type="button"
-            className={styles.tagClear}
-            onClick={onClear}
-          >
+          <button type="button" className={styles.tagClear} onClick={onClear}>
             清空
           </button>
         )}

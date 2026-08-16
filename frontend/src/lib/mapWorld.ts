@@ -49,10 +49,7 @@ export function strokeHitsPoint(
     return Math.hypot(pts[0].x - x, pts[0].y - y) <= thr;
   }
   for (let i = 1; i < pts.length; i++) {
-    if (
-      distToSegment(x, y, pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y) <=
-      thr
-    ) {
+    if (distToSegment(x, y, pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y) <= thr) {
       return true;
     }
   }

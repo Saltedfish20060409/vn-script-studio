@@ -53,24 +53,14 @@ import { StudioTopBar } from "./StudioTopBar";
 import { WorldPanel } from "./WorldPanel";
 import { WriteToolbar } from "./WriteToolbar";
 import { StudioErrorBoundary } from "./StudioErrorBoundary";
-import {
-  SaveConflictDialog,
-  type SaveConflictChoice,
-} from "./SaveConflictDialog";
+import { SaveConflictDialog, type SaveConflictChoice } from "./SaveConflictDialog";
 import {
   clearConflictDraft,
   downloadProjectJson,
   stashConflictDraft,
 } from "../lib/conflictDraft";
-import {
-  StatusToast,
-  classifyStatusToast,
-} from "./StatusToast";
-import {
-  blockTextRange,
-  blocksToEditable,
-  editableToBlocks,
-} from "../lib/scriptCodec";
+import { StatusToast, classifyStatusToast } from "./StatusToast";
+import { blockTextRange, blocksToEditable, editableToBlocks } from "../lib/scriptCodec";
 import { normalizeProject } from "../lib/vnLocal";
 import {
   applySettingsToDom,
@@ -138,9 +128,7 @@ export function StudioApp() {
   const [project, setProject] = useState<VnProject | null>(null);
   const [projectLoading, setProjectLoading] = useState(false);
 
-  const [tab, setTab] = useState<Tab>(
-    (cachedWs.tab as Tab) || wsDefaults.tab
-  );
+  const [tab, setTab] = useState<Tab>((cachedWs.tab as Tab) || wsDefaults.tab);
   const [writeSub, setWriteSub] = useState<"script" | "analysis">(
     cachedWs.writeSub || wsDefaults.writeSub
   );
@@ -178,12 +166,8 @@ export function StudioApp() {
   const [mapExtractBusy, setMapExtractBusy] = useState(false);
   const [snapLabel, setSnapLabel] = useState("");
   const [snapshots, setSnapshots] = useState<SnapshotSummary[]>([]);
-  const [memoryArchives, setMemoryArchives] = useState<MemoryArchiveSummary[]>(
-    []
-  );
-  const [memoryDetail, setMemoryDetail] = useState<MemoryArchiveDetail | null>(
-    null
-  );
+  const [memoryArchives, setMemoryArchives] = useState<MemoryArchiveSummary[]>([]);
+  const [memoryDetail, setMemoryDetail] = useState<MemoryArchiveDetail | null>(null);
   const [memoryDetailBusy, setMemoryDetailBusy] = useState(false);
   /** 导出页：先生成预览，再允许下载 */
   const [rpyPreview, setRpyPreview] = useState<string | null>(null);
@@ -244,31 +228,32 @@ export function StudioApp() {
     return list;
   }, []);
 
-  const loadProjectInto = useCallback(async (id: string, preferredChapterId?: string) => {
-    skipNextProjectSave.current = true;
-    setProjectLoading(true);
-    try {
-      const p = await getProject(id);
-      setProject(p);
-      const ws = loadWorkspace();
-      const wantChapter =
-        preferredChapterId ||
-        (ws.projectId === id ? ws.chapterId : "") ||
-        "";
-      const chapter =
-        (wantChapter && p.chapters.find((c) => c.id === wantChapter)?.id) ||
-        p.chapters[0]?.id ||
-        "";
-      setChapterId(chapter);
-      saveWorkspace({ projectId: id, chapterId: chapter });
-      const snaps = await listSnapshots(id).catch(() => []);
-      setSnapshots(snaps);
-      const mem = await listChapterMemory(id).catch(() => ({ archives: [] }));
-      setMemoryArchives(mem.archives || []);
-    } finally {
-      setProjectLoading(false);
-    }
-  }, []);
+  const loadProjectInto = useCallback(
+    async (id: string, preferredChapterId?: string) => {
+      skipNextProjectSave.current = true;
+      setProjectLoading(true);
+      try {
+        const p = await getProject(id);
+        setProject(p);
+        const ws = loadWorkspace();
+        const wantChapter =
+          preferredChapterId || (ws.projectId === id ? ws.chapterId : "") || "";
+        const chapter =
+          (wantChapter && p.chapters.find((c) => c.id === wantChapter)?.id) ||
+          p.chapters[0]?.id ||
+          "";
+        setChapterId(chapter);
+        saveWorkspace({ projectId: id, chapterId: chapter });
+        const snaps = await listSnapshots(id).catch(() => []);
+        setSnapshots(snaps);
+        const mem = await listChapterMemory(id).catch(() => ({ archives: [] }));
+        setMemoryArchives(mem.archives || []);
+      } finally {
+        setProjectLoading(false);
+      }
+    },
+    []
+  );
 
   // Boot: load project list + settings
   useEffect(() => {
@@ -323,15 +308,7 @@ export function StudioApp() {
       systemSub,
       projectSub,
     });
-  }, [
-    project?.id,
-    chapterId,
-    tab,
-    writeSub,
-    worldSub,
-    systemSub,
-    projectSub,
-  ]);
+  }, [project?.id, chapterId, tab, writeSub, worldSub, systemSub, projectSub]);
 
   // Sync editor text whenever project or chapter switches (not on every save).
   useEffect(() => {
@@ -351,11 +328,7 @@ export function StudioApp() {
     if (tab !== "write" || writeSub !== "script") return;
     const ch = project.chapters.find((c) => c.id === chapterId);
     if (!ch) return;
-    const range = blockTextRange(
-      ch.blocks,
-      project.characters,
-      pending.blockIndex
-    );
+    const range = blockTextRange(ch.blocks, project.characters, pending.blockIndex);
     if (!range) {
       pendingEditorFocus.current = null;
       return;
@@ -419,7 +392,10 @@ export function StudioApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project]);
 
-  async function persistProject(p: VnProject, opts?: { silent?: boolean; force?: boolean }) {
+  async function persistProject(
+    p: VnProject,
+    opts?: { silent?: boolean; force?: boolean }
+  ) {
     const silent = opts?.silent ?? true;
     try {
       if (!silent) setStatus("保存中…");
@@ -449,8 +425,7 @@ export function StudioApp() {
       if (e instanceof ApiError && e.status === 409) {
         stashConflictDraft(p);
         const detail = e.detail as
-          | { serverUpdatedAt?: string; message?: string }
-          | undefined;
+          { serverUpdatedAt?: string; message?: string } | undefined;
         if (projectSaveTimer.current) {
           window.clearTimeout(projectSaveTimer.current);
           projectSaveTimer.current = null;
@@ -606,9 +581,7 @@ export function StudioApp() {
     const blocks = editableToBlocks(editorRef.current);
     updateActive((p) => ({
       ...p,
-      chapters: p.chapters.map((c) =>
-        c.id === chapter.id ? { ...c, blocks } : c
-      ),
+      chapters: p.chapters.map((c) => (c.id === chapter.id ? { ...c, blocks } : c)),
     }));
   }
 
@@ -622,9 +595,7 @@ export function StudioApp() {
     return {
       ...project,
       chapters: project.chapters.map((c) =>
-        c.id === chapterId
-          ? { ...c, blocks: editableToBlocks(editorRef.current) }
-          : c
+        c.id === chapterId ? { ...c, blocks: editableToBlocks(editorRef.current) } : c
       ),
     };
   }
@@ -806,9 +777,7 @@ export function StudioApp() {
   function updateCharacter(id: string, patch: Partial<Character>) {
     updateActive((p) => ({
       ...p,
-      characters: p.characters.map((c) =>
-        c.id === id ? { ...c, ...patch } : c
-      ),
+      characters: p.characters.map((c) => (c.id === id ? { ...c, ...patch } : c)),
     }));
   }
 
@@ -904,9 +873,7 @@ export function StudioApp() {
   function updateLocation(id: string, patch: Partial<Location>) {
     updateActive((p) => ({
       ...p,
-      locations: (p.locations ?? []).map((l) =>
-        l.id === id ? { ...l, ...patch } : l
-      ),
+      locations: (p.locations ?? []).map((l) => (l.id === id ? { ...l, ...patch } : l)),
     }));
   }
 
@@ -934,9 +901,7 @@ export function StudioApp() {
       }
       const result = await mapExtract(projectId, { mode });
       const warn =
-        result.warnings && result.warnings.length
-          ? `（${result.warnings[0]}）`
-          : "";
+        result.warnings && result.warnings.length ? `（${result.warnings[0]}）` : "";
       const newPlaces = result.proposal?.newPlaceIds?.length ?? result.addedCount;
       const newLinks = result.proposal?.newLinkIds?.length ?? result.linkCount;
       if (newPlaces === 0 && newLinks === 0) {
@@ -954,19 +919,14 @@ export function StudioApp() {
             ? `智能提取${result.llmUsed ? "（含模型）" : ""}`
             : "仅 scene",
       });
-      setStatus(
-        `找到候选：地点 ${newPlaces}、通路 ${newLinks}，请勾选后写入${warn}`
-      );
+      setStatus(`找到候选：地点 ${newPlaces}、通路 ${newLinks}，请勾选后写入${warn}`);
       setTab("map");
     } catch (e) {
       setError(e instanceof Error ? e.message : "提取失败");
     }
   }
 
-  async function confirmMapExtract(
-    placeIds: string[],
-    linkIds: string[]
-  ) {
+  async function confirmMapExtract(placeIds: string[], linkIds: string[]) {
     if (!project || !mapExtractReview) return;
     if (placeIds.length === 0 && linkIds.length === 0) {
       setMapExtractReview(null);
@@ -983,9 +943,7 @@ export function StudioApp() {
       skipNextProjectSave.current = true;
       setProject(result.project);
       setMapExtractReview(null);
-      setStatus(
-        `已写入地图：新增地点 ${result.addedCount}，通路 ${result.linkCount}`
-      );
+      setStatus(`已写入地图：新增地点 ${result.addedCount}，通路 ${result.linkCount}`);
       setTab("map");
     } catch (e) {
       setError(e instanceof Error ? e.message : "写入地图失败");
@@ -1260,9 +1218,7 @@ export function StudioApp() {
   }
 
   if (bootLoading) {
-    return (
-      <StudioBootScreen stamp="LOAD" title="加载中" />
-    );
+    return <StudioBootScreen stamp="LOAD" title="加载中" />;
   }
 
   if (projectsList.length === 0) {
@@ -1273,11 +1229,7 @@ export function StudioApp() {
         titleTag="h1"
         lead="先建一个空白工程，或载入示例开场。"
       >
-        <EmptyStage
-          stamp="LIB"
-          title="项目库空着"
-          line={mascotLine("emptyLibrary")}
-        >
+        <EmptyStage stamp="LIB" title="项目库空着" line={mascotLine("emptyLibrary")}>
           <div className={styles.aiQuick}>
             <button type="button" onClick={() => void createBlank()}>
               空白剧本
@@ -1292,9 +1244,7 @@ export function StudioApp() {
   }
 
   if (!project || projectLoading) {
-    return (
-      <StudioBootScreen stamp="LOAD" title="加载中" />
-    );
+    return <StudioBootScreen stamp="LOAD" title="加载中" />;
   }
 
   const locations = project.locations ?? [];
@@ -1325,371 +1275,361 @@ export function StudioApp() {
         className={`vnss-app ${styles.shell} ${
           tab === "write" && writeSub === "script" ? styles.writeQuiet : ""
         } ${
-          tab === "write" && writeSub === "script" && focusMode
-            ? styles.focusMode
-            : ""
+          tab === "write" && writeSub === "script" && focusMode ? styles.focusMode : ""
         } ${tab !== "write" ? styles.menuStage : ""}`}
       >
-      <FocusChrome
-        setupOpen={focusSetupOpen}
-        initialPrefs={loadFocusTimerPrefs()}
-        onSetupCancel={() => setFocusSetupOpen(false)}
-        onSetupConfirm={(prefs) => void startFocusSession(prefs)}
-        active={Boolean(focusMode && tab === "write" && writeSub === "script")}
-        prefs={focusPrefs}
-        draft={editor}
-        onExit={() => void exitFocusSession()}
-      />
-      {toast ? (
-        <StatusToast
-          message={toast.message}
-          kind={toast.kind}
-          quiet={writeQuiet && toast.kind !== "error"}
-          onDismiss={dismissToast}
+        <FocusChrome
+          setupOpen={focusSetupOpen}
+          initialPrefs={loadFocusTimerPrefs()}
+          onSetupCancel={() => setFocusSetupOpen(false)}
+          onSetupConfirm={(prefs) => void startFocusSession(prefs)}
+          active={Boolean(focusMode && tab === "write" && writeSub === "script")}
+          prefs={focusPrefs}
+          draft={editor}
+          onExit={() => void exitFocusSession()}
         />
-      ) : null}
-      <StudioTopBar
-        title={project.title}
-        username={user?.username}
-        showFocusToggle={tab === "write" && writeSub === "script" && !focusMode}
-        fileInputRef={fileRef}
-        onTitleChange={(value) => updateActive((p) => ({ ...p, title: value }))}
-        onFocusToggle={requestFocusSession}
-        onNewProject={() => void createBlank()}
-        onImportClick={() => fileRef.current?.click()}
-        onFileChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void handleImportFile(f);
-          e.target.value = "";
-        }}
-        onSaveChapter={commitEditor}
-        onExportRpy={() => {
-          setTab("project");
-          setProjectSub("export");
-          void generateRpy();
-        }}
-        onLogout={handleLogout}
-      />
-
-      <div className={styles.layout}>
-        <main className={styles.main}>
-          <StudioTabs
-            tab={tab}
-            onSelect={(id) => {
-              if (id !== "write" || writeSub !== "script") commitEditor();
-              setTab(id);
-            }}
+        {toast ? (
+          <StatusToast
+            message={toast.message}
+            kind={toast.kind}
+            quiet={writeQuiet && toast.kind !== "error"}
+            onDismiss={dismissToast}
           />
+        ) : null}
+        <StudioTopBar
+          title={project.title}
+          username={user?.username}
+          showFocusToggle={tab === "write" && writeSub === "script" && !focusMode}
+          fileInputRef={fileRef}
+          onTitleChange={(value) => updateActive((p) => ({ ...p, title: value }))}
+          onFocusToggle={requestFocusSession}
+          onNewProject={() => void createBlank()}
+          onImportClick={() => fileRef.current?.click()}
+          onFileChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void handleImportFile(f);
+            e.target.value = "";
+          }}
+          onSaveChapter={commitEditor}
+          onExportRpy={() => {
+            setTab("project");
+            setProjectSub("export");
+            void generateRpy();
+          }}
+          onLogout={handleLogout}
+        />
 
-          {tab === "project" && (
-            <section className={styles.panel}>
-              <div className={styles.subNav}>
-                {(
-                  [
-                    ["library", "剧本库"],
-                    ["export", "导出"],
-                    ["history", "快照 / 分享"],
-                  ] as const
-                ).map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    className={
-                      projectSub === id ? styles.subActive : styles.subTab
-                    }
-                    onClick={() => setProjectSub(id)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {projectSub === "library" && project && (
-                <ProjectLibraryPanel
-                  projectsList={projectsList}
-                  activeId={project.id}
-                  renamingId={renamingId}
-                  renameDraft={renameDraft}
-                  renameInputRef={renameInputRef}
-                  onRenameDraftChange={setRenameDraft}
-                  onStartRename={startRename}
-                  onCommitRename={() => void commitRename()}
-                  onCancelRename={cancelRename}
-                  onOpen={(id) => void switchProject(id)}
-                  onCreateBlank={() => void createBlank()}
-                  onCreateDemo={() => void createDemo()}
-                  onImportClick={() => fileRef.current?.click()}
-                  onDuplicate={(id) => void duplicateProjectById(id)}
-                  onDelete={(id) => void deleteProjectById(id)}
-                />
-              )}
-
-              {projectSub === "export" && (
-                <ProjectExportPanel
-                  rpyPreview={rpyPreview}
-                  rpyStale={rpyStale}
-                  onGenerateRpy={() => void generateRpy()}
-                  onDownloadRpy={downloadRpy}
-                  onDownloadJson={() => void downloadJson()}
-                />
-              )}
-
-              {projectSub === "history" && (
-                <ProjectHistoryPanel
-                  memoryArchives={memoryArchives}
-                  memoryDetailBusy={memoryDetailBusy}
-                  memoryDetail={memoryDetail}
-                  snapLabel={snapLabel}
-                  snapshots={snapshots}
-                  shareUrl={shareUrl}
-                  hasShare={Boolean(project.shareId)}
-                  onArchiveMemory={() => void archiveLongMemory()}
-                  onOpenMemoryArchive={(id) => void openMemoryArchive(id)}
-                  onCloseMemoryDetail={() => setMemoryDetail(null)}
-                  onSnapLabelChange={setSnapLabel}
-                  onTakeSnapshot={() => void takeSnapshot()}
-                  onRestoreSnapshot={(id) => void restoreSnapshotById(id)}
-                  onDeleteSnapshot={(id) => void deleteSnapshotById(id)}
-                  onCreateShare={() => void createShareLink()}
-                  onRevokeShare={() => void revokeShareLink()}
-                />
-              )}
-            </section>
-          )}
-
-          {tab === "write" && (
-            <>
-              <StudioChapterBar
-                writeSub={writeSub}
-                chapterId={chapterId}
-                chapters={project.chapters}
-                onSelectScript={() => setWriteSub("script")}
-                onSelectAnalysis={() => {
-                  void (async () => {
-                    commitEditor();
-                    await flushPendingSave();
-                    setWriteSub("analysis");
-                  })();
-                }}
-                onSelectChapter={(id) => {
-                  if (id === chapterId) return;
-                  commitEditor();
-                  setChapterId(id);
-                }}
-                onAddChapter={() => void addChapter()}
-                onDeleteChapter={() => void deleteChapter(chapterId)}
-              />
-              {writeSub === "script" && (
-            <section className={styles.panel}>
-              <WriteToolbar
-                chapterTitle={chapter?.title ?? ""}
-                showReviseActions={Boolean(reviseDraft)}
-                onChapterTitleChange={(title) => {
-                  updateActive((p) => ({
-                    ...p,
-                    chapters: p.chapters.map((c) =>
-                      c.id === chapterId ? { ...c, title } : c
-                    ),
-                  }));
-                }}
-                onOpenRevise={() => {
-                  if (focusMode) {
-                    setStatus("请先退出专注模式，再打开改稿对照");
-                    return;
-                  }
-                  requestOpenReviseReview(project.id, chapterId);
-                }}
-                onDiscardRevise={() => {
-                  clearChapterReviseDraft(project.id, chapterId);
-                  setReviseDraft(null);
-                  setStatus("已丢弃本章改稿预览");
-                }}
-              />
-              <StudioErrorBoundary label="写作编辑器">
-              <ScriptEditor
-                textareaRef={editorTaRef}
-                frameClassName={styles.scriptEditor}
-                value={editor}
-                locations={project.locations ?? []}
-                onPlaceClick={(locationId, label) => {
-                  commitEditor();
-                  setMapFocus({ id: locationId, tick: Date.now() });
-                  setTab("map");
-                  setStatus(`已在地图定位「${label}」`);
-                }}
-                onChange={(next) => {
-                  editorRef.current = next;
-                  setEditor(next);
-                  if (rpyPreview) setRpyStale(true);
-                  scheduleEditorCommit();
-                }}
-                onSelect={(e) => {
-                  const t = e.currentTarget;
-                  setSelection(
-                    t.value.slice(t.selectionStart, t.selectionEnd)
-                  );
-                }}
-              />
-              </StudioErrorBoundary>
-            </section>
-              )}
-              {writeSub === "analysis" && (
-                <section className={styles.panel}>
-                  <AnalysisPanels
-                    project={project}
-                    chapterId={chapterId}
-                    draft={editor}
-                    onChange={updateActive}
-                    onRemoteProject={applyRemoteProject}
-                  />
-                </section>
-              )}
-            </>
-          )}
-
-          {tab === "world" && (
-            <WorldPanel
-              worldSub={worldSub}
-              projectId={project.id}
-              characters={project.characters}
-              logline={project.logline ?? ""}
-              genre={project.genre ?? ""}
-              bible={bible}
-              onSelectCharacters={() => setWorldSub("characters")}
-              onSelectBible={() => setWorldSub("bible")}
-              onSelectLore={() => setWorldSub("lore")}
-              onAddCharacter={addCharacter}
-              onDeleteCharacter={(id) => void deleteCharacter(id)}
-              onUpdateCharacter={updateCharacter}
-              onLoglineChange={(value) =>
-                updateActive((p) => ({ ...p, logline: value }))
-              }
-              onGenreChange={(value) =>
-                updateActive((p) => ({ ...p, genre: value }))
-              }
-              onBibleChange={updateBible}
-            />
-          )}
-
-          {tab === "voice" && (
-            <CharacterWorkshop
-              project={project}
-              onProjectChange={(next) => {
-                replaceActiveProject(normalizeProject(next));
+        <div className={styles.layout}>
+          <main className={styles.main}>
+            <StudioTabs
+              tab={tab}
+              onSelect={(id) => {
+                if (id !== "write" || writeSub !== "script") commitEditor();
+                setTab(id);
               }}
             />
-          )}
 
-          {tab === "map" && (
-            <section className={styles.panel}>
-              <MapStudio
-                locations={locations}
-                links={links}
-                chapters={project.chapters}
-                customElements={project.customMapElements ?? []}
-                strokes={project.mapStrokes ?? []}
-                focusLocationId={mapFocus?.id ?? null}
-                focusTick={mapFocus?.tick ?? 0}
-                onChangeLocations={(locs) =>
-                  updateActive((p) => ({ ...p, locations: locs }))
+            {tab === "project" && (
+              <section className={styles.panel}>
+                <div className={styles.subNav}>
+                  {(
+                    [
+                      ["library", "剧本库"],
+                      ["export", "导出"],
+                      ["history", "快照 / 分享"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={projectSub === id ? styles.subActive : styles.subTab}
+                      onClick={() => setProjectSub(id)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {projectSub === "library" && project && (
+                  <ProjectLibraryPanel
+                    projectsList={projectsList}
+                    activeId={project.id}
+                    renamingId={renamingId}
+                    renameDraft={renameDraft}
+                    renameInputRef={renameInputRef}
+                    onRenameDraftChange={setRenameDraft}
+                    onStartRename={startRename}
+                    onCommitRename={() => void commitRename()}
+                    onCancelRename={cancelRename}
+                    onOpen={(id) => void switchProject(id)}
+                    onCreateBlank={() => void createBlank()}
+                    onCreateDemo={() => void createDemo()}
+                    onImportClick={() => fileRef.current?.click()}
+                    onDuplicate={(id) => void duplicateProjectById(id)}
+                    onDelete={(id) => void deleteProjectById(id)}
+                  />
+                )}
+
+                {projectSub === "export" && (
+                  <ProjectExportPanel
+                    rpyPreview={rpyPreview}
+                    rpyStale={rpyStale}
+                    onGenerateRpy={() => void generateRpy()}
+                    onDownloadRpy={downloadRpy}
+                    onDownloadJson={() => void downloadJson()}
+                  />
+                )}
+
+                {projectSub === "history" && (
+                  <ProjectHistoryPanel
+                    memoryArchives={memoryArchives}
+                    memoryDetailBusy={memoryDetailBusy}
+                    memoryDetail={memoryDetail}
+                    snapLabel={snapLabel}
+                    snapshots={snapshots}
+                    shareUrl={shareUrl}
+                    hasShare={Boolean(project.shareId)}
+                    onArchiveMemory={() => void archiveLongMemory()}
+                    onOpenMemoryArchive={(id) => void openMemoryArchive(id)}
+                    onCloseMemoryDetail={() => setMemoryDetail(null)}
+                    onSnapLabelChange={setSnapLabel}
+                    onTakeSnapshot={() => void takeSnapshot()}
+                    onRestoreSnapshot={(id) => void restoreSnapshotById(id)}
+                    onDeleteSnapshot={(id) => void deleteSnapshotById(id)}
+                    onCreateShare={() => void createShareLink()}
+                    onRevokeShare={() => void revokeShareLink()}
+                  />
+                )}
+              </section>
+            )}
+
+            {tab === "write" && (
+              <>
+                <StudioChapterBar
+                  writeSub={writeSub}
+                  chapterId={chapterId}
+                  chapters={project.chapters}
+                  onSelectScript={() => setWriteSub("script")}
+                  onSelectAnalysis={() => {
+                    void (async () => {
+                      commitEditor();
+                      await flushPendingSave();
+                      setWriteSub("analysis");
+                    })();
+                  }}
+                  onSelectChapter={(id) => {
+                    if (id === chapterId) return;
+                    commitEditor();
+                    setChapterId(id);
+                  }}
+                  onAddChapter={() => void addChapter()}
+                  onDeleteChapter={() => void deleteChapter(chapterId)}
+                />
+                {writeSub === "script" && (
+                  <section className={styles.panel}>
+                    <WriteToolbar
+                      chapterTitle={chapter?.title ?? ""}
+                      showReviseActions={Boolean(reviseDraft)}
+                      onChapterTitleChange={(title) => {
+                        updateActive((p) => ({
+                          ...p,
+                          chapters: p.chapters.map((c) =>
+                            c.id === chapterId ? { ...c, title } : c
+                          ),
+                        }));
+                      }}
+                      onOpenRevise={() => {
+                        if (focusMode) {
+                          setStatus("请先退出专注模式，再打开改稿对照");
+                          return;
+                        }
+                        requestOpenReviseReview(project.id, chapterId);
+                      }}
+                      onDiscardRevise={() => {
+                        clearChapterReviseDraft(project.id, chapterId);
+                        setReviseDraft(null);
+                        setStatus("已丢弃本章改稿预览");
+                      }}
+                    />
+                    <StudioErrorBoundary label="写作编辑器">
+                      <ScriptEditor
+                        textareaRef={editorTaRef}
+                        frameClassName={styles.scriptEditor}
+                        value={editor}
+                        locations={project.locations ?? []}
+                        onPlaceClick={(locationId, label) => {
+                          commitEditor();
+                          setMapFocus({ id: locationId, tick: Date.now() });
+                          setTab("map");
+                          setStatus(`已在地图定位「${label}」`);
+                        }}
+                        onChange={(next) => {
+                          editorRef.current = next;
+                          setEditor(next);
+                          if (rpyPreview) setRpyStale(true);
+                          scheduleEditorCommit();
+                        }}
+                        onSelect={(e) => {
+                          const t = e.currentTarget;
+                          setSelection(t.value.slice(t.selectionStart, t.selectionEnd));
+                        }}
+                      />
+                    </StudioErrorBoundary>
+                  </section>
+                )}
+                {writeSub === "analysis" && (
+                  <section className={styles.panel}>
+                    <AnalysisPanels
+                      project={project}
+                      chapterId={chapterId}
+                      draft={editor}
+                      onChange={updateActive}
+                      onRemoteProject={applyRemoteProject}
+                    />
+                  </section>
+                )}
+              </>
+            )}
+
+            {tab === "world" && (
+              <WorldPanel
+                worldSub={worldSub}
+                projectId={project.id}
+                characters={project.characters}
+                logline={project.logline ?? ""}
+                genre={project.genre ?? ""}
+                bible={bible}
+                onSelectCharacters={() => setWorldSub("characters")}
+                onSelectBible={() => setWorldSub("bible")}
+                onSelectLore={() => setWorldSub("lore")}
+                onAddCharacter={addCharacter}
+                onDeleteCharacter={(id) => void deleteCharacter(id)}
+                onUpdateCharacter={updateCharacter}
+                onLoglineChange={(value) =>
+                  updateActive((p) => ({ ...p, logline: value }))
                 }
-                onChangeLinks={(nextLinks) =>
-                  updateActive((p) => ({ ...p, locationLinks: nextLinks }))
-                }
-                onChangeCustomElements={(customMapElements) =>
-                  updateActive((p) => ({ ...p, customMapElements }))
-                }
-                onChangeStrokes={(mapStrokes) =>
-                  updateActive((p) => ({ ...p, mapStrokes }))
-                }
-                onJumpToChapter={(id, blockIndex) => {
-                  commitEditor();
-                  if (typeof blockIndex === "number") {
-                    pendingEditorFocus.current = { chapterId: id, blockIndex };
-                    setEditorFocusNonce((n) => n + 1);
-                  } else {
-                    pendingEditorFocus.current = null;
-                  }
-                  setChapterId(id);
-                  saveWorkspace({
-                    projectId: project.id,
-                    chapterId: id,
-                    tab: "write",
-                    writeSub: "script",
-                  });
-                  setTab("write");
-                  setWriteSub("script");
-                }}
-                onExtractFromScript={() => void extractLocs("smart")}
-                onExtractRulesOnly={() => void extractLocs("rules")}
+                onGenreChange={(value) => updateActive((p) => ({ ...p, genre: value }))}
+                onBibleChange={updateBible}
               />
-            </section>
-          )}
+            )}
 
-          {tab === "system" && (
-            <SystemPanel
+            {tab === "voice" && (
+              <CharacterWorkshop
+                project={project}
+                onProjectChange={(next) => {
+                  replaceActiveProject(normalizeProject(next));
+                }}
+              />
+            )}
+
+            {tab === "map" && (
+              <section className={styles.panel}>
+                <MapStudio
+                  locations={locations}
+                  links={links}
+                  chapters={project.chapters}
+                  customElements={project.customMapElements ?? []}
+                  strokes={project.mapStrokes ?? []}
+                  focusLocationId={mapFocus?.id ?? null}
+                  focusTick={mapFocus?.tick ?? 0}
+                  onChangeLocations={(locs) =>
+                    updateActive((p) => ({ ...p, locations: locs }))
+                  }
+                  onChangeLinks={(nextLinks) =>
+                    updateActive((p) => ({ ...p, locationLinks: nextLinks }))
+                  }
+                  onChangeCustomElements={(customMapElements) =>
+                    updateActive((p) => ({ ...p, customMapElements }))
+                  }
+                  onChangeStrokes={(mapStrokes) =>
+                    updateActive((p) => ({ ...p, mapStrokes }))
+                  }
+                  onJumpToChapter={(id, blockIndex) => {
+                    commitEditor();
+                    if (typeof blockIndex === "number") {
+                      pendingEditorFocus.current = { chapterId: id, blockIndex };
+                      setEditorFocusNonce((n) => n + 1);
+                    } else {
+                      pendingEditorFocus.current = null;
+                    }
+                    setChapterId(id);
+                    saveWorkspace({
+                      projectId: project.id,
+                      chapterId: id,
+                      tab: "write",
+                      writeSub: "script",
+                    });
+                    setTab("write");
+                    setWriteSub("script");
+                  }}
+                  onExtractFromScript={() => void extractLocs("smart")}
+                  onExtractRulesOnly={() => void extractLocs("rules")}
+                />
+              </section>
+            )}
+
+            {tab === "system" && (
+              <SystemPanel
+                project={project}
+                onChange={updateActive}
+                sub={systemSub}
+                onSub={setSystemSub}
+              />
+            )}
+          </main>
+        </div>
+
+        {!focusMode ? (
+          <StudioErrorBoundary label="审稿 Agent">
+            <AgentFloat
               project={project}
-              onChange={updateActive}
-              sub={systemSub}
-              onSub={setSystemSub}
+              chapterId={chapterId}
+              selection={selection}
+              draft={editor}
+              prepareProject={() => buildLatestProject() ?? project}
+              onProjectChange={(p) => {
+                applyRemoteProject(p);
+                const ch = p.chapters.find((c) => c.id === chapterId) ?? p.chapters[0];
+                if (ch) {
+                  setChapterId(ch.id);
+                  editorRef.current = blocksToEditable(ch.blocks, p.characters);
+                  setEditor(editorRef.current);
+                }
+              }}
+              onChapterFocus={(id) => {
+                setChapterId(id);
+                setTab("write");
+                setWriteSub("script");
+              }}
             />
-          )}
-        </main>
-      </div>
+          </StudioErrorBoundary>
+        ) : null}
 
-      {!focusMode ? (
-        <StudioErrorBoundary label="审稿 Agent">
-        <AgentFloat
-          project={project}
-          chapterId={chapterId}
-          selection={selection}
-          draft={editor}
-          prepareProject={() => buildLatestProject() ?? project}
-          onProjectChange={(p) => {
-            applyRemoteProject(p);
-            const ch = p.chapters.find((c) => c.id === chapterId) ?? p.chapters[0];
-            if (ch) {
-              setChapterId(ch.id);
-              editorRef.current = blocksToEditable(ch.blocks, p.characters);
-              setEditor(editorRef.current);
-            }
-          }}
-          onChapterFocus={(id) => {
-            setChapterId(id);
-            setTab("write");
-            setWriteSub("script");
-          }}
-        />
-        </StudioErrorBoundary>
-      ) : null}
-
-      {!focusMode ? (
-        <SettingsGear onClick={() => setSettingsOpen(true)} />
-      ) : null}
-      {settings && (
-        <SettingsModal
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          settings={settings}
-          onChange={setSettings}
-        />
-      )}
-      {mapExtractReview ? (
-        <MapExtractReview
-          proposal={mapExtractReview.proposal}
-          warnings={mapExtractReview.warnings}
-          modeLabel={mapExtractReview.modeLabel}
-          busy={mapExtractBusy}
-          onCancel={() => {
-            if (mapExtractBusy) return;
-            setMapExtractReview(null);
-            setStatus("已取消写入地图候选");
-          }}
-          onConfirm={(placeIds, linkIds) => {
-            void confirmMapExtract(placeIds, linkIds);
-          }}
-        />
-      ) : null}
+        {!focusMode ? <SettingsGear onClick={() => setSettingsOpen(true)} /> : null}
+        {settings && (
+          <SettingsModal
+            open={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            settings={settings}
+            onChange={setSettings}
+          />
+        )}
+        {mapExtractReview ? (
+          <MapExtractReview
+            proposal={mapExtractReview.proposal}
+            warnings={mapExtractReview.warnings}
+            modeLabel={mapExtractReview.modeLabel}
+            busy={mapExtractBusy}
+            onCancel={() => {
+              if (mapExtractBusy) return;
+              setMapExtractReview(null);
+              setStatus("已取消写入地图候选");
+            }}
+            onConfirm={(placeIds, linkIds) => {
+              void confirmMapExtract(placeIds, linkIds);
+            }}
+          />
+        ) : null}
       </div>
     </>
   );

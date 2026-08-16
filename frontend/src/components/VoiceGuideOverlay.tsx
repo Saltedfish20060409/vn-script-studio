@@ -18,11 +18,7 @@ export function VoiceGuideOverlay({
     <div className={styles.guideOverlay} role="dialog" aria-modal="true">
       <div className={styles.guideCard}>
         <div className={styles.guideMascot} aria-hidden>
-          <MascotFigure
-            size="lg"
-            mood="cheer"
-            line="三步走完，声音就立住了。"
-          />
+          <MascotFigure size="lg" mood="cheer" line="三步走完，声音就立住了。" />
         </div>
         <div className={styles.guideMain}>
           <h3>角色工坊怎么用</h3>
@@ -58,11 +54,7 @@ export function VoiceGuideOverlay({
             下次不再出现
           </label>
           <div className={styles.guideActions}>
-            <button
-              type="button"
-              className={styles.primary}
-              onClick={onStart}
-            >
+            <button type="button" className={styles.primary} onClick={onStart}>
               开始塑形
             </button>
             <button type="button" onClick={onDismiss}>

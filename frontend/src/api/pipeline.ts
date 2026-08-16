@@ -91,7 +91,14 @@ export function pipelineRun(
 }
 
 export type PipelineStreamEvent =
-  | { type: "stage"; stage: string; ms?: number; ok?: boolean; errorCount?: number; warnCount?: number }
+  | {
+      type: "stage";
+      stage: string;
+      ms?: number;
+      ok?: boolean;
+      errorCount?: number;
+      warnCount?: number;
+    }
   | { type: "token"; delta: string }
   | { type: "final"; result?: JobStatus };
 
@@ -161,10 +168,7 @@ export type JobStatus = {
   updatedAt?: string;
 };
 
-export function getProjectJob(
-  projectId: string,
-  jobId: string
-): Promise<JobStatus> {
+export function getProjectJob(projectId: string, jobId: string): Promise<JobStatus> {
   return apiFetch(`/projects/${projectId}/jobs/${jobId}`);
 }
 

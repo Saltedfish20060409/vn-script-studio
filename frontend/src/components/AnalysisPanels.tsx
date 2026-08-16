@@ -33,21 +33,13 @@ type Props = {
   onRemoteProject?: (project: VnProject) => void;
 };
 
-function BranchView({
-  nodes,
-  depth = 0,
-}: {
-  nodes: BranchNode[];
-  depth?: number;
-}) {
+function BranchView({ nodes, depth = 0 }: { nodes: BranchNode[]; depth?: number }) {
   return (
     <ul className={styles.tree} style={{ marginLeft: depth ? 12 : 0 }}>
       {nodes.map((n) => (
         <li key={n.id} data-kind={n.kind}>
           <span className={styles.treeNode}>{n.title}</span>
-          {n.children.length > 0 && (
-            <BranchView nodes={n.children} depth={depth + 1} />
-          )}
+          {n.children.length > 0 && <BranchView nodes={n.children} depth={depth + 1} />}
         </li>
       ))}
     </ul>
@@ -61,9 +53,7 @@ export function AnalysisPanels({
   onRemoteProject,
 }: Props) {
   const prompt = usePrompt();
-  const [sub, setSub] = useState<"branch" | "chars" | "timeline" | "voice">(
-    "branch"
-  );
+  const [sub, setSub] = useState<"branch" | "chars" | "timeline" | "voice">("branch");
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceReport, setVoiceReport] = useState<VoiceReport | null>(null);
   const [voiceError, setVoiceError] = useState("");
@@ -83,18 +73,12 @@ export function AnalysisPanels({
     else onChange(() => next);
   }
 
-  const tree = useMemo(
-    () => buildBranchTree(project, chapterId),
-    [project, chapterId]
-  );
+  const tree = useMemo(() => buildBranchTree(project, chapterId), [project, chapterId]);
 
   const charLinks = project.characterLinks ?? [];
-  const timeline = [...(project.timeline ?? [])].sort(
-    (a, b) => a.order - b.order
-  );
+  const timeline = [...(project.timeline ?? [])].sort((a, b) => a.order - b.order);
   const staleCount =
-    charLinks.filter((l) => l.stale).length +
-    timeline.filter((t) => t.stale).length;
+    charLinks.filter((l) => l.stale).length + timeline.filter((t) => t.stale).length;
 
   const charLayout = useMemo(() => {
     const w = 640;
@@ -262,11 +246,7 @@ export function AnalysisPanels({
   }
 
   function addCharLink() {
-    if (
-      !linkDraft.fromId ||
-      !linkDraft.toId ||
-      linkDraft.fromId === linkDraft.toId
-    )
+    if (!linkDraft.fromId || !linkDraft.toId || linkDraft.fromId === linkDraft.toId)
       return;
     const link: CharacterLink = {
       id: uid("clink"),
@@ -278,12 +258,7 @@ export function AnalysisPanels({
     };
     onChange((p) => ({
       ...p,
-      characters: weakSyncCharacters(
-        p.characters,
-        link.fromId,
-        link.toId,
-        link.label
-      ),
+      characters: weakSyncCharacters(p.characters, link.fromId, link.toId, link.label),
       characterLinks: [...(p.characterLinks ?? []), link],
     }));
   }
@@ -315,11 +290,7 @@ export function AnalysisPanels({
   return (
     <section className={styles.wrap}>
       <div className={styles.factBar}>
-        <button
-          type="button"
-          disabled={factBusy}
-          onClick={() => void runScan(false)}
-        >
+        <button type="button" disabled={factBusy} onClick={() => void runScan(false)}>
           {factBusy ? "处理中…" : "扫描更新"}
         </button>
         <button
@@ -428,9 +399,7 @@ export function AnalysisPanels({
           <div className={styles.toolbar}>
             <select
               value={linkDraft.fromId}
-              onChange={(e) =>
-                setLinkDraft((d) => ({ ...d, fromId: e.target.value }))
-              }
+              onChange={(e) => setLinkDraft((d) => ({ ...d, fromId: e.target.value }))}
             >
               <option value="">角色 A</option>
               {project.characters.map((c) => (
@@ -441,16 +410,12 @@ export function AnalysisPanels({
             </select>
             <input
               value={linkDraft.label}
-              onChange={(e) =>
-                setLinkDraft((d) => ({ ...d, label: e.target.value }))
-              }
+              onChange={(e) => setLinkDraft((d) => ({ ...d, label: e.target.value }))}
               placeholder="关系标签"
             />
             <select
               value={linkDraft.toId}
-              onChange={(e) =>
-                setLinkDraft((d) => ({ ...d, toId: e.target.value }))
-              }
+              onChange={(e) => setLinkDraft((d) => ({ ...d, toId: e.target.value }))}
             >
               <option value="">角色 B</option>
               {project.characters.map((c) => (
@@ -574,9 +539,7 @@ export function AnalysisPanels({
               <article
                 key={ev.id}
                 className={
-                  ev.stale
-                    ? `${styles.tlCard} ${styles.tlCardStale}`
-                    : styles.tlCard
+                  ev.stale ? `${styles.tlCard} ${styles.tlCardStale}` : styles.tlCard
                 }
               >
                 {ev.stale ? (
@@ -643,11 +606,7 @@ export function AnalysisPanels({
             观点层：语气报告不写入关系图/时间线。二期将升级为对抗式审稿并按章节版本落库。
           </p>
           <div className={styles.toolbar}>
-            <button
-              type="button"
-              disabled={voiceBusy}
-              onClick={() => void runVoice()}
-            >
+            <button type="button" disabled={voiceBusy} onClick={() => void runVoice()}>
               {voiceBusy ? "检查中…" : "生成语气一致性报告"}
             </button>
           </div>
@@ -683,9 +642,7 @@ export function AnalysisPanels({
                       </strong>
                       <span>「{issue.quote}」</span>
                       <span>{issue.note}</span>
-                      {issue.suggestion ? (
-                        <em>建议：{issue.suggestion}</em>
-                      ) : null}
+                      {issue.suggestion ? <em>建议：{issue.suggestion}</em> : null}
                     </li>
                   ))}
                 </ul>

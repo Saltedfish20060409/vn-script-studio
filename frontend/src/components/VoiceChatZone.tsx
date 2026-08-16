@@ -49,11 +49,7 @@ export function VoiceChatZone({
     return (
       <div className={styles.chatLock}>
         <p>需要先合成或导入思维包</p>
-        <button
-          type="button"
-          className={styles.primary}
-          onClick={onGoPack}
-        >
+        <button type="button" className={styles.primary} onClick={onGoPack}>
           前往思维包
         </button>
       </div>
@@ -65,18 +61,14 @@ export function VoiceChatZone({
       <div className={styles.chatModes}>
         <button
           type="button"
-          className={
-            chatMode === "user" ? styles.shapeModeOn : styles.shapeMode
-          }
+          className={chatMode === "user" ? styles.shapeModeOn : styles.shapeMode}
           onClick={() => onModeChange("user")}
         >
           与 TA 聊
         </button>
         <button
           type="button"
-          className={
-            chatMode === "duo" ? styles.shapeModeOn : styles.shapeMode
-          }
+          className={chatMode === "duo" ? styles.shapeModeOn : styles.shapeMode}
           onClick={() => onModeChange("duo")}
         >
           角色互聊
@@ -84,10 +76,7 @@ export function VoiceChatZone({
         {chatMode === "duo" && (
           <label className={styles.field} style={{ marginLeft: "auto" }}>
             搭档
-            <select
-              value={partnerId}
-              onChange={(e) => onPartnerChange(e.target.value)}
-            >
+            <select value={partnerId} onChange={(e) => onPartnerChange(e.target.value)}>
               {partners.length === 0 ? (
                 <option value="">无可用角色</option>
               ) : (
@@ -126,18 +115,10 @@ export function VoiceChatZone({
       </div>
 
       <div className={styles.chatToolbar}>
-        <button
-          type="button"
-          disabled={!!busy}
-          onClick={onClear}
-        >
+        <button type="button" disabled={!!busy} onClick={onClear}>
           清空会话
         </button>
-        <button
-          type="button"
-          disabled={!!busy || !canSave}
-          onClick={onSaveSample}
-        >
+        <button type="button" disabled={!!busy || !canSave} onClick={onSaveSample}>
           {busy === "save-chat" ? "存入中…" : "存入正例"}
         </button>
       </div>
@@ -147,9 +128,7 @@ export function VoiceChatZone({
           rows={2}
           value={chatInput}
           onChange={(e) => onInputChange(e.target.value)}
-          placeholder={
-            chatMode === "duo" ? "旁白 / 出题…" : "对角色说…"
-          }
+          placeholder={chatMode === "duo" ? "旁白 / 出题…" : "对角色说…"}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();

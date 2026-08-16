@@ -306,12 +306,11 @@
   padding: 1.25rem 1.2rem 1rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-md, 12px);
-  background:
-    linear-gradient(
-      165deg,
-      color-mix(in srgb, var(--panel-bg) 92%, var(--accent) 8%) 0%,
-      var(--panel-bg) 42%
-    );
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--panel-bg) 92%, var(--accent) 8%) 0%,
+    var(--panel-bg) 42%
+  );
   box-shadow: var(--shadow-sm);
   transition:
     border-color 160ms ease,

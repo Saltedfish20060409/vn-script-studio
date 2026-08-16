@@ -44,8 +44,7 @@ export default function LoginPage() {
     () => MOOD_LINE.idle || mascotLine("idle")
   );
 
-  const redirectTo =
-    (location.state as { from?: string } | null)?.from || "/";
+  const redirectTo = (location.state as { from?: string } | null)?.from || "/";
 
   // Align login chrome with last-used studio appearance (local cache)
   useEffect(() => {
@@ -175,11 +174,7 @@ export default function LoginPage() {
             </button>
           </div>
 
-          <form
-            id="vnss-login-form"
-            className={styles.form}
-            onSubmit={onSubmit}
-          >
+          <form id="vnss-login-form" className={styles.form} onSubmit={onSubmit}>
             <label htmlFor="vnss-username">
               用户名
               <input
@@ -197,9 +192,7 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete={
-                  mode === "login" ? "current-password" : "new-password"
-                }
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
                 placeholder={mode === "register" ? "至少 6 位" : "密码"}
               />
             </label>

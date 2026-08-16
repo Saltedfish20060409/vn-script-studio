@@ -16,9 +16,7 @@ import {
 
 describe("normalizeForMatch：清洗格式噪声", () => {
   it("去掉 Ren'Py 指令行前缀 [label/scene/show...]", () => {
-    expect(normalizeForMatch("[scene bg station] 她到了车站")).toBe(
-      "她到了车站"
-    );
+    expect(normalizeForMatch("[scene bg station] 她到了车站")).toBe("她到了车站");
   });
 
   it("去掉 旁白： 说话人前缀", () => {
@@ -58,10 +56,7 @@ describe("splitParagraphs：分段策略", () => {
 
   it("auto 模式对含 Ren'Py 指令的文本采用行分段", () => {
     const text = '[label start]\n林夏 "你好"';
-    expect(splitParagraphs(text, "auto")).toEqual([
-      "[label start]",
-      '林夏 "你好"',
-    ]);
+    expect(splitParagraphs(text, "auto")).toEqual(["[label start]", '林夏 "你好"']);
   });
 
   it("空白输入返回空数组", () => {
@@ -131,12 +126,8 @@ describe("buildReviseSegments：对齐与差异判定", () => {
   });
 
   it("Ren'Py 密集脚本走行分段并对齐", () => {
-    const original = ['[label start]', '林夏 "你好"', "[scene bg park]"].join(
-      "\n"
-    );
-    const revised = ['[label start]', '林夏 "你好！"', "[scene bg park]"].join(
-      "\n"
-    );
+    const original = ["[label start]", '林夏 "你好"', "[scene bg park]"].join("\n");
+    const revised = ["[label start]", '林夏 "你好！"', "[scene bg park]"].join("\n");
     const segs = buildReviseSegments(original, revised);
     expect(segs).toHaveLength(3);
     expect(segs[0].kind).toBe("equal");
@@ -167,10 +158,28 @@ describe("buildReviseSegments：对齐与差异判定", () => {
 describe("mergeReviseSegments：按 useRevised 合并", () => {
   it("useRevised=true 取改稿，false 保留原文，空段被过滤", () => {
     const segs = [
-      { id: "s0", original: "A", revised: "A1", useRevised: true, kind: "changed" as const },
-      { id: "s1", original: "B", revised: "B1", useRevised: false, kind: "changed" as const },
+      {
+        id: "s0",
+        original: "A",
+        revised: "A1",
+        useRevised: true,
+        kind: "changed" as const,
+      },
+      {
+        id: "s1",
+        original: "B",
+        revised: "B1",
+        useRevised: false,
+        kind: "changed" as const,
+      },
       { id: "s2", original: "", revised: "", useRevised: true, kind: "equal" as const },
-      { id: "s3", original: "", revised: "C", useRevised: true, kind: "added" as const },
+      {
+        id: "s3",
+        original: "",
+        revised: "C",
+        useRevised: true,
+        kind: "added" as const,
+      },
     ];
     expect(mergeReviseSegments(segs)).toBe("A1\n\nB\n\nC");
   });
@@ -186,7 +195,13 @@ describe("mergeReviseSegments：按 useRevised 合并", () => {
 
   it("合并结果对段落做 trim", () => {
     const segs = [
-      { id: "s0", original: "  A  ", revised: "  A  ", useRevised: true, kind: "equal" as const },
+      {
+        id: "s0",
+        original: "  A  ",
+        revised: "  A  ",
+        useRevised: true,
+        kind: "equal" as const,
+      },
     ];
     expect(mergeReviseSegments(segs)).toBe("A");
   });
@@ -195,10 +210,34 @@ describe("mergeReviseSegments：按 useRevised 合并", () => {
 describe("countRevisedKept：统计保留倾向", () => {
   it("equal 与双空段不计入，useRevised 决定计数", () => {
     const segs = [
-      { id: "s0", original: "A", revised: "A", useRevised: true, kind: "equal" as const },
-      { id: "s1", original: "B", revised: "B1", useRevised: true, kind: "changed" as const },
-      { id: "s2", original: "C", revised: "", useRevised: false, kind: "removed" as const },
-      { id: "s3", original: "", revised: "D", useRevised: true, kind: "added" as const },
+      {
+        id: "s0",
+        original: "A",
+        revised: "A",
+        useRevised: true,
+        kind: "equal" as const,
+      },
+      {
+        id: "s1",
+        original: "B",
+        revised: "B1",
+        useRevised: true,
+        kind: "changed" as const,
+      },
+      {
+        id: "s2",
+        original: "C",
+        revised: "",
+        useRevised: false,
+        kind: "removed" as const,
+      },
+      {
+        id: "s3",
+        original: "",
+        revised: "D",
+        useRevised: true,
+        kind: "added" as const,
+      },
       { id: "s4", original: "", revised: "", useRevised: true, kind: "equal" as const },
     ];
     expect(countRevisedKept(segs)).toEqual({ keptRevised: 2, keptOriginal: 1 });

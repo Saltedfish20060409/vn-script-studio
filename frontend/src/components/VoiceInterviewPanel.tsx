@@ -49,9 +49,7 @@ export function VoiceInterviewPanel({
   return (
     <>
       {(question || genQuestion) && (
-        <p className={styles.interviewQ}>
-          {question || genQuestion}
-        </p>
+        <p className={styles.interviewQ}>{question || genQuestion}</p>
       )}
       <div className={styles.cardStage}>
         {variants.length === 0 && !busy && (
@@ -77,11 +75,7 @@ export function VoiceInterviewPanel({
             <span>生成进行中…角色正在组织回答</span>
           </div>
         )}
-        <VoiceVariantCards
-          variants={variants}
-          busy={busy}
-          onAccept={onAcceptVariant}
-        />
+        <VoiceVariantCards variants={variants} busy={busy} onAccept={onAcceptVariant} />
         <VoiceWhyPanel
           open={whyOpen}
           pending={pendingAccept}
@@ -96,9 +90,7 @@ export function VoiceInterviewPanel({
         />
       </div>
       <div className={styles.manualBox}>
-        <p className={styles.manualHint}>
-          或手写回答（一行或多行），作为采访正例入库
-        </p>
+        <p className={styles.manualHint}>或手写回答（一行或多行），作为采访正例入库</p>
         <textarea
           rows={4}
           value={interviewManual}

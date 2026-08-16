@@ -89,9 +89,7 @@ export function findLocationOccurrences(
   location: Location,
   chapters: SceneChapter[]
 ): LocationChapterOccurrence[] {
-  const tagKey = location.imageTag
-    ? normalizeSceneKey(location.imageTag)
-    : "";
+  const tagKey = location.imageTag ? normalizeSceneKey(location.imageTag) : "";
   const needles = textNeedles(location);
   if (!tagKey && needles.length === 0) return [];
 
@@ -113,9 +111,7 @@ export function findLocationOccurrences(
 }
 
 /** Prefer first scene hit, else first text hit — for list subtitle. */
-export function primaryEvidence(
-  occ: LocationChapterOccurrence
-): LocationOccurrenceHit {
+export function primaryEvidence(occ: LocationChapterOccurrence): LocationOccurrenceHit {
   return occ.hits.find((h) => h.kind === "scene") ?? occ.hits[0];
 }
 

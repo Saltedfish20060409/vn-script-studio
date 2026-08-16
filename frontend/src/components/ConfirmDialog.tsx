@@ -70,12 +70,8 @@ type PromptPending = PromptOptions & {
 };
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
-  const [confirmPending, setConfirmPending] = useState<ConfirmPending | null>(
-    null
-  );
-  const [promptPending, setPromptPending] = useState<PromptPending | null>(
-    null
-  );
+  const [confirmPending, setConfirmPending] = useState<ConfirmPending | null>(null);
+  const [promptPending, setPromptPending] = useState<PromptPending | null>(null);
   const [promptValue, setPromptValue] = useState("");
   const titleId = useId();
   const promptTitleId = useId();
@@ -102,16 +98,13 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const closePrompt = useCallback(
-    (value: string | null) => {
-      setPromptPending((cur) => {
-        cur?.resolve(value);
-        return null;
-      });
-      setPromptValue("");
-    },
-    []
-  );
+  const closePrompt = useCallback((value: string | null) => {
+    setPromptPending((cur) => {
+      cur?.resolve(value);
+      return null;
+    });
+    setPromptValue("");
+  }, []);
 
   useEffect(() => {
     if (!confirmPending) return;
@@ -152,8 +145,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       : "");
 
   const promptLine =
-    promptPending?.line ??
-    (promptPending ? mascotLine("confirmSoft") : "");
+    promptPending?.line ?? (promptPending ? mascotLine("confirmSoft") : "");
 
   return (
     <ConfirmCtx.Provider value={confirm}>

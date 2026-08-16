@@ -71,18 +71,10 @@ export function StudioTopBar({
         <details className={styles.moreMenu}>
           <summary>更多</summary>
           <div className={styles.morePanel} role="menu">
-            <button
-              type="button"
-              role="menuitem"
-              onClick={onNewProject}
-            >
+            <button type="button" role="menuitem" onClick={onNewProject}>
               新建剧本
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={onImportClick}
-            >
+            <button type="button" role="menuitem" onClick={onImportClick}>
               导入文件
             </button>
             <button type="button" role="menuitem" onClick={onSaveChapter}>
@@ -97,11 +89,7 @@ export function StudioTopBar({
           accept=".docx,.txt,.md,.rpy,.json,.fountain"
           onChange={onFileChange}
         />
-        <button
-          type="button"
-          className={styles.primary}
-          onClick={onExportRpy}
-        >
+        <button type="button" className={styles.primary} onClick={onExportRpy}>
           导出 .rpy
         </button>
         {username ? (

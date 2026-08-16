@@ -94,9 +94,7 @@ export function MapPalette({
                   onSetPlaceCustomId(null);
                   onSetPlaceKind("landmark");
                 }
-                onChangeCustomElements(
-                  customElements.filter((x) => x.id !== c.id)
-                );
+                onChangeCustomElements(customElements.filter((x) => x.id !== c.id));
               }}
             >
               ×
@@ -105,18 +103,14 @@ export function MapPalette({
         ))}
       </div>
       {customElements.length > 0 && (
-        <p className={styles.hintTiny}>
-          内置元素不可删；自定义项点 × 可移除图鉴
-        </p>
+        <p className={styles.hintTiny}>内置元素不可删；自定义项点 × 可移除图鉴</p>
       )}
 
       <p className={styles.label}>自定义</p>
       <div className={styles.customForm}>
         <input
           value={customForm.name}
-          onChange={(e) =>
-            onSetCustomForm((f) => ({ ...f, name: e.target.value }))
-          }
+          onChange={(e) => onSetCustomForm((f) => ({ ...f, name: e.target.value }))}
           placeholder="名称"
         />
         <div className={styles.customRow}>

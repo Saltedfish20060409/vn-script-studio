@@ -5,6 +5,7 @@ import {
   type PanelGlass,
   type ThemeMode,
 } from "../lib/settings";
+import { getUsage, type UsageTotals } from "../api/misc";
 import { MascotFigure } from "./MascotFigure";
 import { mascotLine } from "../lib/mascotCopy";
 import styles from "./SettingsModal.module.css";
@@ -16,7 +17,62 @@ type Props = {
   onChange: (s: AppSettings) => void;
 };
 
-type Pane = "theme" | "bg";
+type Pane = "theme" | "bg" | "usage";
+
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+function UsageRow({ label, t }: { label: string; t: UsageTotals }) {
+  return (
+    <div className={styles.usageRow}>
+      <span className={styles.usageLabel}>{label}</span>
+      <span>{t.calls} 次调用</span>
+      <span>
+        输入 {fmtTokens(t.promptTokens)} · 输出 {fmtTokens(t.completionTokens)}
+      </span>
+      <strong>{fmtTokens(t.totalTokens)} tokens</strong>
+    </div>
+  );
+}
+
+function UsagePane() {
+  const [usage, setUsage] = useState<{ today: UsageTotals; total: UsageTotals } | null>(null);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    setError("");
+    getUsage()
+      .then(setUsage)
+      .catch((e) => setError(e instanceof Error ? e.message : "用量读取失败"));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return (
+    <div className={styles.form}>
+      <p className={styles.note}>模型 token 消耗（服务端记账，按用户统计）。</p>
+      <div className={styles.usageBox}>
+        {error && <p className={styles.error}>{error}</p>}
+        {usage ? (
+          <>
+            <UsageRow label="今日" t={usage.today} />
+            <UsageRow label="累计" t={usage.total} />
+          </>
+        ) : (
+          !error && <p className={styles.note}>加载中…</p>
+        )}
+      </div>
+      <button type="button" className={styles.ghost} onClick={load}>
+        刷新
+      </button>
+    </div>
+  );
+}
 
 function BgPanPreview({
   image,
@@ -93,9 +149,7 @@ function BgPanPreview({
         role="presentation"
         title="按住并拖动以调整取景区"
       />
-      <p className={styles.bgDragHint}>
-        按住预览区可平移取景；松手前旁白会一直陪着。
-      </p>
+      <p className={styles.bgDragHint}>按住预览区可平移取景；松手前旁白会一直陪着。</p>
     </div>
   );
 }
@@ -187,6 +241,7 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
               [
                 ["theme", "01", "外观"],
                 ["bg", "02", "工具背景"],
+                ["usage", "03", "用量"],
               ] as const
             ).map(([id, idx, label]) => (
               <button
@@ -210,9 +265,7 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                   <button
                     type="button"
                     className={
-                      settings.theme === "day"
-                        ? styles.themeActive
-                        : styles.themeCard
+                      settings.theme === "day" ? styles.themeActive : styles.themeCard
                     }
                     onClick={() => setTheme("day")}
                   >
@@ -222,9 +275,7 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                   <button
                     type="button"
                     className={
-                      settings.theme === "night"
-                        ? styles.themeActive
-                        : styles.themeCard
+                      settings.theme === "night" ? styles.themeActive : styles.themeCard
                     }
                     onClick={() => setTheme("night")}
                   >
@@ -240,9 +291,7 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                     max={1.4}
                     step={0.05}
                     value={settings.fontScale ?? 1}
-                    onChange={(e) =>
-                      patch({ fontScale: Number(e.target.value) })
-                    }
+                    onChange={(e) => patch({ fontScale: Number(e.target.value) })}
                   />
                 </label>
                 <p
@@ -259,7 +308,8 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                   恢复默认字号
                 </button>
                 <p className={styles.note}>
-                  模型 API Key、Base URL、写作工艺与自检均由服务端环境变量配置，前端不参与。
+                  模型 API Key、Base
+                  URL、写作工艺与自检均由服务端环境变量配置，前端不参与。
                 </p>
               </div>
             )}
@@ -325,9 +375,7 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                     max={3}
                     step={0.05}
                     value={settings.bgScale}
-                    onChange={(e) =>
-                      patch({ bgScale: Number(e.target.value) })
-                    }
+                    onChange={(e) => patch({ bgScale: Number(e.target.value) })}
                   />
                 </label>
                 <label>
@@ -338,9 +386,7 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                     max={0.85}
                     step={0.01}
                     value={settings.bgOpacity}
-                    onChange={(e) =>
-                      patch({ bgOpacity: Number(e.target.value) })
-                    }
+                    onChange={(e) => patch({ bgOpacity: Number(e.target.value) })}
                   />
                 </label>
                 <label>
@@ -351,13 +397,12 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                     max={0.85}
                     step={0.01}
                     value={settings.bgScrim ?? 0.42}
-                    onChange={(e) =>
-                      patch({ bgScrim: Number(e.target.value) })
-                    }
+                    onChange={(e) => patch({ bgScrim: Number(e.target.value) })}
                   />
                 </label>
                 <p className={styles.note}>
-                  面板玻璃：有壁纸时生效。「自动」跟随日间→雾色 / 夜间→墨色；也可手动锁定。
+                  面板玻璃：有壁纸时生效。「自动」跟随日间→雾色 /
+                  夜间→墨色；也可手动锁定。
                 </p>
                 <div className={styles.themeRow}>
                   {(
@@ -375,9 +420,7 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                           ? styles.themeActive
                           : styles.themeCard
                       }
-                      onClick={() =>
-                        patch({ panelGlass: id as PanelGlass })
-                      }
+                      onClick={() => patch({ panelGlass: id as PanelGlass })}
                     >
                       {label}
                     </button>
@@ -406,6 +449,7 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                 </button>
               </div>
             )}
+            {pane === "usage" && <UsagePane />}
           </div>
         </div>
         <div className={styles.mascotDock} aria-hidden>

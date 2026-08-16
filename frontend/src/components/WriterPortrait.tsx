@@ -1,8 +1,5 @@
 import { useState } from "react";
-import {
-  writerPortraitAccent,
-  writerPortraitUrl,
-} from "../lib/writerPortraits";
+import { writerPortraitAccent, writerPortraitUrl } from "../lib/writerPortraits";
 import styles from "./WriterPortrait.module.css";
 
 type Size = "xs" | "sm" | "md" | "lg";

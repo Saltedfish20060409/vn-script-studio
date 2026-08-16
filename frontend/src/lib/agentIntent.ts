@@ -52,10 +52,7 @@ function wantsCritiqueOnly(text: string): boolean {
  * Infer capability from user text + attachment count.
  * Prefer specific studio pipelines over generic chat when intent is clear.
  */
-export function inferAgentIntent(
-  text: string,
-  attachmentCount = 0
-): AgentIntent {
+export function inferAgentIntent(text: string, attachmentCount = 0): AgentIntent {
   const trimmed = (text || "").trim();
   const t = trimmed || (hasAttach(attachmentCount) ? "请阅读附件并协助整理" : "");
 
@@ -89,7 +86,10 @@ export function inferAgentIntent(
   }
 
   // Short editorial commands (after a revise preview, or as prefs)
-  if (/^(再润|再润一版|再软一点|再轻一点)([。！!？?\s]|$)/.test(t) || /^轻润一下/.test(t)) {
+  if (
+    /^(再润|再润一版|再软一点|再轻一点)([。！!？?\s]|$)/.test(t) ||
+    /^轻润一下/.test(t)
+  ) {
     return { kind: "chapter_polish", note: t, mode: "light_touch" };
   }
   if (/这段用原文|还原这段|打开对照|对照面板|挑选段落/.test(t)) {
@@ -153,12 +153,18 @@ export function inferAgentIntent(
     return { kind: "facts_scan", note: t };
   }
 
-  if (wantsCritiqueOnly(t) || (t.length > 800 && !wantsRewrite(t) && /对吗|意见|分析/.test(t))) {
+  if (
+    wantsCritiqueOnly(t) ||
+    (t.length > 800 && !wantsRewrite(t) && /对吗|意见|分析/.test(t))
+  ) {
     return { kind: "critique_only", note: t };
   }
 
   // Attachment with vague "整理/根据附件" — prefer settings if looks like lore, else chat
-  if (hasAttach(attachmentCount) && /(根据附件|整理进|写入|更新工程|帮我整理)/.test(t)) {
+  if (
+    hasAttach(attachmentCount) &&
+    /(根据附件|整理进|写入|更新工程|帮我整理)/.test(t)
+  ) {
     if (/(关系|时间线)/.test(t)) return { kind: "facts_scan", note: t };
     if (/(设定|角色|世界观|大纲)/.test(t)) return { kind: "settings_ingest", note: t };
   }

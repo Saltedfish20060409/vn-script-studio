@@ -49,11 +49,7 @@ export function VoiceRail({
           <p className={styles.railKicker}>CAST</p>
           <p className={styles.railLabel}>角色名单</p>
         </div>
-        <button
-          type="button"
-          className={styles.railClose}
-          onClick={onClose}
-        >
+        <button type="button" className={styles.railClose} onClick={onClose}>
           关闭
         </button>
       </div>
@@ -94,10 +90,7 @@ export function VoiceRail({
             <p className={styles.dossierIdx}>
               FILE{" "}
               {String(
-                Math.max(
-                  1,
-                  characters.findIndex((c) => c.id === character.id) + 1,
-                ),
+                Math.max(1, characters.findIndex((c) => c.id === character.id) + 1)
               ).padStart(2, "0")}
             </p>
             <h3

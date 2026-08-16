@@ -110,4 +110,5 @@ def server_llm_credentials(settings: Settings) -> dict[str, str]:
         "api_key": settings.deepseek_api_key,
         "base_url": settings.deepseek_base_url or "https://api.deepseek.com",
         "model": settings.deepseek_model or "deepseek-chat",
+        "provider": settings.llm_provider or "openai",
     }

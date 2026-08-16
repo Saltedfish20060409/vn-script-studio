@@ -70,36 +70,28 @@ export function MapToolbar({
         {tool === "link" && (
           <select
             value={lineStyle}
-            onChange={(e) =>
-              onSetLineStyle(e.target.value as MapLineStyle)
-            }
+            onChange={(e) => onSetLineStyle(e.target.value as MapLineStyle)}
             title="连线样式"
           >
-            {(Object.keys(MAP_LINE_STYLE_LABELS) as MapLineStyle[]).map(
-              (ls) => (
-                <option key={ls} value={ls}>
-                  {MAP_LINE_STYLE_LABELS[ls]}
-                </option>
-              )
-            )}
+            {(Object.keys(MAP_LINE_STYLE_LABELS) as MapLineStyle[]).map((ls) => (
+              <option key={ls} value={ls}>
+                {MAP_LINE_STYLE_LABELS[ls]}
+              </option>
+            ))}
           </select>
         )}
         {tool === "draw" && (
           <>
             <button
               type="button"
-              className={
-                brushMode === "pen" ? styles.toolActive : styles.toolBtn
-              }
+              className={brushMode === "pen" ? styles.toolActive : styles.toolBtn}
               onClick={() => onSetBrushMode("pen")}
             >
               画笔
             </button>
             <button
               type="button"
-              className={
-                brushMode === "eraser" ? styles.toolActive : styles.toolBtn
-              }
+              className={brushMode === "eraser" ? styles.toolActive : styles.toolBtn}
               onClick={() => onSetBrushMode("eraser")}
             >
               橡皮
@@ -127,11 +119,7 @@ export function MapToolbar({
             >
               撤回
             </button>
-            <button
-              type="button"
-              className={styles.toolBtn}
-              onClick={onClearStrokes}
-            >
+            <button type="button" className={styles.toolBtn} onClick={onClearStrokes}>
               清空笔迹
             </button>
           </>
@@ -140,18 +128,13 @@ export function MapToolbar({
           {tool === "pan" && "拖空白平移 · 滚轮缩放"}
           {tool === "select" && "框选 / Shift+点切换 · 拖动可多移"}
           {tool === "place" && "单击放置 · 拖空白则平移"}
-          {tool === "link" &&
-            (linkFrom ? "再点终点" : "先点起点 · 空白拖动画布")}
+          {tool === "link" && (linkFrom ? "再点终点" : "先点起点 · 空白拖动画布")}
           {tool === "draw" &&
             (brushMode === "eraser"
               ? "拖过笔迹擦除 · Ctrl+Z 撤回 · E 橡皮"
               : "拖动画线 · Ctrl+Z 撤回 · E 切橡皮")}
         </span>
-        <button
-          type="button"
-          className={styles.toolBtn}
-          onClick={() => onFit()}
-        >
+        <button type="button" className={styles.toolBtn} onClick={() => onFit()}>
           复位
         </button>
         {onExtractFromScript && (

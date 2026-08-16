@@ -8,11 +8,7 @@
  */
 import { describe, it, expect } from "vitest";
 import type { Character, ScriptBlock } from "../types/vn";
-import {
-  blocksToEditable,
-  editableToBlocks,
-  blockTextRange,
-} from "./scriptCodec";
+import { blocksToEditable, editableToBlocks, blockTextRange } from "./scriptCodec";
 
 describe("editableToBlocks：各块类型解析", () => {
   it("解析 label 块（id 与 name 相同）", () => {
@@ -114,7 +110,7 @@ describe("editableToBlocks：各块类型解析", () => {
   });
 
   it("menu 无 prompt 时 prompt 为 undefined", () => {
-    const text = ['menu m2:', '  "走":', "    jump a"].join("\n");
+    const text = ["menu m2:", '  "走":', "    jump a"].join("\n");
     const blocks = editableToBlocks(text);
     const menu = blocks[0];
     expect(menu.type).toBe("menu");
@@ -125,7 +121,7 @@ describe("editableToBlocks：各块类型解析", () => {
   });
 
   it("menu 选项缺 jump 时解析为 undefined", () => {
-    const blocks = editableToBlocks(['menu m3:', '  "停留":'].join("\n"));
+    const blocks = editableToBlocks(["menu m3:", '  "停留":'].join("\n"));
     const menu = blocks[0];
     if (menu.type === "menu") {
       expect(menu.choices).toEqual([{ text: "停留", jump: undefined }]);
@@ -142,7 +138,7 @@ describe("editableToBlocks：各块类型解析", () => {
   });
 
   it("跳过空白行，仅保留有效块", () => {
-    const blocks = editableToBlocks("label a:\n\n\n\"旁白\"");
+    const blocks = editableToBlocks('label a:\n\n\n"旁白"');
     expect(blocks).toEqual([
       { type: "label", id: "a", name: "a" },
       { type: "narration", text: "旁白" },
@@ -158,9 +154,7 @@ describe("editableToBlocks：各块类型解析", () => {
 });
 
 describe("blocksToEditable：块序列 → 文本", () => {
-  const chars: Character[] = [
-    { id: "lx", defineName: "linxia", displayName: "林夏" },
-  ];
+  const chars: Character[] = [{ id: "lx", defineName: "linxia", displayName: "林夏" }];
 
   it("dialogue 优先使用角色 defineName，找不到时回退 characterId", () => {
     const text = blocksToEditable(
@@ -186,7 +180,7 @@ describe("blocksToEditable：块序列 → 文本", () => {
       []
     );
     expect(text).toBe(
-      ['menu m1:', '  "选吧"', '  "A":', "    jump a", '  "B":', "    jump start"].join(
+      ["menu m1:", '  "选吧"', '  "A":', "    jump a", '  "B":', "    jump start"].join(
         "\n"
       )
     );
@@ -197,14 +191,11 @@ describe("blocksToEditable：块序列 → 文本", () => {
       [{ type: "menu", id: "m2", choices: [{ text: "A", jump: "a" }] }],
       []
     );
-    expect(text).toBe(['menu m2:', '  "A":', "    jump a"].join("\n"));
+    expect(text).toBe(["menu m2:", '  "A":', "    jump a"].join("\n"));
   });
 
   it("scene 无 transition 时输出不带 with 子句", () => {
-    const text = blocksToEditable(
-      [{ type: "scene", image: "bg park" }],
-      []
-    );
+    const text = blocksToEditable([{ type: "scene", image: "bg park" }], []);
     expect(text).toBe("scene bg park");
   });
 });

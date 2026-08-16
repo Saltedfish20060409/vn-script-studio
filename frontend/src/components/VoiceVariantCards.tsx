@@ -7,11 +7,7 @@ function linesBlock(lines: Array<{ speaker: string; text: string }>) {
   return lines.map((ln, i) => (
     <p key={i} className={styles.line}>
       <span className={styles.speaker}>
-        {ln.speaker === "self"
-          ? "角色"
-          : ln.speaker === "other"
-            ? "对方"
-            : ln.speaker}
+        {ln.speaker === "self" ? "角色" : ln.speaker === "other" ? "对方" : ln.speaker}
       </span>
       <span className={styles.lineText}>{ln.text}</span>
     </p>
@@ -40,18 +36,14 @@ export function VoiceVariantCards({
     <div className={styles.variantGrid}>
       {variants.map((v, i) => (
         <article key={v.axisId + i} className={styles.variantCard}>
-          <div className={styles.cardLetter}>
-            {AXIS_LETTERS[i] || i + 1}
-          </div>
+          <div className={styles.cardLetter}>{AXIS_LETTERS[i] || i + 1}</div>
           <header className={styles.cardHead}>
             <h3>{v.axisLabel || v.axisId}</h3>
             <p>{v.hypothesis}</p>
           </header>
           <div className={styles.cardBody}>
             {handlePlaceholder && v.placeholder ? (
-              <p className={styles.placeholderHint}>
-                模型未生成完整，请重新生成本组
-              </p>
+              <p className={styles.placeholderHint}>模型未生成完整，请重新生成本组</p>
             ) : (
               linesBlock(v.lines)
             )}

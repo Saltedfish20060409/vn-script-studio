@@ -28,11 +28,7 @@ export function ProjectExportPanel({
           先根据当前剧本生成 .rpy 预览，确认无误后再下载；工程 JSON 可随时导出。
         </span>
         <div className={styles.aiQuick}>
-          <button
-            type="button"
-            className={styles.primary}
-            onClick={onGenerateRpy}
-          >
+          <button type="button" className={styles.primary} onClick={onGenerateRpy}>
             生成 .rpy
           </button>
           <button
@@ -60,16 +56,8 @@ export function ProjectExportPanel({
         </p>
       )}
       {!rpyPreview ? (
-        <EmptyStage
-          stamp="EXP"
-          title="尚无导出预览"
-          line={mascotLine("emptyExport")}
-        >
-          <button
-            type="button"
-            className={styles.primary}
-            onClick={onGenerateRpy}
-          >
+        <EmptyStage stamp="EXP" title="尚无导出预览" line={mascotLine("emptyExport")}>
+          <button type="button" className={styles.primary} onClick={onGenerateRpy}>
             生成 .rpy
           </button>
         </EmptyStage>

@@ -1,9 +1,6 @@
 import { createPortal } from "react-dom";
 import styles from "./ChapterReviseModePicker.module.css";
-import {
-  REVISE_MODE_OPTIONS,
-  type ReviseMode,
-} from "../lib/chapterRevisePrefs";
+import { REVISE_MODE_OPTIONS, type ReviseMode } from "../lib/chapterRevisePrefs";
 
 type Props = {
   defaultMode?: ReviseMode;
@@ -29,7 +26,9 @@ export function ChapterReviseModePicker({
       >
         <p className={styles.stamp}>REVISE · MODE</p>
         <h2 id="revise-mode-title">这次想怎么改？</h2>
-        <p className={styles.sub}>选一个方向即可，之后还能用平常话说「再润」「别动某某」微调。</p>
+        <p className={styles.sub}>
+          选一个方向即可，之后还能用平常话说「再润」「别动某某」微调。
+        </p>
         <div className={styles.grid}>
           {REVISE_MODE_OPTIONS.map((opt) => (
             <button
@@ -45,7 +44,12 @@ export function ChapterReviseModePicker({
             </button>
           ))}
         </div>
-        <button type="button" className={styles.cancel} onClick={onCancel} disabled={busy}>
+        <button
+          type="button"
+          className={styles.cancel}
+          onClick={onCancel}
+          disabled={busy}
+        >
           取消
         </button>
       </div>

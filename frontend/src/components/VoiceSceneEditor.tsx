@@ -31,9 +31,7 @@ export function VoiceSceneEditor({
         </div>
       ) : sceneText.trim() ? (
         <>
-          <p className={styles.muted}>
-            生成后可编辑台词，确认无误后整段入库。
-          </p>
+          <p className={styles.muted}>生成后可编辑台词，确认无误后整段入库。</p>
           <textarea
             value={sceneText}
             onChange={(e) => onTextChange(e.target.value)}
@@ -48,11 +46,7 @@ export function VoiceSceneEditor({
             >
               {busy === "accept-scene" ? "入库中…" : "整段入库"}
             </button>
-            <button
-              type="button"
-              disabled={!!busy}
-              onClick={onRegenerate}
-            >
+            <button type="button" disabled={!!busy} onClick={onRegenerate}>
               重新生成
             </button>
           </div>
@@ -60,9 +54,7 @@ export function VoiceSceneEditor({
       ) : (
         <div className={styles.emptyStage}>
           <p>长场次加厚</p>
-          <span>
-            一次约 8～12 轮，整段入库。无结果时看底部错误提示。
-          </span>
+          <span>一次约 8～12 轮，整段入库。无结果时看底部错误提示。</span>
           <button
             type="button"
             className={styles.primary}

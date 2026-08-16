@@ -6,11 +6,7 @@
  * 损坏 JSON 兜底、sideOpen 布尔保留等行为。
  */
 import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
-import {
-  loadWorkspace,
-  saveWorkspace,
-  workspaceDefaults,
-} from "./workspacePersist";
+import { loadWorkspace, saveWorkspace, workspaceDefaults } from "./workspacePersist";
 
 const KEY = "vnss-workspace-v1";
 const LEGACY_PROJECT_KEY = "vnss-active-project-id";

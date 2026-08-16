@@ -21,18 +21,14 @@ export function MapExtractReview({
   onCancel,
 }: Props) {
   const places = useMemo(() => {
-    const byId = new Map(
-      (proposal.locations || []).map((l) => [l.id, l] as const)
-    );
+    const byId = new Map((proposal.locations || []).map((l) => [l.id, l] as const));
     return (proposal.newPlaceIds || [])
       .map((id) => byId.get(id))
       .filter((l): l is Location => Boolean(l));
   }, [proposal]);
 
   const links = useMemo(() => {
-    const byId = new Map(
-      (proposal.locationLinks || []).map((l) => [l.id, l] as const)
-    );
+    const byId = new Map((proposal.locationLinks || []).map((l) => [l.id, l] as const));
     const locName = new Map(
       (proposal.locations || []).map((l) => [l.id, l.name] as const)
     );

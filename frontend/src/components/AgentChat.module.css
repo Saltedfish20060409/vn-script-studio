@@ -47,12 +47,11 @@
   max-width: 420px;
   border: 2px solid var(--line);
   border-left: none;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--accent) 12%, var(--panel-bg)),
-      var(--panel-bg)
-    );
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 12%, var(--panel-bg)),
+    var(--panel-bg)
+  );
   box-shadow: var(--shadow-lg);
   clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
   transform: translateX(-105%);
@@ -178,7 +177,9 @@
   border-radius: var(--radius-sm);
   border: 2px solid transparent;
   cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
 }
 
 .convIdx {
@@ -357,13 +358,12 @@
   gap: 0.55rem;
   padding: 0.75rem 0.85rem 0.9rem;
   overflow: auto;
-  background:
-    linear-gradient(
-      165deg,
-      color-mix(in srgb, var(--accent) 22%, #ffffff) 0%,
-      #f7f8fc 38%,
-      #eef1f8 100%
-    );
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--accent) 22%, #ffffff) 0%,
+    #f7f8fc 38%,
+    #eef1f8 100%
+  );
   border: 2px solid var(--line);
   box-shadow: var(--shadow-lg);
   clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
@@ -372,13 +372,12 @@
 
 :root[data-theme="night"] .stageOverlay,
 html[data-panel-glass="ink"] .stageOverlay {
-  background:
-    linear-gradient(
-      165deg,
-      color-mix(in srgb, var(--accent) 28%, #14080c) 0%,
-      #12080c 42%,
-      #0a0507 100%
-    );
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--accent) 28%, #14080c) 0%,
+    #12080c 42%,
+    #0a0507 100%
+  );
 }
 
 @keyframes overlayIn {
@@ -505,7 +504,8 @@ html[data-panel-glass="ink"] .stageOverlay {
   inset: 8px 28px 8px 28px;
   background: var(--accent);
   transform: skewX(-18deg);
-  box-shadow: 4px 4px 0 color-mix(in srgb, var(--shard, var(--accent-hot)) 45%, transparent);
+  box-shadow: 4px 4px 0
+    color-mix(in srgb, var(--shard, var(--accent-hot)) 45%, transparent);
 }
 
 .emptyShard {
@@ -852,7 +852,7 @@ html[data-panel-glass="ink"] .stageOverlay {
 
 .personaGrid {
   display: grid;
-              grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
   gap: 0.45rem;
 }
 
@@ -967,7 +967,9 @@ html[data-panel-glass="ink"] .stageOverlay {
   border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
   background: color-mix(in srgb, var(--field-bg) 78%, transparent);
   overflow: hidden;
-  transition: border-color 220ms ease, box-shadow 220ms ease;
+  transition:
+    border-color 220ms ease,
+    box-shadow 220ms ease;
 }
 
 .main[data-mode="architect"] .modeBar {
@@ -1161,7 +1163,10 @@ html[data-panel-glass="ink"] .stageOverlay {
   padding: 0.35rem 0.7rem;
   min-height: 32px;
   font-size: 0.78rem;
-  transition: transform 140ms ease, border-color 160ms ease, color 160ms ease;
+  transition:
+    transform 140ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
 }
 
 .quickBtnMuted:hover:not(:disabled) {

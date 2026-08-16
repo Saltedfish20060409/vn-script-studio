@@ -127,8 +127,7 @@ export async function exitFullscreen() {
     webkitExitFullscreen?: () => Promise<void> | void;
   };
   const exit =
-    document.exitFullscreen?.bind(document) ||
-    doc.webkitExitFullscreen?.bind(document);
+    document.exitFullscreen?.bind(document) || doc.webkitExitFullscreen?.bind(document);
   if (exit) await Promise.resolve(exit());
 }
 

@@ -87,10 +87,7 @@ export function saveChapterReviseDraft(
   return next;
 }
 
-export function clearChapterReviseDraft(
-  projectId: string,
-  chapterId: string
-): void {
+export function clearChapterReviseDraft(projectId: string, chapterId: string): void {
   if (!projectId || !chapterId) return;
   const store = readStore();
   if (!store[projectId]?.[chapterId]) return;
@@ -103,10 +100,7 @@ export function clearChapterReviseDraft(
 }
 
 /** Ask AgentChat to open the对照 panel for this chapter's saved draft. */
-export function requestOpenReviseReview(
-  projectId: string,
-  chapterId: string
-): void {
+export function requestOpenReviseReview(projectId: string, chapterId: string): void {
   try {
     window.dispatchEvent(
       new CustomEvent(OPEN_REVISE_REVIEW_EVENT, {

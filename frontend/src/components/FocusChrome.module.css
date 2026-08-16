@@ -337,7 +337,8 @@
     box-shadow: var(--shadow);
   }
   35% {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent),
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent),
       var(--shadow-lg);
   }
 }

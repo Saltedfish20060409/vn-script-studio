@@ -80,10 +80,7 @@ export interface HarnessLintResult {
   pass: boolean;
 }
 
-export function harnessLint(
-  id: string,
-  draft: string
-): Promise<HarnessLintResult> {
+export function harnessLint(id: string, draft: string): Promise<HarnessLintResult> {
   return apiFetch(`/projects/${id}/harness/lint`, {
     method: "POST",
     body: JSON.stringify({ draft }),
@@ -272,10 +269,7 @@ export function getShare(token: string): Promise<ShareOut> {
   return apiFetch(`/shares/${token}`, { skipAuthRedirect: true });
 }
 
-export function revokeShare(
-  id: string,
-  token: string
-): Promise<{ ok: boolean }> {
+export function revokeShare(id: string, token: string): Promise<{ ok: boolean }> {
   return apiFetch(`/projects/${id}/shares/${token}`, { method: "DELETE" });
 }
 
@@ -287,11 +281,24 @@ export function getSettings(): Promise<ServerSettingsOut> {
   return apiFetch<ServerSettingsOut>("/settings");
 }
 
-export function putSettings(
-  body: Record<string, unknown>
-): Promise<ServerSettingsOut> {
+export function putSettings(body: Record<string, unknown>): Promise<ServerSettingsOut> {
   return apiFetch<ServerSettingsOut>("/settings", {
     method: "PUT",
     body: JSON.stringify(body),
   });
+}
+
+// ---------------------------------------------------------------------------
+// LLM usage
+// ---------------------------------------------------------------------------
+
+export interface UsageTotals {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  calls: number;
+}
+
+export function getUsage(): Promise<{ today: UsageTotals; total: UsageTotals }> {
+  return apiFetch<{ today: UsageTotals; total: UsageTotals }>("/usage");
 }

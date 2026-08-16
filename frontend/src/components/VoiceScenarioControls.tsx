@@ -6,10 +6,7 @@ export type ShapeMode = "preference" | "scene" | "interview" | "manual";
 export function ensureCustomScenario(list: VoiceScenario[]): VoiceScenario[] {
   const has = list.some((s) => s.id === "custom");
   if (has) return list;
-  return [
-    ...list,
-    { id: "custom", label: "自定义…", prompt: "", longSuitable: true },
-  ];
+  return [...list, { id: "custom", label: "自定义…", prompt: "", longSuitable: true }];
 }
 
 export function promptSlug(prompt: string, maxLen = 16): string {
@@ -68,8 +65,7 @@ export function VoiceScenarioControls({
       ? scenarios
       : [{ id: "misunderstood", label: "被误解时", prompt: "" }]
   );
-  const isCustom =
-    scenarioId === "custom" || scenarioId.startsWith("custom:");
+  const isCustom = scenarioId === "custom" || scenarioId.startsWith("custom:");
   return (
     <div className={styles.controls}>
       <label className={styles.field}>
@@ -145,11 +141,7 @@ export function VoiceScenarioControls({
             {busy === "generating" ? "生成中…" : generateLabel}
           </button>
           {shapeMode === "preference" && variantCount > 0 && (
-            <button
-              type="button"
-              disabled={!!busy}
-              onClick={() => onRejectAll()}
-            >
+            <button type="button" disabled={!!busy} onClick={() => onRejectAll()}>
               都不像…
             </button>
           )}
@@ -164,11 +156,7 @@ export function VoiceScenarioControls({
             </button>
           )}
           {shapeMode === "preference" && sampleCount >= 1 && (
-            <button
-              type="button"
-              disabled={!!busy}
-              onClick={() => onSameSceneRetry()}
-            >
+            <button type="button" disabled={!!busy} onClick={() => onSameSceneRetry()}>
               同场景试写
             </button>
           )}

@@ -103,12 +103,11 @@
   min-height: var(--chrome-h);
   padding: 0.4rem 1rem;
   border-bottom: 2px solid var(--line);
-  background:
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--accent) 14%, transparent),
-      color-mix(in srgb, var(--panel-bg) 90%, transparent) 36%
-    );
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 14%, transparent),
+    color-mix(in srgb, var(--panel-bg) 90%, transparent) 36%
+  );
   position: sticky;
   top: 0;
   z-index: 20;
@@ -154,7 +153,8 @@
   letter-spacing: 0.04em;
   flex-shrink: 0;
   clip-path: polygon(0 0, 100% 0, 100% 78%, 78% 100%, 0 100%);
-  box-shadow: 3px 3px 0 color-mix(in srgb, var(--shard, var(--accent-hot)) 35%, transparent);
+  box-shadow: 3px 3px 0
+    color-mix(in srgb, var(--shard, var(--accent-hot)) 35%, transparent);
 }
 
 .brandMark em {
@@ -458,7 +458,8 @@
   border-color: var(--line);
   color: var(--on-accent);
   font-weight: 650;
-  box-shadow: 3px 3px 0 color-mix(in srgb, var(--shard, var(--accent-hot)) 30%, transparent);
+  box-shadow: 3px 3px 0
+    color-mix(in srgb, var(--shard, var(--accent-hot)) 30%, transparent);
 }
 
 .chapterChipOn em {
@@ -570,12 +571,11 @@
   gap: 0;
   padding: 0 0 0 0.55rem;
   border-bottom: 2px solid var(--line);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--accent) 10%, var(--panel-bg)),
-      color-mix(in srgb, var(--panel-bg) 78%, transparent)
-    );
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 10%, var(--panel-bg)),
+    color-mix(in srgb, var(--panel-bg) 78%, transparent)
+  );
   overflow-x: auto;
   transition: background var(--dur, 220ms) var(--ease-out);
 }
@@ -588,7 +588,8 @@
   width: 5px;
   background: var(--accent);
   clip-path: polygon(0 0, 100% 0, 100% 88%, 0 100%);
-  box-shadow: 2px 0 0 color-mix(in srgb, var(--shard, var(--accent-hot)) 40%, transparent);
+  box-shadow: 2px 0 0
+    color-mix(in srgb, var(--shard, var(--accent-hot)) 40%, transparent);
 }
 
 .tab,
@@ -644,7 +645,8 @@
   border-bottom-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   clip-path: polygon(0 0, 100% 0, 100% 100%, 10px 100%, 0 calc(100% - 10px));
-  box-shadow: 4px 0 0 color-mix(in srgb, var(--shard, var(--accent-hot)) 28%, transparent);
+  box-shadow: 4px 0 0
+    color-mix(in srgb, var(--shard, var(--accent-hot)) 28%, transparent);
 }
 
 .tabActive .tabIdx {
@@ -1066,7 +1068,8 @@
 
 .menuStage .tabActive {
   clip-path: polygon(0 0, 100% 0, 100% 100%, 10px 100%, 0 calc(100% - 10px));
-  box-shadow: 4px 0 0 color-mix(in srgb, var(--shard, var(--accent-hot)) 35%, transparent);
+  box-shadow: 4px 0 0
+    color-mix(in srgb, var(--shard, var(--accent-hot)) 35%, transparent);
   background: var(--rail-fill-strong);
   border-color: var(--rail-border);
 }
@@ -1315,7 +1318,9 @@
   flex-direction: column;
   gap: 0.45rem;
   box-shadow: var(--shadow);
-  transition: border-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out),
+  transition:
+    border-color 160ms var(--ease-out),
+    box-shadow 160ms var(--ease-out),
     transform 160ms var(--ease-out);
 }
 

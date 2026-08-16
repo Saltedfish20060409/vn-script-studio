@@ -60,11 +60,7 @@ function linesToText(lines: Array<{ speaker: string; text: string }>) {
   return lines
     .map((ln) => {
       const sp =
-        ln.speaker === "self"
-          ? "角色"
-          : ln.speaker === "other"
-            ? "对方"
-            : ln.speaker;
+        ln.speaker === "self" ? "角色" : ln.speaker === "other" ? "对方" : ln.speaker;
       return `${sp}：${ln.text}`;
     })
     .join("\n");
@@ -99,7 +95,8 @@ const GENERIC_CUSTOM_LABELS = new Set(["", "自定义", "自定义…", "custom"
 function scenarioCoverageKey(s: VoiceCorpusSample): string {
   const sid = (s.scenario || "").trim();
   let label = (s.scenarioLabel || "").trim();
-  if (label.startsWith("长场次·")) label = label.slice("长场次·".length).trim() || label;
+  if (label.startsWith("长场次·"))
+    label = label.slice("长场次·".length).trim() || label;
   if (sid.startsWith("custom:")) {
     let name = sid.slice("custom:".length).trim();
     if (!name || GENERIC_CUSTOM_LABELS.has(name)) {
@@ -141,14 +138,8 @@ function readinessPaths(opts: {
   interviewCount: number;
   ready: boolean;
 }): { ready: boolean; paths: string[]; nextHint: string } {
-  const {
-    sampleCount,
-    coverage,
-    volumeChars,
-    sceneCount,
-    interviewCount,
-    ready,
-  } = opts;
+  const { sampleCount, coverage, volumeChars, sceneCount, interviewCount, ready } =
+    opts;
   const paths = [
     `短正例 ${sampleCount}/${READY_TARGETS.samples}`,
     `不同场景 ${coverage}/${READY_TARGETS.coverage}`,
@@ -168,9 +159,7 @@ function readinessPaths(opts: {
     remain.push(`再攒 ${READY_TARGETS.samples - sampleCount} 条短正例`);
   }
   if (coverage < READY_TARGETS.coverage) {
-    remain.push(
-      `再换 ${READY_TARGETS.coverage - coverage} 类不同场景做三选一`
-    );
+    remain.push(`再换 ${READY_TARGETS.coverage - coverage} 类不同场景做三选一`);
   }
   if (volumeChars < READY_TARGETS.volume) {
     remain.push(
@@ -178,9 +167,7 @@ function readinessPaths(opts: {
     );
   }
   if (sceneCount < READY_TARGETS.scenes) {
-    remain.push(
-      `或再入库 ${READY_TARGETS.scenes - sceneCount} 段长场次`
-    );
+    remain.push(`或再入库 ${READY_TARGETS.scenes - sceneCount} 段长场次`);
   }
   return {
     ready: false,
@@ -224,9 +211,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
   const [whyOpen, setWhyOpen] = useState(false);
   const [whyChips, setWhyChips] = useState<string[]>([]);
   const [whyCustom, setWhyCustom] = useState("");
-  const [pendingAccept, setPendingAccept] = useState<PendingAccept | null>(
-    null
-  );
+  const [pendingAccept, setPendingAccept] = useState<PendingAccept | null>(null);
   const [corpus, setCorpus] = useState<VoiceCorpusSample[]>([]);
   const [mind, setMind] = useState("");
   const [sampleCount, setSampleCount] = useState(0);
@@ -268,9 +253,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
 
   const partnersWithMind = useMemo(
     () =>
-      characters.filter(
-        (c) => c.id !== character?.id && (c.voiceMind || "").trim()
-      ),
+      characters.filter((c) => c.id !== character?.id && (c.voiceMind || "").trim()),
     [characters, character?.id]
   );
 
@@ -351,8 +334,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
   );
 
   const resolvedScenario = useMemo(() => {
-    const isCustom =
-      scenarioId === "custom" || scenarioId.startsWith("custom:");
+    const isCustom = scenarioId === "custom" || scenarioId.startsWith("custom:");
     if (!isCustom) {
       return {
         id: scenarioId,
@@ -364,10 +346,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
     }
     const named = customScenarioLabel.trim();
     const slug = promptSlug(scenarioPrompt);
-    const label =
-      named && !GENERIC_CUSTOM_LABELS.has(named)
-        ? named
-        : slug || "未命名";
+    const label = named && !GENERIC_CUSTOM_LABELS.has(named) ? named : slug || "未命名";
     return {
       id: `custom:${label}`,
       label,
@@ -375,12 +354,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
       isCustom: true,
       longSuitable: true,
     };
-  }, [
-    scenarioId,
-    customScenarioLabel,
-    selectedScenario,
-    scenarioPrompt,
-  ]);
+  }, [scenarioId, customScenarioLabel, selectedScenario, scenarioPrompt]);
 
   function applyProject(p: VnProject) {
     onProjectChange(p);
@@ -436,11 +410,9 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
       setInterviewQuestion("");
     }
     setInterviewManual("");
-    const extra =
-      constraintOverride !== undefined ? constraintOverride : constraints;
+    const extra = constraintOverride !== undefined ? constraintOverride : constraints;
     try {
-      const kind =
-        shapeMode === "manual" ? "preference" : shapeMode;
+      const kind = shapeMode === "manual" ? "preference" : shapeMode;
       const res = await generateCharacterVoice(project.id, character.id, {
         scenario_id: resolvedScenario.id,
         scenario_prompt: resolvedScenario.prompt,
@@ -609,14 +581,12 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
     setError("");
     try {
       const res = await acceptCharacterVoiceSample(project.id, character.id, {
-        scenario_id:
-          source === "interview" ? "interview" : resolvedScenario.id,
+        scenario_id: source === "interview" ? "interview" : resolvedScenario.id,
         scenario_label:
           source === "interview"
             ? `采访·${(genMeta?.question || interviewQuestion || "手动").slice(0, 20)}`
             : resolvedScenario.label,
-        scenario_prompt:
-          source === "interview" ? undefined : resolvedScenario.prompt,
+        scenario_prompt: source === "interview" ? undefined : resolvedScenario.prompt,
         lines,
         source,
       });
@@ -840,9 +810,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
   function chatHistoryPayload(msgs: ChatMsg[]) {
     return msgs.map((m) => ({
       role: m.role === "user" ? "user" : "assistant",
-      content: m.speakerName
-        ? `${m.speakerName}：${m.content}`
-        : m.content,
+      content: m.speakerName ? `${m.speakerName}：${m.content}` : m.content,
     }));
   }
 
@@ -1044,10 +1012,14 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
       if (!el) return;
       el.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
       // 若外层 main/壳层是滚动容器，再补一次定位
-      const scroller = el.closest("[data-workshop-scroll], main, .shell") as
-        | HTMLElement
-        | null;
-      if (scroller && scroller !== el && scroller.scrollHeight > scroller.clientHeight) {
+      const scroller = el.closest(
+        "[data-workshop-scroll], main, .shell"
+      ) as HTMLElement | null;
+      if (
+        scroller &&
+        scroller !== el &&
+        scroller.scrollHeight > scroller.clientHeight
+      ) {
         const top =
           el.getBoundingClientRect().top -
           scroller.getBoundingClientRect().top +
@@ -1188,9 +1160,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
               onGenerate={() => void onGenerate()}
               onRejectAll={() => void onRejectAll()}
               onSameSceneRetry={handleSameSceneRetry}
-              onAcceptVariant={(v, i, source) =>
-                void onAcceptVariant(v, i, source)
-              }
+              onAcceptVariant={(v, i, source) => void onAcceptVariant(v, i, source)}
               onUnlikeAxisSelect={handleUnlikeAxisSelect}
               onUnlikeCustomAxisChange={setUnlikeCustomAxis}
               onUnlikeTextChange={setUnlikeText}

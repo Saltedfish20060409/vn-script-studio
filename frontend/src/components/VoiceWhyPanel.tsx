@@ -42,8 +42,7 @@ export function VoiceWhyPanel({
   onCancel,
 }: Props) {
   if (!open || !pending) return null;
-  const label =
-    pending.variant.axisLabel || pending.variant.axisId || "这组";
+  const label = pending.variant.axisLabel || pending.variant.axisId || "这组";
   return (
     <div className={styles.whyBox}>
       <p className={styles.manualHint}>

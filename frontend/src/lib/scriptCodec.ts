@@ -1,9 +1,6 @@
 import type { Character, ScriptBlock } from "../types/vn";
 
-function blockToEditableChunk(
-  b: ScriptBlock,
-  characters: Character[]
-): string {
+function blockToEditableChunk(b: ScriptBlock, characters: Character[]): string {
   switch (b.type) {
     case "label":
       return `label ${b.name}:`;
@@ -119,9 +116,7 @@ export function editableToBlocks(text: string): ScriptBlock[] {
       i += 1;
       continue;
     }
-    const dialogueMatch = trimmed.match(
-      /^([A-Za-z_][A-Za-z0-9_]*)\s+"(.*)"\s*$/
-    );
+    const dialogueMatch = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+"(.*)"\s*$/);
     if (dialogueMatch) {
       blocks.push({
         type: "dialogue",
@@ -138,18 +133,13 @@ export function editableToBlocks(text: string): ScriptBlock[] {
       continue;
     }
     if (trimmed.startsWith("menu")) {
-      const menuId =
-        trimmed.match(/^menu\s+([A-Za-z0-9_]+)\s*:/)?.[1] ?? `menu_${i}`;
+      const menuId = trimmed.match(/^menu\s+([A-Za-z0-9_]+)\s*:/)?.[1] ?? `menu_${i}`;
       const choices: { text: string; jump?: string }[] = [];
       let prompt: string | undefined;
       i += 1;
       while (i < lines.length) {
         const mline = lines[i];
-        if (
-          mline.length > 0 &&
-          !mline.startsWith(" ") &&
-          !mline.startsWith("\t")
-        ) {
+        if (mline.length > 0 && !mline.startsWith(" ") && !mline.startsWith("\t")) {
           break;
         }
         const mt = mline.trim();
@@ -176,9 +166,7 @@ export function editableToBlocks(text: string): ScriptBlock[] {
             }
             if (
               nested.trim().startsWith('"') ||
-              (nested.length > 0 &&
-                !nested.startsWith(" ") &&
-                !nested.startsWith("\t"))
+              (nested.length > 0 && !nested.startsWith(" ") && !nested.startsWith("\t"))
             ) {
               break;
             }
@@ -195,7 +183,5 @@ export function editableToBlocks(text: string): ScriptBlock[] {
     blocks.push({ type: "raw", code: line });
     i += 1;
   }
-  return blocks.length
-    ? blocks
-    : [{ type: "label", id: "start", name: "start" }];
+  return blocks.length ? blocks : [{ type: "label", id: "start", name: "start" }];
 }

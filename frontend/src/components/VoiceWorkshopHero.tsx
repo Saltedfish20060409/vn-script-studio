@@ -34,11 +34,7 @@ export function VoiceWorkshopHero({
             {railOpen ? "收起名单" : "打开名单"}
           </button>
           {!showGuide && (
-            <button
-              type="button"
-              className={styles.ghostLink}
-              onClick={onShowGuide}
-            >
+            <button type="button" className={styles.ghostLink} onClick={onShowGuide}>
               查看引导
             </button>
           )}

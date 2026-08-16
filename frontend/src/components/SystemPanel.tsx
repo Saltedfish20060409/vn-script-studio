@@ -33,9 +33,7 @@ export function SystemPanel({ project, onChange, sub, onSub }: Props) {
   function patchVar(id: string, patch: Partial<GameVariable>) {
     onChange((p) => ({
       ...p,
-      variables: (p.variables ?? []).map((v) =>
-        v.id === id ? { ...v, ...patch } : v
-      ),
+      variables: (p.variables ?? []).map((v) => (v.id === id ? { ...v, ...patch } : v)),
     }));
   }
 
@@ -61,9 +59,7 @@ export function SystemPanel({ project, onChange, sub, onSub }: Props) {
   function patchSprite(id: string, patch: Partial<SpriteDef>) {
     onChange((p) => ({
       ...p,
-      sprites: (p.sprites ?? []).map((s) =>
-        s.id === id ? { ...s, ...patch } : s
-      ),
+      sprites: (p.sprites ?? []).map((s) => (s.id === id ? { ...s, ...patch } : s)),
     }));
   }
 
@@ -242,9 +238,7 @@ export function SystemPanel({ project, onChange, sub, onSub }: Props) {
                   基础 image
                   <input
                     value={s.imageTag}
-                    onChange={(e) =>
-                      patchSprite(s.id, { imageTag: e.target.value })
-                    }
+                    onChange={(e) => patchSprite(s.id, { imageTag: e.target.value })}
                     placeholder="linxia"
                   />
                 </label>

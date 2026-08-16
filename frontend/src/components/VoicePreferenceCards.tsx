@@ -59,9 +59,7 @@ export function VoicePreferenceCards({
       {variants.length === 0 && !busy && (
         <div className={styles.emptyStage}>
           <p>定声音</p>
-          <span>
-            选场景 → 生成三组（动态轴）→ 选最像的入库。都不像可手写并记方向。
-          </span>
+          <span>选场景 → 生成三组（动态轴）→ 选最像的入库。都不像可手写并记方向。</span>
           <button
             type="button"
             className={styles.primary}
@@ -144,11 +142,7 @@ export function VoicePreferenceCards({
             >
               {busy === "accept-unlike" ? "入库中…" : "手写入库"}
             </button>
-            <button
-              type="button"
-              disabled={!!busy}
-              onClick={onDiscardUnlike}
-            >
+            <button type="button" disabled={!!busy} onClick={onDiscardUnlike}>
               丢弃并重开
             </button>
           </div>

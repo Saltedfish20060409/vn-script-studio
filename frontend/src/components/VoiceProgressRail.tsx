@@ -32,9 +32,7 @@ export function VoiceProgressRail({
       desc:
         sampleCount > 0
           ? `已有 ${sampleCount} 条 · ${uniqueCount} 类场景` +
-            (uniqueCount <= 1 && sampleCount >= 2
-              ? "（偏窄，请换场景）"
-              : "")
+            (uniqueCount <= 1 && sampleCount >= 2 ? "（偏窄，请换场景）" : "")
           : "建议多场景三选一，勿单场景刷",
       done: sampleCount > 0,
       cta: sampleCount > 0 ? "继续塑形" : "开始塑形",
@@ -42,20 +40,14 @@ export function VoiceProgressRail({
     {
       id: "pack",
       title: "② 出思维包",
-      desc: hasMindPack
-        ? "已解锁对话"
-        : ready
-          ? "已达门槛，可以合成"
-          : nextHint,
+      desc: hasMindPack ? "已解锁对话" : ready ? "已达门槛，可以合成" : nextHint,
       done: hasMindPack,
       cta: hasMindPack ? "查看思维包" : "去合成",
     },
     {
       id: "chat",
       title: "③ 试聊排练",
-      desc: hasMindPack
-        ? "与角色聊或角色互聊"
-        : "需先有思维包",
+      desc: hasMindPack ? "与角色聊或角色互聊" : "需先有思维包",
       done: hasMindPack,
       cta: hasMindPack ? "去试聊" : "先完成思维包",
     },
@@ -75,10 +67,7 @@ export function VoiceProgressRail({
           </strong>
         </div>
         <div className={styles.progressRailTrack}>
-          <div
-            className={styles.progressRailFill}
-            style={{ width: `${pct}%` }}
-          />
+          <div className={styles.progressRailFill} style={{ width: `${pct}%` }} />
         </div>
         <div className={styles.progressRailSteps}>
           {steps.map((s) => (

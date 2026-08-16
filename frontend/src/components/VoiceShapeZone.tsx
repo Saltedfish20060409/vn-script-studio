@@ -1,8 +1,4 @@
-import type {
-  VoiceAxisTag,
-  VoiceScenario,
-  VoiceVariant,
-} from "../api/client";
+import type { VoiceAxisTag, VoiceScenario, VoiceVariant } from "../api/client";
 import type { VoiceCorpusSample } from "../types/vn";
 import { VoiceAxisTagPanel } from "./VoiceAxisTagPanel";
 import { VoiceCorpusDrawer, type ExtractRow } from "./VoiceCorpusDrawer";
@@ -217,9 +213,7 @@ export function VoiceShapeZone({
           <button
             key={id}
             type="button"
-            className={
-              shapeMode === id ? styles.shapeModeOn : styles.shapeMode
-            }
+            className={shapeMode === id ? styles.shapeModeOn : styles.shapeMode}
             onClick={() => onModeChange(id)}
           >
             {label}
@@ -231,8 +225,8 @@ export function VoiceShapeZone({
 
       {shapeMode === "preference" && (
         <p className={styles.shapeTip}>
-          默认按角色卡出本轮三轴；侧边可勾最多 3 个标签后「按标签重开」。少选时模型补轴。
-          多换<strong>场景</strong>收敛方向。
+          默认按角色卡出本轮三轴；侧边可勾最多 3
+          个标签后「按标签重开」。少选时模型补轴。 多换<strong>场景</strong>收敛方向。
           {confirmedAxes.length > 0 && (
             <>
               {" "}
@@ -251,21 +245,17 @@ export function VoiceShapeZone({
 
       {(shapeMode === "preference" || shapeMode === "interview") &&
         axisTags.length > 0 && (
-        <VoiceAxisTagPanel
-          tags={axisTags}
-          selectedIds={selectedTagIds}
-          onToggle={onToggleAxisTag}
-          onClear={onClearTags}
-        />
-      )}
+          <VoiceAxisTagPanel
+            tags={axisTags}
+            selectedIds={selectedTagIds}
+            onToggle={onToggleAxisTag}
+            onClear={onClearTags}
+          />
+        )}
 
       {shapeMode === "preference" && sampleCount > 0 && !ready && (
         <div className={styles.readyBannerCompact}>
-          <VoiceReadinessBanner
-            info={readinessInfo}
-            narrow={readinessNarrow}
-            compact
-          />
+          <VoiceReadinessBanner info={readinessInfo} narrow={readinessNarrow} compact />
         </div>
       )}
 
@@ -294,9 +284,7 @@ export function VoiceShapeZone({
           whyChips={whyChips}
           whyCustom={whyCustom}
           onGenerate={onGenerate}
-          onAcceptVariant={(v, i) =>
-            void onAcceptVariant(v, i, "preference")
-          }
+          onAcceptVariant={(v, i) => void onAcceptVariant(v, i, "preference")}
           onUnlikeAxisSelect={onUnlikeAxisSelect}
           onUnlikeCustomAxisChange={onUnlikeCustomAxisChange}
           onUnlikeTextChange={onUnlikeTextChange}
@@ -335,9 +323,7 @@ export function VoiceShapeZone({
           whyChips={whyChips}
           whyCustom={whyCustom}
           onGenerate={onGenerate}
-          onAcceptVariant={(v, i) =>
-            void onAcceptVariant(v, i, "interview")
-          }
+          onAcceptVariant={(v, i) => void onAcceptVariant(v, i, "interview")}
           onManualChange={onInterviewManualChange}
           onAcceptManual={() => onAcceptManual("interview")}
           onToggleWhyChip={onToggleWhyChip}

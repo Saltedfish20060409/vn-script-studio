@@ -126,9 +126,7 @@ describe("inferAgentIntent：设定 / 事实 / 评审 / 附件", () => {
   });
 
   it("带附件且提到角色卡 → settings_ingest", () => {
-    expect(inferAgentIntent("根据附件整理角色卡", 1).kind).toBe(
-      "settings_ingest"
-    );
+    expect(inferAgentIntent("根据附件整理角色卡", 1).kind).toBe("settings_ingest");
   });
 
   it("带附件提到设定与关系时优先 facts_scan", () => {

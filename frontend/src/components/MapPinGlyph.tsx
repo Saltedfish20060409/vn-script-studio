@@ -25,12 +25,15 @@ export function MapPinGlyph({
       aria-hidden
     >
       <svg viewBox="0 0 48 48" className={styles.svg} focusable="false">
-        <path
-          className={styles.plate}
-          d="M4 4 H40 L44 8 V44 H4 Z"
-        />
+        <path className={styles.plate} d="M4 4 H40 L44 8 V44 H4 Z" />
         <path className={styles.shard} d="M40 4 L44 8 H40 Z" />
-        <g className={styles.mark} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="miter">
+        <g
+          className={styles.mark}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinejoin="miter"
+        >
           {glyphPaths(k)}
         </g>
       </svg>

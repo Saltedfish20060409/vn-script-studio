@@ -14,7 +14,10 @@ type Props = {
   revisedText: string;
   diagnosisMd?: string;
   busy?: boolean;
-  onApply: (mergedText: string, meta: { keptOriginal: number; keptRevised: number }) => void;
+  onApply: (
+    mergedText: string,
+    meta: { keptOriginal: number; keptRevised: number }
+  ) => void;
   onCancel: () => void;
 };
 
@@ -64,15 +67,26 @@ export function ChapterReviseReview({
             对照挑选{chapterTitle ? ` · ${chapterTitle}` : ""}
           </h2>
           <p className={styles.sub}>
-            左右是同一位置的修改前 / 修改后。关闭后预览仍会保留，可从写作区「改稿对照」再进。
+            左右是同一位置的修改前 /
+            修改后。关闭后预览仍会保留，可从写作区「改稿对照」再进。
           </p>
         </header>
 
         <div className={styles.toolbar}>
-          <button type="button" className={styles.ghost} onClick={() => setAll(true)} disabled={busy}>
+          <button
+            type="button"
+            className={styles.ghost}
+            onClick={() => setAll(true)}
+            disabled={busy}
+          >
             全用改稿
           </button>
-          <button type="button" className={styles.ghost} onClick={() => setAll(false)} disabled={busy}>
+          <button
+            type="button"
+            className={styles.ghost}
+            onClick={() => setAll(false)}
+            disabled={busy}
+          >
             全用原文
           </button>
           <span className={styles.count}>
@@ -157,7 +171,12 @@ export function ChapterReviseReview({
         </div>
 
         <footer className={styles.foot}>
-          <button type="button" className={styles.ghost} onClick={onCancel} disabled={busy}>
+          <button
+            type="button"
+            className={styles.ghost}
+            onClick={onCancel}
+            disabled={busy}
+          >
             稍后
           </button>
           <button

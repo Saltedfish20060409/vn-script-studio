@@ -56,7 +56,12 @@ function CollegeSilhouette({
   mood: MascotMood;
   variant?: string | null;
 }) {
-  const eyeY = mood === "think" || mood === "puzzled" ? 46 : mood === "wince" || mood === "angry" ? 47 : 45;
+  const eyeY =
+    mood === "think" || mood === "puzzled"
+      ? 46
+      : mood === "wince" || mood === "angry"
+        ? 47
+        : 45;
   const mouth =
     mood === "cheer" || mood === "angel"
       ? "M44 56 Q50 62 56 56"
@@ -69,12 +74,7 @@ function CollegeSilhouette({
             : "M46 57 Q50 59 54 57";
 
   return (
-    <svg
-      className={styles.svg}
-      viewBox="0 0 100 130"
-      aria-hidden
-      focusable="false"
-    >
+    <svg className={styles.svg} viewBox="0 0 100 130" aria-hidden focusable="false">
       <ellipse cx="50" cy="122" rx="28" ry="5" fill={stroke} opacity="0.18" />
       <path
         d="M28 72 L36 58 L50 62 L64 58 L72 72 L78 118 L22 118 Z"
@@ -94,14 +94,7 @@ function CollegeSilhouette({
         stroke={stroke}
         strokeWidth="1"
       />
-      <circle
-        cx="50"
-        cy="44"
-        r="18"
-        fill={fill}
-        stroke={stroke}
-        strokeWidth="2"
-      />
+      <circle cx="50" cy="44" r="18" fill={fill} stroke={stroke} strokeWidth="2" />
       <path d={hairPath(variant)} fill={accent} stroke={stroke} strokeWidth="1.5" />
       <path
         d="M34 38 C42 28 58 28 66 38 L62 42 C56 34 44 34 38 42 Z"
@@ -158,10 +151,7 @@ export function MascotFigure({
       ? `hsl(${hue} 28% 78%)`
       : "color-mix(in srgb, var(--paper) 70%, var(--accent))";
   const stroke = "var(--line)";
-  const accent =
-    kind === "writer"
-      ? `hsl(${hue} 55% 42%)`
-      : "var(--accent)";
+  const accent = kind === "writer" ? `hsl(${hue} 55% 42%)` : "var(--accent)";
 
   // null/undefined → mood art; "" → force SVG; string → explicit override
   const resolvedArt =

@@ -124,12 +124,7 @@ function orient(
   return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
 }
 
-function crosses(
-  a1: RoadPoint,
-  a2: RoadPoint,
-  b1: RoadPoint,
-  b2: RoadPoint
-): boolean {
+function crosses(a1: RoadPoint, a2: RoadPoint, b1: RoadPoint, b2: RoadPoint): boolean {
   const o1 = orient(a1.x, a1.y, a2.x, a2.y, b1.x, b1.y);
   const o2 = orient(a1.x, a1.y, a2.x, a2.y, b2.x, b2.y);
   const o3 = orient(b1.x, b1.y, b2.x, b2.y, a1.x, a1.y);

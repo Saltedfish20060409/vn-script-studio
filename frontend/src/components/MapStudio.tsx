@@ -146,18 +146,15 @@ export function MapStudio({
     return planRoadCurves(links, pts);
   }, [nodes, links]);
 
-  const applyCam = useCallback(
-    (next: { x: number; y: number; zoom: number }) => {
-      const el = viewportRef.current;
-      if (!el) {
-        setCam(next);
-        return;
-      }
-      const { width, height } = el.getBoundingClientRect();
-      setCam(clampCamera(next, width, height));
-    },
-    []
-  );
+  const applyCam = useCallback((next: { x: number; y: number; zoom: number }) => {
+    const el = viewportRef.current;
+    if (!el) {
+      setCam(next);
+      return;
+    }
+    const { width, height } = el.getBoundingClientRect();
+    setCam(clampCamera(next, width, height));
+  }, []);
 
   const screenToWorld = useCallback(
     (clientX: number, clientY: number) => {
@@ -186,11 +183,7 @@ export function MapStudio({
     const pad = 120;
     const bw = Math.max(maxX - minX + pad * 2, 900);
     const bh = Math.max(maxY - minY + pad * 2, 700);
-    const zoom = clamp(
-      Math.min(width / bw, height / bh) * 0.78,
-      0.32,
-      1.1
-    );
+    const zoom = clamp(Math.min(width / bw, height / bh) * 0.78, 0.32, 1.1);
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
     applyCam({
@@ -351,9 +344,7 @@ export function MapStudio({
       if (ids.length === 0) return;
       const idSet = new Set(ids);
       onChangeLocations(locations.filter((l) => !idSet.has(l.id)));
-      onChangeLinks(
-        links.filter((l) => !idSet.has(l.fromId) && !idSet.has(l.toId))
-      );
+      onChangeLinks(links.filter((l) => !idSet.has(l.fromId) && !idSet.has(l.toId)));
       setSelectedIds([]);
       setLinkFrom((from) => (from && idSet.has(from) ? null : from));
     },
@@ -471,15 +462,10 @@ export function MapStudio({
         const x = clamp(w.x, 0, WORLD_W);
         const y = clamp(w.y, 0, WORLD_H);
         const radius = Math.max(live.brushWidth * 1.2, 10);
-        const next = live.strokes.filter(
-          (s) => !strokeHitsPoint(s, x, y, radius)
-        );
+        const next = live.strokes.filter((s) => !strokeHitsPoint(s, x, y, radius));
         if (next.length !== live.strokes.length) {
           if (!eraseSessionStarted.current) {
-            strokeHistory.current = [
-              ...strokeHistory.current.slice(-40),
-              live.strokes,
-            ];
+            strokeHistory.current = [...strokeHistory.current.slice(-40), live.strokes];
             eraseSessionStarted.current = true;
           }
           live.onChangeStrokes(next);
@@ -514,10 +500,7 @@ export function MapStudio({
 
       if (session === "draw" && draftStroke.current) {
         if (draftStroke.current.points.length > 1) {
-          strokeHistory.current = [
-            ...strokeHistory.current.slice(-40),
-            live.strokes,
-          ];
+          strokeHistory.current = [...strokeHistory.current.slice(-40), live.strokes];
           live.onChangeStrokes([...live.strokes, draftStroke.current]);
         }
         draftStroke.current = null;
@@ -532,10 +515,7 @@ export function MapStudio({
       if (session === "place" || placeGesture.current) {
         if (placeGesture.current && !placeGesture.current.becamePan) {
           const w = live.screenToWorld(e.clientX, e.clientY);
-          live.placeAt(
-            clamp(w.x, 48, WORLD_W - 48),
-            clamp(w.y, 48, WORLD_H - 48)
-          );
+          live.placeAt(clamp(w.x, 48, WORLD_W - 48), clamp(w.y, 48, WORLD_H - 48));
         }
         placeGesture.current = null;
       }
@@ -593,10 +573,7 @@ export function MapStudio({
       if (!(t instanceof HTMLElement)) return false;
       const tag = t.tagName;
       return (
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        tag === "SELECT" ||
-        t.isContentEditable
+        tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t.isContentEditable
       );
     };
 
@@ -682,8 +659,7 @@ export function MapStudio({
     if ((e.target as Element).closest("[data-pin]")) return;
     viewportRef.current?.focus();
 
-    const forcePan =
-      e.button === 1 || e.altKey || spaceHeldRef.current || spaceHeld;
+    const forcePan = e.button === 1 || e.altKey || spaceHeldRef.current || spaceHeld;
 
     if (forcePan) {
       e.preventDefault();
@@ -748,12 +724,7 @@ export function MapStudio({
     }
   }
 
-  function onPinPointerDown(
-    e: React.PointerEvent,
-    id: string,
-    nx: number,
-    ny: number
-  ) {
+  function onPinPointerDown(e: React.PointerEvent, id: string, nx: number, ny: number) {
     e.stopPropagation();
     viewportRef.current?.focus();
 
@@ -810,9 +781,7 @@ export function MapStudio({
   function updateSelected(patch: Partial<Location>) {
     if (selectedIds.length !== 1) return;
     const id = selectedIds[0];
-    onChangeLocations(
-      locations.map((l) => (l.id === id ? { ...l, ...patch } : l))
-    );
+    onChangeLocations(locations.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   }
 
   function deleteSelected() {
@@ -871,25 +840,42 @@ export function MapStudio({
   return (
     <div className={styles.studio} ref={studioRef}>
       <MapPalette
-        tool={tool} placeKind={placeKind} placeCustomId={placeCustomId}
-        customElements={customElements} customForm={customForm}
-        onSetTool={setTool} onSetPlaceKind={setPlaceKind}
-        onSetPlaceCustomId={setPlaceCustomId} onSetCustomForm={setCustomForm}
-        onChangeCustomElements={onChangeCustomElements} onAddCustom={addCustomDef}
+        tool={tool}
+        placeKind={placeKind}
+        placeCustomId={placeCustomId}
+        customElements={customElements}
+        customForm={customForm}
+        onSetTool={setTool}
+        onSetPlaceKind={setPlaceKind}
+        onSetPlaceCustomId={setPlaceCustomId}
+        onSetCustomForm={setCustomForm}
+        onChangeCustomElements={onChangeCustomElements}
+        onAddCustom={addCustomDef}
       />
       <div className={styles.center}>
         <MapToolbar
-          tool={tool} linkFrom={linkFrom} lineStyle={lineStyle} brushMode={brushMode}
-          brushColor={brushColor} brushWidth={brushWidth} strokes={strokes}
-          onSelectTool={handleSelectTool} onSetLineStyle={setLineStyle}
-          onSetBrushMode={setBrushMode} onSetBrushColor={setBrushColor}
-          onSetBrushWidth={setBrushWidth} onUndoStroke={undoStroke}
-          onClearStrokes={handleClearStrokes} onFit={fitToContent}
+          tool={tool}
+          linkFrom={linkFrom}
+          lineStyle={lineStyle}
+          brushMode={brushMode}
+          brushColor={brushColor}
+          brushWidth={brushWidth}
+          strokes={strokes}
+          onSelectTool={handleSelectTool}
+          onSetLineStyle={setLineStyle}
+          onSetBrushMode={setBrushMode}
+          onSetBrushColor={setBrushColor}
+          onSetBrushWidth={setBrushWidth}
+          onUndoStroke={undoStroke}
+          onClearStrokes={handleClearStrokes}
+          onFit={fitToContent}
           onExtractFromScript={onExtractFromScript}
           onExtractRulesOnly={onExtractRulesOnly}
         />
         <div
-          ref={viewportRef} className={styles.viewport} tabIndex={0}
+          ref={viewportRef}
+          className={styles.viewport}
+          tabIndex={0}
           onPointerDown={onViewportPointerDown}
           onContextMenu={(e) => e.preventDefault()}
         >
@@ -907,9 +893,7 @@ export function MapStudio({
           >
             <MapStage />
             <svg className={styles.roads} width={WORLD_W} height={WORLD_H} aria-hidden>
-              {strokes.map((s) =>
-                renderPath(s.points, s.color, s.width, s.id)
-              )}
+              {strokes.map((s) => renderPath(s.points, s.color, s.width, s.id))}
               {draftPts.length > 1 &&
                 renderPath(draftPts, brushColor, brushWidth, "draft")}
               {links.map((link) => {
@@ -925,11 +909,18 @@ export function MapStudio({
                 return (
                   <g key={link.id}>
                     {ls === "double" && (
-                      <path d={`M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`} className={styles.road} strokeWidth={12} opacity={0.35} />
+                      <path
+                        d={`M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`}
+                        className={styles.road}
+                        strokeWidth={12}
+                        opacity={0.35}
+                      />
                     )}
                     <path
                       d={`M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`}
-                      className={`${styles.road} ${styles[`line_${ls}`] ?? ""}`} strokeWidth={strokeW} strokeDasharray={dash}
+                      className={`${styles.road} ${styles[`line_${ls}`] ?? ""}`}
+                      strokeWidth={strokeW}
+                      strokeDasharray={dash}
                     />
                   </g>
                 );
@@ -951,9 +942,11 @@ export function MapStudio({
                     data-pin
                     className={active ? styles.pinActive : styles.pin}
                     style={{
-                      left: n.x, top: n.y,
+                      left: n.x,
+                      top: n.y,
                       transform: `translate(-50%, -100%) scale(${sc}) rotate(${n.rotation ?? 0}deg)`,
-                      ["--pin-color" as string]: color, ["--label-dy" as string]: `${labelDy}px`,
+                      ["--pin-color" as string]: color,
+                      ["--label-dy" as string]: `${labelDy}px`,
                     }}
                     onPointerDown={(e) => onPinPointerDown(e, n.id, n.x, n.y)}
                     title={n.description || n.name}
@@ -971,18 +964,25 @@ export function MapStudio({
             <div
               className={styles.marquee}
               style={{
-                left: Math.min(marquee.x0, marquee.x1), top: Math.min(marquee.y0, marquee.y1),
-                width: Math.abs(marquee.x1 - marquee.x0), height: Math.abs(marquee.y1 - marquee.y0),
+                left: Math.min(marquee.x0, marquee.x1),
+                top: Math.min(marquee.y0, marquee.y1),
+                width: Math.abs(marquee.x1 - marquee.x0),
+                height: Math.abs(marquee.y1 - marquee.y0),
               }}
             />
           )}
         </div>
       </div>
       <MapInspector
-        selectedIds={selectedIds} selected={selected} customElements={customElements}
-        occurrences={occurrences} links={links}
-        nameOf={(id) => byId.get(id)?.name ?? "?"} onPatchSelected={updateSelected}
-        onDeleteSelected={deleteSelected} onJumpToChapter={onJumpToChapter}
+        selectedIds={selectedIds}
+        selected={selected}
+        customElements={customElements}
+        occurrences={occurrences}
+        links={links}
+        nameOf={(id) => byId.get(id)?.name ?? "?"}
+        onPatchSelected={updateSelected}
+        onDeleteSelected={deleteSelected}
+        onJumpToChapter={onJumpToChapter}
         onRemoveLink={(id) => onChangeLinks(links.filter((x) => x.id !== id))}
       />
     </div>

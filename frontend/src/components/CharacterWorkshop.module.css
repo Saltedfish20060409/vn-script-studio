@@ -329,12 +329,11 @@
   margin-top: 0.35rem;
   padding: 0.65rem 0.6rem 0.7rem;
   border: 2px solid var(--line);
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--accent) 8%, var(--panel-bg)) 0%,
-      var(--panel-bg) 55%
-    );
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 8%, var(--panel-bg)) 0%,
+    var(--panel-bg) 55%
+  );
   box-shadow: var(--shadow-sm);
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
 }
@@ -1298,12 +1297,11 @@
   padding: 1.25rem 1.2rem 1rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-md, 12px);
-  background:
-    linear-gradient(
-      165deg,
-      color-mix(in srgb, var(--panel-bg) 92%, var(--accent) 8%) 0%,
-      var(--panel-bg) 42%
-    );
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--panel-bg) 92%, var(--accent) 8%) 0%,
+    var(--panel-bg) 42%
+  );
   box-shadow: var(--shadow-sm);
   transition:
     border-color 160ms ease,

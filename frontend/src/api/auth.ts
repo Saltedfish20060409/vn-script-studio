@@ -12,10 +12,7 @@ export interface UserOut {
   created_at: string;
 }
 
-export async function register(
-  username: string,
-  password: string
-): Promise<TokenOut> {
+export async function register(username: string, password: string): Promise<TokenOut> {
   const data = await apiFetch<TokenOut>("/auth/register", {
     method: "POST",
     body: JSON.stringify({ username, password }),
@@ -26,10 +23,7 @@ export async function register(
   return data;
 }
 
-export async function login(
-  username: string,
-  password: string
-): Promise<TokenOut> {
+export async function login(username: string, password: string): Promise<TokenOut> {
   const data = await apiFetch<TokenOut>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ username, password }),

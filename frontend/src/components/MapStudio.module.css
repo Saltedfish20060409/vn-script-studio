@@ -295,13 +295,12 @@
   top: 0;
   --map-tint: #002fa7;
   --map-grid-opacity: 0.14;
-  background:
-    radial-gradient(
-      ellipse at 50% 42%,
-      color-mix(in srgb, var(--map-tint, var(--accent)) 8%, var(--paper)) 0%,
-      color-mix(in srgb, var(--paper-deep) 55%, #0a0e1a) 72%,
-      #0a0e1a 100%
-    );
+  background: radial-gradient(
+    ellipse at 50% 42%,
+    color-mix(in srgb, var(--map-tint, var(--accent)) 8%, var(--paper)) 0%,
+    color-mix(in srgb, var(--paper-deep) 55%, #0a0e1a) 72%,
+    #0a0e1a 100%
+  );
 }
 
 /* Persona LOC_MAP stage */
@@ -370,15 +369,35 @@
       0deg,
       transparent,
       transparent 47px,
-      color-mix(in srgb, var(--line) calc(var(--map-grid-opacity, 0.14) * 100%), transparent) 47px,
-      color-mix(in srgb, var(--line) calc(var(--map-grid-opacity, 0.14) * 100%), transparent) 48px
+      color-mix(
+          in srgb,
+          var(--line) calc(var(--map-grid-opacity, 0.14) * 100%),
+          transparent
+        )
+        47px,
+      color-mix(
+          in srgb,
+          var(--line) calc(var(--map-grid-opacity, 0.14) * 100%),
+          transparent
+        )
+        48px
     ),
     repeating-linear-gradient(
       90deg,
       transparent,
       transparent 47px,
-      color-mix(in srgb, var(--line) calc(var(--map-grid-opacity, 0.14) * 100%), transparent) 47px,
-      color-mix(in srgb, var(--line) calc(var(--map-grid-opacity, 0.14) * 100%), transparent) 48px
+      color-mix(
+          in srgb,
+          var(--line) calc(var(--map-grid-opacity, 0.14) * 100%),
+          transparent
+        )
+        47px,
+      color-mix(
+          in srgb,
+          var(--line) calc(var(--map-grid-opacity, 0.14) * 100%),
+          transparent
+        )
+        48px
     ),
     color-mix(in srgb, var(--field-bg) 55%, var(--paper));
   overflow: hidden;
@@ -463,7 +482,11 @@
 }
 
 .line_magic {
-  stroke: color-mix(in srgb, var(--shard, var(--accent-hot)) 70%, var(--accent)) !important;
+  stroke: color-mix(
+    in srgb,
+    var(--shard, var(--accent-hot)) 70%,
+    var(--accent)
+  ) !important;
 }
 
 .line_rail {
@@ -508,7 +531,8 @@
 }
 
 .pinActive {
-  filter: drop-shadow(0 0 0 transparent) drop-shadow(4px 4px 0 color-mix(in srgb, var(--accent) 28%, transparent));
+  filter: drop-shadow(0 0 0 transparent)
+    drop-shadow(4px 4px 0 color-mix(in srgb, var(--accent) 28%, transparent));
 }
 
 .pinActive .pinBadge {

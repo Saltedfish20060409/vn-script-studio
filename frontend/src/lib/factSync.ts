@@ -17,12 +17,7 @@ export function appendRelationshipClause(
 
 export function weakSyncCharacters<
   T extends { id: string; displayName: string; relationships?: string },
->(
-  characters: T[],
-  fromId: string,
-  toId: string,
-  label: string
-): T[] {
+>(characters: T[], fromId: string, toId: string, label: string): T[] {
   if (!shouldWeakSyncLabel(label)) return characters;
   const a = characters.find((c) => c.id === fromId);
   const b = characters.find((c) => c.id === toId);

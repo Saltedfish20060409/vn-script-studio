@@ -45,8 +45,7 @@ export function splitParagraphs(
 ): string[] {
   const normalized = normalizeNewlines(text);
   if (!normalized) return [];
-  const useLine =
-    mode === "line" || (mode === "auto" && prefersLineUnits(normalized));
+  const useLine = mode === "line" || (mode === "auto" && prefersLineUnits(normalized));
   if (useLine) {
     return normalized
       .split("\n")
@@ -125,9 +124,7 @@ function diffUnits(a: string[], b: string[]): DiffOp[] {
     for (let j = MAX; j < m; j++) ops.push({ type: "ins", b: b[j] });
     return ops;
   }
-  const dp: number[][] = Array.from({ length: n + 1 }, () =>
-    Array(m + 1).fill(0)
-  );
+  const dp: number[][] = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
   for (let i = n - 1; i >= 0; i--) {
     for (let j = m - 1; j >= 0; j--) {
       if (isAnchor(a[i], b[j])) {
@@ -321,7 +318,8 @@ export function buildReviseSegments(
   const pairs = coalesceOps(diffUnits(o, r));
   return pairs.map((p, idx) => {
     const kind =
-      p.kind === "equal" && normalizeForMatch(p.original) === normalizeForMatch(p.revised)
+      p.kind === "equal" &&
+      normalizeForMatch(p.original) === normalizeForMatch(p.revised)
         ? "equal"
         : p.kind === "equal"
           ? "changed"

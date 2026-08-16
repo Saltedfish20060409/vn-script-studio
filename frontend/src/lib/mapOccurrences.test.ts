@@ -19,9 +19,7 @@ import {
 
 describe("normalizeSceneKey：键归一化", () => {
   it("去除首尾空白、转小写、折叠连续空白", () => {
-    expect(normalizeSceneKey("  BG  Station_Night ")).toBe(
-      "bg station_night"
-    );
+    expect(normalizeSceneKey("  BG  Station_Night ")).toBe("bg station_night");
   });
 
   it("空串与纯空白返回空串", () => {
@@ -203,9 +201,7 @@ describe("tokenizeScriptLine：地点分词", () => {
   });
 
   it("空行返回空文本 token", () => {
-    expect(tokenizeScriptLine("", needles)).toEqual([
-      { type: "text", value: "" },
-    ]);
+    expect(tokenizeScriptLine("", needles)).toEqual([{ type: "text", value: "" }]);
   });
 
   it("无针时整行作为一个 text token", () => {

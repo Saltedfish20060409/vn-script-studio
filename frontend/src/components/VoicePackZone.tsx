@@ -43,11 +43,7 @@ export function VoicePackZone({
           type="button"
           className={styles.primary}
           disabled={!!busy || sampleCount < 1 || (!ready && busy !== "synth")}
-          title={
-            !ready
-              ? "未达推荐门槛时可点「强制合成」，但质量可能偏差"
-              : undefined
-          }
+          title={!ready ? "未达推荐门槛时可点「强制合成」，但质量可能偏差" : undefined}
           onClick={() => onSynthesize(false)}
         >
           {busy === "synth" ? "合成中…" : "合成思维包"}
@@ -60,18 +56,10 @@ export function VoicePackZone({
         >
           强制合成
         </button>
-        <button
-          type="button"
-          disabled={!!busy}
-          onClick={onExport}
-        >
+        <button type="button" disabled={!!busy} onClick={onExport}>
           导出女娲包
         </button>
-        <button
-          type="button"
-          disabled={!!busy}
-          onClick={onToggleImport}
-        >
+        <button type="button" disabled={!!busy} onClick={onToggleImport}>
           导入思维包
         </button>
       </div>

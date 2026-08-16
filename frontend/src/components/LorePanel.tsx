@@ -24,7 +24,10 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 export function LorePanel({ projectId }: Props) {
-  const [meta, setMeta] = useState<{ moegirlEnabled: boolean; attribution: string } | null>(null);
+  const [meta, setMeta] = useState<{
+    moegirlEnabled: boolean;
+    attribution: string;
+  } | null>(null);
   const [cards, setCards] = useState<LoreCard[]>([]);
   const [checklist, setChecklist] = useState<LoreCard[]>([]);
   const [term, setTerm] = useState("");
@@ -46,7 +49,9 @@ export function LorePanel({ projectId }: Props) {
   }, [projectId]);
 
   useEffect(() => {
-    void refresh().catch((e) => setError(String((e as { message?: unknown } | null)?.message ?? e)));
+    void refresh().catch((e) =>
+      setError(String((e as { message?: unknown } | null)?.message ?? e))
+    );
   }, [refresh]);
 
   const doSearch = useCallback(async () => {
@@ -147,7 +152,8 @@ export function LorePanel({ projectId }: Props) {
       <header className={styles.head}>
         <h2>设定卡 · 工艺速查</h2>
         <p className={styles.sub}>
-          {meta?.attribution || "萌百启发精炼卡（非原文库）；用于写作时注入 Agent 上下文。"}
+          {meta?.attribution ||
+            "萌百启发精炼卡（非原文库）；用于写作时注入 Agent 上下文。"}
           {meta && !meta.moegirlEnabled && "（萌百未启用，仅离线种子与已存卡）"}
         </p>
       </header>
@@ -164,10 +170,20 @@ export function LorePanel({ projectId }: Props) {
           placeholder="搜索萌百 / 查工艺术语，如：傲娇、病娇、修罗场"
           className={styles.input}
         />
-        <button type="button" className={styles.primary} disabled={busy !== ""} onClick={() => void doSearch()}>
+        <button
+          type="button"
+          className={styles.primary}
+          disabled={busy !== ""}
+          onClick={() => void doSearch()}
+        >
           {busy === "search" ? "搜索中…" : "搜索"}
         </button>
-        <button type="button" className={styles.ghost} disabled={busy !== ""} onClick={() => void doInspire()}>
+        <button
+          type="button"
+          className={styles.ghost}
+          disabled={busy !== ""}
+          onClick={() => void doInspire()}
+        >
           {busy === "inspire" ? "生成中…" : "灵感抽查"}
         </button>
       </div>
@@ -193,7 +209,9 @@ export function LorePanel({ projectId }: Props) {
         <article className={styles.card}>
           <h3>
             {lookupCard.term}{" "}
-            <span className={styles.kind}>{KIND_LABELS[lookupCard.kind] || lookupCard.kind}</span>
+            <span className={styles.kind}>
+              {KIND_LABELS[lookupCard.kind] || lookupCard.kind}
+            </span>
           </h3>
           {lookupCard.definition_short && (
             <p className={styles.definition}>{lookupCard.definition_short}</p>
@@ -202,23 +220,40 @@ export function LorePanel({ projectId }: Props) {
             <div className={styles.lists}>
               <div>
                 <strong>要做</strong>
-                <ul>{lookupCard.do!.map((x, i) => <li key={i}>{x}</li>)}</ul>
+                <ul>
+                  {lookupCard.do!.map((x, i) => (
+                    <li key={i}>{x}</li>
+                  ))}
+                </ul>
               </div>
               <div>
                 <strong>别做</strong>
-                <ul>{lookupCard.dont!.map((x, i) => <li key={i}>{x}</li>)}</ul>
+                <ul>
+                  {lookupCard.dont!.map((x, i) => (
+                    <li key={i}>{x}</li>
+                  ))}
+                </ul>
               </div>
             </div>
           )}
           {(lookupCard.vn_beats || []).length > 0 && (
             <details>
               <summary>VN 节拍</summary>
-              <ul>{lookupCard.vn_beats!.map((x, i) => <li key={i}>{x}</li>)}</ul>
+              <ul>
+                {lookupCard.vn_beats!.map((x, i) => (
+                  <li key={i}>{x}</li>
+                ))}
+              </ul>
             </details>
           )}
           <footer className={styles.cardFoot}>
             {lookupCard.source_url && (
-              <a href={lookupCard.source_url} target="_blank" rel="noreferrer" className={styles.src}>
+              <a
+                href={lookupCard.source_url}
+                target="_blank"
+                rel="noreferrer"
+                className={styles.src}
+              >
                 来源
               </a>
             )}
@@ -228,7 +263,11 @@ export function LorePanel({ projectId }: Props) {
               disabled={busy !== "" || lookupSaved}
               onClick={() => void saveCard(lookupCard!)}
             >
-              {lookupSaved ? "已收藏到本作" : busy === "save" ? "保存中…" : "收藏到本作"}
+              {lookupSaved
+                ? "已收藏到本作"
+                : busy === "save"
+                  ? "保存中…"
+                  : "收藏到本作"}
             </button>
           </footer>
         </article>
@@ -243,7 +282,9 @@ export function LorePanel({ projectId }: Props) {
 
       <div className={styles.saved}>
         <h3>本作已收藏（{cards.length}）</h3>
-        {grouped.length === 0 && <p className={styles.empty}>暂无收藏卡；搜索后点「收藏到本作」。</p>}
+        {grouped.length === 0 && (
+          <p className={styles.empty}>暂无收藏卡；搜索后点「收藏到本作」。</p>
+        )}
         {grouped.map(([kind, list]) => (
           <div key={kind} className={styles.group}>
             <h4>{kind}</h4>
@@ -251,7 +292,11 @@ export function LorePanel({ projectId }: Props) {
               {list.map((c) => (
                 <li key={c.id} className={styles.savedRow}>
                   <span className={styles.savedTerm}>{c.term}</span>
-                  <button type="button" className={styles.ghost} onClick={() => void removeCard(c.id)}>
+                  <button
+                    type="button"
+                    className={styles.ghost}
+                    onClick={() => void removeCard(c.id)}
+                  >
                     移除
                   </button>
                 </li>
@@ -268,7 +313,9 @@ export function LorePanel({ projectId }: Props) {
             {checklist.map((c) => (
               <li key={c.term}>
                 <strong>{c.term}</strong>
-                {c.definition_short && <span> — {c.definition_short.slice(0, 80)}</span>}
+                {c.definition_short && (
+                  <span> — {c.definition_short.slice(0, 80)}</span>
+                )}
               </li>
             ))}
           </ul>

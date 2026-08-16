@@ -46,22 +46,14 @@ export function StudioChapterBar({
       </button>
       <div className={styles.chapterBar}>
         <span className={styles.inlineLabel}>篇章</span>
-        <div
-          className={styles.chapterStrip}
-          role="listbox"
-          aria-label="篇章"
-        >
+        <div className={styles.chapterStrip} role="listbox" aria-label="篇章">
           {chapters.map((c, i) => (
             <button
               key={c.id}
               type="button"
               role="option"
               aria-selected={c.id === chapterId}
-              className={
-                c.id === chapterId
-                  ? styles.chapterChipOn
-                  : styles.chapterChip
-              }
+              className={c.id === chapterId ? styles.chapterChipOn : styles.chapterChip}
               onClick={() => onSelectChapter(c.id)}
             >
               <em>{String(i + 1).padStart(2, "0")}</em>
@@ -69,11 +61,7 @@ export function StudioChapterBar({
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          className={styles.ghost}
-          onClick={onAddChapter}
-        >
+        <button type="button" className={styles.ghost} onClick={onAddChapter}>
           + 章
         </button>
         <button

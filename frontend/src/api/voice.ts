@@ -87,10 +87,10 @@ export function generateCharacterVoice(
   confirmedAxes?: string[];
   pinnedTags?: string[];
 }> {
-  return apiFetch(
-    `/projects/${projectId}/characters/${characterId}/voice/generate`,
-    { method: "POST", body: JSON.stringify(body) }
-  );
+  return apiFetch(`/projects/${projectId}/characters/${characterId}/voice/generate`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export function acceptCharacterVoiceSample(
@@ -115,10 +115,10 @@ export function acceptCharacterVoiceSample(
     project: VnProject;
   }
 > {
-  return apiFetch(
-    `/projects/${projectId}/characters/${characterId}/voice/accept`,
-    { method: "POST", body: JSON.stringify(body) }
-  );
+  return apiFetch(`/projects/${projectId}/characters/${characterId}/voice/accept`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export function rejectCharacterVoiceRound(
@@ -126,10 +126,10 @@ export function rejectCharacterVoiceRound(
   characterId: string,
   body: { note?: string; hypotheses?: string[] }
 ): Promise<{ voiceRejectNotes: string[]; project: VnProject }> {
-  return apiFetch(
-    `/projects/${projectId}/characters/${characterId}/voice/reject`,
-    { method: "POST", body: JSON.stringify(body) }
-  );
+  return apiFetch(`/projects/${projectId}/characters/${characterId}/voice/reject`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export function deleteCharacterVoiceSample(
@@ -154,10 +154,10 @@ export function synthesizeCharacterVoiceMind(
   ready: boolean;
   project: VnProject;
 }> {
-  return apiFetch(
-    `/projects/${projectId}/characters/${characterId}/voice/synthesize`,
-    { method: "POST", body: JSON.stringify(body) }
-  );
+  return apiFetch(`/projects/${projectId}/characters/${characterId}/voice/synthesize`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export function extractCharacterVoice(
@@ -175,10 +175,10 @@ export function extractCharacterVoice(
   }>;
   count: number;
 }> {
-  return apiFetch(
-    `/projects/${projectId}/characters/${characterId}/voice/extract`,
-    { method: "POST", body: "{}" }
-  );
+  return apiFetch(`/projects/${projectId}/characters/${characterId}/voice/extract`, {
+    method: "POST",
+    body: "{}",
+  });
 }
 
 export function acceptExtractedCharacterVoice(
@@ -208,9 +208,7 @@ export function exportCharacterVoicePack(
   sampleCount: number;
   scenarioCoverage: number;
 }> {
-  return apiFetch(
-    `/projects/${projectId}/characters/${characterId}/voice/export`
-  );
+  return apiFetch(`/projects/${projectId}/characters/${characterId}/voice/export`);
 }
 
 export function importCharacterVoiceMind(
@@ -241,8 +239,8 @@ export function workshopChat(
   lines?: Array<{ speakerId: string; speakerName: string; text: string }>;
   model?: string;
 }> {
-  return apiFetch(
-    `/projects/${projectId}/characters/${characterId}/workshop/chat`,
-    { method: "POST", body: JSON.stringify(body) }
-  );
+  return apiFetch(`/projects/${projectId}/characters/${characterId}/workshop/chat`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }

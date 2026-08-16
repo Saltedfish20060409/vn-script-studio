@@ -1,10 +1,6 @@
 /** Short companion lines for the studio mascot (审稿搭档). */
 
-const IDLE = [
-  "稿子还在，我不急。",
-  "慢慢写，我在这边。",
-  "需要第二双眼睛时叫我。",
-];
+const IDLE = ["稿子还在，我不急。", "慢慢写，我在这边。", "需要第二双眼睛时叫我。"];
 
 const CONFIRM_DANGER = [
   "这一步不好撤销，再看一眼？",
@@ -12,15 +8,9 @@ const CONFIRM_DANGER = [
   "危险操作——想清楚再点。",
 ];
 
-const CONFIRM_SOFT = [
-  "可以的话，点确认继续。",
-  "改完还能再调，别紧张。",
-];
+const CONFIRM_SOFT = ["可以的话，点确认继续。", "改完还能再调，别紧张。"];
 
-const SETTINGS = [
-  "外观随便调，写作习惯最重要。",
-  "主题换好了就专心写吧。",
-];
+const SETTINGS = ["外观随便调，写作习惯最重要。", "主题换好了就专心写吧。"];
 
 const SETTINGS_PAN = [
   "按住挪取景区，找到最舒服的构图。",
@@ -28,10 +18,7 @@ const SETTINGS_PAN = [
   "松手前我都陪着，别急着松手。",
 ];
 
-const FOCUS = [
-  "我先靠边站，专心写。",
-  "计时开始，加油。",
-];
+const FOCUS = ["我先靠边站，专心写。", "计时开始，加油。"];
 
 const EMPTY_MAP = [
   "这里是世界观参考台——钉地点、连通路，写的时候翻回来看。",

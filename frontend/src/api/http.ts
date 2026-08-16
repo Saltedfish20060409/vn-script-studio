@@ -84,10 +84,7 @@ export async function readErrorPayload(
       if (d && typeof d === "object") {
         const obj = d as { message?: string };
         return {
-          message:
-            typeof obj.message === "string"
-              ? obj.message
-              : JSON.stringify(d),
+          message: typeof obj.message === "string" ? obj.message : JSON.stringify(d),
           detail: d,
         };
       }

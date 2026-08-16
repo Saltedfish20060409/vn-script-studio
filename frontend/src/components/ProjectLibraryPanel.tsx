@@ -54,7 +54,8 @@ export function ProjectLibraryPanel({
         </div>
       </div>
       <p className={styles.hint}>
-        支持 .docx / .txt / .md / .rpy / 工程 .json。卡片可点「重命名」或双击标题改名；顶栏标题也可随时改。
+        支持 .docx / .txt / .md / .rpy / 工程
+        .json。卡片可点「重命名」或双击标题改名；顶栏标题也可随时改。
       </p>
       <div className={styles.libraryGrid}>
         {projectsList.map((p) => (

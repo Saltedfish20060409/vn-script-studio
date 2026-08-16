@@ -10,8 +10,7 @@ vn-script-studio/
 ├── docker-compose.yml   # PostgreSQL 16
 ├── backend/             # FastAPI + 全部业务逻辑（原 @vnss/core）
 ├── frontend/            # Vite + React SPA
-├── examples/            # 示例工程
-└── legacy/packages/     # 旧 Next.js monorepo（对照用，可忽略）
+└── examples/            # 示例工程
 ```
 
 | 层 | 技术 |
@@ -109,6 +108,7 @@ python -m app ai out.json continue --instruction "更压抑"
 | `DATABASE_URL` | 默认 `postgresql+asyncpg://vnss:vnss@localhost:5432/vnss` |
 | `SECRET_KEY` | JWT 签名密钥 |
 | `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` | **服务端** LLM 凭据（前端不参与） |
+| `LLM_PROVIDER` | `openai`（默认）/ `ollama`；或把 `DEEPSEEK_BASE_URL` 设为 `http://localhost:11434` 自动走本地 Ollama |
 | `AGENT_CRAFT_MODE` | 写作工艺：`auto` / `off` / `lite` / `full` |
 | `AGENT_SELF_REVIEW` | 自检：`auto` / `on` / `off` |
 | `CRITIC_API_KEY` / `CRITIC_API_BASE_URL` / `CRITIC_API_MODEL` | 可选责编模型（空则复用写作模型） |
@@ -146,7 +146,7 @@ pytest tests/ -q
 - 工程与 Agent 会话进入 PostgreSQL，不再依赖浏览器 localStorage 作为主存储
 - 分享为云端 token，跨设备可访问
 - Agent 写回由服务端 `apply_agent_actions` 完成后返回最新工程
-- 旧 `legacy/packages/*`（Next.js monorepo）仅作对照，日常开发请用 `backend/` + `frontend/`
+- 旧 Next.js monorepo（legacy/）已随迁移完成而移除；历史版本见 git
 
 ## 许可与声明
 

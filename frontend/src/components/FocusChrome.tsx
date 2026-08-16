@@ -119,9 +119,7 @@ export function FocusChrome({
   }, [resting]);
 
   const remain =
-    prefs?.mode === "down"
-      ? Math.max(0, prefs.minutes * 60 - elapsed)
-      : elapsed;
+    prefs?.mode === "down" ? Math.max(0, prefs.minutes * 60 - elapsed) : elapsed;
   const clock = formatFocusClock(remain);
   const sessionChars = Math.max(0, countFocusChars(draft) - baselineChars);
 
@@ -144,122 +142,114 @@ export function FocusChrome({
               <MascotFigure size="md" mood="focus" quiet line={null} />
             </div>
             <div className={styles.setupMain}>
-            <p className={styles.setupIdx} aria-hidden>
-              FO
-            </p>
-            <h2 id={titleId} className={styles.setupTitle}>
-              专注会话
-            </h2>
-            <p className={styles.setupLead}>
-              将进入系统全屏，并隐藏写作界面干扰项。今日已累计{" "}
-              {formatFocusClock(loadTodayFocusSeconds())}。
-            </p>
+              <p className={styles.setupIdx} aria-hidden>
+                FO
+              </p>
+              <h2 id={titleId} className={styles.setupTitle}>
+                专注会话
+              </h2>
+              <p className={styles.setupLead}>
+                将进入系统全屏，并隐藏写作界面干扰项。今日已累计{" "}
+                {formatFocusClock(loadTodayFocusSeconds())}。
+              </p>
 
-            <fieldset className={styles.fieldset}>
-              <legend>计时方式</legend>
-              <label className={styles.radio}>
-                <input
-                  type="radio"
-                  name="focus-timer-mode"
-                  checked={mode === "up"}
-                  onChange={() => setMode("up")}
-                />
-                正计时
-              </label>
-              <label className={styles.radio}>
-                <input
-                  type="radio"
-                  name="focus-timer-mode"
-                  checked={mode === "down"}
-                  onChange={() => setMode("down")}
-                />
-                倒计时
-              </label>
-            </fieldset>
+              <fieldset className={styles.fieldset}>
+                <legend>计时方式</legend>
+                <label className={styles.radio}>
+                  <input
+                    type="radio"
+                    name="focus-timer-mode"
+                    checked={mode === "up"}
+                    onChange={() => setMode("up")}
+                  />
+                  正计时
+                </label>
+                <label className={styles.radio}>
+                  <input
+                    type="radio"
+                    name="focus-timer-mode"
+                    checked={mode === "down"}
+                    onChange={() => setMode("down")}
+                  />
+                  倒计时
+                </label>
+              </fieldset>
 
-            {mode === "down" ? (
+              {mode === "down" ? (
+                <div className={styles.presets}>
+                  <span className={styles.presetsLabel}>时长（分钟）</span>
+                  <div className={styles.presetRow}>
+                    {[15, 25, 45].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        className={minutes === n ? styles.presetOn : styles.preset}
+                        onClick={() => {
+                          setMinutes(n);
+                          setCustom(String(n));
+                        }}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                    <label className={styles.custom}>
+                      自定义
+                      <input
+                        type="number"
+                        min={1}
+                        max={180}
+                        value={custom}
+                        aria-label="自定义倒计时分钟"
+                        onChange={(e) => {
+                          setCustom(e.target.value);
+                          const n = Number(e.target.value);
+                          if (Number.isFinite(n) && n >= 1 && n <= 180) {
+                            setMinutes(Math.round(n));
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                <p className={styles.setupHint}>正计时从 00:00 起算本场写作时长。</p>
+              )}
+
               <div className={styles.presets}>
-                <span className={styles.presetsLabel}>时长（分钟）</span>
+                <span className={styles.presetsLabel}>结束后休息（分钟）</span>
                 <div className={styles.presetRow}>
-                  {[15, 25, 45].map((n) => (
+                  {[3, 5, 10].map((n) => (
                     <button
                       key={n}
                       type="button"
-                      className={
-                        minutes === n ? styles.presetOn : styles.preset
-                      }
-                      onClick={() => {
-                        setMinutes(n);
-                        setCustom(String(n));
-                      }}
+                      className={restMinutes === n ? styles.presetOn : styles.preset}
+                      onClick={() => setRestMinutes(n)}
                     >
                       {n}
                     </button>
                   ))}
-                  <label className={styles.custom}>
-                    自定义
-                    <input
-                      type="number"
-                      min={1}
-                      max={180}
-                      value={custom}
-                      aria-label="自定义倒计时分钟"
-                      onChange={(e) => {
-                        setCustom(e.target.value);
-                        const n = Number(e.target.value);
-                        if (Number.isFinite(n) && n >= 1 && n <= 180) {
-                          setMinutes(Math.round(n));
-                        }
-                      }}
-                    />
-                  </label>
                 </div>
               </div>
-            ) : (
-              <p className={styles.setupHint}>正计时从 00:00 起算本场写作时长。</p>
-            )}
 
-            <div className={styles.presets}>
-              <span className={styles.presetsLabel}>结束后休息（分钟）</span>
-              <div className={styles.presetRow}>
-                {[3, 5, 10].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    className={
-                      restMinutes === n ? styles.presetOn : styles.preset
-                    }
-                    onClick={() => setRestMinutes(n)}
-                  >
-                    {n}
-                  </button>
-                ))}
+              <div className={styles.setupActions}>
+                <button type="button" className={styles.ghost} onClick={onSetupCancel}>
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  onClick={() =>
+                    onSetupConfirm({
+                      mode,
+                      minutes: mode === "down" ? minutes : 25,
+                      restMinutes,
+                    })
+                  }
+                >
+                  开始全屏专注
+                </button>
               </div>
-            </div>
-
-            <div className={styles.setupActions}>
-              <button
-                type="button"
-                className={styles.ghost}
-                onClick={onSetupCancel}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                className={styles.primary}
-                onClick={() =>
-                  onSetupConfirm({
-                    mode,
-                    minutes: mode === "down" ? minutes : 25,
-                    restMinutes,
-                  })
-                }
-              >
-                开始全屏专注
-              </button>
-            </div>
-            <p className={styles.setupHint}>快捷键 Ctrl+\ 也可开关专注。</p>
+              <p className={styles.setupHint}>快捷键 Ctrl+\ 也可开关专注。</p>
             </div>
           </div>
         </div>
@@ -280,16 +270,10 @@ export function FocusChrome({
           <span className={styles.barClock}>{clock}</span>
           <span className={styles.barMeta}>
             <span className={styles.barLabel}>
-              {ended
-                ? "本场结束"
-                : prefs.mode === "down"
-                  ? "倒计时"
-                  : "正计时"}
+              {ended ? "本场结束" : prefs.mode === "down" ? "倒计时" : "正计时"}
             </span>
             <span className={styles.barStat}>+{sessionChars} 字</span>
-            <span className={styles.barStat}>
-              今日 {formatFocusClock(todaySec)}
-            </span>
+            <span className={styles.barStat}>今日 {formatFocusClock(todaySec)}</span>
           </span>
           <button
             type="button"

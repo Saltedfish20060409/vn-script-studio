@@ -60,9 +60,7 @@ export function AgentHelpOverlay({ prefs, onPrefsChange, onClose }: Props) {
           <input
             type="checkbox"
             checked={Boolean(prefs.voiceHard)}
-            onChange={(e) =>
-              onPrefsChange({ ...prefs, voiceHard: e.target.checked })
-            }
+            onChange={(e) => onPrefsChange({ ...prefs, voiceHard: e.target.checked })}
           />
           <span>
             声线硬门禁
@@ -73,9 +71,7 @@ export function AgentHelpOverlay({ prefs, onPrefsChange, onClose }: Props) {
           <input
             type="checkbox"
             checked={prefs.voiceCheck !== false}
-            onChange={(e) =>
-              onPrefsChange({ ...prefs, voiceCheck: e.target.checked })
-            }
+            onChange={(e) => onPrefsChange({ ...prefs, voiceCheck: e.target.checked })}
           />
           <span>
             终检声线

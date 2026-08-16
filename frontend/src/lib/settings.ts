@@ -67,9 +67,7 @@ export function loadAppearanceCache(): AppearanceCache | null {
       bgPanX: parsed.bgPanX || 0,
       bgPanY: parsed.bgPanY || 0,
       panelGlass: normalizePanelGlass(parsed.panelGlass),
-      bgScrim: clampScrim(
-        parsed.bgScrim !== undefined ? Number(parsed.bgScrim) : 0.42
-      ),
+      bgScrim: clampScrim(parsed.bgScrim !== undefined ? Number(parsed.bgScrim) : 0.42),
     };
   } catch {
     return null;
@@ -94,10 +92,7 @@ export function applySettingsToDom(s: AppSettings) {
   } else {
     delete root.dataset.panelGlass;
   }
-  root.style.setProperty(
-    "--font-scale",
-    String(s.fontScale > 0 ? s.fontScale : 1)
-  );
+  root.style.setProperty("--font-scale", String(s.fontScale > 0 ? s.fontScale : 1));
   root.style.setProperty("--bg-custom-opacity", String(s.bgOpacity));
   root.style.setProperty("--bg-custom-scale", String(s.bgScale));
   root.style.setProperty("--bg-custom-pan-x", `${s.bgPanX}px`);
@@ -135,9 +130,7 @@ export function fromServerSettings(out: ServerSettingsOut): AppSettings {
     bgPanY: out.bg_pan_y || 0,
     panelGlass: normalizePanelGlass(out.panel_glass),
     bgScrim: clampScrim(
-      out.bg_scrim !== undefined && out.bg_scrim !== null
-        ? Number(out.bg_scrim)
-        : 0.42
+      out.bg_scrim !== undefined && out.bg_scrim !== null ? Number(out.bg_scrim) : 0.42
     ),
   };
 }

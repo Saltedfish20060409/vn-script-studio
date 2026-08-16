@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"
+    # openai (default, e.g. DeepSeek) | ollama (local model via Ollama OpenAI endpoint)
+    llm_provider: str = "openai"
 
     # Agent writing craft / self-review (server-only)
     agent_craft_mode: Literal["auto", "off", "lite", "full"] = "auto"

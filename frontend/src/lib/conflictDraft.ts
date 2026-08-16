@@ -32,10 +32,7 @@ function writeStore(store: Store): void {
   }
 }
 
-export function stashConflictDraft(
-  project: VnProject,
-  reason = "save_409"
-): void {
+export function stashConflictDraft(project: VnProject, reason = "save_409"): void {
   const store = readStore();
   store[project.id] = {
     project,

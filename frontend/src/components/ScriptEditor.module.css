@@ -38,7 +38,9 @@
   font-weight: 400;
   font-style: normal;
   font-variant-ligatures: none;
-  font-feature-settings: "liga" 0, "calt" 0;
+  font-feature-settings:
+    "liga" 0,
+    "calt" 0;
   line-height: 1.65;
   letter-spacing: 0;
   text-align: left;

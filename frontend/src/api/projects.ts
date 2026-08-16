@@ -76,10 +76,7 @@ export function duplicateProject(id: string): Promise<VnProject> {
   return apiFetch<VnProject>(`/projects/${id}/duplicate`, { method: "POST" });
 }
 
-export function importProjectFile(
-  file: File,
-  title?: string
-): Promise<VnProject> {
+export function importProjectFile(file: File, title?: string): Promise<VnProject> {
   const form = new FormData();
   form.append("file", file);
   if (title) form.append("title", title);
@@ -89,10 +86,7 @@ export function importProjectFile(
   });
 }
 
-export function importProjectJson(
-  obj: unknown,
-  title?: string
-): Promise<VnProject> {
+export function importProjectJson(obj: unknown, title?: string): Promise<VnProject> {
   const form = new FormData();
   form.append("json_body", JSON.stringify(obj));
   if (title) form.append("title", title);
@@ -102,10 +96,7 @@ export function importProjectJson(
   });
 }
 
-export function importProjectText(
-  text: string,
-  title?: string
-): Promise<VnProject> {
+export function importProjectText(text: string, title?: string): Promise<VnProject> {
   const form = new FormData();
   form.append("text", text);
   if (title) form.append("title", title);
@@ -203,20 +194,14 @@ export function listSnapshots(id: string): Promise<SnapshotSummary[]> {
   return apiFetch(`/projects/${id}/snapshots`);
 }
 
-export function createSnapshot(
-  id: string,
-  label: string
-): Promise<SnapshotSummary> {
+export function createSnapshot(id: string, label: string): Promise<SnapshotSummary> {
   return apiFetch(`/projects/${id}/snapshots`, {
     method: "POST",
     body: JSON.stringify({ label }),
   });
 }
 
-export function restoreSnapshot(
-  id: string,
-  snapshotId: string
-): Promise<VnProject> {
+export function restoreSnapshot(id: string, snapshotId: string): Promise<VnProject> {
   return apiFetch(`/projects/${id}/snapshots/${snapshotId}/restore`, {
     method: "POST",
   });
@@ -378,10 +363,7 @@ export interface AgentRunOut {
   trace?: import("../types/vn").AgentTraceEvent[];
 }
 
-export function runAgent(
-  id: string,
-  body: AgentRunInBody
-): Promise<AgentRunOut> {
+export function runAgent(id: string, body: AgentRunInBody): Promise<AgentRunOut> {
   return apiFetch(`/projects/${id}/agent`, {
     method: "POST",
     body: JSON.stringify(body),
@@ -501,9 +483,7 @@ export function getAgentConversation(
   projectId: string,
   conversationId: string
 ): Promise<AgentConversationOut> {
-  return apiFetch(
-    `/projects/${projectId}/agent/conversations/${conversationId}`
-  );
+  return apiFetch(`/projects/${projectId}/agent/conversations/${conversationId}`);
 }
 
 export function putAgentConversation(
@@ -516,13 +496,10 @@ export function putAgentConversation(
     undo_stack?: unknown[];
   }
 ): Promise<AgentConversationOut> {
-  return apiFetch(
-    `/projects/${projectId}/agent/conversations/${conversationId}`,
-    {
-      method: "PUT",
-      body: JSON.stringify(body),
-    }
-  );
+  return apiFetch(`/projects/${projectId}/agent/conversations/${conversationId}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
 }
 
 export function renameAgentConversation(
@@ -530,23 +507,19 @@ export function renameAgentConversation(
   conversationId: string,
   title: string
 ): Promise<AgentConversationOut> {
-  return apiFetch(
-    `/projects/${projectId}/agent/conversations/${conversationId}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify({ title }),
-    }
-  );
+  return apiFetch(`/projects/${projectId}/agent/conversations/${conversationId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  });
 }
 
 export function deleteAgentConversation(
   projectId: string,
   conversationId: string
 ): Promise<{ ok: boolean }> {
-  return apiFetch(
-    `/projects/${projectId}/agent/conversations/${conversationId}`,
-    { method: "DELETE" }
-  );
+  return apiFetch(`/projects/${projectId}/agent/conversations/${conversationId}`, {
+    method: "DELETE",
+  });
 }
 
 /** @deprecated prefer conversation APIs */

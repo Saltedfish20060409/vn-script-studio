@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   createAgentConversation,
   deleteAgentConversation,
@@ -25,7 +26,6 @@ import {
   factsScan,
   type AgentAttachment,
   type AgentConversationSummary,
-  type HarnessLintResult,
   type LensPackMeta,
   type PipelineRunResult,
 } from "../api/client";
@@ -50,11 +50,27 @@ import {
   type ChapterReviseDraft,
 } from "../lib/chapterReviseDraft";
 import { blocksToEditable } from "../lib/scriptCodec";
-import type { AgentAction, AgentChatMessage, AgentTaskKind, AgentTraceEvent, VnProject } from "../types/vn";
+import { buildWriterCards, DEFAULT_WRITER } from "../lib/agentWriterCards";
+import type {
+  AgentChatMessage,
+  AgentTaskKind,
+  AgentTraceEvent,
+  VnProject,
+} from "../types/vn";
+import { AgentArchiveCard } from "./AgentArchiveCard";
+import { AgentAttachList } from "./AgentAttachList";
 import { AgentComposerBox } from "./AgentComposerBox";
+import { AgentConversationRail } from "./AgentConversationRail";
 import { AgentHelpOverlay } from "./AgentHelpOverlay";
+import {
+  AgentMessagesList,
+  describeActions,
+  defaultWelcome,
+  formatLintBlock,
+  formatPipelineResult,
+  normalizeMessages,
+} from "./AgentMessagesList";
 import { AgentPersonaOverlay } from "./AgentPersonaOverlay";
-import { AgentMessageBody } from "./AgentMarkdown";
 import { ChapterReviseModePicker } from "./ChapterReviseModePicker";
 import { ChapterReviseReview } from "./ChapterReviseReview";
 import { useConfirm } from "./ConfirmDialog";
@@ -86,236 +102,6 @@ const TASK_LABEL: Record<AgentTaskKind, string> = {
   consistency: "查矛盾",
   scene: "写一场戏",
 };
-
-const ACTION_LABEL: Record<string, string> = {
-  add_character: "新增角色",
-  update_character: "修改角色",
-  delete_character: "删除角色",
-  add_location: "新增地点",
-  update_location: "修改地点",
-  delete_location: "删除地点",
-  add_location_link: "新增通路",
-  delete_location_link: "删除通路",
-  add_chapter: "新增章节",
-  delete_chapter: "删除章节",
-  rename_chapter: "重命名章节",
-  append_script: "追加剧本",
-  replace_script: "替换剧本",
-  update_bible: "更新设定",
-  update_meta: "更新元信息",
-  propose_character_link: "提议关系",
-  propose_timeline_event: "提议时间线",
-  add_character_link: "写入关系",
-  update_character_link: "更新关系",
-  delete_character_link: "删除关系",
-  add_timeline_event: "写入时间线",
-  update_timeline_event: "更新时间线",
-  delete_timeline_event: "删除时间线",
-  scan_facts: "扫描事实",
-};
-
-const WELCOME_MARKER = "轻小说 / 视觉小说的写法底盘会自动带上";
-
-const DEFAULT_WRITER = {
-  id: null as string | null,
-  name: "通用文学编辑",
-  role: "默认 · LN/VN 责编",
-  blurb:
-    "日常对话自动用的编辑底盘：可演对白、信息残缺、场钩子、类型热度。写轻小说/视觉小说时无需切换作家。",
-};
-
-const WRITER_CARD_META: Record<
-  string,
-  { role: string; blurb: string; sort: number }
-> = {
-  "author-murakami": {
-    role: "文学 / 氛围小说",
-    blurb: "适合：疏离日常、都市孤独。擅长：留白、重复变奏、克制比喻。",
-    sort: 10,
-  },
-  "author-higashino": {
-    role: "悬疑 / 社会派",
-    blurb: "适合：本格与社会派谜题。擅长：公平伏笔、误导动机、因果收束。",
-    sort: 20,
-  },
-  "author-watari": {
-    role: "轻小说 · 学园恋爱",
-    blurb: "适合：别扭青春恋爱。擅长：心理防线、自欺、越界触发与毒舌距离感。",
-    sort: 30,
-  },
-  "author-nishio": {
-    role: "轻小说 · 对白密集",
-    blurb: "适合：靠嘴推进的故事。擅长：口癖声纹、抬杠逻辑、定义权争夺。",
-    sort: 40,
-  },
-  "author-kamachi": {
-    role: "轻小说 · 动作信息战",
-    blurb: "适合：异能/战斗快节奏。擅长：信息差、倒计时、短章甩钩。",
-    sort: 50,
-  },
-  "author-nasu": {
-    role: "视觉小说 · 规则概念",
-    blurb: "适合：异能、神话、规则对决。擅长：设定可演、代价与例外、概念冲突。",
-    sort: 60,
-  },
-  "author-maeda": {
-    role: "视觉小说 · 泣きゲー",
-    blurb: "适合：催泪向恋爱/亲情。擅长：长蓄力、一句决堤、静场余韵。",
-    sort: 70,
-  },
-  "author-maruto": {
-    role: "视觉小说 · 恋爱细腻",
-    blurb: "适合：成人向拉扯恋爱。擅长：试探与撤回、对白缝隙、二人私密语法。",
-    sort: 80,
-  },
-  "author-urobuchi": {
-    role: "视觉小说 / 剧本 · 致郁思想剧",
-    blurb: "适合：黑暗理想主义、悲剧。擅长：信念对撞、残酷有逻辑、改写立场的反转。",
-    sort: 90,
-  },
-  "author-romeo": {
-    role: "视觉小说 · 恋爱喜剧",
-    blurb: "适合：聪明互怼恋爱、轻元梗。擅长：喜剧落回真心、闹中取静的告白节奏。",
-    sort: 100,
-  },
-  "author-hayashi": {
-    role: "视觉小说 · 温情学园",
-    blurb: "适合：治愈学园日常、轻百合气息。擅长：相处厚度、缓坡感动、群像温度。",
-    sort: 110,
-  },
-  "author-looseboy": {
-    role: "视觉小说 · 现代恋爱",
-    blurb: "适合：职场/成年女主恋爱。擅长：女主主体性、治愈兑账、亲密戏推进人物。",
-    sort: 120,
-  },
-  "author-niijima": {
-    role: "视觉小说 · 夏日群像",
-    blurb: "适合：夏日青春、轻悬念群像。擅长：场所氛围、伏笔回收、谜题服务情感。",
-    sort: 130,
-  },
-  "author-urushibara": {
-    role: "视觉小说 · 实验哲学",
-    blurb: "适合：前卫、猎奇思辨、互文实验。擅长：形式即主题、认知恐怖、多线命题。",
-    sort: 140,
-  },
-  "author-kai": {
-    role: "视觉小说 · 戏剧悬疑",
-    blurb: "适合：成人情感剧、罪与秘密。擅长：慢收紧线索、关系被真相改写、克制对白。",
-    sort: 150,
-  },
-};
-
-function describeActions(actions: AgentAction[]): string {
-  if (actions.length === 0) return "";
-  const names = actions.map((a) => ACTION_LABEL[a.op] ?? a.op);
-  return names.length <= 2 ? names.join("；") : `${names[0]} 等 ${names.length} 项`;
-}
-
-function AgentTracePanel({ events }: { events: AgentTraceEvent[] }) {
-  const [open, setOpen] = useState(false);
-  const useful = events.filter((e) => e.type !== "done");
-  if (!useful.length) return null;
-  const toolN = useful.filter((e) => e.type === "tool_call").length;
-  const label =
-    toolN > 0 ? `本轮轨迹 · ${toolN} 次工具` : `本轮轨迹 · ${useful.length} 步`;
-  return (
-    <div className={styles.traceBox}>
-      <button
-        type="button"
-        className={styles.traceToggle}
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
-        {open ? "▾" : "▸"} {label}
-      </button>
-      {open ? (
-        <ol className={styles.traceList}>
-          {useful.map((e, i) => {
-            if (e.type === "tool_call") {
-              return (
-                <li key={i} className={styles.traceItem}>
-                  <strong>调用</strong> {e.name}
-                  {e.arguments ? (
-                    <code className={styles.traceCode}>
-                      {JSON.stringify(e.arguments)}
-                    </code>
-                  ) : null}
-                </li>
-              );
-            }
-            if (e.type === "tool_result") {
-              return (
-                <li key={i} className={styles.traceItem}>
-                  <strong>{e.ok === false ? "失败" : "结果"}</strong> {e.name}
-                  <pre className={styles.tracePre}>
-                    {(e.preview || "").slice(0, 800)}
-                  </pre>
-                </li>
-              );
-            }
-            if (e.type === "actions") {
-              const acts = Array.isArray(e.actions) ? e.actions : [];
-              return (
-                <li key={i} className={styles.traceItem}>
-                  <strong>写入动作</strong> {describeActions(acts) || "（空）"}
-                </li>
-              );
-            }
-            if (e.type === "thought" && e.text) {
-              return (
-                <li key={i} className={styles.traceItem}>
-                  <strong>思考</strong>
-                  <span className={styles.traceThought}>
-                    {e.text.slice(0, 280)}
-                  </span>
-                </li>
-              );
-            }
-            return null;
-          })}
-        </ol>
-      ) : null}
-    </div>
-  );
-}
-
-function defaultWelcome(): AgentChatMessage[] {
-  return [
-    {
-      role: "assistant",
-      content:
-        "我是这部作品的驻场责编（通用文学编辑）。轻小说 / 视觉小说的写法底盘会自动带上——你只要用平常话说想续写、改哪段、卡在哪就行。\n\n若想换一位作家的眼光来参谋，点顶部 **⇄** 打开作家卡；需要多视角时可打开「多选」。右上角 **!** 有说明。卡壳或要整场戏时，再说「跑流水线」也不迟。",
-    },
-  ];
-}
-
-function isStaleWelcome(content: string): boolean {
-  const t = (content || "").trim();
-  if (!t.includes("驻场责编")) return false;
-  return !t.includes(WELCOME_MARKER);
-}
-
-/** Refresh baked-in welcome from older sessions; keep real chat history. */
-function normalizeMessages(msgs: AgentChatMessage[]): AgentChatMessage[] {
-  const welcome = defaultWelcome();
-  if (!Array.isArray(msgs) || msgs.length === 0) return welcome;
-  const onlyAssistant = msgs.every((m) => m.role === "assistant");
-  if (onlyAssistant) return welcome;
-  const first = msgs[0];
-  if (first?.role === "assistant" && isStaleWelcome(first.content)) {
-    return [{ role: "assistant", content: welcome[0].content }, ...msgs.slice(1)];
-  }
-  return msgs;
-}
-
-function formatLintBlock(data: HarnessLintResult): string {
-  const head = `${data.pass ? "无硬错误" : "存在硬错误"} · error ${data.errorCount} / warn ${data.warnCount} / info ${data.infoCount}`;
-  if (!data.issues?.length) return `${head}\n未发现明显 AI 腔 / 社交问题。`;
-  const lines = data.issues
-    .slice(0, 24)
-    .map((iss) => `- [${iss.severity}] ${iss.code}：${iss.message}`);
-  return [head, ...lines].join("\n");
-}
 
 function convStorageKey(projectId: string) {
   return `vnss-agent-conv:${projectId}`;
@@ -352,9 +138,7 @@ export function AgentChat({
   hidden,
 }: Props) {
   const projectId = project.id;
-  const [conversations, setConversations] = useState<AgentConversationSummary[]>(
-    []
-  );
+  const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
   const [messages, setMessages] = useState<AgentChatMessage[]>(defaultWelcome);
@@ -379,9 +163,7 @@ export function AgentChat({
       saveChapterReviseDraft(projectId, next);
     } else {
       const cid =
-        opts?.clearChapterId ||
-        pendingReviseRef.current?.chapterId ||
-        chapterId;
+        opts?.clearChapterId || pendingReviseRef.current?.chapterId || chapterId;
       if (cid) clearChapterReviseDraft(projectId, cid);
     }
   }
@@ -446,8 +228,8 @@ export function AgentChat({
   // Writing toolbar / short command: reopen对照 for a saved draft
   useEffect(() => {
     function onOpen(e: Event) {
-      const detail = (e as CustomEvent<{ projectId?: string; chapterId?: string }>)
-        .detail || {};
+      const detail =
+        (e as CustomEvent<{ projectId?: string; chapterId?: string }>).detail || {};
       if (detail.projectId && detail.projectId !== projectId) return;
       const cid = detail.chapterId || chapterId;
       const draft = getChapterReviseDraft(projectId, cid);
@@ -560,9 +342,7 @@ export function AgentChat({
   const refreshList = useCallback(async () => {
     const list = await listAgentConversations(projectId);
     setConversations((prev) => {
-      const prevById = Object.fromEntries(
-        prev.map((c) => [c.id, c.title || "新对话"])
-      );
+      const prevById = Object.fromEntries(prev.map((c) => [c.id, c.title || "新对话"]));
       setTitleDrafts((drafts) => {
         const next = { ...drafts };
         for (const c of list) {
@@ -756,13 +536,69 @@ export function AgentChat({
     if (current === title) return;
     try {
       await renameAgentConversation(projectId, id, title);
-      setConversations((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, title } : c))
-      );
+      setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)));
     } catch (e) {
       setError(e instanceof Error ? e.message : "重命名失败");
       await refreshList().catch(() => undefined);
     }
+  }
+
+  function handleRenameChange(id: string, value: string) {
+    setTitleDrafts((prev) => ({ ...prev, [id]: value }));
+    scheduleRename(id, value);
+  }
+
+  function handleRenameCommit(id: string, raw: string) {
+    const t = renameTimer.current[id];
+    if (t) window.clearTimeout(t);
+    void commitRename(id, raw);
+  }
+
+  function handleOpenReviseReview(chapterId: string) {
+    const draft = getChapterReviseDraft(projectId, chapterId);
+    if (!draft) {
+      setError("改稿预览已写入或已丢弃，可再说「帮我改这一章」。");
+      return;
+    }
+    setPendingReviseState(draft);
+    setReviseReviewOpen(true);
+    setError("");
+  }
+
+  function handleResizeStart(e: ReactPointerEvent<HTMLDivElement>) {
+    e.preventDefault();
+    resizing.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function handleToggleDossier() {
+    setPersonaOpen(false);
+    setHelpOpen(false);
+    setDossierOpen((v) => !v);
+  }
+
+  function handleTogglePersona() {
+    setDossierOpen(false);
+    setHelpOpen(false);
+    setPersonaOpen((v) => !v);
+  }
+
+  function handleToggleHelp() {
+    setDossierOpen(false);
+    setPersonaOpen(false);
+    setHelpOpen((v) => !v);
+  }
+
+  function handleArchiveAction(cardId: string | null) {
+    void onWriterCardClick(cardId);
+    setDetailKey(null);
+    if (!multiSelect) setPersonaOpen(false);
   }
 
   async function handleDeleteConversation(targetId?: string) {
@@ -825,8 +661,7 @@ export function AgentChat({
   async function sendText(text: string, task?: AgentTaskKind) {
     const trimmed = text.trim();
     const pendingAttach = attachments;
-    if ((!trimmed && pendingAttach.length === 0) || busy || !conversationId)
-      return;
+    if ((!trimmed && pendingAttach.length === 0) || busy || !conversationId) return;
 
     const userVisible =
       trimmed ||
@@ -860,16 +695,15 @@ export function AgentChat({
       return;
     }
     if (intent.kind === "chapter_open_review") {
-      const draft =
-        pendingRevise ||
-        getChapterReviseDraft(projectId, chapterId);
+      const draft = pendingRevise || getChapterReviseDraft(projectId, chapterId);
       if (draft) {
         setPendingReviseState(draft);
         setReviseReviewOpen(true);
         const userMsg: AgentChatMessage = { role: "user", content: userVisible };
         const assistantMsg: AgentChatMessage = {
           role: "assistant",
-          content: "已打开对照面板，逐段选「改稿」或「原文」即可。刷新后也可从写作区「改稿对照」再进。",
+          content:
+            "已打开对照面板，逐段选「改稿」或「原文」即可。刷新后也可从写作区「改稿对照」再进。",
         };
         const next = [...messagesRef.current, userMsg, assistantMsg].slice(-120);
         setMessages(next);
@@ -958,35 +792,39 @@ export function AgentChat({
 
       const streamEvents: AgentTraceEvent[] = [];
       setLiveStream({ events: [], text: "" });
-      const res = await runAgentStream(projectId, {
-        messages: apiMessages,
-        chapter_id: chapterId,
-        selection: selection || undefined,
-        task,
-        conversation_id: conversationId,
-        apply_actions: true,
-        // 与 UI 选中同步；勿仅依赖 DB（避免 PUT 未完成时本轮漏注入）
-        lens_ids: activeLensIds,
-        attachments: pendingAttach.map((a) => ({
-          filename: a.filename,
-          text: a.text,
-          id: a.id,
-        })),
-      }, (evt) => {
-        if (evt.type === "thought") {
-          setLiveStream((p) => ({ events: p?.events ?? [], text: evt.text ?? "" }));
-          return;
+      const res = await runAgentStream(
+        projectId,
+        {
+          messages: apiMessages,
+          chapter_id: chapterId,
+          selection: selection || undefined,
+          task,
+          conversation_id: conversationId,
+          apply_actions: true,
+          // 与 UI 选中同步；勿仅依赖 DB（避免 PUT 未完成时本轮漏注入）
+          lens_ids: activeLensIds,
+          attachments: pendingAttach.map((a) => ({
+            filename: a.filename,
+            text: a.text,
+            id: a.id,
+          })),
+        },
+        (evt) => {
+          if (evt.type === "thought") {
+            setLiveStream((p) => ({ events: p?.events ?? [], text: evt.text ?? "" }));
+            return;
+          }
+          if (
+            evt.type === "task" ||
+            evt.type === "tool_call" ||
+            evt.type === "tool_result" ||
+            evt.type === "actions"
+          ) {
+            streamEvents.push(evt as unknown as AgentTraceEvent);
+            setLiveStream((p) => ({ events: [...streamEvents], text: p?.text ?? "" }));
+          }
         }
-        if (
-          evt.type === "task" ||
-          evt.type === "tool_call" ||
-          evt.type === "tool_result" ||
-          evt.type === "actions"
-        ) {
-          streamEvents.push(evt as unknown as AgentTraceEvent);
-          setLiveStream((p) => ({ events: [...streamEvents], text: p?.text ?? "" }));
-        }
-      });
+      );
 
       const actions = res.actions ?? [];
       const applied = res.applied && !!res.project;
@@ -1001,7 +839,7 @@ export function AgentChat({
       }
 
       const meta = res.context_meta;
-      const taskName = meta?.task ? TASK_LABEL[meta.task] ?? meta.task : "";
+      const taskName = meta?.task ? (TASK_LABEL[meta.task] ?? meta.task) : "";
       const resultBit = applied
         ? "已写入工程"
         : actions.length > 0
@@ -1022,9 +860,10 @@ export function AgentChat({
             ? "自检过"
             : "自检"
         : "";
-      const lensShort = Array.isArray(meta?.lensIds) && meta.lensIds.length
-        ? `视角×${meta.lensIds.length}`
-        : "";
+      const lensShort =
+        Array.isArray(meta?.lensIds) && meta.lensIds.length
+          ? `视角×${meta.lensIds.length}`
+          : "";
       setLastContext(
         [taskName, resultBit, craftShort, reviewShort, lensShort]
           .filter(Boolean)
@@ -1088,9 +927,9 @@ export function AgentChat({
     setLastContext("写作导师 · 列表");
     try {
       const data = await getProjectMentors(projectId);
-      const activeNames = (data.active || [])
-        .map((p) => `**${p.name}** (\`${p.id}\`)`)
-        .join("、") || "（将使用默认写作导师）";
+      const activeNames =
+        (data.active || []).map((p) => `**${p.name}** (\`${p.id}\`)`).join("、") ||
+        "（将使用默认写作导师）";
       const content =
         `### 写作导师\n\n` +
         `当前启用：${activeNames}\n\n` +
@@ -1141,9 +980,7 @@ export function AgentChat({
     }
     if (multiSelect) {
       const on = activeLensIds.includes(id);
-      const next = on
-        ? activeLensIds.filter((x) => x !== id)
-        : [...activeLensIds, id];
+      const next = on ? activeLensIds.filter((x) => x !== id) : [...activeLensIds, id];
       if (!on && next.length > 3) {
         setError("多选最多 3 位作家/写手");
         return;
@@ -1192,14 +1029,9 @@ export function AgentChat({
         draft: (draft || "").trim() || undefined,
       });
       const content = data.markdown || data.synthesis || "（无结果）";
-      const finalMessages = [
-        ...nextMessages,
-        { role: "assistant" as const, content },
-      ];
+      const finalMessages = [...nextMessages, { role: "assistant" as const, content }];
       setMessages(finalMessages);
-      setLastContext(
-        `头脑风暴完成 · ${data.okCount}/${data.authorCount} 视角`
-      );
+      setLastContext(`头脑风暴完成 · ${data.okCount}/${data.authorCount} 视角`);
       await putAgentConversation(projectId, conversationId, {
         messages: finalMessages.slice(-120),
         chat_memory: "",
@@ -1237,10 +1069,7 @@ export function AgentChat({
     try {
       const data = await harnessLint(projectId, text);
       const content = `### 文风体检\n\n${formatLintBlock(data)}`;
-      const finalMessages = [
-        ...nextMessages,
-        { role: "assistant" as const, content },
-      ];
+      const finalMessages = [...nextMessages, { role: "assistant" as const, content }];
       setMessages(finalMessages);
       await putAgentConversation(projectId, conversationId, {
         messages: finalMessages.slice(-120),
@@ -1260,82 +1089,10 @@ export function AgentChat({
     }
   }
 
-  function formatPipelineResult(data: PipelineRunResult): string {
-    const parts: string[] = ["### 写作流水线结果"];
-    parts.push(`阶段：${(data.stages || []).join(" → ") || "—"}`);
-    if (typeof data.reviseRounds === "number" && data.reviseRounds > 0) {
-      parts.push(`修正轮次：${data.reviseRounds}`);
-    }
-    if (data.runId) {
-      parts.push(`运行记录：\`${data.runId}\``);
-    }
-    if (data.plan?.beatSheet) {
-      parts.push(
-        "#### 1. 规划（节拍表）\n```json\n" +
-          JSON.stringify(data.plan.beatSheet, null, 2) +
-          "\n```"
-      );
-    } else if (data.plan?.content) {
-      parts.push(`#### 1. 规划\n\n${data.plan.content}`);
-    }
-    const draftText = data.finalDraft || data.draft || "";
-    if (draftText) {
-      parts.push(`#### 生成 / 修正稿\n\n${draftText}`);
-    }
-    if (data.check) {
-      parts.push(
-        `#### 检查\n\n${
-          data.check.pass ? "无硬错误" : "存在硬错误"
-        } · error ${data.check.errorCount ?? 0} / warn ${data.check.warnCount ?? 0}`
-      );
-      const issues = data.check.issues || [];
-      if (issues.length) {
-        parts.push(
-          issues
-            .slice(0, 16)
-            .map((i) => `- [${i.severity}] ${i.code}：${i.message}`)
-            .join("\n")
-        );
-      }
-    }
-    if (data.gate) {
-      parts.push(
-        `#### 质量门禁\n\n${data.gate.pass ? "✅ 通过" : "❌ 未通过"} — ${
-          data.gate.message || ""
-        }`
-      );
-    }
-    if (data.applied) {
-      parts.push("\n_已将通过门禁的终稿写入当前章节。_");
-    } else if (data.applyError) {
-      parts.push(`\n_未能写入章节：${data.applyError}_`);
-    } else if (!data.gate?.pass) {
-      parts.push(
-        "\n_门禁未过，稿件未写入工程。可先改后再说「跑流水线」或「定稿」。_"
-      );
-    } else {
-      parts.push("\n_门禁已过但未写入章节（未指定章节或未开启入库）。_");
-    }
-    const trace = data.trace;
-    if (trace?.length) {
-      parts.push(
-        "#### 阶段耗时\n\n" +
-          trace
-            .map(
-              (t) =>
-                `- ${t.stage || "?"} · ${t.ms ?? "?"}ms · ${t.ok === false ? "失败" : "ok"}`
-            )
-            .join("\n")
-      );
-    }
-    return parts.join("\n\n");
-  }
-
   async function runPipelineFlow(instruction: string) {
     if (busy || !conversationId) return;
     const userLine =
-      instruction.trim() ||
-      "请按风格 Skill 与项目硬锚，续写下一场可上演戏。";
+      instruction.trim() || "请按风格 Skill 与项目硬锚，续写下一场可上演戏。";
     setError("");
     setThinking("流水线运行中：规划 → 生成 → 检查 → 修正…");
     const nextMessages: AgentChatMessage[] = [
@@ -1412,10 +1169,7 @@ export function AgentChat({
       }
       const data = (job.result ?? {}) as unknown as PipelineRunResult;
       const content = formatPipelineResult(data);
-      const finalMessages = [
-        ...nextMessages,
-        { role: "assistant" as const, content },
-      ];
+      const finalMessages = [...nextMessages, { role: "assistant" as const, content }];
       setMessages(finalMessages);
       if (data.applied && data.project) {
         onProjectChange(data.project);
@@ -1513,9 +1267,7 @@ export function AgentChat({
         },
       ]);
       setLastContext(
-        data.enrichMeta?.enrich
-          ? "账本 · LLM 充实已更新"
-          : "账本 · 章节摘要已更新"
+        data.enrichMeta?.enrich ? "账本 · LLM 充实已更新" : "账本 · 章节摘要已更新"
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "账本更新失败");
@@ -1625,7 +1377,10 @@ export function AgentChat({
     setBusy(true);
     setThinking("正在扫描关系 / 时间线事实…");
     setAttachments([]);
-    const paste = pending.map((a) => a.text).filter(Boolean).join("\n\n");
+    const paste = pending
+      .map((a) => a.text)
+      .filter(Boolean)
+      .join("\n\n");
     const userMsg: AgentChatMessage = {
       role: "user",
       content: pending.length
@@ -1695,8 +1450,7 @@ export function AgentChat({
       return;
     }
     const prefs = getChapterRevisePrefs(projectId, chapterId);
-    const resolvedMode: ReviseMode =
-      opts?.mode || prefs.mode || "human_warmth";
+    const resolvedMode: ReviseMode = opts?.mode || prefs.mode || "human_warmth";
     setChapterRevisePrefs(projectId, chapterId, { mode: resolvedMode });
 
     const pending = [...attachments];
@@ -1789,9 +1543,7 @@ export function AgentChat({
           // Never fall back to Ren'Py editable — that breaks side-by-side align.
           originalText: (res.sourceText || "").trim() || fromEditor,
           chapterTitle:
-            typeof res.chapterTitle === "string"
-              ? res.chapterTitle
-              : ch?.title,
+            typeof res.chapterTitle === "string" ? res.chapterTitle : ch?.title,
           diagnosisMd:
             typeof res.diagnosisMd === "string" ? res.diagnosisMd : undefined,
           savedAt: Date.now(),
@@ -1872,19 +1624,7 @@ export function AgentChat({
         .map((id) => lensCatalog.find((p) => p.id === id)?.name || id)
         .join(" · ");
 
-  const writerCards = [
-    DEFAULT_WRITER,
-    ...[...lensCatalog]
-      .sort((a, b) => (WRITER_CARD_META[a.id]?.sort ?? 99) - (WRITER_CARD_META[b.id]?.sort ?? 99))
-      .map((p) => ({
-        id: p.id as string | null,
-        name: p.name,
-        role: WRITER_CARD_META[p.id]?.role || "作家 · 思维包",
-        blurb:
-          WRITER_CARD_META[p.id]?.blurb ||
-          "公开技法启发向参谋视角（非本人，禁止仿写原文）。",
-      })),
-  ];
+  const writerCards = buildWriterCards(lensCatalog);
 
   const detailCard =
     writerCards.find((c) => (c.id ?? "__default__") === detailKey) || null;
@@ -1893,8 +1633,7 @@ export function AgentChat({
     .map((id) => writerCards.find((c) => c.id === id))
     .filter(Boolean) as typeof writerCards;
 
-  const showEmptyStage =
-    !loadingConv && messages.length <= 1 && !busy && !input.trim();
+  const showEmptyStage = !loadingConv && messages.length <= 1 && !busy && !input.trim();
   const turnCount = messages.filter((m) => m.role === "user").length;
 
   return (
@@ -1904,340 +1643,60 @@ export function AgentChat({
       aria-hidden={hidden || undefined}
     >
       <div className={styles.stage} ref={splitRef}>
-        {dossierOpen ? (
-          <button
-            type="button"
-            className={styles.dossierScrim}
-            aria-label="关闭卷宗"
-            onClick={() => setDossierOpen(false)}
-          />
-        ) : null}
-
-        <aside
-          className={`${styles.sidebar} ${dossierOpen ? styles.sidebarOpen : ""}`}
-          style={{ width: sidebarW }}
-          id="agent-dossier"
-        >
-          <div className={styles.sideStamp} aria-hidden>
-            <span>卷</span>
-            <em>DOSSIER</em>
-          </div>
-          <div className={styles.sideHead}>
-            <span className={styles.sideTitle}>卷宗</span>
-            <div className={styles.sideHeadActions}>
-              <button
-                type="button"
-                className={styles.sideNew}
-                disabled={busy || loadingConv}
-                onClick={() => void handleNewConversation()}
-                title="新建对话"
-              >
-                新建
-              </button>
-              <button
-                type="button"
-                className={styles.sideClose}
-                onClick={() => setDossierOpen(false)}
-              >
-                收起
-              </button>
-            </div>
-          </div>
-          <div className={styles.convList} role="listbox" aria-label="对话列表">
-            {conversations.map((c, idx) => {
-              const active = c.id === conversationId;
-              const num = String(idx + 1).padStart(2, "0");
-              return (
-                <div
-                  key={c.id}
-                  role="option"
-                  aria-selected={active}
-                  className={
-                    active
-                      ? `${styles.convItem} ${styles.convItemActive}`
-                      : styles.convItem
-                  }
-                  onClick={() => {
-                    if (!active) void switchConversation(c.id);
-                    setDossierOpen(false);
-                  }}
-                >
-                  <span className={styles.convIdx} aria-hidden>
-                    {num}
-                  </span>
-                  <input
-                    className={styles.convTitleInput}
-                    value={titleDrafts[c.id] ?? c.title ?? "新对话"}
-                    disabled={busy || loadingConv}
-                    ref={(el) => {
-                      titleInputRefs.current[c.id] = el;
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    onFocus={() => {
-                      if (!active) void switchConversation(c.id);
-                    }}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setTitleDrafts((prev) => ({ ...prev, [c.id]: v }));
-                      scheduleRename(c.id, v);
-                    }}
-                    onBlur={(e) => {
-                      const t = renameTimer.current[c.id];
-                      if (t) window.clearTimeout(t);
-                      void commitRename(c.id, e.target.value);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        (e.target as HTMLInputElement).blur();
-                      }
-                      e.stopPropagation();
-                    }}
-                    aria-label="对话名称"
-                  />
-                  <button
-                    type="button"
-                    className={styles.convDel}
-                    disabled={busy || loadingConv}
-                    title="删除对话"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void handleDeleteConversation(c.id);
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
-              );
-            })}
-            {!loadingConv && conversations.length === 0 ? (
-              <p className={styles.sideEmpty}>暂无对话</p>
-            ) : null}
-          </div>
-          {dossierOpen ? (
-            <div
-              className={styles.dossierResize}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="拖动调整卷宗宽度"
-              aria-valuenow={sidebarW}
-              onPointerDown={(e) => {
-                e.preventDefault();
-                resizing.current = true;
-                document.body.style.cursor = "col-resize";
-                document.body.style.userSelect = "none";
-                try {
-                  (e.currentTarget as HTMLElement).setPointerCapture(
-                    e.pointerId
-                  );
-                } catch {
-                  /* ignore */
-                }
-              }}
-            />
-          ) : null}
-        </aside>
+        <AgentConversationRail
+          conversations={conversations}
+          conversationId={conversationId}
+          titleDrafts={titleDrafts}
+          busy={busy}
+          loadingConv={loadingConv}
+          sidebarW={sidebarW}
+          dossierOpen={dossierOpen}
+          onNew={() => void handleNewConversation()}
+          onSwitch={(id) => void switchConversation(id)}
+          onClose={() => setDossierOpen(false)}
+          onRenameChange={handleRenameChange}
+          onRenameCommit={handleRenameCommit}
+          onDelete={(id) => void handleDeleteConversation(id)}
+          onTitleRef={(id, el) => {
+            titleInputRefs.current[id] = el;
+          }}
+          onResizeStart={handleResizeStart}
+        />
 
         <div className={styles.main}>
-          <div className={styles.cornerBar}>
-            <button
-              type="button"
-              className={styles.dossierTab}
-              aria-expanded={dossierOpen}
-              aria-controls="agent-dossier"
-              title="打开卷宗"
-              onClick={() => {
-                setPersonaOpen(false);
-                setHelpOpen(false);
-                setDossierOpen((v) => !v);
-              }}
-            >
-              <img src="/agent/agent-dossier-tab.png" alt="" />
-              <span>卷宗</span>
-            </button>
-            <div className={styles.cornerActions}>
-              <button
-                type="button"
-                className={styles.hudBtn}
-                aria-expanded={personaOpen}
-                aria-label="切换作家 / 写手"
-                title="切换作家 / 写手"
-                onClick={() => {
-                  setDossierOpen(false);
-                  setHelpOpen(false);
-                  setPersonaOpen((v) => !v);
-                }}
-              >
-                ⇄
-              </button>
-              <button
-                type="button"
-                className={styles.hudBtn}
-                aria-expanded={helpOpen}
-                aria-label="功能说明与推荐流程"
-                title="功能说明与推荐流程"
-                onClick={() => {
-                  setDossierOpen(false);
-                  setPersonaOpen(false);
-                  setHelpOpen((v) => !v);
-                }}
-              >
-                !
-              </button>
-            </div>
-          </div>
+          <AgentMessagesList
+            messages={messages}
+            busy={busy}
+            thinking={thinking}
+            liveStream={liveStream}
+            showEmptyStage={showEmptyStage}
+            personaLabel={personaLabel}
+            activeLensIds={activeLensIds}
+            projectId={projectId}
+            dossierOpen={dossierOpen}
+            personaOpen={personaOpen}
+            helpOpen={helpOpen}
+            selection={selection}
+            lastContext={lastContext}
+            error={error}
+            scrollerRef={scroller}
+            onOpenReviseReview={handleOpenReviseReview}
+            onToggleDossier={handleToggleDossier}
+            onTogglePersona={handleTogglePersona}
+            onToggleHelp={handleToggleHelp}
+          />
 
-          <div
-            className={styles.messages}
-            ref={scroller}
-            onWheel={(e) => e.stopPropagation()}
-          >
-            {showEmptyStage ? (
-              <div className={styles.emptyStage}>
-                <div className={styles.emptyMark} aria-hidden>
-                  <span className={styles.emptySlash} />
-                  <span className={styles.emptyShard} />
-                </div>
-                <p className={styles.emptyHint}>
-                  点 ⇄ 选参谋，或直接开写
-                </p>
-              </div>
-            ) : null}
-            {messages.map((m, i) => {
-              const reviseAction =
-                m.role === "assistant" &&
-                m.action?.type === "open_revise_review"
-                  ? m.action
-                  : null;
-              const reviseDraftAlive = reviseAction
-                ? Boolean(
-                    getChapterReviseDraft(projectId, reviseAction.chapterId)
-                  )
-                : false;
-              return (
-              <div
-                key={`${i}-${m.role}`}
-                className={m.role === "user" ? styles.user : styles.bot}
-              >
-                <div className={styles.msgHead}>
-                  {m.role === "assistant" ? (
-                    <WriterPortrait
-                      lensId={activeLensIds[0] || null}
-                      size="xs"
-                    />
-                  ) : null}
-                  <span className={styles.role}>
-                    {m.role === "user"
-                      ? "你"
-                      : activeLensIds.length
-                        ? personaLabel
-                        : "编辑"}
-                  </span>
-                </div>
-                <AgentMessageBody
-                  content={m.content}
-                  mode={m.role === "user" ? "plain" : "markdown"}
-                />
-                {m.role === "assistant" && m.trace?.length ? (
-                  <AgentTracePanel events={m.trace} />
-                ) : null}
-                {reviseAction ? (
-                  <div className={styles.msgActions}>
-                    <button
-                      type="button"
-                      className={styles.msgActionBtn}
-                      disabled={busy || !reviseDraftAlive}
-                      title={
-                        reviseDraftAlive
-                          ? "打开未写入的改稿对照"
-                          : "预览已写入或已丢弃"
-                      }
-                      onClick={() => {
-                        const draft = getChapterReviseDraft(
-                          projectId,
-                          reviseAction.chapterId
-                        );
-                        if (!draft) {
-                          setError("改稿预览已写入或已丢弃，可再说「帮我改这一章」。");
-                          return;
-                        }
-                        setPendingReviseState(draft);
-                        setReviseReviewOpen(true);
-                        setError("");
-                      }}
-                    >
-                      {reviseDraftAlive
-                        ? reviseAction.label || "打开改稿对照"
-                        : "对照已结束"}
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-              );
-            })}
-            {busy && <p className={styles.thinking}>{thinking}</p>}
-            {busy && liveStream && (liveStream.events.length > 0 || liveStream.text) && (
-              <div className={styles.liveStream}>
-                {liveStream.events.length > 0 && (
-                  <AgentTracePanel events={liveStream.events} />
-                )}
-                {liveStream.text && <p className={styles.liveText}>{liveStream.text}</p>}
-              </div>
-            )}
-          </div>
-
-          {(selection || lastContext) && (
-            <p className={styles.statusLine} title={lastContext || undefined}>
-              {selection ? `选区 ${selection.length} 字` : null}
-              {selection && lastContext ? " · " : null}
-              {lastContext || null}
-            </p>
-          )}
-          {error && <p className={styles.error}>{error}</p>}
-
-          {attachments.length > 0 ? (
-            <>
-              <ul className={styles.attachList} aria-label="待发送附件">
-                {attachments.map((a, i) => (
-                  <li key={`${a.filename}-${i}`}>
-                    <span title={a.warning || undefined}>
-                      {a.filename}
-                      <em>{a.chars ?? a.text.length} 字</em>
-                    </span>
-                    <button
-                      type="button"
-                      disabled={busy || attachBusy}
-                      onClick={() =>
-                        setAttachments((prev) => prev.filter((_, j) => j !== i))
-                      }
-                    >
-                      移除
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <div className={styles.attachActions}>
-                <button
-                  type="button"
-                  className={styles.attachActionBtn}
-                  disabled={busy || attachBusy || !conversationId}
-                  title="捷径：等价于说「根据附件更新设定」"
-                  onClick={() => void ingestSettingsFromAttachments()}
-                >
-                  写入设定页
-                </button>
-                <button
-                  type="button"
-                  className={styles.attachActionBtn}
-                  disabled={busy || attachBusy || !conversationId}
-                  title="捷径：等价于说「整理关系进待审」"
-                  onClick={() => void runFactsScanFlow("请根据附件整理关系与时间线")}
-                >
-                  整理关系/时间线
-                </button>
-              </div>
-            </>
-          ) : null}
+          <AgentAttachList
+            attachments={attachments}
+            busy={busy}
+            attachBusy={attachBusy}
+            conversationId={conversationId}
+            onRemove={(i) =>
+              setAttachments((prev) => prev.filter((_, j) => j !== i))
+            }
+            onIngest={() => void ingestSettingsFromAttachments()}
+            onScan={() => void runFactsScanFlow("请根据附件整理关系与时间线")}
+          />
 
           <AgentComposerBox
             value={input}
@@ -2273,9 +1732,7 @@ export function AgentChat({
           {helpOpen ? (
             <AgentHelpOverlay
               prefs={harnessPrefs}
-              onPrefsChange={(next) =>
-                setHarnessPrefsState(setHarnessPrefs(next))
-              }
+              onPrefsChange={(next) => setHarnessPrefsState(setHarnessPrefs(next))}
               onClose={() => setHelpOpen(false)}
             />
           ) : null}

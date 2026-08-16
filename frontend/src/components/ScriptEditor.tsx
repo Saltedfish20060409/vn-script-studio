@@ -40,10 +40,7 @@ export function ScriptEditor({
   const localRef = useRef<HTMLTextAreaElement | null>(null);
   const mirrorRef = useRef<HTMLPreElement | null>(null);
   const needles = useMemo(() => buildPlaceNeedles(locations), [locations]);
-  const lines = useMemo(
-    () => value.replace(/\r\n/g, "\n").split("\n"),
-    [value]
-  );
+  const lines = useMemo(() => value.replace(/\r\n/g, "\n").split("\n"), [value]);
 
   function setRefs(el: HTMLTextAreaElement | null) {
     localRef.current = el;

@@ -46,11 +46,7 @@ export function VoiceCorpusDrawer({
       {open && (
         <div className={styles.drawerBody}>
           <div className={styles.actions}>
-            <button
-              type="button"
-              disabled={!!busy}
-              onClick={onExtract}
-            >
+            <button type="button" disabled={!!busy} onClick={onExtract}>
               从剧本抽取
             </button>
           </div>

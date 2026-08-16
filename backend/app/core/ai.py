@@ -14,6 +14,8 @@ class DeepSeekConfig:
     apiKey: str
     baseUrl: Optional[str] = None
     model: Optional[str] = None
+    # openai (default) | ollama (local via Ollama's OpenAI-compatible endpoint)
+    provider: str = "openai"
 
 
 ACTION_PROMPTS: Dict[str, str] = {

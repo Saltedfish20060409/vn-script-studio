@@ -23,10 +23,7 @@ const project: VnProject = {
           type: "menu",
           id: "m1",
           prompt: "走哪边？",
-          choices: [
-            { text: "左", jump: "left" },
-            { text: "右" },
-          ],
+          choices: [{ text: "左", jump: "left" }, { text: "右" }],
         },
         { type: "jump", target: "left" },
         { type: "return" },
@@ -144,9 +141,7 @@ describe("buildBranchTree：块节点结构", () => {
         {
           id: "c",
           title: "章",
-          blocks: [
-            { type: "menu", id: "m2", choices: [{ text: "A" }] },
-          ],
+          blocks: [{ type: "menu", id: "m2", choices: [{ text: "A" }] }],
         },
       ],
     };

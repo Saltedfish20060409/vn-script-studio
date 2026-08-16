@@ -62,15 +62,24 @@ export function FactExtractReview({
           <p className={styles.stamp}>FACT · REVIEW</p>
           <h2 id="fact-extract-review-title">确认写入分析事实</h2>
           <p className={styles.sub}>
-            候选来自剧本 / 圣经 / 角色卡（及粘贴源）。勾选后可接受写入或单独拒绝；「稍后处理」只关对话框，保留托盘。
+            候选来自剧本 / 圣经 /
+            角色卡（及粘贴源）。勾选后可接受写入或单独拒绝；「稍后处理」只关对话框，保留托盘。
           </p>
         </header>
 
         <div className={styles.toolbar}>
-          <button type="button" className={styles.ghost} onClick={() => selectAll(true)}>
+          <button
+            type="button"
+            className={styles.ghost}
+            onClick={() => selectAll(true)}
+          >
             全选
           </button>
-          <button type="button" className={styles.ghost} onClick={() => selectAll(false)}>
+          <button
+            type="button"
+            className={styles.ghost}
+            onClick={() => selectAll(false)}
+          >
             清空
           </button>
           <span className={styles.count}>
@@ -103,9 +112,7 @@ export function FactExtractReview({
                             {charName(project, fromId)} —{label}→{" "}
                             {charName(project, toId)}
                           </strong>
-                          {quote ? (
-                            <em className={styles.quote}>「{quote}」</em>
-                          ) : null}
+                          {quote ? <em className={styles.quote}>「{quote}」</em> : null}
                         </span>
                       </label>
                     </li>
@@ -122,9 +129,7 @@ export function FactExtractReview({
               ) : (
                 events.map((item) => {
                   const title = String(item.payload.title ?? "节点");
-                  const when = item.payload.when
-                    ? String(item.payload.when)
-                    : "";
+                  const when = item.payload.when ? String(item.payload.when) : "";
                   const quote = item.evidence?.[0]?.quote;
                   return (
                     <li key={item.id}>
@@ -137,9 +142,7 @@ export function FactExtractReview({
                         <span>
                           <strong>{title}</strong>
                           {when ? <span className={styles.meta}>{when}</span> : null}
-                          {quote ? (
-                            <em className={styles.quote}>「{quote}」</em>
-                          ) : null}
+                          {quote ? <em className={styles.quote}>「{quote}」</em> : null}
                         </span>
                       </label>
                     </li>
@@ -151,7 +154,12 @@ export function FactExtractReview({
         </div>
 
         <footer className={styles.foot}>
-          <button type="button" className={styles.ghost} onClick={onCancel} disabled={busy}>
+          <button
+            type="button"
+            className={styles.ghost}
+            onClick={onCancel}
+            disabled={busy}
+          >
             稍后处理
           </button>
           {onReject ? (

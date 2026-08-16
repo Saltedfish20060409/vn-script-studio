@@ -114,13 +114,7 @@ export const LOCATION_RELATION_LABELS: Record<LocationRelation, string> = {
 
 export type MapStyleId = "default";
 
-export type MapLineStyle =
-  | "solid"
-  | "dashed"
-  | "dotted"
-  | "double"
-  | "rail"
-  | "magic";
+export type MapLineStyle = "solid" | "dashed" | "dotted" | "double" | "rail" | "magic";
 
 export const MAP_LINE_STYLE_LABELS: Record<MapLineStyle, string> = {
   solid: "实线",
@@ -358,12 +352,7 @@ export interface VnProject {
 }
 
 export type AiAction =
-  | "continue"
-  | "rewrite"
-  | "choices"
-  | "polish"
-  | "outline"
-  | "character_voice";
+  "continue" | "rewrite" | "choices" | "polish" | "outline" | "character_voice";
 
 export interface AiRequest {
   action: AiAction;
@@ -380,11 +369,42 @@ export interface AiResponse {
 
 /** Structured operations the studio Agent may return */
 export type AgentAction =
-  | { op: "add_character"; displayName: string; defineName?: string; color?: string; voice?: string; bio?: string; relationships?: string }
-  | { op: "update_character"; ref: string; patch: Partial<Pick<Character, "displayName" | "defineName" | "color" | "voice" | "bio" | "relationships">> }
+  | {
+      op: "add_character";
+      displayName: string;
+      defineName?: string;
+      color?: string;
+      voice?: string;
+      bio?: string;
+      relationships?: string;
+    }
+  | {
+      op: "update_character";
+      ref: string;
+      patch: Partial<
+        Pick<
+          Character,
+          "displayName" | "defineName" | "color" | "voice" | "bio" | "relationships"
+        >
+      >;
+    }
   | { op: "delete_character"; ref: string }
-  | { op: "add_location"; name: string; imageTag?: string; description?: string; mapX?: number; mapY?: number; tags?: string[] }
-  | { op: "update_location"; ref: string; patch: Partial<Pick<Location, "name" | "imageTag" | "description" | "tags" | "mapX" | "mapY">> }
+  | {
+      op: "add_location";
+      name: string;
+      imageTag?: string;
+      description?: string;
+      mapX?: number;
+      mapY?: number;
+      tags?: string[];
+    }
+  | {
+      op: "update_location";
+      ref: string;
+      patch: Partial<
+        Pick<Location, "name" | "imageTag" | "description" | "tags" | "mapX" | "mapY">
+      >;
+    }
   | { op: "delete_location"; ref: string }
   | {
       op: "add_location_link";
