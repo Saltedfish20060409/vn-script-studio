@@ -69,8 +69,8 @@ jobs:
         run: npm ci
       - name: Typecheck
         run: npm run typecheck
-      - name: Lint
-        run: npm run lint
+      - name: Lint (hard gate, zero warnings)
+        run: npm run lint:strict
       - name: Unit tests
         run: npm test
       - name: Build
