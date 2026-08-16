@@ -1,6 +1,8 @@
 """Engineering writing pipeline API — style skill, ledger, plan/write/check/revise, gate."""
 from __future__ import annotations
 
+import asyncio
+import json
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -63,6 +65,8 @@ class PipelineRunIn(BaseModel):
     semantic_beats: bool = True
     # When true, return { jobId } immediately and run in background
     async_mode: bool = False
+    # When true (with async_mode), return SSE stream of stage progress + final
+    stream: bool = False
 
 
 class GateIn(BaseModel):
@@ -148,6 +152,14 @@ async def pipeline_run(
 
         payload = body.model_dump()
         owner = SimpleNamespace(id=user.id)
+        stage_queue: Optional[asyncio.Queue[dict]] = asyncio.Queue() if body.stream else None
+
+        def _on_stage(stage: str, row: dict) -> None:
+            if stage_queue is not None:
+                try:
+                    stage_queue.put_nowait({"type": "stage", "stage": stage, **row})
+                except Exception:  # noqa: BLE001
+                    pass
 
         async def _runner(job):
             await job.touch(stage="pipeline", progress=0.1, message="流水线运行中…")
@@ -172,6 +184,7 @@ async def pipeline_run(
                     voice_check=bool(payload.get("voice_check", True)),
                     voice_hard=bool(payload.get("voice_hard", False)),
                     semantic_beats=bool(payload.get("semantic_beats", True)),
+                    on_stage=_on_stage,
                 )
                 if out.get("project") is not None:
                     sync_row_from_vn(row2, out["project"])
@@ -192,6 +205,41 @@ async def pipeline_run(
             user_id=user.id,
             runner=_runner,
         )
+
+        if body.stream and stage_queue is not None:
+            from fastapi.responses import StreamingResponse
+
+            async def event_stream():
+                async def _sse(data: dict) -> str:
+                    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+                # Emit the queue events until the job settles, then the final result.
+                while True:
+                    try:
+                        evt = await asyncio.wait_for(stage_queue.get(), timeout=20)
+                    except asyncio.TimeoutError:
+                        yield ": keepalive\n\n"
+                        continue
+                    yield await _sse(evt)
+                    if evt.get("type") == "stage" and evt.get("stage") == "done":
+                        break
+                # Final: read the persisted result
+                from app.core.jobs import get_job
+
+                final = await get_job(db, job.id)
+                result = final.to_dict(include_result=True) if final else {"status": "missing"}
+                yield await _sse({"type": "final", "result": result})
+
+            return StreamingResponse(
+                event_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
         return {"jobId": job.id, "async": True, "status": job.status}
 
     try:

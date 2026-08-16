@@ -1,7 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  MAP_LINE_STYLE_LABELS,
-} from "../types/vn";
 import type {
   CustomMapElementDef,
   Location,
@@ -11,174 +8,32 @@ import type {
   MapStroke,
   SceneChapter,
 } from "../types/vn";
-import {
-  MAP_ELEMENT_PRESETS,
-  presetByKind,
-} from "../lib/mapCatalog";
-import {
-  findLocationOccurrences,
-  primaryEvidence,
-} from "../lib/mapOccurrences";
+import { presetByKind } from "../lib/mapCatalog";
+import { findLocationOccurrences } from "../lib/mapOccurrences";
 import { planRoadCurves } from "../lib/mapRoads";
 import { uid } from "../lib/vnLocal";
-import { mascotLine } from "../lib/mascotCopy";
-import { EmptyStage } from "./EmptyStage";
+import {
+  WORLD_W,
+  WORLD_H,
+  STAGE_W,
+  STAGE_H,
+  STAGE_X,
+  STAGE_Y,
+  clamp,
+  clampCamera,
+  labelOffsets,
+  lineDash,
+  resolvePin,
+  strokeHitsPoint,
+} from "../lib/mapWorld";
 import { MapPinGlyph, isGlyphKey } from "./MapPinGlyph";
+import type { MapStudioProps, Tool } from "./mapStudioTypes";
+import { MapStage } from "./MapStage";
+import { MapPalette } from "./MapPalette";
+import { MapToolbar } from "./MapToolbar";
+import { MapInspector } from "./MapInspector";
+import { MapEmptyOverlay } from "./MapEmptyOverlay";
 import styles from "./MapStudio.module.css";
-
-/** Large playable world — camera clamps so you never see empty void */
-const WORLD_W = 4800;
-const WORLD_H = 3600;
-/** Persona LOC_MAP HUD stage sits in the center of the world */
-const STAGE_W = 2200;
-const STAGE_H = 1500;
-const STAGE_X = (WORLD_W - STAGE_W) / 2;
-const STAGE_Y = (WORLD_H - STAGE_H) / 2;
-
-type Tool = "pan" | "place" | "link" | "select" | "draw";
-
-type Props = {
-  locations: Location[];
-  links: LocationLink[];
-  chapters: SceneChapter[];
-  customElements: CustomMapElementDef[];
-  strokes: MapStroke[];
-  onChangeLocations: (locations: Location[]) => void;
-  onChangeLinks: (links: LocationLink[]) => void;
-  onChangeCustomElements: (defs: CustomMapElementDef[]) => void;
-  onChangeStrokes: (strokes: MapStroke[]) => void;
-  onJumpToChapter?: (chapterId: string, blockIndex?: number) => void;
-  focusLocationId?: string | null;
-  focusTick?: number;
-  onExtractFromScript?: () => void;
-  onExtractRulesOnly?: () => void;
-};
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function distToSegment(
-  px: number,
-  py: number,
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number
-) {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const len2 = dx * dx + dy * dy;
-  if (len2 < 1e-6) return Math.hypot(px - ax, py - ay);
-  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
-  t = clamp(t, 0, 1);
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-}
-
-function strokeHitsPoint(
-  stroke: MapStroke,
-  x: number,
-  y: number,
-  radius: number
-): boolean {
-  const thr = radius + stroke.width / 2;
-  const pts = stroke.points;
-  if (pts.length === 1) {
-    return Math.hypot(pts[0].x - x, pts[0].y - y) <= thr;
-  }
-  for (let i = 1; i < pts.length; i++) {
-    if (
-      distToSegment(x, y, pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y) <=
-      thr
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function resolvePin(
-  loc: Location,
-  customs: CustomMapElementDef[]
-): { glyph: string; color: string } {
-  if (loc.elementKind === "custom" && loc.tags?.[0]) {
-    const c = customs.find((x) => x.id === loc.tags![0]);
-    if (c) {
-      return {
-        glyph: isGlyphKey(c.icon) ? c.icon! : "custom",
-        color: loc.color || c.color || presetByKind("custom").color,
-      };
-    }
-  }
-  const p = presetByKind(loc.elementKind);
-  const glyph =
-    (isGlyphKey(loc.icon) && loc.icon) ||
-    (loc.elementKind && loc.elementKind !== "custom" ? loc.elementKind : null) ||
-    p.icon;
-  return {
-    glyph,
-    color: loc.color || p.color,
-  };
-}
-
-function lineDash(style: MapLineStyle | undefined): string | undefined {
-  switch (style ?? "solid") {
-    case "dashed":
-      return "18 14";
-    case "dotted":
-      return "3 10";
-    case "rail":
-      return "28 10 4 10";
-    case "magic":
-      return "6 8 2 8";
-    default:
-      return undefined;
-  }
-}
-
-function clampCamera(
-  cam: { x: number; y: number; zoom: number },
-  vw: number,
-  vh: number
-) {
-  const zw = WORLD_W * cam.zoom;
-  const zh = WORLD_H * cam.zoom;
-  let x = cam.x;
-  let y = cam.y;
-  if (zw <= vw) x = (zw - vw) / 2;
-  else x = clamp(x, 0, zw - vw);
-  if (zh <= vh) y = (zh - vh) / 2;
-  else y = clamp(y, 0, zh - vh);
-  return { ...cam, x, y };
-}
-
-/** Push overlapping name labels apart in world space */
-function labelOffsets(
-  nodes: { id: string; x: number; y: number; name: string }[]
-): Map<string, number> {
-  const sorted = [...nodes].sort((a, b) => a.y - b.y || a.x - b.x);
-  const out = new Map<string, number>();
-  const placed: { x: number; y: number; w: number }[] = [];
-  for (const n of sorted) {
-    const w = Math.min(120, 24 + n.name.length * 8);
-    let dy = 0;
-    let guard = 0;
-    while (guard++ < 12) {
-      const ly = n.y + 8 + dy;
-      const hit = placed.some(
-        (p) => Math.abs(p.x - n.x) < (p.w + w) / 2 && Math.abs(p.y - ly) < 22
-      );
-      if (!hit) {
-        placed.push({ x: n.x, y: ly, w });
-        out.set(n.id, dy);
-        break;
-      }
-      dy += 20;
-    }
-    if (!out.has(n.id)) out.set(n.id, dy);
-  }
-  return out;
-}
 
 export function MapStudio({
   locations,
@@ -195,7 +50,7 @@ export function MapStudio({
   focusTick = 0,
   onExtractFromScript,
   onExtractRulesOnly,
-}: Props) {
+}: MapStudioProps) {
   const studioRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [tool, setTool] = useState<Tool>("pan");
@@ -980,6 +835,18 @@ export function MapStudio({
     setTool("place");
   }
 
+  function handleSelectTool(next: Tool) {
+    setTool(next);
+    setLinkFrom(null);
+    if (next === "draw") setBrushMode("pen");
+  }
+
+  function handleClearStrokes() {
+    if (strokes.length === 0) return;
+    pushStrokeHistory(strokes);
+    onChangeStrokes([]);
+  }
+
   function renderPath(
     pts: { x: number; y: number }[],
     color: string,
@@ -1003,281 +870,31 @@ export function MapStudio({
 
   return (
     <div className={styles.studio} ref={studioRef}>
-      <aside className={styles.left}>
-        <p className={styles.label}>NODE · 地点</p>
-        <div className={styles.palette}>
-          {MAP_ELEMENT_PRESETS.filter((p) => p.kind !== "custom").map((p) => (
-            <button
-              key={p.kind}
-              type="button"
-              className={
-                tool === "place" && placeKind === p.kind && !placeCustomId
-                  ? styles.palActive
-                  : styles.palBtn
-              }
-              onClick={() => {
-                setPlaceKind(p.kind);
-                setPlaceCustomId(null);
-                setTool("place");
-              }}
-              title={p.hint}
-            >
-              <MapPinGlyph kind={p.icon} color={p.color} size="sm" />
-              {p.name}
-            </button>
-          ))}
-          {customElements.map((c) => (
-            <div
-              key={c.id}
-              className={
-                tool === "place" && placeCustomId === c.id
-                  ? styles.palCustomActive
-                  : styles.palCustom
-              }
-            >
-              <button
-                type="button"
-                className={styles.palCustomMain}
-                onClick={() => {
-                  setPlaceKind("custom");
-                  setPlaceCustomId(c.id);
-                  setTool("place");
-                }}
-                title="选中以放置"
-              >
-                <MapPinGlyph
-                  kind={isGlyphKey(c.icon) ? c.icon : "custom"}
-                  color={c.color}
-                  size="sm"
-                />
-                {c.name}
-              </button>
-              <button
-                type="button"
-                className={styles.palCustomDel}
-                title="从图鉴删除（已放置的图钉仍保留）"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (placeCustomId === c.id) {
-                    setPlaceCustomId(null);
-                    setPlaceKind("landmark");
-                  }
-                  onChangeCustomElements(
-                    customElements.filter((x) => x.id !== c.id)
-                  );
-                }}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-        {customElements.length > 0 && (
-          <p className={styles.hintTiny}>
-            内置元素不可删；自定义项点 × 可移除图鉴
-          </p>
-        )}
-
-        <p className={styles.label}>自定义</p>
-        <div className={styles.customForm}>
-          <input
-            value={customForm.name}
-            onChange={(e) =>
-              setCustomForm((f) => ({ ...f, name: e.target.value }))
-            }
-            placeholder="名称"
-          />
-          <div className={styles.customRow}>
-            <span className={styles.hintTiny} style={{ alignSelf: "center" }}>
-              章钉色
-            </span>
-            <input
-              type="color"
-              value={customForm.color}
-              onChange={(e) =>
-                setCustomForm((f) => ({
-                  ...f,
-                  color: e.target.value,
-                  icon: "custom",
-                }))
-              }
-            />
-          </div>
-          <button type="button" className={styles.primary} onClick={addCustomDef}>
-            加入图鉴并放置
-          </button>
-        </div>
-      </aside>
-
+      <MapPalette
+        tool={tool} placeKind={placeKind} placeCustomId={placeCustomId}
+        customElements={customElements} customForm={customForm}
+        onSetTool={setTool} onSetPlaceKind={setPlaceKind}
+        onSetPlaceCustomId={setPlaceCustomId} onSetCustomForm={setCustomForm}
+        onChangeCustomElements={onChangeCustomElements} onAddCustom={addCustomDef}
+      />
       <div className={styles.center}>
-        <div className={styles.toolbar}>
-          <span className={styles.label} style={{ margin: 0, alignSelf: "center" }}>
-            TOOL
-          </span>
-          {(
-            [
-              ["pan", "漫游"],
-              ["select", "选择"],
-              ["place", "放置"],
-              ["link", "通路"],
-              ["draw", "画笔"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              className={tool === id ? styles.toolActive : styles.toolBtn}
-              onClick={() => {
-                setTool(id);
-                setLinkFrom(null);
-                if (id === "draw") setBrushMode("pen");
-              }}
-            >
-              {label}
-            </button>
-          ))}
-          {tool === "link" && (
-            <select
-              value={lineStyle}
-              onChange={(e) =>
-                setLineStyle(e.target.value as MapLineStyle)
-              }
-              title="连线样式"
-            >
-              {(Object.keys(MAP_LINE_STYLE_LABELS) as MapLineStyle[]).map(
-                (ls) => (
-                  <option key={ls} value={ls}>
-                    {MAP_LINE_STYLE_LABELS[ls]}
-                  </option>
-                )
-              )}
-            </select>
-          )}
-          {tool === "draw" && (
-            <>
-              <button
-                type="button"
-                className={
-                  brushMode === "pen" ? styles.toolActive : styles.toolBtn
-                }
-                onClick={() => setBrushMode("pen")}
-              >
-                画笔
-              </button>
-              <button
-                type="button"
-                className={
-                  brushMode === "eraser" ? styles.toolActive : styles.toolBtn
-                }
-                onClick={() => setBrushMode("eraser")}
-              >
-                橡皮
-              </button>
-              <input
-                type="color"
-                value={brushColor}
-                onChange={(e) => setBrushColor(e.target.value)}
-                title="笔色"
-                disabled={brushMode === "eraser"}
-              />
-              <input
-                type="range"
-                min={2}
-                max={24}
-                value={brushWidth}
-                onChange={(e) => setBrushWidth(Number(e.target.value))}
-                title={brushMode === "eraser" ? "橡皮半径" : "笔粗"}
-              />
-              <button
-                type="button"
-                className={styles.toolBtn}
-                onClick={undoStroke}
-                title="Ctrl+Z"
-              >
-                撤回
-              </button>
-              <button
-                type="button"
-                className={styles.toolBtn}
-                onClick={() => {
-                  if (strokes.length === 0) return;
-                  pushStrokeHistory(strokes);
-                  onChangeStrokes([]);
-                }}
-              >
-                清空笔迹
-              </button>
-            </>
-          )}
-          <span className={styles.hint}>
-            {tool === "pan" && "拖空白平移 · 滚轮缩放"}
-            {tool === "select" && "框选 / Shift+点切换 · 拖动可多移"}
-            {tool === "place" && "单击放置 · 拖空白则平移"}
-            {tool === "link" &&
-              (linkFrom ? "再点终点" : "先点起点 · 空白拖动画布")}
-            {tool === "draw" &&
-              (brushMode === "eraser"
-                ? "拖过笔迹擦除 · Ctrl+Z 撤回 · E 橡皮"
-                : "拖动画线 · Ctrl+Z 撤回 · E 切橡皮")}
-          </span>
-          <button
-            type="button"
-            className={styles.toolBtn}
-            onClick={() => fitToContent()}
-          >
-            复位
-          </button>
-          {onExtractFromScript && (
-            <button
-              type="button"
-              className={styles.toolBtn}
-              onClick={onExtractFromScript}
-              title="scene + 对白/设定词典 + 模型语义提取"
-            >
-              智能提取地图
-            </button>
-          )}
-          {onExtractRulesOnly && (
-            <button
-              type="button"
-              className={styles.toolBtn}
-              onClick={onExtractRulesOnly}
-              title="仅从 scene bg 标签提取"
-            >
-              仅 scene
-            </button>
-          )}
-        </div>
-        <p className={styles.shortcuts}>
-          Del / Backspace 删除 · Ctrl+Z 撤回笔迹 · B画笔 E橡皮 · V选择 H漫游
-        </p>
-
+        <MapToolbar
+          tool={tool} linkFrom={linkFrom} lineStyle={lineStyle} brushMode={brushMode}
+          brushColor={brushColor} brushWidth={brushWidth} strokes={strokes}
+          onSelectTool={handleSelectTool} onSetLineStyle={setLineStyle}
+          onSetBrushMode={setBrushMode} onSetBrushColor={setBrushColor}
+          onSetBrushWidth={setBrushWidth} onUndoStroke={undoStroke}
+          onClearStrokes={handleClearStrokes} onFit={fitToContent}
+          onExtractFromScript={onExtractFromScript}
+          onExtractRulesOnly={onExtractRulesOnly}
+        />
         <div
-          ref={viewportRef}
-          className={styles.viewport}
-          tabIndex={0}
+          ref={viewportRef} className={styles.viewport} tabIndex={0}
           onPointerDown={onViewportPointerDown}
           onContextMenu={(e) => e.preventDefault()}
         >
           {locations.length === 0 && strokes.length === 0 ? (
-            <div className={styles.emptyOverlay}>
-              <EmptyStage
-                stamp="MAP"
-                title="世界观地图还空着"
-                line={mascotLine("emptyMap")}
-                compact
-              >
-                {onExtractFromScript ? (
-                  <button
-                    type="button"
-                    className={styles.primary}
-                    onClick={onExtractFromScript}
-                  >
-                    智能提取地图
-                  </button>
-                ) : null}
-              </EmptyStage>
-            </div>
+            <MapEmptyOverlay onExtractFromScript={onExtractFromScript} />
           ) : null}
           <div
             className={styles.world}
@@ -1289,12 +906,7 @@ export function MapStudio({
             }}
           >
             <MapStage />
-            <svg
-              className={styles.roads}
-              width={WORLD_W}
-              height={WORLD_H}
-              aria-hidden
-            >
+            <svg className={styles.roads} width={WORLD_W} height={WORLD_H} aria-hidden>
               {strokes.map((s) =>
                 renderPath(s.points, s.color, s.width, s.id)
               )}
@@ -1313,18 +925,11 @@ export function MapStudio({
                 return (
                   <g key={link.id}>
                     {ls === "double" && (
-                      <path
-                        d={`M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`}
-                        className={styles.road}
-                        strokeWidth={12}
-                        opacity={0.35}
-                      />
+                      <path d={`M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`} className={styles.road} strokeWidth={12} opacity={0.35} />
                     )}
                     <path
                       d={`M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`}
-                      className={`${styles.road} ${styles[`line_${ls}`] ?? ""}`}
-                      strokeWidth={strokeW}
-                      strokeDasharray={dash}
+                      className={`${styles.road} ${styles[`line_${ls}`] ?? ""}`} strokeWidth={strokeW} strokeDasharray={dash}
                     />
                   </g>
                 );
@@ -1346,11 +951,9 @@ export function MapStudio({
                     data-pin
                     className={active ? styles.pinActive : styles.pin}
                     style={{
-                      left: n.x,
-                      top: n.y,
+                      left: n.x, top: n.y,
                       transform: `translate(-50%, -100%) scale(${sc}) rotate(${n.rotation ?? 0}deg)`,
-                      ["--pin-color" as string]: color,
-                      ["--label-dy" as string]: `${labelDy}px`,
+                      ["--pin-color" as string]: color, ["--label-dy" as string]: `${labelDy}px`,
                     }}
                     onPointerDown={(e) => onPinPointerDown(e, n.id, n.x, n.y)}
                     title={n.description || n.name}
@@ -1368,204 +971,20 @@ export function MapStudio({
             <div
               className={styles.marquee}
               style={{
-                left: Math.min(marquee.x0, marquee.x1),
-                top: Math.min(marquee.y0, marquee.y1),
-                width: Math.abs(marquee.x1 - marquee.x0),
-                height: Math.abs(marquee.y1 - marquee.y0),
+                left: Math.min(marquee.x0, marquee.x1), top: Math.min(marquee.y0, marquee.y1),
+                width: Math.abs(marquee.x1 - marquee.x0), height: Math.abs(marquee.y1 - marquee.y0),
               }}
             />
           )}
         </div>
       </div>
-
-      <aside className={styles.right}>
-        <p className={styles.label}>NODE · 属性</p>
-        {selectedIds.length > 1 ? (
-          <div className={styles.inspector}>
-            <p className={styles.empty}>已选 {selectedIds.length} 个地点</p>
-            <button
-              type="button"
-              className={styles.danger}
-              onClick={deleteSelected}
-            >
-              删除全部选中
-            </button>
-          </div>
-        ) : !selected ? (
-          <p className={styles.empty}>选中地点章钉以编辑属性</p>
-        ) : (
-          <div className={styles.inspector}>
-            <label>
-              名称
-              <input
-                value={selected.name}
-                onChange={(e) => updateSelected({ name: e.target.value })}
-              />
-            </label>
-            <div className={styles.inspectorPin}>
-              <MapPinGlyph
-                kind={resolvePin(selected, customElements).glyph}
-                color={selected.color ?? resolvePin(selected, customElements).color}
-                size="sm"
-                active
-              />
-              <label>
-                章钉色
-                <input
-                  type="color"
-                  value={selected.color ?? "#002fa7"}
-                  onChange={(e) => updateSelected({ color: e.target.value })}
-                />
-              </label>
-            </div>
-            <label>
-              scene 标签
-              <input
-                value={selected.imageTag ?? ""}
-                onChange={(e) => updateSelected({ imageTag: e.target.value })}
-                placeholder="bg station_night"
-              />
-            </label>
-            <label>
-              描述
-              <textarea
-                rows={3}
-                value={selected.description ?? ""}
-                onChange={(e) =>
-                  updateSelected({ description: e.target.value })
-                }
-              />
-            </label>
-            <label>
-              缩放 {Math.round((selected.scale ?? 1) * 100)}%
-              <input
-                type="range"
-                min={0.6}
-                max={1.8}
-                step={0.05}
-                value={selected.scale ?? 1}
-                onChange={(e) =>
-                  updateSelected({ scale: Number(e.target.value) })
-                }
-              />
-            </label>
-            <label>
-              旋转 {Math.round(selected.rotation ?? 0)}°
-              <input
-                type="range"
-                min={-45}
-                max={45}
-                step={1}
-                value={selected.rotation ?? 0}
-                onChange={(e) =>
-                  updateSelected({ rotation: Number(e.target.value) })
-                }
-              />
-            </label>
-            <button
-              type="button"
-              className={styles.danger}
-              onClick={deleteSelected}
-            >
-              删除此地点
-            </button>
-          </div>
-        )}
-
-        <p className={styles.label}>SCENE · 出现</p>
-        {selectedIds.length > 1 ? (
-          <p className={styles.empty}>选中单个地点以查看出现章节</p>
-        ) : !selected ? (
-          <p className={styles.empty}>选中地点章钉以查看剧本出现</p>
-        ) : occurrences.length === 0 ? (
-          <p className={styles.empty}>
-            剧本中暂无匹配。检查 scene 标签，或地名是否出现在对白/旁白中。
-          </p>
-        ) : (
-          <ul className={styles.occList}>
-            {occurrences.map((occ) => {
-              const primary = primaryEvidence(occ);
-              const n = occ.hits.length;
-              return (
-                <li key={occ.chapterId}>
-                  <button
-                    type="button"
-                    className={styles.occBtn}
-                    disabled={!onJumpToChapter}
-                    onClick={() =>
-                      onJumpToChapter?.(occ.chapterId, primary.blockIndex)
-                    }
-                    title="跳到写作区并定位到对应段落"
-                  >
-                    <strong>{occ.chapterTitle}</strong>
-                    <span>
-                      {primary.evidence}
-                      {n > 1 ? ` · ×${n}` : ""}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        <p className={styles.label}>LINK · 通路</p>
-        <ul className={styles.linkList}>
-          {links.map((l) => {
-            const from = byId.get(l.fromId)?.name ?? "?";
-            const to = byId.get(l.toId)?.name ?? "?";
-            const ls = l.lineStyle ?? "solid";
-            return (
-              <li key={l.id}>
-                <span>
-                  {from} — {to}
-                  <small> · {MAP_LINE_STYLE_LABELS[ls]}</small>
-                </span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onChangeLinks(links.filter((x) => x.id !== l.id))
-                  }
-                >
-                  ×
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </aside>
-    </div>
-  );
-}
-
-/** Unified Persona LOC_MAP HUD. */
-function MapStage() {
-  const box = {
-    left: STAGE_X,
-    top: STAGE_Y,
-    width: STAGE_W,
-    height: STAGE_H,
-  };
-
-  return (
-    <div className={styles.stage} style={box} aria-hidden>
-      <div className={styles.hudFrame}>
-        <div className={styles.hudTop}>
-          <span className={styles.hudIdx}>LOC_MAP</span>
-          <p className={styles.hudTitle}>World Reference</p>
-        </div>
-        <div className={styles.hudBody}>
-          <div className={styles.hudBracket} data-corner="tl" />
-          <div className={styles.hudBracket} data-corner="tr" />
-          <div className={styles.hudBracket} data-corner="bl" />
-          <div className={styles.hudBracket} data-corner="br" />
-          <div className={styles.hudSlash} />
-        </div>
-        <div className={styles.hudFoot}>
-          <span>GRID · ACTIVE</span>
-          <em>REF / PIN / LINK</em>
-        </div>
-      </div>
+      <MapInspector
+        selectedIds={selectedIds} selected={selected} customElements={customElements}
+        occurrences={occurrences} links={links}
+        nameOf={(id) => byId.get(id)?.name ?? "?"} onPatchSelected={updateSelected}
+        onDeleteSelected={deleteSelected} onJumpToChapter={onJumpToChapter}
+        onRemoveLink={(id) => onChangeLinks(links.filter((x) => x.id !== id))}
+      />
     </div>
   );
 }

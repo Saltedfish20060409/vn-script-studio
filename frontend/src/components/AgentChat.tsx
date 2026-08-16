@@ -10,6 +10,7 @@ import {
   pipelineGate,
   pipelineLedgerDigest,
   pipelineRun,
+  pipelineRunStream,
   waitProjectJob,
   putProjectLenses,
   runBrainstorm,
@@ -50,6 +51,9 @@ import {
 } from "../lib/chapterReviseDraft";
 import { blocksToEditable } from "../lib/scriptCodec";
 import type { AgentAction, AgentChatMessage, AgentTaskKind, AgentTraceEvent, VnProject } from "../types/vn";
+import { AgentComposerBox } from "./AgentComposerBox";
+import { AgentHelpOverlay } from "./AgentHelpOverlay";
+import { AgentPersonaOverlay } from "./AgentPersonaOverlay";
 import { AgentMessageBody } from "./AgentMarkdown";
 import { ChapterReviseModePicker } from "./ChapterReviseModePicker";
 import { ChapterReviseReview } from "./ChapterReviseReview";
@@ -109,39 +113,6 @@ const ACTION_LABEL: Record<string, string> = {
   delete_timeline_event: "删除时间线",
   scan_facts: "扫描事实",
 };
-
-const HELP_MD = `### 责编能帮你做什么
-
-用平常话说需求即可。**轻小说 / 视觉小说写法底盘**（可演对白、钩子、去说明书）由「通用文学编辑」在每次对话里自动生效。
-
-### 推荐写作流程
-
-1. **直接聊**：说清场次或卡点。  
-2. **（可选）换作家眼光**：点顶部 **⇄**，选一位作家 skill 卡（可开多选做头脑风暴）。  
-3. **文风体检**（可选）：扫问题不改文。  
-4. **定稿**：过门禁并更新写作账本。
-
-### 怎么说话
-
-用平常话说即可，例如「根据附件更新设定」「帮我改这一章更有人味」「整理关系进待审」。需要改章时直接说，会出现模式选择与对照挑选弹窗。
-
-### 卡壳时的替代
-
-「跑流水线：……」适合没思路或要整场戏——**不是**日常必经步骤。
-
-### 强头脑风暴
-
-1. 点 **⇄** → 打开「多选」→ 选 2～3 位作家  
-2. 填写议题，点「开始头脑风暴」，或直接说「头脑风暴：下一场怎么拆」  
-3. 程序会让每位作家**各自独立调用一次模型**（互相看不见），再由责编综合分歧与三步行动  
-
-这与「一次对话里塞多个视角」不同，是真正的分视角圆桌。
-
-### 作家卡从哪来
-
-内置若干公开技法蒸馏包（女娲五层格式）。也可用 [女娲.skill](https://github.com/alchaincyf/nuwa-skill) 离线蒸馏作家 → 导入工程（见仓库 \`backend/vendor/NUWA_LENS_WORKFLOW.md\`）。
-
-冲突时：**风格硬规则 > 通用编辑 > 所选作家视角**。`;
 
 const WELCOME_MARKER = "轻小说 / 视觉小说的写法底盘会自动带上";
 
@@ -1170,7 +1141,7 @@ export function AgentChat({
     }
     if (multiSelect) {
       const on = activeLensIds.includes(id);
-      let next = on
+      const next = on
         ? activeLensIds.filter((x) => x !== id)
         : [...activeLensIds, id];
       if (!on && next.length > 3) {
@@ -1376,7 +1347,7 @@ export function AgentChat({
     setLastContext("流水线 · Plan→Write→Check→Revise");
     try {
       const prefs = getHarnessPrefs();
-      const kicked = await pipelineRun(projectId, {
+      const body = {
         instruction: userLine,
         draft: (draft || "").trim() || undefined,
         selection: selection || undefined,
@@ -1385,12 +1356,41 @@ export function AgentChat({
         max_revise_rounds: prefs.maxReviseRounds ?? 2,
         voice_check: prefs.voiceCheck !== false,
         voice_hard: Boolean(prefs.voiceHard),
-        async_mode: true,
-      });
-      let data: PipelineRunResult;
-      if ("jobId" in kicked && kicked.jobId) {
+      };
+      const STAGE_LABEL: Record<string, string> = {
+        plan: "规划",
+        write: "生成",
+        check: "检查",
+        revise: "修正",
+        done: "完成",
+      };
+      let job: import("../api/pipeline").JobStatus;
+      try {
+        setThinking("流水线启动（流式）…");
+        job = await pipelineRunStream(projectId, body, (evt) => {
+          if (evt.type === "stage") {
+            const label = STAGE_LABEL[evt.stage] ?? evt.stage;
+            const ms = evt.ms ? ` · ${evt.ms}ms` : "";
+            const extra =
+              evt.errorCount != null
+                ? ` · error ${evt.errorCount}`
+                : evt.warnCount != null
+                  ? ` · warn ${evt.warnCount}`
+                  : "";
+            setThinking(`流水线：${label} 完成${ms}${extra}`);
+          }
+        });
+      } catch {
+        // Fallback: non-streaming kick + poll
+        const kicked = await pipelineRun(projectId, {
+          ...body,
+          async_mode: true,
+        });
+        if (!("jobId" in kicked) || !kicked.jobId) {
+          throw new Error("流水线启动失败");
+        }
         setThinking("流水线已后台启动，正在等待各阶段…");
-        const job = await waitProjectJob(projectId, kicked.jobId, {
+        job = await waitProjectJob(projectId, kicked.jobId, {
           onTick: (j) => {
             const pct = Math.round((j.progress ?? 0) * 100);
             setThinking(
@@ -1400,13 +1400,11 @@ export function AgentChat({
             );
           },
         });
-        if (job.status === "error") {
-          throw new Error(job.error || job.message || "流水线任务失败");
-        }
-        data = (job.result ?? {}) as unknown as PipelineRunResult;
-      } else {
-        data = kicked as PipelineRunResult;
       }
+      if (job.status === "error") {
+        throw new Error(job.error || job.message || "流水线任务失败");
+      }
+      const data = (job.result ?? {}) as unknown as PipelineRunResult;
       const content = formatPipelineResult(data);
       const finalMessages = [
         ...nextMessages,
@@ -2235,240 +2233,45 @@ export function AgentChat({
             </>
           ) : null}
 
-          <div className={styles.composer}>
-            <textarea
-              rows={compact ? 2 : 3}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="用平常话说：改这一章、再润、别动某某、整理关系…"
-              disabled={busy || loadingConv || !conversationId}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void send();
-                }
-              }}
-            />
-            <div className={styles.sendCluster}>
-              <span className={styles.turnBadge} title="本对话用户发言次数">
-                回合 {turnCount}
-              </span>
-              <input
-                ref={fileInputRef}
-                type="file"
-                className={styles.fileInput}
-                accept=".txt,.md,.markdown,.json,.csv,.docx,.rpy,text/plain,text/markdown,application/json"
-                multiple
-                disabled={busy || attachBusy || loadingConv || !conversationId}
-                onChange={(e) => void onPickFiles(e.target.files)}
-              />
-              <button
-                type="button"
-                className={styles.attachBtn}
-                disabled={busy || attachBusy || loadingConv || !conversationId}
-                title="上传参考资料（txt / md / docx / json / csv / rpy）"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {attachBusy ? "…" : "附件"}
-              </button>
-              <button
-                type="button"
-                className={styles.sendBtn}
-                disabled={
-                  busy ||
-                  loadingConv ||
-                  !conversationId ||
-                  (!input.trim() && attachments.length === 0)
-                }
-                onClick={() => void send()}
-              >
-                {busy ? "…" : "发送"}
-              </button>
-            </div>
-          </div>
+          <AgentComposerBox
+            value={input}
+            onChange={setInput}
+            onSend={() => void send()}
+            compact={compact}
+            busy={busy}
+            disabled={busy || loadingConv || !conversationId}
+            canSend={Boolean(input.trim()) || attachments.length > 0}
+            turnCount={turnCount}
+            attachBusy={attachBusy}
+            fileInputRef={fileInputRef}
+            onPickFiles={(files) => void onPickFiles(files)}
+          />
 
           {personaOpen ? (
-            <div className={styles.stageOverlay} role="dialog" aria-modal="true">
-              <header className={styles.overlayHead}>
-                <div>
-                  <p className={styles.overlayIdx}>PARTY</p>
-                  <h3 className={styles.overlayTitle}>参谋档案</h3>
-                </div>
-                <button
-                  type="button"
-                  className={styles.hudBtn}
-                  onClick={() => setPersonaOpen(false)}
-                >
-                  关闭
-                </button>
-              </header>
-              <p className={styles.personaPanelLead}>
-                点开档案选用作家参谋。默认是通用文学编辑；多选可组队头脑风暴。
-              </p>
-              <label className={styles.multiToggle}>
-                <input
-                  type="checkbox"
-                  checked={multiSelect}
-                  onChange={(e) => setMultiSelect(e.target.checked)}
-                />
-                多选（组队头脑风暴）
-              </label>
-              {multiSelect || activeLensIds.length >= 2 ? (
-                <div className={styles.partyStage}>
-                  <div className={styles.partySeats}>
-                    <div className={styles.partySeat}>
-                      <WriterPortrait lensId={null} size="sm" />
-                      <span className={styles.partySeatName}>责编主持</span>
-                    </div>
-                    {partyCards.map((c) => (
-                      <div key={c.id as string} className={styles.partySeat}>
-                        <WriterPortrait lensId={c.id} size="sm" selected />
-                        <span className={styles.partySeatName}>{c.name}</span>
-                      </div>
-                    ))}
-                    {Array.from({
-                      length: Math.max(0, 2 - partyCards.length),
-                    }).map((_, i) => (
-                      <div
-                        key={`empty-${i}`}
-                        className={`${styles.partySeat} ${styles.partySeatEmpty}`}
-                      >
-                        <span className={styles.partyEmptyMark}>?</span>
-                        <span className={styles.partySeatName}>空席</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className={styles.brainstormBox}>
-                    <input
-                      className={styles.brainstormInput}
-                      value={brainstormTopic}
-                      onChange={(e) => setBrainstormTopic(e.target.value)}
-                      placeholder="议题（可空）：例如「下一场如何升温」"
-                      disabled={busy || lensBusy}
-                    />
-                    <button
-                      type="button"
-                      className={styles.brainstormBtn}
-                      disabled={busy || lensBusy || activeLensIds.length < 2}
-                      onClick={() => void runBrainstormFlow()}
-                    >
-                      开始头脑风暴
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              <div className={styles.personaGrid}>
-                {writerCards.map((card) => {
-                  const key = card.id ?? "__default__";
-                  const isDefault = card.id === null;
-                  const selected = isDefault
-                    ? activeLensIds.length === 0
-                    : activeLensIds.includes(card.id as string);
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      className={
-                        selected
-                          ? `${styles.personaCard} ${styles.personaCardOn}`
-                          : styles.personaCard
-                      }
-                      disabled={lensBusy}
-                      onClick={() => setDetailKey(key)}
-                    >
-                      <WriterPortrait
-                        lensId={card.id}
-                        size="sm"
-                        selected={selected}
-                      />
-                      <span className={styles.personaCardRole}>{card.role}</span>
-                      <strong className={styles.personaCardName}>
-                        {card.name}
-                      </strong>
-                      {selected ? (
-                        <span className={styles.personaCardCheck}>
-                          {multiSelect ? "入队" : "对话中"}
-                        </span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <AgentPersonaOverlay
+              multiSelect={multiSelect}
+              partyCards={partyCards}
+              activeLensIds={activeLensIds}
+              brainstormTopic={brainstormTopic}
+              busy={busy}
+              lensBusy={lensBusy}
+              writerCards={writerCards}
+              onClose={() => setPersonaOpen(false)}
+              onToggleMulti={setMultiSelect}
+              onTopicChange={setBrainstormTopic}
+              onBrainstorm={() => void runBrainstormFlow()}
+              onSelectCard={setDetailKey}
+            />
           ) : null}
 
           {helpOpen ? (
-            <div className={styles.stageOverlay} role="dialog" aria-modal="true">
-              <header className={styles.overlayHead}>
-                <div>
-                  <p className={styles.overlayIdx}>HELP</p>
-                  <h3 className={styles.overlayTitle}>功能说明</h3>
-                </div>
-                <button
-                  type="button"
-                  className={styles.hudBtn}
-                  onClick={() => setHelpOpen(false)}
-                >
-                  关闭
-                </button>
-              </header>
-              <div className={styles.harnessPrefs}>
-                <p className={styles.harnessPrefsTitle}>Harness 定稿纪律</p>
-                <label className={styles.harnessToggle}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(harnessPrefs.voiceHard)}
-                    onChange={(e) => {
-                      const next = setHarnessPrefs({
-                        voiceHard: e.target.checked,
-                      });
-                      setHarnessPrefsState(next);
-                    }}
-                  />
-                  <span>
-                    声线硬门禁
-                    <small>破人设（high）直接挡定稿 / 入库</small>
-                  </span>
-                </label>
-                <label className={styles.harnessToggle}>
-                  <input
-                    type="checkbox"
-                    checked={harnessPrefs.voiceCheck !== false}
-                    onChange={(e) => {
-                      const next = setHarnessPrefs({
-                        voiceCheck: e.target.checked,
-                      });
-                      setHarnessPrefsState(next);
-                    }}
-                  />
-                  <span>
-                    终检声线
-                    <small>流水线末轮 / 定稿跑角色声线检查</small>
-                  </span>
-                </label>
-                <label className={styles.harnessToggle}>
-                  <span className={styles.harnessRounds}>
-                    修正轮次
-                    <select
-                      value={harnessPrefs.maxReviseRounds ?? 2}
-                      onChange={(e) => {
-                        const next = setHarnessPrefs({
-                          maxReviseRounds: Number(e.target.value),
-                        });
-                        setHarnessPrefsState(next);
-                      }}
-                    >
-                      {[0, 1, 2, 3, 4, 5].map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </select>
-                  </span>
-                </label>
-              </div>
-              <AgentMessageBody content={HELP_MD} mode="markdown" />
-            </div>
+            <AgentHelpOverlay
+              prefs={harnessPrefs}
+              onPrefsChange={(next) =>
+                setHarnessPrefsState(setHarnessPrefs(next))
+              }
+              onClose={() => setHelpOpen(false)}
+            />
           ) : null}
 
           {detailCard ? (

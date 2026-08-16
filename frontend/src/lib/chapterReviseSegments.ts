@@ -22,7 +22,7 @@ export function normalizeForMatch(s: string): string {
     .replace(/^\s*旁白\s*[：:]\s*/u, "")
     .replace(/^\s*选项\s*[：:]\s*/u, "")
     .replace(/^\s*([^：:\n]{1,20})\s*[（(][^）)\n]{0,40}[）)]\s*[：:]/u, "$1：")
-    .replace(/[「」『』“”\"']/g, "")
+    .replace(/[「」『』“”"']/g, "")
     .replace(/:/g, "：")
     .replace(/\s+/g, "")
     .trim();

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from app.core.ai import DeepSeekConfig
 from app.core.agent_context import _blocks_to_plain
@@ -244,11 +244,13 @@ async def run_pipeline(
     voice_check: bool = True,
     voice_hard: bool = False,
     persist_run: bool = True,
+    on_stage: Optional[Callable[[str, Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """
     Run selected stages. Default: plan → write → check → revise×N → check.
     max_revise_rounds: after first check, revise+recheck until pass or cap.
     voice_check: character voice audit on the final check only.
+    on_stage: sync callback fired after each stage completes (SSE progress).
     """
     wanted = stages or ["plan", "write", "check", "revise", "check"]
     trace: List[Dict[str, Any]] = []
@@ -281,6 +283,11 @@ async def run_pipeline(
         if extra:
             row.update(extra)
         trace.append(row)
+        if on_stage is not None:
+            try:
+                on_stage(stage, dict(row))
+            except Exception:  # noqa: BLE001 - progress sink must not break run
+                pass
 
     continuity = None
     if db is not None and project_id:

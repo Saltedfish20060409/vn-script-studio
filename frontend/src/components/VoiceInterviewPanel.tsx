@@ -1,0 +1,119 @@
+import type { VoiceVariant } from "../api/client";
+import { VoiceVariantCards } from "./VoiceVariantCards";
+import { VoiceWhyPanel, type PendingAccept } from "./VoiceWhyPanel";
+import styles from "./CharacterWorkshop.module.css";
+
+type Props = {
+  question: string;
+  genQuestion: string | undefined;
+  variants: VoiceVariant[];
+  busy: string;
+  hasCharacter: boolean;
+  interviewManual: string;
+  pendingAccept: PendingAccept | null;
+  whyOpen: boolean;
+  whyChips: string[];
+  whyCustom: string;
+  onGenerate: () => void;
+  onAcceptVariant: (variant: VoiceVariant, index: number) => void;
+  onManualChange: (value: string) => void;
+  onAcceptManual: () => void;
+  onToggleWhyChip: (chip: string) => void;
+  onWhyCustomChange: (value: string) => void;
+  onWhyConfirm: (note: string) => void;
+  onWhySkip: () => void;
+  onWhyCancel: () => void;
+};
+
+export function VoiceInterviewPanel({
+  question,
+  genQuestion,
+  variants,
+  busy,
+  hasCharacter,
+  interviewManual,
+  pendingAccept,
+  whyOpen,
+  whyChips,
+  whyCustom,
+  onGenerate,
+  onAcceptVariant,
+  onManualChange,
+  onAcceptManual,
+  onToggleWhyChip,
+  onWhyCustomChange,
+  onWhyConfirm,
+  onWhySkip,
+  onWhyCancel,
+}: Props) {
+  return (
+    <>
+      {(question || genQuestion) && (
+        <p className={styles.interviewQ}>
+          {question || genQuestion}
+        </p>
+      )}
+      <div className={styles.cardStage}>
+        {variants.length === 0 && !busy && (
+          <div className={styles.emptyStage}>
+            <p>扮演采访</p>
+            <span>出一道压力题，生成三组回答，挑最像本音的入库。</span>
+            <button
+              type="button"
+              className={styles.primary}
+              disabled={!!busy || !hasCharacter}
+              onClick={onGenerate}
+            >
+              生成三组回答
+            </button>
+          </div>
+        )}
+        {busy === "generating" && (
+          <div className={styles.busyBar} role="status" aria-live="polite">
+            <span className={styles.busyStamp} aria-hidden>
+              RUN
+            </span>
+            <span className={styles.busyPulse} aria-hidden />
+            <span>生成进行中…角色正在组织回答</span>
+          </div>
+        )}
+        <VoiceVariantCards
+          variants={variants}
+          busy={busy}
+          onAccept={onAcceptVariant}
+        />
+        <VoiceWhyPanel
+          open={whyOpen}
+          pending={pendingAccept}
+          chips={whyChips}
+          custom={whyCustom}
+          busy={busy}
+          onToggleChip={onToggleWhyChip}
+          onCustomChange={onWhyCustomChange}
+          onConfirm={onWhyConfirm}
+          onSkip={onWhySkip}
+          onCancel={onWhyCancel}
+        />
+      </div>
+      <div className={styles.manualBox}>
+        <p className={styles.manualHint}>
+          或手写回答（一行或多行），作为采访正例入库
+        </p>
+        <textarea
+          rows={4}
+          value={interviewManual}
+          onChange={(e) => onManualChange(e.target.value)}
+          placeholder="直接写角色会怎么答…"
+        />
+        <button
+          type="button"
+          className={styles.primary}
+          disabled={!!busy || !interviewManual.trim()}
+          onClick={onAcceptManual}
+        >
+          {busy === "accept-interview" ? "入库中…" : "手写回答入库"}
+        </button>
+      </div>
+    </>
+  );
+}

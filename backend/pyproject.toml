@@ -1,0 +1,20 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = [
+    "alembic/versions/0001_initial.py",
+    "alembic/versions/0002_analysis_inbox.py",
+    "alembic/versions/0003_schema_repair.py",
+    "legacy",
+]
+
+[tool.ruff.lint]
+# Conservative start: F (pyflakes) + E9 (syntax-ish) + a few common style rules.
+# Widen later once the codebase is clean under this set.
+select = ["F", "E9", "E4", "I"]
+ignore = [
+    "E402",  # module-level imports after code (common in this codebase)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
