@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 if (-not (Test-Path $File)) { throw "备份文件不存在: $File" }
 
 $DbHost = "127.0.0.1"
-$DbPort = "15432"
+$DbPort = "54102"
 $DbUser = "vnss"
 $DbName = "vnss"
 

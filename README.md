@@ -46,7 +46,7 @@ python -m venv .venv
 .venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 copy .env.example .env          # 或 cp .env.example .env
-# 编辑 .env：DATABASE_URL 端口需与 docker-compose 一致（默认宿主机 15432）
+# 编辑 .env：DATABASE_URL 端口需与 docker-compose 一致（默认宿主机 54102）
 # 填入 DEEPSEEK_API_KEY 以启用 Agent
 
 # 前端
@@ -128,7 +128,7 @@ pytest tests/ -q
 ```
 
 > API/DB 集成测试（`tests/test_api_*.py`）需要测试库 `vnss_test`：连接串来自
-> `DATABASE_URL_TEST`（默认 `postgresql+asyncpg://vnss:vnss@localhost:15432/vnss_test`）。
+> `DATABASE_URL_TEST`（默认 `postgresql+asyncpg://vnss:vnss@localhost:54102/vnss_test`）。
 > 连不上时这些用例自动跳过；CI 会起一个 Postgres service 全量运行。
 > 前端：`cd frontend && npm test`（vitest，纯函数单测）。
 

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.config import Settings, get_settings
 from app.models import UserSettings
 from app.schemas import SettingsOut, SettingsPutIn
+from app.security import decrypt_secret, encrypt_secret, mask_api_key
 
 DEFAULT_BG = {
     "bgImage": "",
@@ -43,6 +47,9 @@ def settings_to_out(row: UserSettings) -> SettingsOut:
     except (TypeError, ValueError):
         scrim_f = 0.42
     scrim_f = max(0.0, min(0.85, scrim_f))
+    settings = get_settings()
+    api_key = decrypt_secret(row.api_key_enc or "", settings)
+    critic_key = decrypt_secret(row.critic_api_key_enc or "", settings)
     return SettingsOut(
         theme=row.theme,
         font_scale=row.font_scale,
@@ -55,6 +62,14 @@ def settings_to_out(row: UserSettings) -> SettingsOut:
         bg_pan_y=float(bg.get("bgPanY") or 0),
         panel_glass=str(glass),
         bg_scrim=scrim_f,
+        has_api_key=bool(api_key),
+        api_key_masked=mask_api_key(api_key),
+        api_base_url=row.api_base_url or "",
+        api_model=row.api_model or "",
+        has_critic_api_key=bool(critic_key),
+        critic_api_key_masked=mask_api_key(critic_key),
+        critic_api_base_url=row.critic_api_base_url or "",
+        critic_api_model=row.critic_api_model or "",
     )
 
 
@@ -63,6 +78,7 @@ async def update_settings(
     row: UserSettings,
     body: SettingsPutIn,
 ) -> UserSettings:
+    settings = get_settings()
     if body.theme is not None:
         row.theme = body.theme
     if body.font_scale is not None:
@@ -88,6 +104,46 @@ async def update_settings(
     row.bg = bg
     flag_modified(row, "bg")
 
+    # User-level LLM credentials: api_key="" clears, None keeps, value encrypts.
+    if body.api_key is not None:
+        row.api_key_enc = encrypt_secret(body.api_key.strip(), settings)
+    if body.api_base_url is not None:
+        row.api_base_url = body.api_base_url.strip()
+    if body.api_model is not None:
+        row.api_model = body.api_model.strip()
+    if body.critic_api_key is not None:
+        row.critic_api_key_enc = encrypt_secret(body.critic_api_key.strip(), settings)
+    if body.critic_api_base_url is not None:
+        row.critic_api_base_url = body.critic_api_base_url.strip()
+    if body.critic_api_model is not None:
+        row.critic_api_model = body.critic_api_model.strip()
+
     await db.commit()
     await db.refresh(row)
     return row
+
+
+async def user_llm_credentials(
+    db: AsyncSession,
+    user_id: str,
+    settings: Settings,
+) -> Optional[dict]:
+    """User-level LLM credentials (decrypted) or None when not configured."""
+    result = await db.execute(
+        select(UserSettings).where(UserSettings.user_id == user_id)
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        return None
+    api_key = decrypt_secret(row.api_key_enc or "", settings)
+    if not api_key:
+        return None
+    return {
+        "api_key": api_key,
+        "base_url": row.api_base_url
+        or settings.deepseek_base_url
+        or "https://api.deepseek.com",
+        "model": row.api_model or settings.deepseek_model or "deepseek-chat",
+        "provider": settings.llm_provider or "openai",
+        "source": "user",
+    }

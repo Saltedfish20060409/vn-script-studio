@@ -177,6 +177,15 @@ class SettingsOut(BaseModel):
     bg_pan_y: float = 0
     panel_glass: str = "auto"
     bg_scrim: float = 0.42
+    # User-level LLM credentials (never return the raw key).
+    has_api_key: bool = False
+    api_key_masked: str = ""
+    api_base_url: str = ""
+    api_model: str = ""
+    has_critic_api_key: bool = False
+    critic_api_key_masked: str = ""
+    critic_api_base_url: str = ""
+    critic_api_model: str = ""
 
 
 class SettingsPutIn(BaseModel):
@@ -189,6 +198,14 @@ class SettingsPutIn(BaseModel):
     bg_pan_y: Optional[float] = None
     panel_glass: Optional[str] = None
     bg_scrim: Optional[float] = None
+    # User-level LLM credentials. api_key: send a new key to set/rotate,
+    # send "" to clear, omit to keep unchanged. Masked values echo back.
+    api_key: Optional[str] = None
+    api_base_url: Optional[str] = None
+    api_model: Optional[str] = None
+    critic_api_key: Optional[str] = None
+    critic_api_base_url: Optional[str] = None
+    critic_api_model: Optional[str] = None
 
 
 class MapExtractIn(BaseModel):

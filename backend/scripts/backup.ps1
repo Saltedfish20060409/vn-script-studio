@@ -2,7 +2,7 @@
 <#
 VN Script Studio — PostgreSQL 备份脚本
 用法：  .\scripts\backup.ps1 [-OutDir .\backups] [-Keep 14]
-说明： 使用 docker 内的 postgres 16（宿主机 15432）。直接 pg_dump，无需 docker exec。
+说明： 使用 docker 内的 postgres 16（宿主机 54102）。直接 pg_dump，无需 docker exec。
        - DATABASE_URL 与 backend/.env 不一致时，先手动改下面的 $DbName / $DbUser / $DbHost / $DbPort。
 #>
 param(
@@ -14,7 +14,7 @@ $ErrorActionPreference = "Stop"
 
 # 与 backend/.env / docker-compose.yml 保持一致
 $DbHost = "127.0.0.1"
-$DbPort = "15432"
+$DbPort = "54102"
 $DbUser = "vnss"
 $DbName = "vnss"
 

@@ -222,4 +222,23 @@ def server_llm_credentials(settings: Settings) -> dict[str, str]:
         "base_url": settings.deepseek_base_url or "https://api.deepseek.com",
         "model": settings.deepseek_model or "deepseek-chat",
         "provider": settings.llm_provider or "openai",
+        "source": "server",
     }
+
+
+async def resolve_llm_credentials(
+    db: AsyncSession,
+    user_id: str,
+    settings: Settings,
+) -> dict[str, str]:
+    """Resolve LLM credentials: the user's own key when configured, else server env.
+
+    Multi-user deployments: each user may bring their own DeepSeek key (stored
+    encrypted in user_settings); without one the server-level key is used.
+    """
+    from app.services.settings import user_llm_credentials
+
+    user_creds = await user_llm_credentials(db, user_id, settings)
+    if user_creds:
+        return user_creds
+    return server_llm_credentials(settings)

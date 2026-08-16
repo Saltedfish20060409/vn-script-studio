@@ -6,7 +6,7 @@ Design:
   DB-backed test module uses ``pytestmark = pytest.mark.skipif(...)`` so the
   whole module is skipped gracefully when the test database is unreachable.
 - The test database URL comes from ``DATABASE_URL_TEST`` and defaults to
-  ``postgresql+asyncpg://vnss:vnss@localhost:15432/vnss_test``.
+  ``postgresql+asyncpg://vnss:vnss@localhost:54102/vnss_test``.
 - An isolated SQLAlchemy engine/session (NullPool) is created against that URL
   and injected into the FastAPI app via ``app.dependency_overrides[get_db]`` so
   requests never touch the development database configured in backend/.env.
@@ -30,7 +30,7 @@ from sqlalchemy.pool import NullPool
 # --------------------------------------------------------------------------
 
 TEST_DB_URL = os.environ.get("DATABASE_URL_TEST") or (
-    "postgresql+asyncpg://vnss:vnss@localhost:15432/vnss_test"
+    "postgresql+asyncpg://vnss:vnss@localhost:54102/vnss_test"
 )
 _CONNECT_ARGS = {"timeout": 3}  # asyncpg connect timeout (seconds)
 

@@ -15,8 +15,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Host port matches docker-compose.yml (15432:5432)
-    database_url: str = "postgresql+asyncpg://vnss:vnss@localhost:15432/vnss"
+    # Host port matches docker-compose.yml (54102:5432)
+    database_url: str = "postgresql+asyncpg://vnss:vnss@localhost:54102/vnss"
     secret_key: str = "change-me-to-a-long-random-string"
     access_token_expire_minutes: int = 60 * 24 * 7
     refresh_token_expire_days: int = 30
