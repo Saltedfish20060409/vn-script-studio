@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     # LLM usage accounting / quota. 0 = unlimited (soft cap per user per day).
     llm_daily_token_cap: int = 0
 
+    # Optional Redis URL (redis://host:6379/0). When set and reachable, the
+    # collab SSE event bus bridges workers via Redis pub/sub so multi-worker
+    # deployments see live lock/member/comment events. Leave empty for
+    # single-worker (in-process) broadcasts.
+    redis_url: str = ""
+
     @property
     def cors_origin_list(self) -> List[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

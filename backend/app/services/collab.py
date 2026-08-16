@@ -1,15 +1,15 @@
-"""Collaboration services — project members, chapter locks, in-process event bus.
+"""Collaboration services — project members, chapter locks, inline comments.
 
-Event bus is process-local (same limitation as the job store): fine for a
-single uvicorn worker, documented for multi-worker deployments.
+Event delivery goes through ``app.services.event_bus``: in-process queues by
+default, bridged across uvicorn workers via Redis pub/sub when ``REDIS_URL``
+is configured (see event_bus.py).
 """
 
 from __future__ import annotations
 
-import asyncio
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -501,44 +501,22 @@ async def delete_comment(
 
 
 # --------------------------------------------------------------------------
-# In-process event bus (SSE)
+# Event bus (SSE) — cross-worker via Redis when configured (see event_bus.py)
 # --------------------------------------------------------------------------
 
-_subscribers: Dict[str, Set[asyncio.Queue]] = {}
+from app.services import event_bus
 
-
-def subscribe(project_id: str) -> asyncio.Queue:
-    q: asyncio.Queue = asyncio.Queue(maxsize=200)
-    _subscribers.setdefault(project_id, set()).add(q)
-    return q
-
-
-def unsubscribe(project_id: str, q: asyncio.Queue) -> None:
-    subs = _subscribers.get(project_id)
-    if subs:
-        subs.discard(q)
-        if not subs:
-            _subscribers.pop(project_id, None)
-
-
-def broadcast(project_id: str, event: Dict[str, Any]) -> None:
-    subs = _subscribers.get(project_id)
-    if not subs:
-        return
-    for q in list(subs):
-        try:
-            q.put_nowait(event)
-        except asyncio.QueueFull:
-            pass  # slow subscriber — drop event
+subscribe = event_bus.subscribe
+unsubscribe = event_bus.unsubscribe
 
 
 def member_event(project_id: str, kind: str, payload: Dict[str, Any]) -> None:
-    broadcast(project_id, {"type": "member", "kind": kind, **payload})
+    event_bus.member_event(project_id, kind, payload)
 
 
 def lock_event(project_id: str, kind: str, payload: Dict[str, Any]) -> None:
-    broadcast(project_id, {"type": "lock", "kind": kind, **payload})
+    event_bus.lock_event(project_id, kind, payload)
 
 
 def comment_event(project_id: str, kind: str, payload: Dict[str, Any]) -> None:
-    broadcast(project_id, {"type": "comment", "kind": kind, **payload})
+    event_bus.comment_event(project_id, kind, payload)

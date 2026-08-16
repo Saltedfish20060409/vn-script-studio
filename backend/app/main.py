@@ -50,7 +50,14 @@ async def lifespan(_app: FastAPI):
                 """
             )
         )
-    yield
+    # Cross-worker SSE bridge (no-op without REDIS_URL).
+    from app.services import event_bus
+
+    await event_bus.start_redis_bridge()
+    try:
+        yield
+    finally:
+        await event_bus.stop_redis_bridge()
 
 
 def create_app() -> FastAPI:

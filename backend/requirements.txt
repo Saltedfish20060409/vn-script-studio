@@ -15,3 +15,5 @@ python-docx>=1.1.2
 typer>=0.15.0
 cryptography>=43.0.0
 email-validator>=2.2.0
+# Optional: cross-worker SSE bridge when REDIS_URL is set (multi-worker deploys)
+redis>=5.0.0
