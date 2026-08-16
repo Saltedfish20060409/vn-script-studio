@@ -1545,6 +1545,56 @@
   }
 }
 
+/* Mobile layout: bottom tab rail + safe-area + scroll-friendly heights */
+@media (max-width: 820px) {
+  .tabs {
+    position: sticky;
+    bottom: 0;
+    top: auto;
+    z-index: 18;
+    border-bottom: none;
+    border-top: 2px solid var(--line);
+    padding: 0;
+    justify-content: space-around;
+    background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
+    backdrop-filter: blur(10px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .tabsRail {
+    display: none;
+  }
+
+  .tab,
+  .tabActive {
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    min-height: 54px;
+    padding: 0.4rem 0.25rem;
+  }
+
+  .tabLabel {
+    font-size: 0.78rem;
+  }
+
+  .main {
+    padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .top {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .brandKicker {
+    display: none;
+  }
+
+  .topActions .moreMenu summary {
+    min-height: 44px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .boot,
   .panel,

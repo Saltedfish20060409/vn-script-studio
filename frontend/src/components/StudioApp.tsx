@@ -1404,6 +1404,10 @@ export function StudioApp() {
             setProjectSub("export");
             void generateRpy();
           }}
+          onOpenCollab={() => {
+            setTab("project");
+            setProjectSub("members");
+          }}
           onLogout={handleLogout}
         />
 

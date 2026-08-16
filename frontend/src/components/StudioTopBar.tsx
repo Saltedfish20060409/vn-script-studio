@@ -15,6 +15,7 @@ type Props = {
   onFileChange: (e: ChangeEvent<HTMLInputElement>) => void;
   onSaveChapter: () => void;
   onExportRpy: () => void;
+  onOpenCollab: () => void;
   onLogout: () => void;
 };
 
@@ -35,6 +36,7 @@ export function StudioTopBar({
   onFileChange,
   onSaveChapter,
   onExportRpy,
+  onOpenCollab,
   onLogout,
 }: Props) {
   return (
@@ -91,6 +93,9 @@ export function StudioTopBar({
         />
         <button type="button" className={styles.primary} onClick={onExportRpy}>
           导出 .rpy
+        </button>
+        <button type="button" className={styles.ghost} onClick={onOpenCollab}>
+          协作
         </button>
         {username ? (
           <span className={styles.userChip} title={username}>
