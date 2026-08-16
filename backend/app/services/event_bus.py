@@ -158,12 +158,15 @@ def broadcast(project_id: str, event: Dict[str, Any]) -> None:
         return
     import json
 
+    from app.core.jobs import spawn_background_task
+
     try:
-        asyncio.get_running_loop().create_task(
+        spawn_background_task(
             client.publish(_channel(project_id), json.dumps({
                 "projectId": project_id,
                 "event": event,
-            }))
+            })),
+            name="collab-redis-publish",
         )
     except Exception as exc:  # noqa: BLE001
         logger.debug("redis publish skipped: %s", exc)

@@ -120,6 +120,10 @@ async def index_project_chunks(
     written = 0
     for chunk, vec in zip(chunks, vectors):
         vec_sql = "[" + ",".join(f"{v:.8f}" for v in vec) + "]"
+        # Storage id namespaces by project: chunk ids like "bible:world" or
+        # "ch:<chapterId>" are not globally unique, so prefix with project_id
+        # to keep the (single) primary key from colliding across projects.
+        storage_id = f"{project_id}:{chunk['id']}"
         try:
             await db.execute(
                 text(
@@ -135,7 +139,7 @@ async def index_project_chunks(
                     """
                 ),
                 {
-                    "id": chunk["id"],
+                    "id": storage_id,
                     "pid": project_id,
                     "kind": chunk.get("kind", ""),
                     "txt": chunk["text"],

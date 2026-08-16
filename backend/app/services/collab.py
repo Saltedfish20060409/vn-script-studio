@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ChapterLock, ProjectComment, ProjectInvite, ProjectMember, User
@@ -79,7 +80,13 @@ async def add_member(
         joined_at=_now(),
     )
     db.add(row)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Concurrent add — the (project_id, user_id) unique constraint caught
+        # a duplicate that slipped past the read above.
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="该用户已是项目成员") from None
     return {"userId": user.id, "username": user.username, "role": role}
 
 
@@ -137,8 +144,15 @@ async def acquire_lock(
     chapter_id: str,
     user_id: str,
 ) -> Dict[str, Any]:
-    """Claim a chapter lock (or heartbeat-extend an existing one held by the user)."""
+    """Claim a chapter lock (or heartbeat-extend an existing one held by the user).
+
+    Atomic upsert: the (project_id, chapter_id) unique constraint guarantees a
+    single lock row per chapter, so concurrent editors cannot double-lock.
+    """
     now = _now()
+
+    # Existing row → extend or reject. Read-then-act is fine here because the
+    # unique constraint makes a concurrent INSERT impossible once a row exists.
     res = await db.execute(
         select(ChapterLock).where(
             ChapterLock.project_id == project_id,
@@ -158,7 +172,12 @@ async def acquire_lock(
         row.expires_at = now + LOCK_TTL
         row.updated_at = now
     else:
-        row = ChapterLock(
+        # No row yet — insert. Under concurrency both editors may attempt this;
+        # the unique constraint turns the loser into a no-op, and we then read
+        # the winner's row below.
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = pg_insert(ChapterLock).values(
             id=str(uuid4()),
             project_id=project_id,
             chapter_id=chapter_id,
@@ -166,7 +185,29 @@ async def acquire_lock(
             expires_at=now + LOCK_TTL,
             updated_at=now,
         )
-        db.add(row)
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=[ChapterLock.project_id, ChapterLock.chapter_id]
+        )
+        await db.execute(stmt)
+        await db.commit()
+        res = await db.execute(
+            select(ChapterLock).where(
+                ChapterLock.project_id == project_id,
+                ChapterLock.chapter_id == chapter_id,
+            )
+        )
+        row = res.scalar_one()
+        if row.user_id != user_id and row.expires_at > now:
+            raise HTTPException(
+                status_code=423,
+                detail=f"该章正被其他成员编辑（锁至 {row.expires_at.isoformat()}）",
+            )
+        return {
+            "chapterId": chapter_id,
+            "userId": row.user_id,
+            "expiresAt": row.expires_at.isoformat(),
+        }
+
     await db.commit()
     return {"chapterId": chapter_id, "userId": user_id, "expiresAt": row.expires_at.isoformat()}
 
@@ -367,7 +408,14 @@ async def accept_invite(
     db.add(row)
     # One-time use: delete the invite after successful join.
     await db.delete(invite)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Concurrent accept — unique (project_id, user_id) constraint caught
+        # the duplicate; the other request already joined. The invite may have
+        # been consumed by them; treat as already-member.
+        await db.rollback()
+        return {"projectId": invite.project_id, "alreadyMember": True, "role": None}
     return {"projectId": invite.project_id, "alreadyMember": False, "role": invite.role}
 
 

@@ -2,7 +2,17 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -227,6 +237,9 @@ class LlmUsage(Base):
     """Per-user LLM token accounting (written fire-and-forget from llm_http)."""
 
     __tablename__ = "llm_usage"
+    __table_args__ = (
+        Index("ix_llm_usage_user_created", "user_id", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String(36), index=True)
@@ -238,14 +251,23 @@ class LlmUsage(Base):
     model: Mapped[str] = mapped_column(String(128), default="")
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
-    total_tokens: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    total_tokens: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class ProjectMember(Base):
-    """Collaborative membership — owner | editor | viewer (owner is the creator)."""
+    """Collaborative membership — owner | editor | viewer (owner is the creator).
+
+    (project_id, user_id) is unique so concurrent add_member / invite accepts
+    cannot produce duplicate memberships.
+    """
 
     __tablename__ = "project_members"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "user_id", name="uq_project_members_project_user"
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(
@@ -275,9 +297,18 @@ class ProjectInvite(Base):
 
 
 class ChapterLock(Base):
-    """Chapter-level edit lock — prevents two editors clobbering the same chapter."""
+    """Chapter-level edit lock — prevents two editors clobbering the same chapter.
+
+    (project_id, chapter_id) is unique: at most one lock row per chapter, so
+    concurrent acquire_lock calls cannot double-lock.
+    """
 
     __tablename__ = "chapter_locks"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "chapter_id", name="uq_chapter_locks_project_chapter"
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(

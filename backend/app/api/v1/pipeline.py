@@ -33,7 +33,7 @@ from app.services.projects import (
     project_to_dict,
     resolve_llm_credentials,
     row_to_vn,
-    sync_row_from_vn,
+    sync_chapter_rows_from_vn,
 )
 
 router = APIRouter(tags=["pipeline"])
@@ -216,7 +216,7 @@ async def pipeline_run(
                         on_token=_on_token,
                     )
                     if out.get("project") is not None:
-                        sync_row_from_vn(row2, out["project"])
+                        await sync_chapter_rows_from_vn(session, row2, out["project"])
                         await session.commit()
                         await session.refresh(row2)
                         out["project"] = project_to_dict(row_to_vn(row2))
@@ -301,7 +301,7 @@ async def pipeline_run(
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     if out.get("project") is not None:
-        sync_row_from_vn(row, out["project"])
+        await sync_chapter_rows_from_vn(db, row, out["project"])
         await db.commit()
         await db.refresh(row)
         out["project"] = project_to_dict(row_to_vn(row))
@@ -399,7 +399,7 @@ async def pipeline_gate(
             raise HTTPException(status_code=400, detail=str(e)) from e
         # Always persist harnessRuns; chapter apply only when gate passes
         if result.get("project") is not None:
-            sync_row_from_vn(row, result["project"])
+            await sync_chapter_rows_from_vn(db, row, result["project"])
             await db.commit()
             await db.refresh(row)
             result["project"] = project_to_dict(row_to_vn(row))
@@ -495,7 +495,7 @@ async def pipeline_ledger_digest(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     vn2 = set_ledger(vn, ledger)
-    sync_row_from_vn(row, vn2)
+    await sync_chapter_rows_from_vn(db, row, vn2)
     await db.commit()
     await db.refresh(row)
     return {

@@ -204,6 +204,7 @@ async def upsert_chapter_rows(
                     synopsis=ch.get("synopsis") or "",
                     blocks=ch.get("blocks") or [],
                     sort_order=idx,
+                    updated_at=datetime.now(timezone.utc),
                 )
             )
         else:
@@ -211,6 +212,7 @@ async def upsert_chapter_rows(
             existing.synopsis = ch.get("synopsis") or ""
             existing.blocks = ch.get("blocks") or []
             existing.sort_order = idx
+            existing.updated_at = datetime.now(timezone.utc)
 
     # Remove rows whose chapter vanished from the blob (deleted chapters).
     res = await db.execute(
@@ -221,11 +223,31 @@ async def upsert_chapter_rows(
             await db.delete(row)
 
 
+async def sync_chapter_rows_from_vn(
+    db: AsyncSession,
+    row: Project,
+    vn: VnProject,
+) -> None:
+    """Persist a project row AND mirror its chapters into project_chapter_rows.
+
+    Every chapter-writing path should go through this so the blob and the
+    shadow table stay consistent (stage-1 JSONB split).
+    """
+    sync_row_from_vn(row, vn)
+    chapters = [c.model_dump(mode="json") for c in (vn.chapters or [])]
+    await upsert_chapter_rows(db, row.id, chapters)
+
+
 async def load_chapter_rows(
     db: AsyncSession,
     project_id: str,
 ) -> List[dict]:
-    """Read chapters from project_chapter_rows (ordered), None-safe."""
+    """Read chapters from project_chapter_rows (ordered), None-safe.
+
+    NOTE: the blob remains the authoritative chapter source until stage 2
+    migrates every read path to this table — callers must keep the two in
+    sync via upsert_chapter_rows on every chapter write.
+    """
     from app.models import ProjectChapterRow
 
     res = await db.execute(
@@ -298,6 +320,12 @@ async def create_project_row(
     db.add(row)
     await db.commit()
     await db.refresh(row)
+    # Mirror initial chapters into project_chapter_rows so the shadow table is
+    # populated for brand-new / imported / duplicated projects too.
+    await upsert_chapter_rows(
+        db, row.id, [c.model_dump(mode="json") for c in (project.chapters or [])]
+    )
+    await db.commit()
     return row
 
 

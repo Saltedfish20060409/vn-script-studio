@@ -75,7 +75,7 @@ from app.services.projects import (
     project_to_dict,
     resolve_llm_credentials,
     row_to_vn,
-    sync_row_from_vn,
+    sync_chapter_rows_from_vn,
 )
 from app.services.snapshots import (
     create_snapshot as create_snapshot_row,
@@ -144,7 +144,10 @@ async def import_project(
         content = await file.read()
         name = (file.filename or "").lower()
         if name.endswith(".json") or name.endswith(".vnss-share.json"):
-            raw = json.loads(content.decode("utf-8"))
+            try:
+                raw = json.loads(content.decode("utf-8-sig"))
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                raise HTTPException(status_code=400, detail="无效的 JSON 文件") from exc
             if isinstance(raw, dict) and "project" in raw:
                 raw = raw["project"]
             vn = normalize_project(raw)
@@ -203,13 +206,8 @@ async def put_project(
         server_vn = row_to_vn(row)
         client_vn = normalize_project(dict(body.data))
         merged = merge_project_changes(server_vn, client_vn, chapter_ids, sections)
-        sync_row_from_vn(row, merged)
-        # JSONB split stage 1: persist chapters into their own rows (only the
-        # changed ones get rewritten; unchanged rows keep their sort order).
-        from app.services.projects import upsert_chapter_rows
-
-        merged_chapters = [c.model_dump(mode="json") for c in merged.chapters]
-        await upsert_chapter_rows(db, project_id, merged_chapters)
+        # JSONB split stage 1: persist blob + chapter rows together.
+        await sync_chapter_rows_from_vn(db, row, merged)
         await db.commit()
         await db.refresh(row)
         return project_to_dict(row_to_vn(row))
@@ -239,12 +237,7 @@ async def put_project(
     data = dict(body.data)
     data["id"] = project_id
     vn = normalize_project(data)
-    sync_row_from_vn(row, vn)
-    from app.services.projects import upsert_chapter_rows
-
-    await upsert_chapter_rows(
-        db, project_id, [c.model_dump(mode="json") for c in vn.chapters]
-    )
+    await sync_chapter_rows_from_vn(db, row, vn)
     await db.commit()
     await db.refresh(row)
     return project_to_dict(row_to_vn(row))
@@ -265,7 +258,7 @@ async def patch_project(
         vn.logline = body.logline
     if body.genre is not None:
         vn.genre = body.genre
-    sync_row_from_vn(row, vn)
+    await sync_chapter_rows_from_vn(db, row, vn)
     await db.commit()
     await db.refresh(row)
     return project_to_dict(row_to_vn(row))
@@ -436,7 +429,7 @@ async def map_extract_accept(
 
     vn.locations = merged["locations"]
     vn.locationLinks = merged["locationLinks"]
-    sync_row_from_vn(row, vn)
+    await sync_chapter_rows_from_vn(db, row, vn)
     await db.commit()
     await db.refresh(row)
     return {
@@ -494,7 +487,7 @@ async def analysis_facts_reconcile(
 
     wrote = False
     if _sig(vn) != _sig(new_vn):
-        sync_row_from_vn(row, new_vn)
+        await sync_chapter_rows_from_vn(db, row, new_vn)
         await db.commit()
         await db.refresh(row)
         wrote = True
@@ -566,7 +559,7 @@ async def analysis_facts_scan(
         }
     created = await inbox_svc.insert_candidates(db, project_id, fresh)
     vn = vn.model_copy(update={"analysisMeta": fresh_meta})
-    sync_row_from_vn(row, vn)
+    await sync_chapter_rows_from_vn(db, row, vn)
     await db.commit()
     await db.refresh(row)
     return {
@@ -674,7 +667,7 @@ async def analysis_facts_accept(
         [i for i in items if i.id in accepted_ids or i.id in skipped_ids],
         "accepted",
     )
-    sync_row_from_vn(row, touch_project(vn))
+    await sync_chapter_rows_from_vn(db, row, touch_project(vn))
     await db.commit()
     await db.refresh(row)
     return {
@@ -716,7 +709,7 @@ async def analysis_facts_ack_stale(
         timeline_ids=body.timelineIds,
         all_stale=body.all,
     )
-    sync_row_from_vn(row, touch_project(vn))
+    await sync_chapter_rows_from_vn(db, row, touch_project(vn))
     await db.commit()
     await db.refresh(row)
     return {"project": project_to_dict(row_to_vn(row))}
@@ -799,18 +792,27 @@ async def analysis_semantic_search(
     hits = await semantic_search(db, project_id, q, limit=body.limit) if vector else None
 
     if hits:
+        # Strip the "{project_id}:" prefix from stored ids for the client.
+        prefix = f"{project_id}:"
         return {
             "query": q,
             "engine": "pgvector",
             "hits": [
-                {"id": h["id"], "kind": h["kind"], "text": h["text"], "score": h["score"]}
+                {
+                    "id": h["id"].removeprefix(prefix) if h["id"].startswith(prefix) else h["id"],
+                    "kind": h["kind"],
+                    "text": h["text"],
+                    "score": h["score"],
+                }
                 for h in hits
             ],
         }
 
-    # Fallback: heuristic ranking over current project text.
+    # Fallback: heuristic ranking over current project text. Build candidates
+    # straight from the non-empty chunks so ids and texts never misalign (an
+    # empty chapter would previously shift every subsequent zip pairing).
     candidates: list[tuple[str, str]] = [
-        (f"chapter:{ch.id}", c["text"]) for ch, c in zip(chapters, chunks) if c["kind"] == "chapter"
+        (c["id"], c["text"]) for c in chunks if c["kind"] == "chapter"
     ]
     candidates += [(f"bible:{k}", v) for k, v in bible_blob.items()]
     ranked = rank_texts(q, candidates, limit=body.limit, min_score=0.4)
@@ -866,7 +868,7 @@ async def restore_snapshot(
         raise HTTPException(status_code=400, detail=f"快照损坏：{exc}") from exc
     restored = normalize_project(decoded)
     restored.id = project_id
-    sync_row_from_vn(row, restored)
+    await sync_chapter_rows_from_vn(db, row, restored)
     await db.commit()
     await db.refresh(row)
     return project_to_dict(row_to_vn(row))
@@ -1299,7 +1301,7 @@ async def agent_chapter_revise_apply(
         detail = "；".join(apply_result.skipped) or "写入失败"
         raise HTTPException(status_code=400, detail=detail)
 
-    sync_row_from_vn(row, apply_result.project)
+    await sync_chapter_rows_from_vn(db, row, apply_result.project)
     await db.commit()
     await db.refresh(row)
     return {
@@ -1355,7 +1357,7 @@ async def agent_ingest_settings(
             undo.append(project_to_dict(vn))
             sess.undo_stack = undo[-30:]
             sess.updated_at = datetime.now(timezone.utc)
-        sync_row_from_vn(row, result.project)
+        await sync_chapter_rows_from_vn(db, row, result.project)
         await db.commit()
         await db.refresh(row)
         out_project = project_to_dict(row_to_vn(row))
@@ -1558,7 +1560,7 @@ async def _finalize_agent_run(
             if created:
                 warnings.append(f"事实扫描新增 {len(created)} 条待审候选")
 
-        sync_row_from_vn(row, new_vn)
+        await sync_chapter_rows_from_vn(db, row, new_vn)
         applied = True
         out_project = None  # set after commit
     else:
@@ -1754,7 +1756,7 @@ async def voice_check(
         issues=issues_out,
         model=report.model,
     )
-    sync_row_from_vn(row, vn)
+    await sync_chapter_rows_from_vn(db, row, vn)
     await db.commit()
     await db.refresh(row)
     fresh = row_to_vn(row)
@@ -1822,7 +1824,11 @@ async def create_share(
 ):
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
-    token = uid("share").replace("share-", "")
+    # Cryptographically random, unguessable share token (uid()'s timestamp+5
+    # random chars is far too low-entropy for an unauthenticated public link).
+    import secrets as _secrets
+
+    token = _secrets.token_urlsafe(24)
     share = Share(
         project_id=project_id,
         token=token,
@@ -1831,7 +1837,7 @@ async def create_share(
     )
     db.add(share)
     vn.shareId = token
-    sync_row_from_vn(row, vn)
+    await sync_chapter_rows_from_vn(db, row, vn)
     await db.commit()
     return ShareCreateOut(token=token, url=f"/share/{token}")
 

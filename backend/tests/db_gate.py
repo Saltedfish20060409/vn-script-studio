@@ -116,6 +116,7 @@ def test_settings():
             agent_craft_mode="auto",
             agent_self_review="auto",
             moegirl_enabled=False,  # lore endpoints never hit Moegirl network
+            rate_limit_enabled=False,  # integration tests register many users
         )
     return _TEST_SETTINGS
 

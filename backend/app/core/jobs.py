@@ -8,6 +8,7 @@ status update commits a fresh row write.
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -121,6 +122,34 @@ async def _persist_job(job: Job) -> None:
         await session.commit()
 
 
+# Process-wide registry of background tasks so they are never GC'd mid-run and
+# their exceptions are observed (avoids "Task was destroyed but it is pending!").
+_background_tasks: "set[asyncio.Task]" = set()
+
+
+def _spawn(coro, *, name: str) -> None:
+    task = asyncio.create_task(coro, name=name)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    task.add_done_callback(_log_task_exception)
+
+
+def spawn_background_task(coro, *, name: str) -> None:
+    """Schedule a fire-and-forget coroutine with a strong reference and
+    exception logging. Safe to call from sync code (uses the running loop)."""
+    _spawn(coro, name=name)
+
+
+def _log_task_exception(task: asyncio.Task) -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logging.getLogger(__name__).error(
+            "background task %s failed: %s", task.get_name(), exc
+        )
+
+
 async def create_job(
     db: AsyncSession,
     *,
@@ -156,10 +185,7 @@ async def create_job(
         updated_at=now.isoformat(),
         _persist=_persist_job,
     )
-    asyncio.create_task(
-        _run(job, runner),
-        name=f"job-{kind}-{job_id}",
-    )
+    _spawn(_run(job, runner), name=f"job-{kind}-{job_id}")
     return job
 
 
@@ -183,3 +209,30 @@ async def _run(job: Job, runner: JobRunner) -> None:
     except Exception as exc:  # noqa: BLE001
         job.error = str(exc)[:800]
         await job.touch(status="error", message="失败", progress=job.progress)
+
+
+async def reap_stale_jobs(db: AsyncSession, *, stale_seconds: int = 3600) -> int:
+    """Mark 'running' jobs whose last update is older than `stale_seconds` as
+    error('interrupted'). Runs at startup: jobs left in-flight by a process
+    crash would otherwise stay 'running' forever."""
+    from datetime import timedelta
+
+    from sqlalchemy import update
+
+    from app.models.tables import AgentJob as AgentJobRow
+
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=stale_seconds)
+    res = await db.execute(
+        update(AgentJobRow)
+        .where(
+            AgentJobRow.status == "running",
+            AgentJobRow.updated_at < cutoff,
+        )
+        .values(
+            status="error",
+            error="interrupted (process restarted)",
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    await db.commit()
+    return res.rowcount or 0

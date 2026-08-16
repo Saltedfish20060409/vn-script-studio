@@ -78,7 +78,9 @@ def record_usage_later(
     total = int(usage.get("total") or 0)
     if total <= 0:
         return
-    asyncio.create_task(
+    from app.core.jobs import spawn_background_task
+
+    spawn_background_task(
         record_usage(
             user_id=user_id,
             kind=kind,
@@ -87,7 +89,8 @@ def record_usage_later(
             completion_tokens=int(usage.get("completion") or 0),
             total_tokens=total,
             project_id=project_id,
-        )
+        ),
+        name="usage-record",
     )
 
 

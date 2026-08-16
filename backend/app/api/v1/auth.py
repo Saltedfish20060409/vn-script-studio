@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import JWTError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
+from app.core.rate_limit import check_rate
 from app.db import get_db
 from app.models import User, UserSettings
 from app.schemas import LoginIn, RefreshIn, RegisterIn, TokenOut, UserOut
@@ -20,6 +22,15 @@ from app.services.settings import DEFAULT_BG
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _client_ip(request: Request) -> str:
+    # Behind a trusted proxy use X-Forwarded-For's first hop; direct clients
+    # fall back to the socket peer.
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else ""
+
+
 def _tokens(user_id: str, settings: Settings) -> TokenOut:
     return TokenOut(
         access_token=create_access_token(user_id, settings),
@@ -32,9 +43,14 @@ def _tokens(user_id: str, settings: Settings) -> TokenOut:
 @router.post("/register", response_model=TokenOut)
 async def register(
     body: RegisterIn,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
+    if not check_rate(
+        _client_ip(request), "register", limit=20, enabled=settings.rate_limit_enabled
+    ):
+        raise HTTPException(status_code=429, detail="注册过于频繁，请稍后再试")
     username = body.username.strip()
     if not username:
         raise HTTPException(status_code=400, detail="用户名不能为空")
@@ -46,7 +62,13 @@ async def register(
     db.add(user)
     await db.flush()
     db.add(UserSettings(user_id=user.id, bg=dict(DEFAULT_BG)))
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Concurrent register with the same username — unique constraint caught
+        # the duplicate that slipped past the read above.
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="用户名已存在") from None
     await db.refresh(user)
     return _tokens(user.id, settings)
 
@@ -54,9 +76,14 @@ async def register(
 @router.post("/login", response_model=TokenOut)
 async def login(
     body: LoginIn,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
+    if not check_rate(
+        _client_ip(request), "login", limit=20, enabled=settings.rate_limit_enabled
+    ):
+        raise HTTPException(status_code=429, detail="尝试过于频繁，请稍后再试")
     result = await db.execute(select(User).where(User.username == body.username.strip()))
     user = result.scalar_one_or_none()
     if user is None or not verify_password(body.password, user.password_hash):

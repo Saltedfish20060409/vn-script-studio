@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     embedding_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
 
+    # Auth rate limiting (login/register per-IP). Set false to disable (e.g.
+    # in tests or single-user local setups behind a proxy that already limits).
+    rate_limit_enabled: bool = True
+
     @property
     def cors_origin_list(self) -> List[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

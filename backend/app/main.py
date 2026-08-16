@@ -54,6 +54,18 @@ async def lifespan(_app: FastAPI):
     from app.services import event_bus
 
     await event_bus.start_redis_bridge()
+
+    # Reap jobs left 'running' by a previous process crash.
+    from app.core.jobs import reap_stale_jobs
+
+    try:
+        from app.db import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as session:
+            await reap_stale_jobs(session)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("stale job reaper skipped: %s", exc)
+
     try:
         yield
     finally:
