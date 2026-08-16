@@ -53,6 +53,7 @@ import { useConfirm, usePrompt } from "./ConfirmDialog";
 import { EmptyStage } from "./EmptyStage";
 import { ProjectLibraryPanel } from "./ProjectLibraryPanel";
 import { CollabPanel } from "./CollabPanel";
+import { CommentsPanel } from "./CommentsPanel";
 import { ProjectExportPanel } from "./ProjectExportPanel";
 import { ProjectHistoryPanel } from "./ProjectHistoryPanel";
 import { StudioBootScreen } from "./StudioBootScreen";
@@ -1617,6 +1618,12 @@ export function StudioApp() {
                         }}
                       />
                     </StudioErrorBoundary>
+                    <CommentsPanel
+                      projectId={project.id}
+                      chapterId={chapterId}
+                      chapterTitle={chapter?.title ?? ""}
+                      myUserId={myUserId}
+                    />
                   </section>
                 )}
                 {writeSub === "analysis" && (

@@ -1,0 +1,242 @@
+.wrap {
+  margin-top: 0.9rem;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.85rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md, 12px);
+  background: var(--panel-bg);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.15s ease;
+}
+
+.toggle:hover {
+  border-color: var(--accent, #5b8cff);
+  transform: translateY(-1px);
+}
+
+.toggleIcon {
+  font-size: 1.05rem;
+}
+
+.badge {
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--accent, #5b8cff);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.panel {
+  margin-top: 0.6rem;
+  padding: 0.9rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md, 12px);
+  background: var(--panel-bg);
+  animation: commentsIn 0.22s ease-out;
+}
+
+@keyframes commentsIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.hint {
+  margin: 0 0 0.6rem;
+  font-size: 0.82rem;
+  color: var(--muted, #8a8f98);
+}
+
+.error {
+  margin: 0 0 0.6rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--danger-bg, rgba(220, 53, 69, 0.12));
+  color: var(--danger, #d64550);
+  font-size: 0.85rem;
+}
+
+.composer {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-bottom: 0.8rem;
+}
+
+.composer textarea {
+  flex: 1;
+  resize: vertical;
+  min-height: 3rem;
+  padding: 0.5rem 0.65rem;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--input-bg, #fff);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.composer textarea:focus {
+  outline: none;
+  border-color: var(--accent, #5b8cff);
+}
+
+.primary,
+.ghost,
+.danger {
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--radius-sm, 8px);
+  border: 1.5px solid transparent;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.primary {
+  background: var(--accent, #5b8cff);
+  color: #fff;
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ghost {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.danger {
+  background: transparent;
+  border-color: var(--danger, #d64550);
+  color: var(--danger, #d64550);
+}
+
+.primary:not(:disabled):hover,
+.ghost:hover,
+.danger:hover {
+  transform: translateY(-1px);
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.8rem 0.2rem;
+  color: var(--muted, #8a8f98);
+  font-size: 0.88rem;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.item {
+  padding: 0.65rem 0.75rem;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface, rgba(255, 255, 255, 0.5));
+}
+
+.item.resolved {
+  opacity: 0.55;
+}
+
+.item.resolved .text {
+  text-decoration: line-through;
+}
+
+.itemHead {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.3rem;
+}
+
+.author {
+  font-weight: 700;
+  font-size: 0.86rem;
+}
+
+.time {
+  font-size: 0.75rem;
+  color: var(--muted, #8a8f98);
+}
+
+.anchor {
+  margin-left: auto;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--line, #d8dce4);
+  color: var(--muted, #6b7280);
+}
+
+.text {
+  margin: 0.2rem 0 0.45rem;
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.editRow {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-end;
+  margin-bottom: 0.4rem;
+}
+
+.editRow textarea {
+  flex: 1;
+  resize: vertical;
+  padding: 0.45rem 0.6rem;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--input-bg, #fff);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+}
+
+@media (max-width: 560px) {
+  .composer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

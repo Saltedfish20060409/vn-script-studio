@@ -16,7 +16,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import ChapterLock, ProjectInvite, ProjectMember, User
+from app.models import ChapterLock, ProjectComment, ProjectInvite, ProjectMember, User
 
 LOCK_TTL = timedelta(minutes=10)
 LOCK_HEARTBEAT = timedelta(minutes=5)
@@ -372,6 +372,135 @@ async def accept_invite(
 
 
 # --------------------------------------------------------------------------
+# Comments (collaboration stage C)
+# --------------------------------------------------------------------------
+
+
+def _comment_dict(c: ProjectComment, username: str) -> Dict[str, Any]:
+    return {
+        "id": c.id,
+        "projectId": c.project_id,
+        "chapterId": c.chapter_id,
+        "anchor": c.anchor,
+        "userId": c.user_id,
+        "username": username,
+        "text": c.text,
+        "resolved": c.resolved,
+        "createdAt": c.created_at.isoformat(),
+        "updatedAt": c.updated_at.isoformat(),
+    }
+
+
+async def list_comments(
+    db: AsyncSession,
+    project_id: str,
+    *,
+    chapter_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    stmt = (
+        select(ProjectComment, User.username)
+        .join(User, User.id == ProjectComment.user_id)
+        .where(ProjectComment.project_id == project_id)
+        .order_by(ProjectComment.created_at.asc())
+    )
+    if chapter_id:
+        stmt = stmt.where(ProjectComment.chapter_id == chapter_id)
+    res = await db.execute(stmt)
+    return [_comment_dict(c, username) for c, username in res.all()]
+
+
+async def create_comment(
+    db: AsyncSession,
+    project_id: str,
+    chapter_id: str,
+    user_id: str,
+    *,
+    text: str,
+    anchor: str = "",
+) -> Dict[str, Any]:
+    text = (text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="批注内容不能为空")
+    if len(text) > 5000:
+        raise HTTPException(status_code=400, detail="批注过长（最多 5000 字）")
+    now = _now()
+    row = ProjectComment(
+        id=str(uuid4()),
+        project_id=project_id,
+        chapter_id=chapter_id,
+        anchor=anchor or "",
+        user_id=user_id,
+        text=text,
+        resolved=False,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    ures = await db.execute(select(User.username).where(User.id == user_id))
+    username = ures.scalar_one_or_none() or "成员"
+    return _comment_dict(row, username)
+
+
+async def update_comment(
+    db: AsyncSession,
+    project_id: str,
+    comment_id: str,
+    *,
+    actor_id: str,
+    text: Optional[str] = None,
+    resolved: Optional[bool] = None,
+) -> Dict[str, Any]:
+    res = await db.execute(
+        select(ProjectComment).where(
+            ProjectComment.id == comment_id,
+            ProjectComment.project_id == project_id,
+        )
+    )
+    row = res.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="批注不存在")
+    if row.user_id != actor_id and text is not None:
+        raise HTTPException(status_code=403, detail="只能修改自己的批注")
+    if text is not None:
+        text = text.strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="批注内容不能为空")
+        row.text = text
+    if resolved is not None:
+        row.resolved = resolved
+    row.updated_at = _now()
+    await db.commit()
+    await db.refresh(row)
+    ures = await db.execute(select(User.username).where(User.id == row.user_id))
+    username = ures.scalar_one_or_none() or "成员"
+    return _comment_dict(row, username)
+
+
+async def delete_comment(
+    db: AsyncSession,
+    project_id: str,
+    comment_id: str,
+    *,
+    actor_id: str,
+) -> None:
+    res = await db.execute(
+        select(ProjectComment).where(
+            ProjectComment.id == comment_id,
+            ProjectComment.project_id == project_id,
+        )
+    )
+    row = res.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="批注不存在")
+    if row.user_id != actor_id:
+        raise HTTPException(status_code=403, detail="只能删除自己的批注")
+    await db.delete(row)
+    await db.commit()
+
+
+# --------------------------------------------------------------------------
 # In-process event bus (SSE)
 # --------------------------------------------------------------------------
 
@@ -409,3 +538,7 @@ def member_event(project_id: str, kind: str, payload: Dict[str, Any]) -> None:
 
 def lock_event(project_id: str, kind: str, payload: Dict[str, Any]) -> None:
     broadcast(project_id, {"type": "lock", "kind": kind, **payload})
+
+
+def comment_event(project_id: str, kind: str, payload: Dict[str, Any]) -> None:
+    broadcast(project_id, {"type": "comment", "kind": kind, **payload})

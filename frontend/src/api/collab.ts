@@ -127,9 +127,66 @@ export function unlockChapter(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Comments (collaboration stage C)
+// ---------------------------------------------------------------------------
+
+export interface ProjectComment {
+  id: string;
+  projectId: string;
+  chapterId: string;
+  /** Empty for chapter-level; else block:<id> or a text range. */
+  anchor: string;
+  userId: string;
+  username: string;
+  text: string;
+  resolved: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function listProjectComments(
+  projectId: string,
+  chapterId?: string
+): Promise<{ comments: ProjectComment[] }> {
+  const q = chapterId ? `?chapter_id=${encodeURIComponent(chapterId)}` : "";
+  return apiFetch(`/projects/${projectId}/comments${q}`);
+}
+
+export function addProjectComment(
+  projectId: string,
+  body: { chapter_id: string; text: string; anchor?: string }
+): Promise<ProjectComment> {
+  return apiFetch(`/projects/${projectId}/comments`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateProjectComment(
+  projectId: string,
+  commentId: string,
+  patch: { text?: string; resolved?: boolean }
+): Promise<ProjectComment> {
+  return apiFetch(`/projects/${projectId}/comments/${commentId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export function deleteProjectComment(
+  projectId: string,
+  commentId: string
+): Promise<{ ok: boolean }> {
+  return apiFetch(`/projects/${projectId}/comments/${commentId}`, {
+    method: "DELETE",
+  });
+}
+
 export type CollabEvent =
   | { type: "member"; kind: "added" | "removed" | "role_changed"; userId?: string; username?: string; role?: string }
-  | { type: "lock"; kind: "acquired" | "released"; chapterId?: string; userId?: string; username?: string };
+  | { type: "lock"; kind: "acquired" | "released"; chapterId?: string; userId?: string; username?: string }
+  | { type: "comment"; kind: "added" | "updated" | "deleted"; id?: string; chapterId?: string; userId?: string; username?: string; text?: string; resolved?: boolean };
 
 /**
  * Subscribe to project collaboration events via SSE.

@@ -40,6 +40,17 @@ class InviteAcceptIn(BaseModel):
     token: str = Field(min_length=8, max_length=128)
 
 
+class CommentIn(BaseModel):
+    chapter_id: str = Field(min_length=1, max_length=64)
+    anchor: str = Field(default="", max_length=255)
+    text: str = Field(min_length=1, max_length=5000)
+
+
+class CommentUpdateIn(BaseModel):
+    text: Optional[str] = Field(default=None, min_length=1, max_length=5000)
+    resolved: Optional[bool] = None
+
+
 async def _owner_info(db: AsyncSession, project_id: str) -> dict:
     res = await db.execute(
         select(Project.owner_id, User.username)
@@ -232,3 +243,79 @@ async def accept_invite(
 ):
     """Join a project via invite token. The frontend routes invite links here."""
     return await collab.accept_invite(db, body.token.strip(), user)
+
+
+# ---------------------------------------------------------------------------
+# Comments (collaboration stage C)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{project_id}/comments")
+async def get_comments(
+    project_id: str,
+    chapter_id: Optional[str] = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await get_project_readable(db, user, project_id)
+    return {
+        "comments": await collab.list_comments(
+            db, project_id, chapter_id=chapter_id or None
+        )
+    }
+
+
+@router.post("/{project_id}/comments")
+async def add_comment(
+    project_id: str,
+    body: CommentIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await get_project_readable(db, user, project_id)
+    out = await collab.create_comment(
+        db,
+        project_id,
+        body.chapter_id,
+        user.id,
+        text=body.text,
+        anchor=body.anchor,
+    )
+    collab.comment_event(project_id, "added", out)
+    return out
+
+
+@router.patch("/{project_id}/comments/{comment_id}")
+async def patch_comment(
+    project_id: str,
+    comment_id: str,
+    body: CommentUpdateIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await get_project_readable(db, user, project_id)
+    out = await collab.update_comment(
+        db,
+        project_id,
+        comment_id,
+        actor_id=user.id,
+        text=body.text,
+        resolved=body.resolved,
+    )
+    collab.comment_event(project_id, "updated", out)
+    return out
+
+
+@router.delete("/{project_id}/comments/{comment_id}")
+async def remove_comment(
+    project_id: str,
+    comment_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await get_project_readable(db, user, project_id)
+    await collab.delete_comment(db, project_id, comment_id, actor_id=user.id)
+    collab.comment_event(
+        project_id, "deleted", {"id": comment_id, "userId": user.id}
+    )
+    return {"ok": True}

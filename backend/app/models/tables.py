@@ -311,3 +311,27 @@ class LoreCraftCard(Base):
     attribution: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ProjectComment(Base):
+    """Inline annotations on chapters — collaboration stage C.
+
+    ``anchor`` is a free-form locator for the commented region, e.g.
+    ``block:<blockId>`` or ``text:start=12&end=45``; when empty the comment
+    is chapter-level. Comments are shared across all project members.
+    """
+
+    __tablename__ = "project_comments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("projects.id"), index=True
+    )
+    chapter_id: Mapped[str] = mapped_column(String(64), index=True)
+    # chapter-level when empty; else block:<id> or text range
+    anchor: Mapped[str] = mapped_column(String(255), default="", index=True)
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    text: Mapped[str] = mapped_column(Text, default="")
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

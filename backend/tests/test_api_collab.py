@@ -405,3 +405,87 @@ def test_chapter_scoped_merge_sections_and_create():
             assert saved["title"] == "合并项目"
 
     _run(_scenario())
+
+
+def test_comments_crud_and_roles():
+    """Comments: create / list / resolve / delete, member-scoped access."""
+    ctx = _mk_two_chapter_project()
+    pid, owner_headers, editor_headers = ctx["pid"], ctx["owner"], ctx["editor"]
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            # owner adds two comments on chapter A (one anchored to a block)
+            r = await client.post(
+                f"/api/v1/projects/{pid}/comments",
+                json={"chapter_id": "chA", "text": "这里节奏太慢", "anchor": "block:b1"},
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+            c1 = r.json()
+            assert c1["anchor"] == "block:b1"
+            assert c1["username"] == "mg_owner"
+
+            r = await client.post(
+                f"/api/v1/projects/{pid}/comments",
+                json={"chapter_id": "chA", "text": "整体感觉不错"},
+                headers=editor_headers,
+            )
+            assert r.status_code == 200, r.text
+            c2 = r.json()
+
+            # list all comments for the project
+            r = await client.get(f"/api/v1/projects/{pid}/comments", headers=owner_headers)
+            assert r.status_code == 200
+            assert len(r.json()["comments"]) == 2
+
+            # list by chapter filters
+            r = await client.get(
+                f"/api/v1/projects/{pid}/comments?chapter_id=chA", headers=owner_headers
+            )
+            assert len(r.json()["comments"]) == 2
+            r = await client.get(
+                f"/api/v1/projects/{pid}/comments?chapter_id=chB", headers=owner_headers
+            )
+            assert len(r.json()["comments"]) == 0
+
+            # editor resolves owner's comment (resolve allowed for any member)
+            r = await client.patch(
+                f"/api/v1/projects/{pid}/comments/{c1['id']}",
+                json={"resolved": True},
+                headers=editor_headers,
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["resolved"] is True
+
+            # editor cannot edit owner's text (ownership)
+            r = await client.patch(
+                f"/api/v1/projects/{pid}/comments/{c1['id']}",
+                json={"text": "篡改"},
+                headers=editor_headers,
+            )
+            assert r.status_code == 403
+
+            # owner edits own text
+            r = await client.patch(
+                f"/api/v1/projects/{pid}/comments/{c1['id']}",
+                json={"text": "这里节奏太慢，建议压缩"},
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["text"] == "这里节奏太慢，建议压缩"
+
+            # editor cannot delete owner's comment
+            r = await client.delete(
+                f"/api/v1/projects/{pid}/comments/{c1['id']}", headers=editor_headers
+            )
+            assert r.status_code == 403
+
+            # owner deletes own comment
+            r = await client.delete(
+                f"/api/v1/projects/{pid}/comments/{c1['id']}", headers=owner_headers
+            )
+            assert r.status_code == 200
+            r = await client.get(f"/api/v1/projects/{pid}/comments", headers=owner_headers)
+            assert len(r.json()["comments"]) == 1
+
+    _run(_scenario())
