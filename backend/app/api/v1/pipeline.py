@@ -31,16 +31,16 @@ from app.services.projects import (
     get_owned_project,
     get_project_readable,
     project_to_dict,
+    resolve_llm_credentials,
     row_to_vn,
-    server_llm_credentials,
     sync_row_from_vn,
 )
 
 router = APIRouter(tags=["pipeline"])
 
 
-def _cfg(settings: Settings) -> DeepSeekConfig:
-    creds = server_llm_credentials(settings)
+async def _cfg(settings: Settings, db: AsyncSession, user_id: str) -> DeepSeekConfig:
+    creds = await resolve_llm_credentials(db, user_id, settings)
     if not creds["api_key"]:
         raise HTTPException(status_code=400, detail="服务端未配置 DEEPSEEK_API_KEY")
     return DeepSeekConfig(
@@ -134,7 +134,7 @@ async def pipeline_run(
 ):
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
-    cfg = _cfg(settings)
+    cfg = await _cfg(settings, db, user.id)
     from app.core.usage import quota_exceeded
 
     if await quota_exceeded(db, user.id, settings.llm_daily_token_cap):
@@ -336,7 +336,7 @@ async def pipeline_check(
         raise HTTPException(status_code=400, detail="需要 draft 或 chapter_id")
     cfg = None
     try:
-        cfg = _cfg(settings)
+        cfg = await _cfg(settings, db, user.id)
     except HTTPException:
         pass
     return await stage_check_async(
@@ -363,7 +363,7 @@ async def pipeline_gate(
     vn = row_to_vn(row)
     cfg = None
     try:
-        cfg = _cfg(settings)
+        cfg = await _cfg(settings, db, user.id)
     except HTTPException:
         pass
 
@@ -464,7 +464,7 @@ async def pipeline_ledger_digest(
         from app.core.pipeline.ledger_enrich import enrich_chapter_ledger_payload
 
         try:
-            cfg = _cfg(settings)
+            cfg = await _cfg(settings, db, user.id)
             payload = await enrich_chapter_ledger_payload(cfg, vn, body.chapter_id)
             kwargs = {
                 "llm_facts": payload.get("llm_facts"),

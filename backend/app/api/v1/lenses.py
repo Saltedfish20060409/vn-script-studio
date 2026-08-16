@@ -22,7 +22,7 @@ from app.core.project import touch_project
 from app.db import get_db
 from app.models import User
 from app.security import get_current_user
-from app.services.projects import get_owned_project, row_to_vn, server_llm_credentials, sync_row_from_vn
+from app.services.projects import get_owned_project, resolve_llm_credentials, row_to_vn, sync_row_from_vn
 
 router = APIRouter(tags=["lenses"])
 
@@ -235,7 +235,7 @@ async def project_brainstorm(
     """强头脑风暴：每位作家独立调用，再责编综合。"""
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
-    creds = server_llm_credentials(settings)
+    creds = await resolve_llm_credentials(db, user.id, settings)
     if not creds["api_key"]:
         raise HTTPException(status_code=400, detail="服务端未配置 DEEPSEEK_API_KEY")
     cfg = DeepSeekConfig(

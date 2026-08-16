@@ -117,6 +117,15 @@ export interface ServerSettingsOut {
   bg_pan_y: number;
   panel_glass?: string;
   bg_scrim?: number;
+  /** User-level LLM credentials (masked — server never returns the raw key). */
+  has_api_key?: boolean;
+  api_key_masked?: string;
+  api_base_url?: string;
+  api_model?: string;
+  has_critic_api_key?: boolean;
+  critic_api_key_masked?: string;
+  critic_api_base_url?: string;
+  critic_api_model?: string;
 }
 
 export function fromServerSettings(out: ServerSettingsOut): AppSettings {

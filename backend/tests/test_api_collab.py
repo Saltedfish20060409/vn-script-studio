@@ -372,6 +372,110 @@ def test_chapter_scoped_save_locked_chapter_rejected():
     _run(_scenario())
 
 
+def test_user_llm_api_key_settings():
+    """User-level API keys: set / masked echo / clear, per-user isolation."""
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            u1 = await db_gate.register_headers(client, "key_u1")
+            u2 = await db_gate.register_headers(client, "key_u2")
+
+            # No key configured initially
+            r = await client.get("/api/v1/settings", headers=u1)
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["has_api_key"] is False
+            assert body["api_key_masked"] == ""
+
+            # Set user 1's key + custom base/model
+            r = await client.put(
+                "/api/v1/settings",
+                json={
+                    "api_key": "sk-user-one-secret-1234",
+                    "api_base_url": "https://custom.example.com",
+                    "api_model": "custom-model",
+                },
+                headers=u1,
+            )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["has_api_key"] is True
+            # Never returns the raw key — only masked
+            assert body["api_key_masked"] == "sk-***1234"
+            assert "sk-user-one-secret" not in str(body)
+            assert body["api_base_url"] == "https://custom.example.com"
+            assert body["api_model"] == "custom-model"
+
+            # Isolation: user 2 sees no key
+            r = await client.get("/api/v1/settings", headers=u2)
+            assert r.json()["has_api_key"] is False
+
+            # Settings round-trip preserves the stored key (masked again)
+            r = await client.get("/api/v1/settings", headers=u1)
+            assert r.json()["api_key_masked"] == "sk-***1234"
+
+            # Clear the key
+            r = await client.put("/api/v1/settings", json={"api_key": ""}, headers=u1)
+            assert r.status_code == 200, r.text
+            assert r.json()["has_api_key"] is False
+
+    _run(_scenario())
+
+
+def test_user_llm_credentials_resolution():
+    """resolve_llm_credentials prefers the user's own key, else server env."""
+    from app.services.settings import user_llm_credentials
+    from app.services.projects import resolve_llm_credentials
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            u1 = await db_gate.register_headers(client, "cred_u1")
+            # Register via the API to persist the user row.
+            await client.put(
+                "/api/v1/settings",
+                json={
+                    "api_key": "sk-user-own-abc123",
+                    "api_base_url": "https://user.example.com",
+                    "api_model": "user-model",
+                },
+                headers=u1,
+            )
+            # fetch the user's id from a project-owned response is complex; use
+            # settings API which already proved persistence — resolution is
+            # covered indirectly by the masked echo test. Smoke-test the
+            # decrypt path through the service with a fresh session:
+            async with db_gate.SessionLocal() as session:
+                from app.models import User
+
+                from sqlalchemy import select
+
+                res = await session.execute(
+                    select(User).where(User.username == "cred_u1")
+                )
+                row = res.scalar_one()
+                creds = await resolve_llm_credentials(session, row.id, db_gate.test_settings())
+                assert creds["api_key"] == "sk-user-own-abc123"
+                assert creds["source"] == "user"
+                assert creds["base_url"] == "https://user.example.com"
+                assert creds["model"] == "user-model"
+
+                # No key configured → falls back to server env (test key).
+                from app.models import User as U
+
+                res2 = await session.execute(
+                    select(U).where(U.username == "cred_nokey")
+                )
+                if res2.scalar_one_or_none() is None:
+                    session.add(U(id="cred-nokey-id", username="cred_nokey", password_hash="x"))
+                    await session.commit()
+                creds2 = await resolve_llm_credentials(
+                    session, "cred-nokey-id", db_gate.test_settings()
+                )
+                assert creds2["source"] == "server"
+                assert creds2["api_key"] == db_gate.test_settings().deepseek_api_key
+
+    _run(_scenario())
+
+
 def test_chapter_scoped_merge_sections_and_create():
     """Chapter-scoped save can declare sections and create chapters."""
     ctx = _mk_two_chapter_project()

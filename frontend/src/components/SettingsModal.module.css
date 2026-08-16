@@ -327,6 +327,19 @@
   font-weight: 600;
 }
 
+.divider {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 0.6rem 0;
+}
+
+.llmActions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.35rem;
+}
+
 .primary,
 .ghost {
   border-radius: var(--radius-sm);

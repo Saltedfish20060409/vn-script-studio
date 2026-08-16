@@ -3,9 +3,10 @@ import {
   applySettingsToDom,
   type AppSettings,
   type PanelGlass,
+  type ServerSettingsOut,
   type ThemeMode,
 } from "../lib/settings";
-import { getUsage, type UsageTotals } from "../api/misc";
+import { getSettings, getUsage, putSettings, type UsageTotals } from "../api/misc";
 import { MascotFigure } from "./MascotFigure";
 import { mascotLine } from "../lib/mascotCopy";
 import styles from "./SettingsModal.module.css";
@@ -17,7 +18,7 @@ type Props = {
   onChange: (s: AppSettings) => void;
 };
 
-type Pane = "theme" | "bg" | "usage";
+type Pane = "theme" | "bg" | "usage" | "llm";
 
 function fmtTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -74,8 +75,166 @@ function UsagePane() {
   );
 }
 
-function BgPanPreview({
-  image,
+/** 用户级 LLM 凭据：优先用自己的 key，留空则回退服务端环境变量。 */
+function LlmPane() {
+  const [loaded, setLoaded] = useState<ServerSettingsOut | null>(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [model, setModel] = useState("");
+  const [criticKey, setCriticKey] = useState("");
+  const [criticBaseUrl, setCriticBaseUrl] = useState("");
+  const [criticModel, setCriticModel] = useState("");
+
+  const load = useCallback(() => {
+    setError("");
+    getSettings()
+      .then((out) => {
+        setLoaded(out);
+        setBaseUrl(out.api_base_url ?? "");
+        setModel(out.api_model ?? "");
+        setCriticBaseUrl(out.critic_api_base_url ?? "");
+        setCriticModel(out.critic_api_model ?? "");
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "读取失败"));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const save = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      await putSettings({
+        // api_key 仅在用户输入新值或显式清空时发送；留空保持不变
+        api_key: apiKey === "" ? undefined : apiKey,
+        api_base_url: baseUrl,
+        api_model: model,
+        critic_api_key: criticKey === "" ? undefined : criticKey,
+        critic_api_base_url: criticBaseUrl,
+        critic_api_model: criticModel,
+      });
+      setApiKey("");
+      setCriticKey("");
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className={styles.form}>
+      <p className={styles.note}>
+        配置你自己的模型 Key 后，AI 请求将优先使用该 Key（按账号隔离，服务端加密存储）。
+        留空则回退服务端环境变量配置。
+      </p>
+      {error && <p className={styles.error}>{error}</p>}
+      <label>
+        主模型 API Key
+        <input
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder={
+            loaded?.has_api_key ? `已配置 ${loaded.api_key_masked}` : "sk-…"
+          }
+          autoComplete="off"
+        />
+      </label>
+      <label>
+        Base URL
+        <input
+          type="text"
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+          placeholder="https://api.deepseek.com"
+        />
+      </label>
+      <label>
+        模型名
+        <input
+          type="text"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          placeholder="deepseek-chat"
+        />
+      </label>
+      <hr className={styles.divider} />
+      <p className={styles.note}>可选：独立的评审模型（critic，改稿对照时使用）。</p>
+      <label>
+        评审模型 API Key
+        <input
+          type="password"
+          value={criticKey}
+          onChange={(e) => setCriticKey(e.target.value)}
+          placeholder={
+            loaded?.has_critic_api_key
+              ? `已配置 ${loaded.critic_api_key_masked}`
+              : "sk-…（可选）"
+          }
+          autoComplete="off"
+        />
+      </label>
+      <label>
+        评审 Base URL
+        <input
+          type="text"
+          value={criticBaseUrl}
+          onChange={(e) => setCriticBaseUrl(e.target.value)}
+          placeholder="https://api.deepseek.com"
+        />
+      </label>
+      <label>
+        评审模型名
+        <input
+          type="text"
+          value={criticModel}
+          onChange={(e) => setCriticModel(e.target.value)}
+          placeholder="deepseek-chat"
+        />
+      </label>
+      <div className={styles.llmActions}>
+        <button
+          type="button"
+          className={styles.primary}
+          disabled={saving}
+          onClick={() => void save()}
+        >
+          {saving ? "保存中…" : "保存凭据"}
+        </button>
+        <button
+          type="button"
+          className={styles.ghost}
+          onClick={() => void (async () => {
+            setSaving(true);
+            setError("");
+            try {
+              await putSettings({ api_key: "" });
+              setApiKey("");
+              load();
+            } catch (e) {
+              setError(e instanceof Error ? e.message : "清除失败");
+            } finally {
+              setSaving(false);
+            }
+          })()}
+        >
+          清除主 Key
+        </button>
+        <button type="button" className={styles.ghost} onClick={load}>
+          刷新
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BgPanPreview({  image,
   scale,
   opacity,
   panX,
@@ -242,6 +401,7 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                 ["theme", "01", "外观"],
                 ["bg", "02", "工具背景"],
                 ["usage", "03", "用量"],
+                ["llm", "04", "模型"],
               ] as const
             ).map(([id, idx, label]) => (
               <button
@@ -308,8 +468,8 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                   恢复默认字号
                 </button>
                 <p className={styles.note}>
-                  模型 API Key、Base
-                  URL、写作工艺与自检均由服务端环境变量配置，前端不参与。
+                  模型 API Key 可在「模型」页签按账号配置（可选）；写作工艺与自检
+                  由服务端环境变量配置。
                 </p>
               </div>
             )}
@@ -450,6 +610,7 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
               </div>
             )}
             {pane === "usage" && <UsagePane />}
+            {pane === "llm" && <LlmPane />}
           </div>
         </div>
         <div className={styles.mascotDock} aria-hidden>

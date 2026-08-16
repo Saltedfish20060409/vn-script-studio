@@ -20,7 +20,11 @@ from app.db import get_db
 from app.models import User
 from app.security import get_current_user
 from app.services.novel_memory import get_latest_continuity
-from app.services.projects import get_owned_project, row_to_vn, server_llm_credentials
+from app.services.projects import (
+    get_owned_project,
+    resolve_llm_credentials,
+    row_to_vn,
+)
 
 router = APIRouter(tags=["harness"])
 
@@ -39,8 +43,8 @@ class HarnessRunIn(BaseModel):
     mode: Literal["generate", "audit", "audit_and_fix"] = "generate"
 
 
-def _cfg(settings: Settings) -> DeepSeekConfig:
-    creds = server_llm_credentials(settings)
+async def _cfg(settings: Settings, db: AsyncSession, user_id: str) -> DeepSeekConfig:
+    creds = await resolve_llm_credentials(db, user_id, settings)
     if not creds["api_key"]:
         raise HTTPException(
             status_code=400,
@@ -90,7 +94,7 @@ async def harness_run(
 ):
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
-    cfg = _cfg(settings)
+    cfg = await _cfg(settings, db, user.id)
     from app.core.usage import quota_exceeded
 
     if await quota_exceeded(db, user.id, settings.llm_daily_token_cap):

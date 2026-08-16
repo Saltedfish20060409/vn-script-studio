@@ -36,8 +36,8 @@ from app.services.projects import (
     get_owned_project,
     get_project_readable,
     project_to_dict,
+    resolve_llm_credentials,
     row_to_vn,
-    server_llm_credentials,
     sync_row_from_vn,
 )
 
@@ -54,8 +54,8 @@ _VALID_SOURCES = {
 }
 
 
-def _cfg(settings: Settings) -> DeepSeekConfig:
-    creds = server_llm_credentials(settings)
+async def _cfg(settings: Settings, db: AsyncSession, user_id: str) -> DeepSeekConfig:
+    creds = await resolve_llm_credentials(db, user_id, settings)
     if not creds["api_key"]:
         raise HTTPException(
             status_code=400,
@@ -179,7 +179,7 @@ async def generate_character_voice_samples(
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     _char_or_404(vn, character_id)
-    cfg = _cfg(settings)
+    cfg = await _cfg(settings, db, user.id)
     kind = (body.kind or "preference").strip()
     try:
         if kind == "scene":
@@ -336,7 +336,7 @@ async def synthesize_character_voice_mind(
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     _char_or_404(vn, character_id)
-    cfg = _cfg(settings)
+    cfg = await _cfg(settings, db, user.id)
     try:
         result = await synthesize_voice_mind(
             cfg, vn, character_id=character_id, force=body.force
@@ -442,7 +442,7 @@ async def workshop_character_chat(
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     _char_or_404(vn, character_id)
-    cfg = _cfg(settings)
+    cfg = await _cfg(settings, db, user.id)
     try:
         return await workshop_chat(
             cfg,

@@ -72,8 +72,8 @@ from app.services.projects import (
     get_project_readable,
     merge_project_changes,
     project_to_dict,
+    resolve_llm_credentials,
     row_to_vn,
-    server_llm_credentials,
     sync_row_from_vn,
 )
 from app.services.snapshots import (
@@ -382,7 +382,7 @@ async def map_extract(
             "warnings": [],
         }
     else:
-        creds = server_llm_credentials(settings)
+        creds = await resolve_llm_credentials(db, user.id, settings)
         cfg = DeepSeekConfig(
             apiKey=creds["api_key"],
             baseUrl=creds["base_url"],
@@ -538,7 +538,7 @@ async def analysis_facts_scan(
     if body.llm and fresh:
         from app.core.fact_llm import enrich_fact_candidates
 
-        creds = server_llm_credentials(settings)
+        creds = await resolve_llm_credentials(db, user.id, settings)
         cfg = DeepSeekConfig(
             apiKey=creds["api_key"],
             baseUrl=creds["base_url"],
@@ -1053,7 +1053,7 @@ async def agent_chapter_revise(
 
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
-    creds = server_llm_credentials(settings)
+    creds = await resolve_llm_credentials(db, user.id, settings)
     if not creds["api_key"]:
         raise HTTPException(
             status_code=400,
@@ -1234,7 +1234,7 @@ async def agent_ingest_settings(
 
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
-    creds = server_llm_credentials(settings)
+    creds = await resolve_llm_credentials(db, user.id, settings)
     if not creds["api_key"]:
         raise HTTPException(
             status_code=400,
@@ -1509,7 +1509,7 @@ async def run_project_agent(
 ):
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
-    creds = server_llm_credentials(settings)
+    creds = await resolve_llm_credentials(db, user.id, settings)
     if not creds["api_key"]:
         raise HTTPException(
             status_code=400,
@@ -1551,7 +1551,7 @@ async def run_project_agent_stream(
     """
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
-    creds = server_llm_credentials(settings)
+    creds = await resolve_llm_credentials(db, user.id, settings)
     if not creds["api_key"]:
         raise HTTPException(
             status_code=400,
@@ -1631,7 +1631,7 @@ async def voice_check(
 ):
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
-    creds = server_llm_credentials(settings)
+    creds = await resolve_llm_credentials(db, user.id, settings)
     if not creds["api_key"]:
         raise HTTPException(
             status_code=400,
@@ -1699,7 +1699,7 @@ async def run_project_ai(
 ):
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
-    creds = server_llm_credentials(settings)
+    creds = await resolve_llm_credentials(db, user.id, settings)
     if not creds["api_key"]:
         raise HTTPException(
             status_code=400,
