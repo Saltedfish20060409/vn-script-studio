@@ -158,6 +158,92 @@ async def get_project_row(db: AsyncSession, project_id: str) -> Optional[Project
     return result.scalar_one_or_none()
 
 
+# --------------------------------------------------------------------------
+# Chapter rows (JSONB split stage 1)
+#
+# Chapters are the hot write path (every edit bumps the project blob). We
+# persist each chapter into project_chapter_rows so a chapter-scoped save only
+# rewrites that one row + the blob mirror, instead of the whole project. The
+# blob keeps a mirror for sync read paths (row_to_vn); the table is the
+# durable write path.
+# --------------------------------------------------------------------------
+
+
+def _chapter_row_id(project_id: str, chapter_id: str) -> str:
+    return f"{project_id}:{chapter_id}"
+
+
+async def upsert_chapter_rows(
+    db: AsyncSession,
+    project_id: str,
+    chapters: List[dict],
+) -> None:
+    """Write chapters into project_chapter_rows (upsert by id).
+
+    ``chapters`` are dicts (project_to_dict shape) with id/title/synopsis/blocks.
+    Rows for chapters no longer present are deleted (reorder/delete handled by
+    the caller updating the blob first, then calling this).
+    """
+    from app.models import ProjectChapterRow
+
+    keep_ids = set()
+    for idx, ch in enumerate(chapters):
+        ch_id = ch.get("id")
+        if not ch_id:
+            continue
+        row_id = _chapter_row_id(project_id, ch_id)
+        keep_ids.add(row_id)
+        existing = await db.get(ProjectChapterRow, row_id)
+        if existing is None:
+            db.add(
+                ProjectChapterRow(
+                    id=row_id,
+                    project_id=project_id,
+                    chapter_id=ch_id,
+                    title=ch.get("title") or "",
+                    synopsis=ch.get("synopsis") or "",
+                    blocks=ch.get("blocks") or [],
+                    sort_order=idx,
+                )
+            )
+        else:
+            existing.title = ch.get("title") or ""
+            existing.synopsis = ch.get("synopsis") or ""
+            existing.blocks = ch.get("blocks") or []
+            existing.sort_order = idx
+
+    # Remove rows whose chapter vanished from the blob (deleted chapters).
+    res = await db.execute(
+        select(ProjectChapterRow).where(ProjectChapterRow.project_id == project_id)
+    )
+    for row in res.scalars().all():
+        if row.id not in keep_ids:
+            await db.delete(row)
+
+
+async def load_chapter_rows(
+    db: AsyncSession,
+    project_id: str,
+) -> List[dict]:
+    """Read chapters from project_chapter_rows (ordered), None-safe."""
+    from app.models import ProjectChapterRow
+
+    res = await db.execute(
+        select(ProjectChapterRow)
+        .where(ProjectChapterRow.project_id == project_id)
+        .order_by(ProjectChapterRow.sort_order.asc())
+    )
+    return [
+        {
+            "id": row.chapter_id,
+            "title": row.title,
+            "synopsis": row.synopsis or None,
+            "blocks": row.blocks or [],
+        }
+        for row in res.scalars().all()
+    ]
+
+
 async def member_role(db: AsyncSession, project_id: str, user_id: str) -> Optional[str]:
     """Return the member role for (project, user) or None."""
     from app.models import ProjectMember

@@ -30,12 +30,19 @@ def _has_extension(name: str) -> bool:
 
 
 def upgrade() -> None:
-    if not _has_extension("vector"):
-        # Try to enable it; if the server lacks the files, skip the table.
+    vector_ok = False
+    try:
+        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        vector_ok = True
+    except Exception:  # noqa: BLE001 — stock PG lacks the extension files
+        # The failed statement aborts the transaction; roll back to a clean
+        # state so the migration can complete without the table.
         try:
-            op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            op.get_bind().rollback()
         except Exception:  # noqa: BLE001
-            return
+            pass
+    if not vector_ok:
+        return
     bind = op.get_bind()
     insp = sa.inspect(bind)
     if "project_chunk_embeddings" in insp.get_table_names():

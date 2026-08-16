@@ -335,3 +335,27 @@ class ProjectComment(Base):
     resolved: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ProjectChapterRow(Base):
+    """Chapters stored outside the project blob (JSONB split, stage 1).
+
+    The ``projects.data`` blob keeps a mirror of chapters so existing
+    synchronous read paths (``row_to_vn``) keep working unchanged; chapter
+    writes go through this table first, then the mirror is refreshed. A full
+    migration that drops the blob copy can follow once every read path reads
+    the table.
+    """
+
+    __tablename__ = "project_chapter_rows"
+
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("projects.id"), index=True
+    )
+    chapter_id: Mapped[str] = mapped_column(String(64), index=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    synopsis: Mapped[str] = mapped_column(Text, default="")
+    blocks: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

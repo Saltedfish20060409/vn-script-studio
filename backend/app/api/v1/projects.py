@@ -204,6 +204,12 @@ async def put_project(
         client_vn = normalize_project(dict(body.data))
         merged = merge_project_changes(server_vn, client_vn, chapter_ids, sections)
         sync_row_from_vn(row, merged)
+        # JSONB split stage 1: persist chapters into their own rows (only the
+        # changed ones get rewritten; unchanged rows keep their sort order).
+        from app.services.projects import upsert_chapter_rows
+
+        merged_chapters = [c.model_dump(mode="json") for c in merged.chapters]
+        await upsert_chapter_rows(db, project_id, merged_chapters)
         await db.commit()
         await db.refresh(row)
         return project_to_dict(row_to_vn(row))
@@ -234,6 +240,11 @@ async def put_project(
     data["id"] = project_id
     vn = normalize_project(data)
     sync_row_from_vn(row, vn)
+    from app.services.projects import upsert_chapter_rows
+
+    await upsert_chapter_rows(
+        db, project_id, [c.model_dump(mode="json") for c in vn.chapters]
+    )
     await db.commit()
     await db.refresh(row)
     return project_to_dict(row_to_vn(row))

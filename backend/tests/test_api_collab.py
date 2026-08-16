@@ -303,6 +303,70 @@ def test_chapter_scoped_merge_preserves_other_chapter():
     _run(_scenario())
 
 
+def test_chapter_rows_persist_on_scoped_save():
+    """JSONB split stage 1: chapter rows mirror the blob on scoped saves."""
+    ctx = _mk_two_chapter_project()
+    pid, owner_headers, _ = ctx["pid"], ctx["owner"], ctx["editor"]
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            proj = (await client.get(f"/api/v1/projects/{pid}", headers=owner_headers)).json()
+            proj["chapters"] = [
+                {"id": "chA", "title": "章A", "blocks": [{"type": "label", "id": "a", "name": "a"}, {"type": "narration", "text": "row check"}]},
+                proj["chapters"][1],
+            ]
+            r = await client.put(
+                f"/api/v1/projects/{pid}",
+                json={
+                    "data": proj,
+                    "updated_at": proj.get("updatedAt"),
+                    "chapter_ids": ["chA"],
+                    "sections": [],
+                },
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+
+            # Rows exist for both chapters, mirroring the blob.
+            from app.models import ProjectChapterRow
+
+            from sqlalchemy import select
+
+            async with db_gate.SessionLocal() as session:
+                res = await session.execute(
+                    select(ProjectChapterRow)
+                    .where(ProjectChapterRow.project_id == pid)
+                    .order_by(ProjectChapterRow.sort_order.asc())
+                )
+                rows = res.scalars().all()
+                assert len(rows) == 2
+                assert rows[0].chapter_id == "chA"
+                assert rows[0].blocks[-1]["text"] == "row check"
+                assert rows[1].chapter_id == "chB"
+
+            # Deleting a chapter through a full save removes its row too.
+            proj2 = (await client.get(f"/api/v1/projects/{pid}", headers=owner_headers)).json()
+            proj2["chapters"] = [proj2["chapters"][1]]
+            r = await client.put(
+                f"/api/v1/projects/{pid}",
+                json={
+                    "data": proj2,
+                    "updated_at": proj2.get("updatedAt"),
+                    "chapter_ids": ["chA", "chB"],
+                    "sections": [],
+                },
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+            async with db_gate.SessionLocal() as session:
+                res = await session.execute(
+                    select(ProjectChapterRow).where(ProjectChapterRow.project_id == pid)
+                )
+                assert len(res.scalars().all()) == 1
+
+    _run(_scenario())
+
+
 def test_chapter_scoped_save_locked_chapter_rejected():
     """Saving a chapter locked by another member is rejected with 423."""
     ctx = _mk_two_chapter_project()

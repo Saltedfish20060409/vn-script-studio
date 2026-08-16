@@ -9,6 +9,7 @@ from app.models.tables import (
     LlmUsage,
     LoreCraftCard,
     Project,
+    ProjectChapterRow,
     ProjectComment,
     ProjectInvite,
     ProjectMember,
@@ -35,4 +36,5 @@ __all__ = [
     "ChapterLock",
     "ProjectInvite",
     "ProjectComment",
+    "ProjectChapterRow",
 ]
