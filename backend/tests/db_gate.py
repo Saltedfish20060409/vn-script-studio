@@ -26,6 +26,21 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 # --------------------------------------------------------------------------
+# Test env bootstrap — MUST run before any `app.*` import.
+#
+# config.get_settings() now hard-rejects the default SECRET_KEY (a guessable
+# JWT signing key is an account-takeover hole). CI has no backend/.env, so we
+# inject a strong test key here; local dev with a real .env is unaffected
+# (setdefault only fills when unset). This also keeps db_gate usable as a
+# standalone import for the pytest collection phase (exit code 2 guard).
+# --------------------------------------------------------------------------
+
+os.environ.setdefault(
+    "SECRET_KEY",
+    "unit-test-secret-key-0123456789abcdef0123456789abcdef",
+)
+
+# --------------------------------------------------------------------------
 # Database URL + connectivity gate
 # --------------------------------------------------------------------------
 
@@ -110,6 +125,7 @@ def test_settings():
 
         _TEST_SETTINGS = Settings(
             database_url=TEST_DB_URL,
+            secret_key=os.environ.get("SECRET_KEY", "unit-test-secret-key-0123456789abcdef0123456789abcdef"),
             deepseek_api_key="test-key",  # satisfies `if not creds["api_key"]` guards
             deepseek_base_url="https://api.deepseek.com",
             deepseek_model="deepseek-chat",
