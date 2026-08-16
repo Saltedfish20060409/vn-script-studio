@@ -10,6 +10,7 @@ import {
   deleteSnapshot as apiDeleteSnapshot,
   duplicateProject as apiDuplicateProject,
   exportJson,
+  exportRenpyBundle,
   exportRpy,
   getChapterMemoryArchive,
   getProject,
@@ -172,6 +173,7 @@ export function StudioApp() {
   /** 导出页：先生成预览，再允许下载 */
   const [rpyPreview, setRpyPreview] = useState<string | null>(null);
   const [rpyStale, setRpyStale] = useState(false);
+  const [bundleBusy, setBundleBusy] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [focusSetupOpen, setFocusSetupOpen] = useState(false);
   const [focusPrefs, setFocusPrefs] = useState<FocusTimerPrefs | null>(null);
@@ -1124,6 +1126,24 @@ export function StudioApp() {
     }
   }
 
+  async function downloadRenpyBundle() {
+    if (!project) return;
+    commitEditor();
+    setBundleBusy(true);
+    try {
+      setStatus("打包 Ren'Py 项目…");
+      setError("");
+      const blob = await exportRenpyBundle(project.id);
+      downloadBlob(`${project.title || "vn"}-renpy.zip`, blob);
+      setStatus("已下载 Ren'Py 项目包");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "打包失败");
+      setStatus("");
+    } finally {
+      setBundleBusy(false);
+    }
+  }
+
   // Fullscreen cannot resume without a gesture; clear sticky flag from older sessions.
   useEffect(() => {
     if (loadFocusMode()) saveFocusMode(false);
@@ -1377,6 +1397,8 @@ export function StudioApp() {
                     onGenerateRpy={() => void generateRpy()}
                     onDownloadRpy={downloadRpy}
                     onDownloadJson={() => void downloadJson()}
+                    onDownloadBundle={() => void downloadRenpyBundle()}
+                    bundleBusy={bundleBusy}
                   />
                 )}
 

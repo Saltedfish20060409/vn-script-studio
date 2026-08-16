@@ -8,10 +8,13 @@ type Props = {
   onGenerateRpy: () => void;
   onDownloadRpy: () => void;
   onDownloadJson: () => void;
+  onDownloadBundle: () => void;
+  bundleBusy: boolean;
 };
 
 /**
- * 项目 → 导出 sub-tab: generate/download .rpy, download project JSON.
+ * 项目 → 导出 sub-tab: generate/download .rpy, download project JSON,
+ * download full Ren'Py project skeleton (zip).
  * Pure presentational — export/status logic stays in StudioApp.
  */
 export function ProjectExportPanel({
@@ -20,12 +23,15 @@ export function ProjectExportPanel({
   onGenerateRpy,
   onDownloadRpy,
   onDownloadJson,
+  onDownloadBundle,
+  bundleBusy,
 }: Props) {
   return (
     <>
       <div className={styles.toolbar}>
         <span>
           先根据当前剧本生成 .rpy 预览，确认无误后再下载；工程 JSON 可随时导出。
+          需要可直接运行的工程时，下载 Ren'Py 项目包（zip）。
         </span>
         <div className={styles.aiQuick}>
           <button type="button" className={styles.primary} onClick={onGenerateRpy}>
@@ -47,6 +53,14 @@ export function ProjectExportPanel({
           </button>
           <button type="button" onClick={onDownloadJson}>
             下载工程 .json
+          </button>
+          <button
+            type="button"
+            disabled={bundleBusy}
+            onClick={onDownloadBundle}
+            title="下载完整 Ren'Py 项目骨架（script/options/gui/README 打包为 zip）"
+          >
+            {bundleBusy ? "打包中…" : "下载 Ren'Py 项目包"}
           </button>
         </div>
       </div>

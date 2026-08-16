@@ -285,6 +285,36 @@ async def export_rpy(
     return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
 
 
+@router.get("/{project_id}/export/bundle")
+async def export_bundle(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download a full Ren'Py project skeleton (script/options/gui/README) as zip."""
+    import io as _io
+    import zipfile
+
+    from app.core.renpy import export_project_bundle
+
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    files = export_project_bundle(vn)
+    buf = _io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, content in files.items():
+            zf.writestr(name, content)
+    buf.seek(0)
+    safe = re.sub(r"[^\w\u4e00-\u9fff]+", "_", vn.title or "vn")[:40] or "vn"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe}-renpy.zip"'
+        },
+    )
+
+
 @router.get("/{project_id}/export/json")
 async def export_json(
     project_id: str,

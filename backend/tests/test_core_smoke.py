@@ -50,3 +50,18 @@ def test_normalize_roundtrip():
     p2 = normalize_project(raw)
     assert p2.id == p.id
     assert p2.title == p.title
+
+
+def test_renpy_project_bundle():
+    from app.core.renpy import export_project_bundle, export_script_rpy
+
+    p = create_demo_project()
+    files = export_project_bundle(p)
+    assert set(files) == {"script.rpy", "options.rpy", "gui.rpy", "README.txt"}
+    script = export_script_rpy(p)
+    assert "label start:" in script
+    # start bridges to the first chapter label
+    bridge = script.split("label start:")[1].split("\n")[1]
+    assert bridge.strip().startswith("jump ")
+    assert "define config.name" in files["options.rpy"]
+    assert "define gui.accent_color" in files["gui.rpy"]

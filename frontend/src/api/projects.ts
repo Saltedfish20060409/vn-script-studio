@@ -116,6 +116,12 @@ export async function exportJson(id: string): Promise<Blob> {
   return res.blob();
 }
 
+/** Full Ren'Py project skeleton (script/options/gui/README) as a zip blob. */
+export async function exportRenpyBundle(id: string): Promise<Blob> {
+  const res = await authedRawFetch(`/projects/${id}/export/bundle`);
+  return res.blob();
+}
+
 export type MapExtractProposal = {
   locations: Location[];
   locationLinks: LocationLink[];
