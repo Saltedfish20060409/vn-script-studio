@@ -57,19 +57,18 @@ import type {
   AgentTraceEvent,
   VnProject,
 } from "../types/vn";
-import { AgentArchiveCard } from "./AgentArchiveCard";
 import { AgentAttachList } from "./AgentAttachList";
 import { AgentComposerBox } from "./AgentComposerBox";
 import { AgentConversationRail } from "./AgentConversationRail";
 import { AgentHelpOverlay } from "./AgentHelpOverlay";
 import {
-  AgentMessagesList,
   describeActions,
   defaultWelcome,
   formatLintBlock,
   formatPipelineResult,
   normalizeMessages,
-} from "./AgentMessagesList";
+} from "../lib/agentFormat";
+import { AgentMessagesList } from "./AgentMessagesList";
 import { AgentPersonaOverlay } from "./AgentPersonaOverlay";
 import { ChapterReviseModePicker } from "./ChapterReviseModePicker";
 import { ChapterReviseReview } from "./ChapterReviseReview";
@@ -593,12 +592,6 @@ export function AgentChat({
     setDossierOpen(false);
     setPersonaOpen(false);
     setHelpOpen((v) => !v);
-  }
-
-  function handleArchiveAction(cardId: string | null) {
-    void onWriterCardClick(cardId);
-    setDetailKey(null);
-    if (!multiSelect) setPersonaOpen(false);
   }
 
   async function handleDeleteConversation(targetId?: string) {
@@ -1679,11 +1672,13 @@ export function AgentChat({
             selection={selection}
             lastContext={lastContext}
             error={error}
+            undoCount={undoCount}
             scrollerRef={scroller}
             onOpenReviseReview={handleOpenReviseReview}
             onToggleDossier={handleToggleDossier}
             onTogglePersona={handleTogglePersona}
             onToggleHelp={handleToggleHelp}
+            onUndo={() => void undoAgentEdit()}
           />
 
           <AgentAttachList

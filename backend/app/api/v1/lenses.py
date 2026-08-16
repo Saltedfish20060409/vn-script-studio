@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import Settings, get_settings
+from app.core.ai import DeepSeekConfig
 from app.core.lenses import (
     get_builtin_lens,
     list_builtin_lens_meta,
@@ -16,9 +18,7 @@ from app.core.lenses import (
     resolve_project_lenses,
 )
 from app.core.lenses.brainstorm import format_brainstorm_markdown, run_brainstorm
-from app.core.ai import DeepSeekConfig
 from app.core.project import touch_project
-from app.config import Settings, get_settings
 from app.db import get_db
 from app.models import User
 from app.security import get_current_user

@@ -8,10 +8,10 @@ from typing import Optional
 
 import typer
 
+from app.config import get_settings
 from app.core import create_demo_project, export_to_renpy, normalize_project, run_ai
 from app.core.ai import DeepSeekConfig
 from app.domain.types import AiRequest
-from app.config import get_settings
 
 cli = typer.Typer(help="VN Script Studio CLI")
 

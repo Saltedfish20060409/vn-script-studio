@@ -1,8 +1,6 @@
 """Chapter long-memory APIs (NovelMaster-style, PostgreSQL sliced storage)."""
 from __future__ import annotations
 
-from typing import List, Optional
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession

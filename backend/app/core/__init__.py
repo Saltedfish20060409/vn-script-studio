@@ -24,6 +24,13 @@ from .chapter_digest import (
     refresh_chapter_index,
 )
 from .demo import create_demo_project, empty_project
+from .fact_extract import (
+    accept_character_link,
+    accept_timeline_event,
+    build_scan_candidates,
+    compute_fingerprints,
+    reconcile_stale,
+)
 from .import_text import project_from_plain_text
 from .longform_memory import (
     ChatMemoryBundle,
@@ -48,12 +55,6 @@ from .map_extract_smart import (
     merge_suggested_places,
 )
 from .narrative_lint import NarrativeLintIssue, lint_has_blockers, lint_narrative_draft
-from .novel_memory import (
-    DEFAULT_SPAN as MEMORY_ARCHIVE_SPAN,
-    build_all_archive_drafts,
-    format_memory_for_agent,
-    slice_text,
-)
 from .narrative_review import (
     NarrativeReviewResult,
     SelfReviewPreference,
@@ -62,6 +63,12 @@ from .narrative_review import (
     extract_script_from_actions,
     run_narrative_self_review,
     should_self_review,
+)
+from .novel_memory import (
+    DEFAULT_SPAN as MEMORY_ARCHIVE_SPAN,
+    build_all_archive_drafts,
+    format_memory_for_agent,
+    slice_text,
 )
 from .project import (
     extract_locations_from_script,
@@ -73,13 +80,6 @@ from .project import (
 )
 from .renpy import export_character_defines, export_to_renpy, project_to_context
 from .voice_check import VoiceIssue, VoiceReport, run_voice_check
-from .fact_extract import (
-    accept_character_link,
-    accept_timeline_event,
-    build_scan_candidates,
-    compute_fingerprints,
-    reconcile_stale,
-)
 from .writing_craft import (
     ALL_WRITING_SKILL_IDS,
     CraftDecision,
@@ -175,4 +175,8 @@ __all__ = [
     "parse_outline_beats",
     "select_outline_beats",
     "ChatMemoryBundle",
+    "MEMORY_ARCHIVE_SPAN",
+    "build_all_archive_drafts",
+    "format_memory_for_agent",
+    "slice_text",
 ]

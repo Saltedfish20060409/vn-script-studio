@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import io
 import json
-from datetime import datetime, timezone
-from typing import Any, AsyncIterator, List, Optional
-
+from typing import Any, AsyncIterator, Dict, List, Optional
 from docx import Document
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
@@ -1294,8 +1293,8 @@ async def _build_agent_request(
             last_user = str(content)
             break
 
-    from app.services.lore import resolve_lore_block
     from app.core.pipeline.ledger import format_ledger_for_agent, get_ledger
+    from app.services.lore import resolve_lore_block
 
     lore = await resolve_lore_block(
         db, project_id, vn, user_message=last_user, limit=4

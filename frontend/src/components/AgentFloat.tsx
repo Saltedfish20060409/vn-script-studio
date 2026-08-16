@@ -33,7 +33,7 @@ function clamp(n: number, min: number, max: number) {
   return Math.min(Math.max(min, n), max);
 }
 
-function clampFree(x: number, y: number, w: number, h: number) {
+function clampFree(x: number, y: number, w: number, _h: number) {
   return {
     x: clamp(x, 8, Math.max(8, window.innerWidth - Math.min(w, 120))),
     y: clamp(y, 8, Math.max(8, window.innerHeight - 56)),
@@ -63,7 +63,7 @@ function detectEdge(x: number, y: number, w: number, h: number): Edge | null {
   return "bottom";
 }
 
-function alongForEdge(edge: Edge, x: number, y: number, w: number, h: number) {
+function alongForEdge(edge: Edge, x: number, y: number, _w: number, _h: number) {
   if (edge === "left" || edge === "right") {
     return clamp(y, 8, Math.max(8, window.innerHeight - 140));
   }
