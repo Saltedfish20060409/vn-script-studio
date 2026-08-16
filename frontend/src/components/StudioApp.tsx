@@ -54,6 +54,7 @@ import { EmptyStage } from "./EmptyStage";
 import { ProjectLibraryPanel } from "./ProjectLibraryPanel";
 import { CollabPanel } from "./CollabPanel";
 import { CommentsPanel } from "./CommentsPanel";
+import { PwaInstallPrompt } from "./PwaInstallPrompt";
 import { ProjectExportPanel } from "./ProjectExportPanel";
 import { ProjectHistoryPanel } from "./ProjectHistoryPanel";
 import { StudioBootScreen } from "./StudioBootScreen";
@@ -1378,6 +1379,7 @@ export function StudioApp() {
 
   return (
     <>
+      <PwaInstallPrompt />
       <SaveConflictDialog
         open={Boolean(saveConflict)}
         localTitle={saveConflict?.local.title}

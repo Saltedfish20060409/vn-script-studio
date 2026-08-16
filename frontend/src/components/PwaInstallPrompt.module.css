@@ -1,0 +1,77 @@
+.banner {
+  position: fixed;
+  left: 1rem;
+  right: 1rem;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.6rem 0.75rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md, 12px);
+  background: color-mix(in srgb, var(--panel-bg) 94%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow, 0 6px 24px rgba(0, 0, 0, 0.18));
+  font-size: 0.85rem;
+  color: var(--text);
+  animation: pwaIn 0.3s ease-out;
+}
+
+@keyframes pwaIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.install {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 0.35rem 0.9rem;
+  border: 2px solid var(--accent, #5b8cff);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--accent, #5b8cff);
+  color: var(--on-accent, #fff);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dismiss {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--muted, #8a8f98);
+  font-size: 1.1rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+@media (min-width: 561px) {
+  .banner {
+    left: auto;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    width: min(360px, calc(100vw - 2rem));
+  }
+}

@@ -280,6 +280,36 @@
   transform: none;
 }
 
+/* Mobile: 导出/协作 收进「更多」菜单，顶栏只留核心操作 */
+.moreMenuOnly {
+  display: none;
+}
+
+@media (max-width: 560px) {
+  .moreMenuOnly {
+    display: block;
+  }
+
+  .topOnly {
+    display: none;
+  }
+
+  .topActions {
+    gap: 0.3rem;
+  }
+
+  .topActions button,
+  .topActions summary {
+    font-size: 0.8rem;
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+
+  .titleInput {
+    max-width: 46vw;
+  }
+}
+
 .userChip {
   display: inline-flex;
   align-items: center;
@@ -1592,6 +1622,41 @@
 
   .topActions .moreMenu summary {
     min-height: 44px;
+  }
+}
+
+/* Mobile landscape / short viewports: keep editor usable, rail compact */
+@media (max-width: 820px) and (max-height: 480px) {
+  .tabs {
+    min-height: 44px;
+  }
+
+  .tab,
+  .tabActive {
+    min-height: 44px;
+  }
+
+  .main {
+    padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .top {
+    min-height: 48px;
+    padding: 0.3rem 0.7rem;
+  }
+
+  .topActions button,
+  .topActions summary {
+    min-height: 36px;
+  }
+
+  .editor,
+  .scriptEditor {
+    min-height: calc(100dvh - 200px);
+  }
+
+  .panel {
+    padding-bottom: 2rem;
   }
 }
 

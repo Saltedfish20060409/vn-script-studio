@@ -82,6 +82,22 @@ export function StudioTopBar({
             <button type="button" role="menuitem" onClick={onSaveChapter}>
               保存章节
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={styles.moreMenuOnly}
+              onClick={onExportRpy}
+            >
+              导出 .rpy
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={styles.moreMenuOnly}
+              onClick={onOpenCollab}
+            >
+              协作
+            </button>
           </div>
         </details>
         <input
@@ -91,10 +107,18 @@ export function StudioTopBar({
           accept=".docx,.txt,.md,.rpy,.json,.fountain"
           onChange={onFileChange}
         />
-        <button type="button" className={styles.primary} onClick={onExportRpy}>
+        <button
+          type="button"
+          className={`${styles.primary} ${styles.topOnly}`}
+          onClick={onExportRpy}
+        >
           导出 .rpy
         </button>
-        <button type="button" className={styles.ghost} onClick={onOpenCollab}>
+        <button
+          type="button"
+          className={`${styles.ghost} ${styles.topOnly}`}
+          onClick={onOpenCollab}
+        >
           协作
         </button>
         {username ? (
