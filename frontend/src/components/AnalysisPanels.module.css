@@ -306,6 +306,19 @@
   background: color-mix(in srgb, var(--accent-hot, #b85c38) 8%, transparent);
 }
 
+.issueList li[data-sev="low"] {
+  border-color: color-mix(in srgb, var(--accent, #5b7f95) 40%, var(--line));
+}
+
+.issueList li[data-sev="low"] strong {
+  color: var(--ink-soft);
+}
+
+.focusInput {
+  flex: 1;
+  min-width: 0;
+}
+
 .error {
   color: var(--danger);
 }

@@ -653,6 +653,34 @@ export function voiceCheck(
   });
 }
 
+export interface ConsistencyIssue {
+  category: "character" | "timeline" | "location" | "bible" | "plot" | "style";
+  severity: "high" | "medium" | "low";
+  chapterIds: string[];
+  quote: string;
+  description: string;
+  suggestion: string;
+}
+
+export interface ConsistencyAuditResult {
+  issues: ConsistencyIssue[];
+  summary: string;
+  scanned_chapters: number;
+  model: string;
+  error?: string;
+}
+
+export function consistencyAudit(
+  id: string,
+  body?: { focus?: string; chapter_id?: string }
+): Promise<ConsistencyAuditResult> {
+  return apiFetch(`/projects/${id}/consistency/audit`, {
+    method: "POST",
+    timeoutMs: 240000,
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
 export type FactsChanged = {
   chapters: string[];
   bible: boolean;

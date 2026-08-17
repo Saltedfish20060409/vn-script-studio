@@ -4,6 +4,7 @@ from app.api.v1 import (
     auth,
     character_voice,
     collab,
+    consistency,
     harness,
     lenses,
     lore,
@@ -30,3 +31,4 @@ api_router.include_router(settings.router)
 api_router.include_router(shares.router)
 api_router.include_router(usage.router)
 api_router.include_router(collab.router)
+api_router.include_router(consistency.router)

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  consistencyAudit,
   factsAccept,
   factsAckStale,
   factsInbox,
@@ -7,7 +8,8 @@ import {
   factsReject,
   factsScan,
   voiceCheck,
-} from "../api/client";
+  type ConsistencyAuditResult,
+} from "../api/projects";
 import { buildBranchTree, type BranchNode } from "../lib/branchTree";
 import { weakSyncCharacters } from "../lib/factSync";
 import { uid } from "../lib/vnLocal";
@@ -53,10 +55,17 @@ export function AnalysisPanels({
   onRemoteProject,
 }: Props) {
   const prompt = usePrompt();
-  const [sub, setSub] = useState<"branch" | "chars" | "timeline" | "voice">("branch");
+  const [sub, setSub] = useState<
+    "branch" | "chars" | "timeline" | "voice" | "consistency"
+  >("branch");
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceReport, setVoiceReport] = useState<VoiceReport | null>(null);
   const [voiceError, setVoiceError] = useState("");
+  const [consistencyBusy, setConsistencyBusy] = useState(false);
+  const [consistencyResult, setConsistencyResult] =
+    useState<ConsistencyAuditResult | null>(null);
+  const [consistencyError, setConsistencyError] = useState("");
+  const [consistencyFocus, setConsistencyFocus] = useState("");
   const [linkDraft, setLinkDraft] = useState({
     fromId: "",
     toId: "",
@@ -164,6 +173,21 @@ export function AnalysisPanels({
       setVoiceError(e instanceof Error ? e.message : "检查失败");
     } finally {
       setVoiceBusy(false);
+    }
+  }
+
+  async function runConsistency() {
+    setConsistencyBusy(true);
+    setConsistencyError("");
+    try {
+      const data = await consistencyAudit(project.id, {
+        focus: consistencyFocus,
+      });
+      setConsistencyResult(data);
+    } catch (e) {
+      setConsistencyError(e instanceof Error ? e.message : "审计失败");
+    } finally {
+      setConsistencyBusy(false);
     }
   }
 
@@ -363,6 +387,7 @@ export function AnalysisPanels({
             ["chars", "角色关系"],
             ["timeline", "时间线"],
             ["voice", "语气检查"],
+            ["consistency", "一致性"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -643,6 +668,97 @@ export function AnalysisPanels({
                       <span>「{issue.quote}」</span>
                       <span>{issue.note}</span>
                       {issue.suggestion ? <em>建议：{issue.suggestion}</em> : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {sub === "consistency" && (
+        <div className={styles.panel}>
+          <p className={styles.hint}>
+            全书层：以角色卡 / 设定库 / 地图 / 时间线为权威，扫描全部章节，找出设定违反与章节间矛盾。
+          </p>
+          <div className={styles.toolbar}>
+            <input
+              className={styles.focusInput}
+              value={consistencyFocus}
+              onChange={(e) => setConsistencyFocus(e.target.value)}
+              placeholder="可选：聚焦某类问题，如「角色年龄」「时间线」…"
+            />
+            <button
+              type="button"
+              disabled={consistencyBusy}
+              onClick={() => void runConsistency()}
+            >
+              {consistencyBusy ? "审计中…" : "审计全书一致性"}
+            </button>
+          </div>
+          {consistencyBusy ? (
+            <div className={styles.busyBar} role="status" aria-live="polite">
+              <span className={styles.busyStamp} aria-hidden>
+                SCAN
+              </span>
+              <span className={styles.busyPulse} aria-hidden />
+              <span>正在通读全书与设定对照…</span>
+            </div>
+          ) : null}
+          {consistencyError && <p className={styles.error}>{consistencyError}</p>}
+          {!consistencyBusy && !consistencyResult && !consistencyError ? (
+            <EmptyStage
+              stamp="ANL"
+              title="还没有审计结果"
+              line={mascotLine("emptyAnalysis")}
+              compact
+            />
+          ) : null}
+          {consistencyResult && (
+            <div className={styles.report}>
+              {consistencyResult.error ? (
+                <p className={styles.error}>{consistencyResult.error}</p>
+              ) : null}
+              <p className={styles.summary}>
+                {consistencyResult.summary || "审计完成。"}
+              </p>
+              <p className={styles.hint}>
+                已扫描 {consistencyResult.scanned_chapters} 章
+                {consistencyResult.model ? ` · 模型 ${consistencyResult.model}` : ""}
+              </p>
+              {consistencyResult.issues.length === 0 ? (
+                <p className={styles.hint}>
+                  未发现明显冲突。
+                  {consistencyResult.error ? "（模型未产出结论）" : ""}
+                </p>
+              ) : (
+                <ul className={styles.issueList}>
+                  {consistencyResult.issues.map((issue, i) => (
+                    <li
+                      key={`${issue.category}-${i}`}
+                      data-sev={issue.severity === "high" ? "high" : issue.severity === "medium" ? "warn" : "low"}
+                    >
+                      <strong>
+                        [{issue.severity === "high" ? "高" : issue.severity === "medium" ? "中" : "低"}]
+                        {issue.category === "character"
+                          ? "角色"
+                          : issue.category === "timeline"
+                            ? "时间线"
+                            : issue.category === "location"
+                              ? "地点"
+                              : issue.category === "bible"
+                                ? "设定"
+                                : issue.category === "style"
+                                  ? "书写"
+                                  : "剧情"}
+                      </strong>
+                      {issue.quote ? <span>「{issue.quote}」</span> : null}
+                      <span>{issue.description}</span>
+                      {issue.suggestion ? <em>建议：{issue.suggestion}</em> : null}
+                      {issue.chapterIds.length > 0 ? (
+                        <small>涉及章节：{issue.chapterIds.join("、")}</small>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
