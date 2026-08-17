@@ -9,7 +9,9 @@ import {
   deleteProject as apiDeleteProject,
   deleteSnapshot as apiDeleteSnapshot,
   duplicateProject as apiDuplicateProject,
+  exportDocx,
   exportJson,
+  exportMarkdown,
   exportRenpyBundle,
   exportRpy,
   getChapterMemoryArchive,
@@ -1221,6 +1223,36 @@ export function StudioApp() {
     }
   }
 
+  async function downloadMarkdown() {
+    if (!project) return;
+    commitEditor();
+    try {
+      setStatus("导出 Markdown…");
+      setError("");
+      const blob = await exportMarkdown(project.id);
+      downloadBlob(`${project.title || "project"}.md`, blob);
+      setStatus("已下载 Markdown 稿");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "导出失败");
+      setStatus("");
+    }
+  }
+
+  async function downloadDocxFile() {
+    if (!project) return;
+    commitEditor();
+    try {
+      setStatus("导出 Word…");
+      setError("");
+      const blob = await exportDocx(project.id);
+      downloadBlob(`${project.title || "project"}.docx`, blob);
+      setStatus("已下载 Word 稿");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "导出失败");
+      setStatus("");
+    }
+  }
+
   async function downloadRenpyBundle() {
     if (!project) return;
     commitEditor();
@@ -1503,6 +1535,8 @@ export function StudioApp() {
                     onGenerateRpy={() => void generateRpy()}
                     onDownloadRpy={downloadRpy}
                     onDownloadJson={() => void downloadJson()}
+                    onDownloadMarkdown={() => void downloadMarkdown()}
+                    onDownloadDocx={() => void downloadDocxFile()}
                     onDownloadBundle={() => void downloadRenpyBundle()}
                     bundleBusy={bundleBusy}
                   />

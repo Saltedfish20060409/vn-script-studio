@@ -345,6 +345,48 @@ async def export_bundle(
     )
 
 
+@router.get("/{project_id}/export/markdown")
+async def export_markdown(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Submission export: whole project as readable Markdown."""
+    from app.core.export_text import project_to_markdown, safe_filename
+
+    row = await get_project_readable(db, user, project_id)
+    vn = row_to_vn(row)
+    text = project_to_markdown(vn)
+    return Response(
+        content=text.encode("utf-8"),
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_filename(vn.title, ".md")}"'
+        },
+    )
+
+
+@router.get("/{project_id}/export/docx")
+async def export_docx(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Submission export: whole project as a styled Word document."""
+    from app.core.export_text import project_to_docx, safe_filename
+
+    row = await get_project_readable(db, user, project_id)
+    vn = row_to_vn(row)
+    content = project_to_docx(vn)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_filename(vn.title, ".docx")}"'
+        },
+    )
+
+
 @router.get("/{project_id}/export/json")
 async def export_json(
     project_id: str,

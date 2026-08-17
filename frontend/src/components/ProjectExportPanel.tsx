@@ -8,13 +8,15 @@ type Props = {
   onGenerateRpy: () => void;
   onDownloadRpy: () => void;
   onDownloadJson: () => void;
+  onDownloadMarkdown: () => void;
+  onDownloadDocx: () => void;
   onDownloadBundle: () => void;
   bundleBusy: boolean;
 };
 
 /**
  * 项目 → 导出 sub-tab: generate/download .rpy, download project JSON,
- * download full Ren'Py project skeleton (zip).
+ * submission exports (Markdown / Word), download full Ren'Py project zip.
  * Pure presentational — export/status logic stays in StudioApp.
  */
 export function ProjectExportPanel({
@@ -23,6 +25,8 @@ export function ProjectExportPanel({
   onGenerateRpy,
   onDownloadRpy,
   onDownloadJson,
+  onDownloadMarkdown,
+  onDownloadDocx,
   onDownloadBundle,
   bundleBusy,
 }: Props) {
@@ -30,8 +34,8 @@ export function ProjectExportPanel({
     <>
       <div className={styles.toolbar}>
         <span>
-          先根据当前剧本生成 .rpy 预览，确认无误后再下载；工程 JSON 可随时导出。
-          需要可直接运行的工程时，下载 Ren'Py 项目包（zip）。
+          先根据当前剧本生成 .rpy 预览；投稿可直接下载 Markdown / Word 稿，工程
+          JSON 随时导出；需要可运行工程时下载 Ren'Py 项目包（zip）。
         </span>
         <div className={styles.aiQuick}>
           <button type="button" className={styles.primary} onClick={onGenerateRpy}>
@@ -50,6 +54,12 @@ export function ProjectExportPanel({
             }
           >
             下载 .rpy
+          </button>
+          <button type="button" onClick={onDownloadMarkdown} title="投稿用 Markdown 稿">
+            下载 Markdown
+          </button>
+          <button type="button" onClick={onDownloadDocx} title="投稿用 Word 稿（.docx）">
+            下载 Word
           </button>
           <button type="button" onClick={onDownloadJson}>
             下载工程 .json

@@ -163,6 +163,18 @@ export async function exportJson(id: string): Promise<Blob> {
   return res.blob();
 }
 
+/** Submission export: whole project as readable Markdown. */
+export async function exportMarkdown(id: string): Promise<Blob> {
+  const res = await authedRawFetch(`/projects/${id}/export/markdown`);
+  return res.blob();
+}
+
+/** Submission export: whole project as a styled Word document. */
+export async function exportDocx(id: string): Promise<Blob> {
+  const res = await authedRawFetch(`/projects/${id}/export/docx`);
+  return res.blob();
+}
+
 /** Full Ren'Py project skeleton (script/options/gui/README) as a zip blob. */
 export async function exportRenpyBundle(id: string): Promise<Blob> {
   const res = await authedRawFetch(`/projects/${id}/export/bundle`);
