@@ -23,6 +23,7 @@ import type {
 } from "../types/vn";
 import { EmptyStage } from "./EmptyStage";
 import { FactExtractReview } from "./FactExtractReview";
+import { CharacterArcsPanel } from "./CharacterArcsPanel";
 import { usePrompt } from "../lib/confirmDialog";
 import styles from "./AnalysisPanels.module.css";
 
@@ -56,7 +57,7 @@ export function AnalysisPanels({
 }: Props) {
   const prompt = usePrompt();
   const [sub, setSub] = useState<
-    "branch" | "chars" | "timeline" | "voice" | "consistency"
+    "branch" | "chars" | "timeline" | "voice" | "consistency" | "arcs"
   >("branch");
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceReport, setVoiceReport] = useState<VoiceReport | null>(null);
@@ -388,6 +389,7 @@ export function AnalysisPanels({
             ["timeline", "时间线"],
             ["voice", "语气检查"],
             ["consistency", "一致性"],
+            ["arcs", "弧线"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -765,6 +767,16 @@ export function AnalysisPanels({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {sub === "arcs" && (
+        <div className={styles.panel}>
+          <p className={styles.hint}>
+            弧线层：各章对白行数反映角色出场热度；断层提示角色可能"掉线"，
+            时间线事件标注角色关键节点（按角色名匹配事件标题/摘要）。
+          </p>
+          <CharacterArcsPanel project={project} />
         </div>
       )}
     </section>

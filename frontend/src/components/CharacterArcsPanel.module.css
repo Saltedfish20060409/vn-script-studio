@@ -1,0 +1,154 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.hint {
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  margin: 0;
+}
+
+.chartWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: color-mix(in srgb, var(--panel, #fdfdfc) 60%, transparent);
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.gridLine {
+  stroke: color-mix(in srgb, var(--line) 70%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.axisTick {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.axisText {
+  fill: var(--ink-soft);
+  font-size: 10px;
+  font-family: var(--font-display);
+}
+
+.legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  margin: 0;
+  padding: 0;
+  font-size: 0.82rem;
+  color: var(--ink);
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.legendCount {
+  color: var(--ink-soft);
+}
+
+.swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.6rem;
+}
+
+.card {
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+  background: color-mix(in srgb, var(--panel, #fdfdfc) 55%, transparent);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.cardMeta {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.cardGrid {
+  display: flex;
+  gap: 1rem;
+  margin: 0;
+}
+
+.cardGrid div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.cardGrid dt {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.cardGrid dd {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.events {
+  list-style: none;
+  margin: 0;
+  padding: 0.4rem 0 0;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.events li {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+
+.events em {
+  font-style: normal;
+  color: var(--accent);
+  flex-shrink: 0;
+}
