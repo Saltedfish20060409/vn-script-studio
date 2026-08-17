@@ -168,6 +168,8 @@ class ShareOut(BaseModel):
     title: str
     project: Dict[str, Any]
     created_at: datetime
+    # Public landing-page preview: chapter text taste + character list
+    preview: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SettingsOut(BaseModel):

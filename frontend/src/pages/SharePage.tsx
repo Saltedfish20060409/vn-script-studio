@@ -74,6 +74,8 @@ export default function SharePage() {
   }
 
   const p: VnProject = share.project;
+  const previews = share.preview?.chapterPreviews ?? [];
+  const base = previews.length > 0 ? 1 : 0;
 
   return (
     <div className={`vnss-app ${styles.wrap}`}>
@@ -84,26 +86,36 @@ export default function SharePage() {
             SH
           </span>
           <div className={styles.headCopy}>
-            <p className={styles.badge}>只读设定包 · 无需会员</p>
+            <p className={styles.badge}>作品发布页 · 无需会员</p>
             <h1>{p.title}</h1>
             <p className={styles.meta}>
               {p.genre || "未标题材"} · 分享于{" "}
               {new Date(share.created_at).toLocaleString()}
+              {share.preview?.stats
+                ? ` · ${share.preview.stats.chapters} 章 / 约 ${share.preview.stats.words} 字`
+                : ""}
             </p>
             {p.logline && <p className={styles.logline}>{p.logline}</p>}
           </div>
         </div>
       </header>
 
-      <ShareSection idx="01" title="世界观">
+      {previews.length > 0 && (
+        <ShareSection idx="01" title="正文试读">
+          <p className={styles.muted}>试读片段由作者发布时生成，正文仅展示节选。</p>
+          <ChapterPreviewList previews={previews} />
+        </ShareSection>
+      )}
+
+      <ShareSection idx={previews.length > 0 ? "02" : "01"} title="世界观">
         <pre>{p.bible?.world || p.lore || "—"}</pre>
       </ShareSection>
-      <ShareSection idx="02" title="背景 / 大纲">
+      <ShareSection idx={previews.length > 0 ? "03" : "02"} title="背景 / 大纲">
         <pre>{p.bible?.background || "—"}</pre>
         <pre>{p.bible?.outline || ""}</pre>
       </ShareSection>
 
-      <ShareSection idx="03" title="角色">
+      <ShareSection idx={String(3 + base)} title="角色">
         <div className={styles.grid}>
           {p.characters.map((c) => (
             <article key={c.id} className={styles.card}>
@@ -118,7 +130,7 @@ export default function SharePage() {
         </div>
       </ShareSection>
 
-      <ShareSection idx="04" title="地点">
+      <ShareSection idx={String(4 + base)} title="地点">
         <ul className={styles.list}>
           {(p.locations ?? []).map((l) => (
             <li key={l.id}>
@@ -131,7 +143,7 @@ export default function SharePage() {
         </ul>
       </ShareSection>
 
-      <ShareSection idx="05" title="变量 / 好感度">
+      <ShareSection idx={String(5 + base)} title="变量 / 好感度">
         <ul className={styles.list}>
           {(p.variables ?? []).map((v) => (
             <li key={v.id}>
@@ -143,7 +155,7 @@ export default function SharePage() {
         </ul>
       </ShareSection>
 
-      <ShareSection idx="06" title="立绘表情">
+      <ShareSection idx={String(6 + base)} title="立绘表情">
         <div className={styles.grid}>
           {(p.sprites ?? []).map((s) => (
             <article key={s.id} className={styles.card}>
@@ -164,10 +176,42 @@ export default function SharePage() {
         </div>
       </ShareSection>
 
-      <ShareSection idx="07" title="章节一览（无正文）">
+      <ShareSection idx={String(7 + base)} title="章节一览">
         <ChapterList project={p} />
       </ShareSection>
+      <footer className={styles.footer}>
+        由 VN Script Studio 生成 · 只读发布
+      </footer>
     </div>
+  );
+}
+
+function ChapterPreviewList({
+  previews,
+}: {
+  previews: Array<{ chapterId: string; title: string; text: string }>;
+}) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  return (
+    <ul className={styles.list}>
+      {previews.map((c) => {
+        const open = openId === c.chapterId;
+        return (
+          <li key={c.chapterId} className={styles.previewItem}>
+            <button
+              type="button"
+              className={styles.previewToggle}
+              onClick={() => setOpenId(open ? null : c.chapterId)}
+              aria-expanded={open}
+            >
+              <span>{c.title}</span>
+              <span className={styles.muted}>{open ? "收起 ▲" : "试读 ▼"}</span>
+            </button>
+            {open && <pre className={styles.previewText}>{c.text}</pre>}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

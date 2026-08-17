@@ -263,6 +263,16 @@ export interface ShareOut {
   title: string;
   project: VnProject;
   created_at: string;
+  /** Public landing-page preview: chapter text taste + character list */
+  preview?: {
+    chapterPreviews?: Array<{
+      chapterId: string;
+      title: string;
+      text: string;
+    }>;
+    characters?: Array<{ name: string; bio: string }>;
+    stats?: { chapters: number; words: number };
+  };
 }
 
 export function getShare(token: string): Promise<ShareOut> {
