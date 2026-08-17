@@ -463,10 +463,14 @@ export function AnalysisPanels({
             role="img"
             aria-label="角色关系图"
           >
-            {charLinks.map((l) => {
+            {charLinks.map((l, li) => {
               const a = charLayout.find((c) => c.id === l.fromId);
               const b = charLayout.find((c) => c.id === l.toId);
               if (!a || !b) return null;
+              const mx = (a.x + b.x) / 2;
+              const my = (a.y + b.y) / 2;
+              // 法线方向错开：多条边汇聚同一点时标签避免互相压叠
+              const off = ((li % 3) - 1) * 12;
               return (
                 <g key={l.id} opacity={l.stale ? 0.45 : 1}>
                   <line
@@ -479,12 +483,16 @@ export function AnalysisPanels({
                     strokeDasharray={l.stale ? "4 3" : undefined}
                   />
                   <text
-                    x={(a.x + b.x) / 2}
-                    y={(a.y + b.y) / 2 - 4}
-                    fontSize="11"
+                    x={mx}
+                    y={my + off}
+                    fontSize="10"
                     fill="currentColor"
                     textAnchor="middle"
-                    opacity={0.7}
+                    opacity={0.9}
+                    style={{ paintOrder: "stroke" }}
+                    stroke="var(--panel-bg, #ffffff)"
+                    strokeWidth={3}
+                    strokeLinejoin="round"
                   >
                     {l.label}
                     {l.stale ? " ?" : ""}

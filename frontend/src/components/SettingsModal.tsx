@@ -714,7 +714,7 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
           {(pane === "theme" || pane === "bg") && (
             <MascotFigure
               className={styles.mascotFigure}
-              size="md"
+              size="sm"
               mood={holdingBg ? "cheer" : "idle"}
               line={mascotText}
             />

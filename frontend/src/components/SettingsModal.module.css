@@ -67,7 +67,7 @@
 
 .mascotDock {
   position: absolute;
-  right: 0.65rem;
+  left: 0.65rem;
   bottom: 0.55rem;
   z-index: 2;
   max-width: calc(100% - 1.3rem);
