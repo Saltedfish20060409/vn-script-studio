@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import Settings, get_settings
 from app.core.project import uid
 from app.core.rate_limit import check_rate
 from app.db import get_db
@@ -27,6 +28,7 @@ async def report_error(
     body: ErrorReportIn,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     """Public, unauthenticated error-report sink (rate-limited per IP).
 
@@ -40,11 +42,10 @@ async def report_error(
     user_id: Optional[str] = None
     auth = request.headers.get("Authorization")
     if auth and auth.startswith("Bearer "):
-        from app.config import get_settings
         from app.security import decode_token
 
         try:
-            payload = decode_token(auth[7:], get_settings())
+            payload = decode_token(auth[7:], settings)
             if payload and payload.get("sub"):
                 user_id = str(payload["sub"])
         except Exception:  # noqa: BLE001 — optional attribution only

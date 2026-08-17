@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.core.ai import DeepSeekConfig
 from app.db import get_db
 from app.models import User
@@ -22,6 +22,7 @@ async def learn_style_memory_endpoint(
     project_id: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     """LLM distils a writing-style guide from the author's own chapters and
     stores it on the project; the agent context injects it on later turns."""
@@ -29,7 +30,6 @@ async def learn_style_memory_endpoint(
 
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
-    settings = get_settings()
     creds = await resolve_llm_credentials(db, user.id, settings)
     if not creds.get("api_key"):
         raise HTTPException(status_code=400, detail="服务端未配置 DEEPSEEK_API_KEY")

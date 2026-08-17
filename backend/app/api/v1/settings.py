@@ -3,7 +3,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.core.ai import DeepSeekConfig
 from app.core.llm_http import content_from_response
 from app.core.llm_provider import provider_from_config
@@ -41,11 +41,11 @@ async def put_settings_api(
 async def model_catalogue(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     """Curated OpenAI-compatible model presets + the model currently in effect."""
     from app.core.model_presets import list_model_presets
 
-    settings = get_settings()
     creds = await resolve_llm_credentials(db, user.id, settings)
     active = None
     if creds.get("api_key"):
@@ -62,13 +62,13 @@ async def test_llm_api(
     body: TestLlmIn,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     """Fire a minimal chat request against the given (or saved) credentials.
 
     Returns 200 with ok=true/false so the UI can render the outcome inline;
     a non-200 only means the request itself was malformed.
     """
-    settings = get_settings()
     creds = await resolve_llm_credentials(db, user.id, settings)
     api_key = (body.api_key or "").strip() or creds.get("api_key") or ""
     if not api_key or "your-key" in api_key:

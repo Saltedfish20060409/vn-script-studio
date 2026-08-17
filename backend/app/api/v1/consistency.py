@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.core.ai import DeepSeekConfig
 from app.db import get_db
 from app.models import User
@@ -44,13 +44,13 @@ async def consistency_audit(
     body: ConsistencyAuditIn,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     """Scan the whole novel against the authoritative setting for conflicts."""
     from app.core.consistency_audit import run_consistency_audit
 
     row = await get_project_readable(db, user, project_id)
     vn = row_to_vn(row)
-    settings = get_settings()
     creds = await resolve_llm_credentials(db, user.id, settings)
     if not creds.get("api_key"):
         raise HTTPException(status_code=400, detail="服务端未配置 DEEPSEEK_API_KEY")
