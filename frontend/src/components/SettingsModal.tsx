@@ -15,6 +15,7 @@ import {
   type ModelPreset,
   type UsageTotals,
 } from "../api/misc";
+import { changeLocale, t, useLocale } from "../lib/i18n";
 import { MascotFigure } from "./MascotFigure";
 import { mascotLine } from "../lib/mascotCopy";
 import styles from "./SettingsModal.module.css";
@@ -184,28 +185,28 @@ function LlmPane() {
 
   return (
     <div className={styles.form}>
-      <p className={styles.note}>
-        配置你自己的模型 Key 后，AI 请求将优先使用该 Key（按账号隔离，服务端加密存储）。
-        留空则回退服务端环境变量配置。
-      </p>
+      <p className={styles.note}>{t("settings.llmNote")}</p>
       {error && <p className={styles.error}>{error}</p>}
       {loaded && (
         <p className={styles.note}>
-          当前生效：{loaded.active_model || "deepseek-chat"} ·{" "}
+          {t("settings.activeModel", {
+            model: loaded.active_model || "deepseek-chat",
+          })}{" "}
+          ·{" "}
           {loaded.credential_source === "user"
-            ? "使用你的 Key"
-            : "使用服务端配置"}
+            ? t("settings.activeUser")
+            : t("settings.activeServer")}
         </p>
       )}
       {presets.length > 0 && (
         <label>
-          模型预设
+          {t("settings.preset")}
           <select
             value=""
             onChange={(e) => applyPreset(e.target.value)}
             data-testid="model-preset-select"
           >
-            <option value="">选择预设快速填入…</option>
+            <option value="">{t("settings.presetPick")}</option>
             {presets.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.label}
@@ -218,7 +219,7 @@ function LlmPane() {
         </label>
       )}
       <label>
-        主模型 API Key
+        {t("settings.apiKey")}
         <input
           type="password"
           value={apiKey}
@@ -230,7 +231,7 @@ function LlmPane() {
         />
       </label>
       <label>
-        Base URL
+        {t("settings.baseUrl")}
         <input
           type="text"
           value={baseUrl}
@@ -239,7 +240,7 @@ function LlmPane() {
         />
       </label>
       <label>
-        模型名
+        {t("settings.model")}
         <input
           type="text"
           value={model}
@@ -253,9 +254,9 @@ function LlmPane() {
         </p>
       )}
       <hr className={styles.divider} />
-      <p className={styles.note}>可选：独立的评审模型（critic，改稿对照时使用）。</p>
+      <p className={styles.note}>{t("settings.criticHint")}</p>
       <label>
-        评审模型 API Key
+        {t("settings.criticKey")}
         <input
           type="password"
           value={criticKey}
@@ -269,7 +270,7 @@ function LlmPane() {
         />
       </label>
       <label>
-        评审 Base URL
+        {t("settings.criticBaseUrl")}
         <input
           type="text"
           value={criticBaseUrl}
@@ -278,7 +279,7 @@ function LlmPane() {
         />
       </label>
       <label>
-        评审模型名
+        {t("settings.criticModel")}
         <input
           type="text"
           value={criticModel}
@@ -293,7 +294,7 @@ function LlmPane() {
           disabled={saving}
           onClick={() => void save()}
         >
-          {saving ? "保存中…" : "保存凭据"}
+          {saving ? t("settings.saveBusy") : t("settings.save")}
         </button>
         <button
           type="button"
@@ -301,7 +302,7 @@ function LlmPane() {
           disabled={testing}
           onClick={() => void runTest()}
         >
-          {testing ? "测试中…" : "测试连接"}
+          {testing ? t("settings.testing") : t("settings.testConn")}
         </button>
         <button
           type="button"
@@ -320,10 +321,10 @@ function LlmPane() {
             }
           })()}
         >
-          清除主 Key
+          {t("settings.clearMainKey")}
         </button>
         <button type="button" className={styles.ghost} onClick={load}>
-          刷新
+          {t("settings.refresh")}
         </button>
       </div>
     </div>
@@ -411,6 +412,7 @@ function BgPanPreview({  image,
 
 export function SettingsModal({ open, onClose, settings, onChange }: Props) {
   const [pane, setPane] = useState<Pane>("theme");
+  const locale = useLocale();
   const fileRef = useRef<HTMLInputElement>(null);
   const idleLineRef = useRef(mascotLine("settings"));
   const panLineRef = useRef(mascotLine("settingsPan"));
@@ -494,10 +496,10 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
           <nav className={styles.nav}>
             {(
               [
-                ["theme", "01", "外观"],
-                ["bg", "02", "工具背景"],
-                ["usage", "03", "用量"],
-                ["llm", "04", "模型"],
+                ["theme", "01", t("settings.theme")],
+                ["bg", "02", t("settings.wallpaper")],
+                ["usage", "03", t("settings.usage")],
+                ["llm", "04", t("settings.llm")],
               ] as const
             ).map(([id, idx, label]) => (
               <button
@@ -563,6 +565,17 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                 >
                   恢复默认字号
                 </button>
+                <label>
+                  {t("settings.lang")}
+                  <select
+                    value={locale}
+                    onChange={(e) => changeLocale(e.target.value as "zh" | "en")}
+                    data-testid="lang-select"
+                  >
+                    <option value="zh">{t("settings.lang.zh")}</option>
+                    <option value="en">{t("settings.lang.en")}</option>
+                  </select>
+                </label>
                 <p className={styles.note}>
                   模型 API Key 可在「模型」页签按账号配置（可选）；写作工艺与自检
                   由服务端环境变量配置。
