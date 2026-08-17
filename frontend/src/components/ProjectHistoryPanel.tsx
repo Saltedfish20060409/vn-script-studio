@@ -1,6 +1,7 @@
 import type {
   MemoryArchiveDetail,
   MemoryArchiveSummary,
+  SnapshotDiffResult,
   SnapshotSummary,
 } from "../api/client";
 import styles from "./StudioApp.module.css";
@@ -11,6 +12,9 @@ type Props = {
   memoryDetail: MemoryArchiveDetail | null;
   snapLabel: string;
   snapshots: SnapshotSummary[];
+  compareBusy: boolean;
+  compareResult: SnapshotDiffResult | null;
+  compareAgainstId: string | null;
   shareUrl: string;
   hasShare: boolean;
   onArchiveMemory: () => void;
@@ -20,9 +24,83 @@ type Props = {
   onTakeSnapshot: () => void;
   onRestoreSnapshot: (id: string) => void;
   onDeleteSnapshot: (id: string) => void;
+  onCompareSnapshot: (id: string) => void;
+  onCloseCompare: () => void;
   onCreateShare: () => void;
   onRevokeShare: () => void;
 };
+
+function fmtDelta(diff: number, suffix = "字"): string {
+  if (diff === 0) return "±0";
+  return diff > 0 ? `+${diff}${suffix}` : `${diff}${suffix}`;
+}
+
+function CompareReport({
+  result,
+  onClose,
+}: {
+  result: SnapshotDiffResult;
+  onClose: () => void;
+}) {
+  const changedChapters = result.chapters.filter((c) => c.status !== "same");
+  const changedChars = result.characters.filter((c) => c.status !== "same");
+  return (
+    <div className={styles.memoryPeek}>
+      <div className={styles.toolbar}>
+        <strong>快照对比</strong>
+        <button type="button" className={styles.ghost} onClick={onClose}>
+          关闭
+        </button>
+      </div>
+      <p className={styles.hint}>{result.summary}</p>
+      {changedChapters.length > 0 && (
+        <ul className={styles.snapList}>
+          {changedChapters.map((c) => (
+            <li key={c.chapterId}>
+              <span>
+                {c.title || c.chapterId}
+                <br />
+                <small>
+                  {c.status === "added"
+                    ? "新增章节"
+                    : c.status === "removed"
+                      ? "已删除章节"
+                      : `字数 ${fmtDelta(c.wordsTo - c.wordsFrom)} · 对白 ${fmtDelta(
+                          c.linesTo - c.linesFrom,
+                          "行"
+                        )}`}
+                </small>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {changedChars.length > 0 && (
+        <p className={styles.hint}>
+          角色变化：
+          {changedChars
+            .map(
+              (c) =>
+                `${c.name}（${c.status === "added" ? "新增" : "移除"}）`
+            )
+            .join("、")}
+        </p>
+      )}
+      {(result.locations.added > 0 ||
+        result.locations.removed > 0 ||
+        result.timeline.added > 0 ||
+        result.timeline.removed > 0) && (
+        <p className={styles.hint}>
+          地点 +{result.locations.added}/-{result.locations.removed} ·
+          时间线 +{result.timeline.added}/-{result.timeline.removed}
+        </p>
+      )}
+      {changedChapters.length === 0 && changedChars.length === 0 ? (
+        <p className={styles.hint}>与当前版本没有章节或角色差异。</p>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * 项目 → 快照 / 分享 sub-tab: long-term memory archives, snapshots, share link.
@@ -34,6 +112,9 @@ export function ProjectHistoryPanel({
   memoryDetail,
   snapLabel,
   snapshots,
+  compareBusy,
+  compareResult,
+  compareAgainstId,
   shareUrl,
   hasShare,
   onArchiveMemory,
@@ -43,6 +124,8 @@ export function ProjectHistoryPanel({
   onTakeSnapshot,
   onRestoreSnapshot,
   onDeleteSnapshot,
+  onCompareSnapshot,
+  onCloseCompare,
   onCreateShare,
   onRevokeShare,
 }: Props) {
@@ -130,6 +213,14 @@ export function ProjectHistoryPanel({
                 <button
                   type="button"
                   className={styles.ghost}
+                  disabled={compareBusy}
+                  onClick={() => onCompareSnapshot(s.id)}
+                >
+                  {compareBusy && compareAgainstId === s.id ? "对比中…" : "对比当前"}
+                </button>
+                <button
+                  type="button"
+                  className={styles.ghost}
                   onClick={() => onRestoreSnapshot(s.id)}
                 >
                   回退到此
@@ -146,6 +237,7 @@ export function ProjectHistoryPanel({
           ))}
           {snapshots.length === 0 && <li>尚无快照</li>}
         </ul>
+        {compareResult && <CompareReport result={compareResult} onClose={onCloseCompare} />}
       </div>
       <div className={styles.shareBox}>
         <strong>只读分享</strong>

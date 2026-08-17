@@ -64,6 +64,7 @@ from app.schemas import (
     ProjectPutIn,
     ProjectSummary,
     ShareCreateOut,
+    SnapshotCompareIn,
     SnapshotCreateIn,
     VoiceCheckIn,
 )
@@ -985,6 +986,41 @@ async def delete_snapshot(
         raise HTTPException(status_code=404, detail="快照不存在")
     await db.commit()
     return {"ok": True}
+
+
+@router.post("/{project_id}/snapshots/compare")
+async def compare_snapshots_endpoint(
+    project_id: str,
+    body: SnapshotCompareIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Deterministic diff: snapshot vs snapshot, or snapshot vs live project.
+
+    Lets the user preview what a restore would change before committing.
+    """
+    from app.core.snapshot_diff import compare_snapshots
+    from app.core.snapshots import content_hash_for_payload, snapshot_payload_dict
+
+    row = await get_owned_project(db, user, project_id)
+    from_payload = await get_snapshot_payload(db, project_id, body.from_snap_id)
+    if from_payload is None:
+        raise HTTPException(status_code=404, detail="源快照不存在")
+    if body.to_snap_id:
+        to_payload = await get_snapshot_payload(db, project_id, body.to_snap_id)
+        if to_payload is None:
+            raise HTTPException(status_code=404, detail="目标快照不存在")
+    else:
+        to_payload = snapshot_payload_dict(row_to_vn(row))
+
+    diff = compare_snapshots(from_payload, to_payload)
+    diff["fromHash"] = content_hash_for_payload(
+        decode_snapshot_payload(from_payload)
+    )
+    diff["toHash"] = content_hash_for_payload(
+        decode_snapshot_payload(to_payload)
+    )
+    return diff
 
 
 def _conversation_out(sess: AgentSession) -> AgentConversationOut:

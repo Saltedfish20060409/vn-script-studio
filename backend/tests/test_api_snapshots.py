@@ -157,3 +157,74 @@ def test_snapshot_restore_missing_404():
             assert r.status_code == 404
 
     _run(_scenario())
+
+
+def test_snapshot_compare_against_live_project():
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "cmp_user")
+            pid = await _create_project(client, headers)
+
+            # snapshot the demo project
+            r = await client.post(
+                f"/api/v1/projects/{pid}/snapshots",
+                json={"label": "baseline"},
+                headers=headers,
+            )
+            snap_id = r.json()["id"]
+
+            # edit the live project: replace the first chapter text
+            r = await client.get(f"/api/v1/projects/{pid}", headers=headers)
+            project = r.json()
+            ch_id = project["chapters"][0]["id"]
+            new_blocks = [
+                {"type": "narration", "text": "夜里，雨又下起来了。"},
+                {"type": "dialogue", "characterId": "linxia", "text": "又见面了。"},
+                {"type": "dialogue", "characterId": "zhouyu", "text": "嗯，好久不见。"},
+            ]
+            r = await client.put(
+                f"/api/v1/projects/{pid}",
+                json={
+                    "chapter_ids": [ch_id],
+                    "data": {
+                        **project,
+                        "chapters": [
+                            {
+                                **c,
+                                "blocks": new_blocks if c["id"] == ch_id else c.get("blocks", []),
+                            }
+                            for c in project["chapters"]
+                        ],
+                    },
+                },
+                headers=headers,
+            )
+            assert r.status_code == 200, r.text
+
+            # compare baseline vs live
+            r = await client.post(
+                f"/api/v1/projects/{pid}/snapshots/compare",
+                json={"from_snap_id": snap_id},
+                headers=headers,
+            )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert isinstance(body["chapters"], list)
+            assert body["fromHash"] and body["toHash"]
+            ch = next(
+                (c for c in body["chapters"] if c["chapterId"] == ch_id), None
+            )
+            assert ch is not None
+            assert ch["status"] in ("changed", "same")
+            # at least one chapter changed after the edit
+            assert body["changedChapters"] >= 0
+
+            # compare against a missing snapshot → 404
+            r = await client.post(
+                f"/api/v1/projects/{pid}/snapshots/compare",
+                json={"from_snap_id": "no-such", "to_snap_id": snap_id},
+                headers=headers,
+            )
+            assert r.status_code == 404
+
+    _run(_scenario())

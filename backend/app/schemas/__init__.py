@@ -283,6 +283,14 @@ class ChapterReviseApplyIn(BaseModel):
     conversation_id: Optional[str] = None
 
 
+class SnapshotCompareIn(BaseModel):
+    """Diff a stored snapshot against another snapshot (or the live project)."""
+
+    from_snap_id: str = Field(min_length=1, max_length=64)
+    # When omitted, compare against the project's current state.
+    to_snap_id: Optional[str] = Field(default=None, max_length=64)
+
+
 class AgentIngestSettingsIn(BaseModel):
     attachments: List[Dict[str, Any]] = Field(default_factory=list)
     note: Optional[str] = None

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   ApiError,
   archiveChapterMemory,
+  compareSnapshot,
   createProject,
   createShare,
   createSnapshot,
@@ -32,6 +33,7 @@ import {
   type MemoryArchiveDetail,
   type MemoryArchiveSummary,
   type ProjectSummary,
+  type SnapshotDiffResult,
   type SnapshotSummary,
 } from "../api/client";
 import { useAuth } from "../lib/authContext";
@@ -192,6 +194,9 @@ export function StudioApp() {
   const [mapExtractBusy, setMapExtractBusy] = useState(false);
   const [snapLabel, setSnapLabel] = useState("");
   const [snapshots, setSnapshots] = useState<SnapshotSummary[]>([]);
+  const [compareBusy, setCompareBusy] = useState(false);
+  const [compareResult, setCompareResult] = useState<SnapshotDiffResult | null>(null);
+  const [compareAgainstId, setCompareAgainstId] = useState<string | null>(null);
   const [memoryArchives, setMemoryArchives] = useState<MemoryArchiveSummary[]>([]);
   const [memoryDetail, setMemoryDetail] = useState<MemoryArchiveDetail | null>(null);
   const [memoryDetailBusy, setMemoryDetailBusy] = useState(false);
@@ -1168,8 +1173,33 @@ export function StudioApp() {
     try {
       await apiDeleteSnapshot(project.id, snapId);
       setSnapshots((prev) => prev.filter((s) => s.id !== snapId));
+      if (compareAgainstId === snapId) setCompareResult(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "删除快照失败");
+    }
+  }
+
+  async function compareSnapshotById(snapId: string) {
+    if (!project) return;
+    commitEditor();
+    setCompareBusy(true);
+    setCompareAgainstId(snapId);
+    setCompareResult(null);
+    try {
+      const latest = buildLatestProject();
+      if (latest) {
+        const saved = await putProject(latest.id, latest, latest.updatedAt);
+        lastSavedRef.current = saved;
+        skipNextProjectSave.current = true;
+        setProject(saved);
+      }
+      const diff = await compareSnapshot(project.id, snapId);
+      setCompareResult(diff);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "对比失败");
+      setCompareAgainstId(null);
+    } finally {
+      setCompareBusy(false);
     }
   }
 
@@ -1583,6 +1613,9 @@ export function StudioApp() {
                     memoryDetail={memoryDetail}
                     snapLabel={snapLabel}
                     snapshots={snapshots}
+                    compareBusy={compareBusy}
+                    compareResult={compareResult}
+                    compareAgainstId={compareAgainstId}
                     shareUrl={shareUrl}
                     hasShare={Boolean(project.shareId)}
                     onArchiveMemory={() => void archiveLongMemory()}
@@ -1592,6 +1625,11 @@ export function StudioApp() {
                     onTakeSnapshot={() => void takeSnapshot()}
                     onRestoreSnapshot={(id) => void restoreSnapshotById(id)}
                     onDeleteSnapshot={(id) => void deleteSnapshotById(id)}
+                    onCompareSnapshot={(id) => void compareSnapshotById(id)}
+                    onCloseCompare={() => {
+                      setCompareResult(null);
+                      setCompareAgainstId(null);
+                    }}
                     onCreateShare={() => void createShareLink()}
                     onRevokeShare={() => void revokeShareLink()}
                   />

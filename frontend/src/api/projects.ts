@@ -298,6 +298,47 @@ export function deleteSnapshot(
   });
 }
 
+export interface SnapshotChapterDiff {
+  chapterId: string;
+  title: string;
+  status: "added" | "removed" | "changed" | "same";
+  wordsFrom: number;
+  wordsTo: number;
+  linesFrom: number;
+  linesTo: number;
+}
+
+export interface SnapshotCharacterDiff {
+  id: string;
+  name: string;
+  status: "added" | "removed" | "same";
+}
+
+export interface SnapshotDiffResult {
+  summary: string;
+  chapters: SnapshotChapterDiff[];
+  characters: SnapshotCharacterDiff[];
+  locations: { added: number; removed: number; changed: number };
+  timeline: { added: number; removed: number; changed: number };
+  changedChapters: number;
+  fromHash: string;
+  toHash: string;
+}
+
+export function compareSnapshot(
+  id: string,
+  fromSnapId: string,
+  toSnapId?: string
+): Promise<SnapshotDiffResult> {
+  return apiFetch(`/projects/${id}/snapshots/compare`, {
+    method: "POST",
+    timeoutMs: 120000,
+    body: JSON.stringify(
+      toSnapId ? { from_snap_id: fromSnapId, to_snap_id: toSnapId } : { from_snap_id: fromSnapId }
+    ),
+  });
+}
+
 export interface AgentRunInBody {
   messages: AgentChatMessage[];
   chapter_id?: string;
