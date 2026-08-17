@@ -297,10 +297,18 @@ async def create_project_row(
     *,
     title: Optional[str] = None,
     from_demo: bool = False,
+    template_id: Optional[str] = None,
     vn: Optional[VnProject] = None,
 ) -> Project:
     if vn is not None:
         project = normalize_project(vn)
+    elif template_id:
+        from app.core.templates import build_from_template
+
+        project = build_from_template(template_id, title=title)
+        project = normalize_project(
+            {**project_to_dict(project), "id": uid("proj")}
+        )
     elif from_demo:
         project = create_demo_project()
         project = normalize_project(

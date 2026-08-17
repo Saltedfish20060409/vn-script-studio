@@ -64,6 +64,7 @@ import { StudioBootScreen } from "./StudioBootScreen";
 import { StudioChapterBar } from "./StudioChapterBar";
 import { StudioTabs } from "./StudioTabs";
 import { StudioTopBar } from "./StudioTopBar";
+import { TemplatePicker } from "./TemplatePicker";
 import { WorldPanel } from "./WorldPanel";
 import { WriteToolbar } from "./WriteToolbar";
 import { StudioErrorBoundary } from "./StudioErrorBoundary";
@@ -794,6 +795,27 @@ export function StudioApp() {
     }
   }
 
+  async function createFromTemplate(templateId: string) {
+    try {
+      const created = await createProject({ template_id: templateId });
+      await refreshProjectsList();
+      skipNextProjectSave.current = true;
+      setProject(created);
+      setChapterId(created.chapters[0]?.id ?? "");
+      saveWorkspace({
+        projectId: created.id,
+        chapterId: created.chapters[0]?.id ?? "",
+        tab: "write",
+        writeSub: "script",
+      });
+      setTab("write");
+      setWriteSub("script");
+      setStatus(`已从模板创建「${created.title}」`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "创建失败");
+    }
+  }
+
   async function deleteProjectById(id: string) {
     if (projectsList.length <= 1) {
       setError("至少保留一个剧本");
@@ -1385,6 +1407,7 @@ export function StudioApp() {
               示例《雨夜车站》
             </button>
           </div>
+          <TemplatePicker onPick={(tid) => void createFromTemplate(tid)} />
         </EmptyStage>
       </StudioBootScreen>
     );
@@ -1518,6 +1541,7 @@ export function StudioApp() {
                     onOpen={(id) => void switchProject(id)}
                     onCreateBlank={() => void createBlank()}
                     onCreateDemo={() => void createDemo()}
+                    onPickTemplate={(tid) => void createFromTemplate(tid)}
                     onImportClick={() => fileRef.current?.click()}
                     onDuplicate={(id) => void duplicateProjectById(id)}
                     onDelete={(id) => void deleteProjectById(id)}

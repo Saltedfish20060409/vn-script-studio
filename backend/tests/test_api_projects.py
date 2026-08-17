@@ -313,3 +313,38 @@ def test_project_stats_reports_words_and_activity():
             assert body["activity"][-1]["edits"] == 1
 
     _run(_scenario())
+
+
+def test_templates_list_and_create():
+    """GET /projects/templates lists scaffolds; POST with template_id creates."""
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "tmpl_owner")
+
+            r = await client.get("/api/v1/projects/templates", headers=headers)
+            assert r.status_code == 200, r.text
+            templates = r.json()["templates"]
+            ids = {t["id"] for t in templates}
+            assert {"slice_of_life", "mystery", "isekai"} <= ids
+
+            r = await client.post(
+                "/api/v1/projects",
+                json={"template_id": "mystery", "title": "我的谜题"},
+                headers=headers,
+            )
+            assert r.status_code == 200, r.text
+            proj = r.json()
+            assert proj["title"] == "我的谜题"
+            assert len(proj["chapters"]) == 1
+            # Fresh ids (not the template's canned ones).
+            assert proj["chapters"][0]["id"] != "start"
+
+            # Unknown template → 400 (not silent, not 500).
+            r2 = await client.post(
+                "/api/v1/projects",
+                json={"template_id": "does-not-exist"},
+                headers=headers,
+            )
+            assert r2.status_code == 400
+
+    _run(_scenario())

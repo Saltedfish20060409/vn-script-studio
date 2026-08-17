@@ -69,13 +69,25 @@ export function getProject(id: string): Promise<VnProject> {
 }
 
 export function createProject(
-  body: { title?: string; from_demo?: boolean } = {}
+  body: { title?: string; from_demo?: boolean; template_id?: string } = {}
 ): Promise<VnProject> {
   return apiFetch<VnProject>("/projects", {
     method: "POST",
     timeoutMs: 180000,
     body: JSON.stringify(body),
   });
+}
+
+export type ProjectTemplate = {
+  id: string;
+  title: string;
+  genre: string;
+  logline: string;
+  characters: string[];
+};
+
+export function listProjectTemplates(): Promise<{ templates: ProjectTemplate[] }> {
+  return apiFetch("/projects/templates");
 }
 
 export function putProject(

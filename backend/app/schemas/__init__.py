@@ -43,6 +43,9 @@ class ProjectSummary(BaseModel):
 class ProjectCreateIn(BaseModel):
     title: Optional[str] = None
     from_demo: bool = False
+    # Starter template id (see app/core/templates.py) — mutually exclusive
+    # with from_demo; template projects get a fresh set of ids.
+    template_id: Optional[str] = None
 
 
 class ProjectPutIn(BaseModel):

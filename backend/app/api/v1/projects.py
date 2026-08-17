@@ -119,15 +119,35 @@ async def list_projects(
     ]
 
 
+@router.get("/templates", response_model=dict)
+async def list_templates(user: User = Depends(get_current_user)):
+    """Starter templates metadata (title / genre / logline / characters)."""
+    from app.core.templates import list_template_meta
+
+    return {"templates": list_template_meta()}
+
+
 @router.post("", response_model=dict)
 async def create_project(
     body: ProjectCreateIn,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    row = await create_project_row(
-        db, user, title=body.title, from_demo=body.from_demo
-    )
+    if body.template_id:
+        from app.core.templates import TEMPLATES
+
+        if body.template_id not in TEMPLATES:
+            raise HTTPException(status_code=400, detail="未知模板")
+    try:
+        row = await create_project_row(
+            db,
+            user,
+            title=body.title,
+            from_demo=body.from_demo,
+            template_id=body.template_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail="未知模板") from exc
     return project_to_dict(row_to_vn(row))
 
 

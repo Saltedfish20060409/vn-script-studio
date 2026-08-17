@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
 import type { ProjectSummary } from "../api/client";
+import { TemplatePicker } from "./TemplatePicker";
 import styles from "./StudioApp.module.css";
 
 type Props = {
@@ -15,6 +16,7 @@ type Props = {
   onOpen: (id: string) => void;
   onCreateBlank: () => void;
   onCreateDemo: () => void;
+  onPickTemplate: (templateId: string) => void;
   onImportClick: () => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
@@ -33,6 +35,7 @@ export function ProjectLibraryPanel({
   onOpen,
   onCreateBlank,
   onCreateDemo,
+  onPickTemplate,
   onImportClick,
   onDuplicate,
   onDelete,
@@ -53,6 +56,7 @@ export function ProjectLibraryPanel({
           </button>
         </div>
       </div>
+      <TemplatePicker onPick={onPickTemplate} />
       <p className={styles.hint}>
         支持 .docx / .txt / .md / .rpy / 工程
         .json。卡片可点「重命名」或双击标题改名；顶栏标题也可随时改。
