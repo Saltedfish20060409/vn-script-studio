@@ -40,6 +40,17 @@ const EMPTY_LIBRARY = [
   "空白剧本或示例都可以，选一个开场。",
 ];
 
+const DESK_PET = [
+  "摸鱼中——你写你的，我眯一会儿。",
+  "又拖到凌晨？早点睡，稿子跑不了。",
+  "写不下去的时候，先写一句烂的。",
+  "这一章的角色在想什么？问问右下角的我。",
+  "喝口水，回来接着写。",
+  "在写哪一段？说给我听听。",
+  "别光盯着字数，剧情弧线更重要。",
+  "备份是安全感——记得点保存。",
+];
+
 function pick(pool: string[]): string {
   return pool[Math.floor(Math.random() * pool.length)] || pool[0] || "";
 }
@@ -56,6 +67,7 @@ export function mascotLine(
     | "emptyExport"
     | "emptyAnalysis"
     | "emptyLibrary"
+    | "deskPet"
 ): string {
   switch (kind) {
     case "confirmDanger":
@@ -76,6 +88,8 @@ export function mascotLine(
       return pick(EMPTY_ANALYSIS);
     case "emptyLibrary":
       return pick(EMPTY_LIBRARY);
+    case "deskPet":
+      return pick(DESK_PET);
     default:
       return pick(IDLE);
   }

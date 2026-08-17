@@ -1,0 +1,23 @@
+.placeholder {
+  width: 100%;
+  height: auto;
+  display: block;
+  /* 占位也有呼吸感：轻微上下浮动（真实帧图交付后由逐帧动画接管） */
+  animation: petFloat 1.6s ease-in-out infinite;
+}
+
+@keyframes petFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .placeholder {
+    animation: none;
+  }
+}

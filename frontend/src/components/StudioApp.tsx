@@ -69,6 +69,7 @@ import { StudioTopBar } from "./StudioTopBar";
 import { TemplatePicker } from "./TemplatePicker";
 import { OnboardingOverlay } from "./OnboardingOverlay";
 import { hasSeenTour } from "../lib/onboarding";
+import { QPet } from "./QPet";
 import { WorldPanel } from "./WorldPanel";
 import { WriteToolbar } from "./WriteToolbar";
 import { StudioErrorBoundary } from "./StudioErrorBoundary";
@@ -169,6 +170,7 @@ export function StudioApp() {
   >(cachedWs.projectSub || wsDefaults.projectSub);
   const [playOpen, setPlayOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(() => !hasSeenTour());
+  const [petCheer, setPetCheer] = useState(0);
   const [chapterId, setChapterId] = useState(cachedWs.chapterId || "");
   const otherLock = activeLocks.find(
     (l) => l.chapterId === chapterId && l.userId !== myUserId
@@ -512,6 +514,7 @@ export function StudioApp() {
       lastSavedRef.current = saved;
       skipNextProjectSave.current = true;
       setProject(saved);
+      setPetCheer((v) => v + 1);
       clearConflictDraft(saved.id);
       setSaveConflict(null);
       setProjectsList((prev) =>
@@ -1464,6 +1467,7 @@ export function StudioApp() {
       {tourOpen && project && (
         <OnboardingOverlay onDone={() => setTourOpen(false)} />
       )}
+      <QPet editorRef={editorTaRef} cheerSignal={petCheer} />
       {playOpen && project && chapter && (
         <ScriptPlayer
           chapter={chapter}

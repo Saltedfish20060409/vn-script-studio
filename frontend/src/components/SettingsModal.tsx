@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   applySettingsToDom,
   type AppSettings,
@@ -16,6 +16,11 @@ import {
   type UsageTotals,
 } from "../api/misc";
 import { t } from "../lib/i18n";
+import {
+  getDeskPetState,
+  setDeskPetEnabled,
+  subscribeDeskPet,
+} from "../lib/deskPet";
 import { MascotFigure } from "./MascotFigure";
 import { mascotLine } from "../lib/mascotCopy";
 import styles from "./SettingsModal.module.css";
@@ -412,6 +417,11 @@ function BgPanPreview({  image,
 
 export function SettingsModal({ open, onClose, settings, onChange }: Props) {
   const [pane, setPane] = useState<Pane>("theme");
+  const deskPetOn = useSyncExternalStore(
+    subscribeDeskPet,
+    () => getDeskPetState().enabled,
+    () => getDeskPetState().enabled
+  );
   const fileRef = useRef<HTMLInputElement>(null);
   const idleLineRef = useRef(mascotLine("settings"));
   const panLineRef = useRef(mascotLine("settingsPan"));
@@ -564,6 +574,20 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                 >
                   恢复默认字号
                 </button>
+                <label>
+                  桌宠
+                  <select
+                    value={deskPetOn ? "1" : "0"}
+                    onChange={(e) => setDeskPetEnabled(e.target.value === "1")}
+                    data-testid="desk-pet-toggle"
+                  >
+                    <option value="1">开启（可拖动 · 右键菜单）</option>
+                    <option value="0">关闭</option>
+                  </select>
+                  <span className={styles.note}>
+                    桌面小助手：点击换心情冒泡，右键有菜单；位置自动记住。
+                  </span>
+                </label>
                 <p className={styles.note}>
                   模型 API Key 可在「模型」页签按账号配置（可选）；写作工艺与自检
                   由服务端环境变量配置。

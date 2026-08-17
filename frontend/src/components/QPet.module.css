@@ -1,0 +1,87 @@
+.pet {
+  position: fixed;
+  z-index: 380;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.22));
+}
+
+.body {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  line-height: 0;
+}
+
+.body:active {
+  cursor: grabbing;
+}
+
+.frame {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.bubble {
+  max-width: 230px;
+  background: var(--panel-bg, #f6f8fc);
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--ink);
+  box-shadow: var(--shadow-md, 0 8px 20px rgba(0, 0, 0, 0.18));
+  animation: pop 180ms ease-out;
+}
+
+.menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  background: var(--panel-bg, #f6f8fc);
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  padding: 0.3rem;
+  box-shadow: var(--shadow-md, 0 8px 20px rgba(0, 0, 0, 0.18));
+}
+
+.menu button {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.7rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.menu button:hover {
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble {
+    animation: none;
+  }
+}
