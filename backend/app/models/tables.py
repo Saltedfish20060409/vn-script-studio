@@ -422,3 +422,25 @@ class WritingActivity(Base):
     words_removed: Mapped[int] = mapped_column(Integer, default=0)
     edits: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ErrorReport(Base):
+    """Client-side error reports (global window errors + React boundaries).
+
+    Collected for diagnosis; the public POST endpoint is rate-limited per IP
+    and never returns the stored payload back to the caller.
+    """
+
+    __tablename__ = "error_reports"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    level: Mapped[str] = mapped_column(String(16), default="error")
+    message: Mapped[str] = mapped_column(Text, default="")
+    stack: Mapped[str] = mapped_column(Text, default="")
+    url: Mapped[str] = mapped_column(String(1024), default="")
+    component: Mapped[str] = mapped_column(String(64), default="")
+    user_agent: Mapped[str] = mapped_column(String(512), default="")
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { reportError } from "../lib/errorReporter";
 
 type Props = {
   children: ReactNode;
@@ -20,6 +21,11 @@ export class StudioErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error(`[StudioErrorBoundary:${this.props.label || "app"}]`, error, info);
+    reportError({
+      message: error.message || String(error),
+      stack: error.stack || "",
+      component: this.props.label || "boundary",
+    });
   }
 
   render() {

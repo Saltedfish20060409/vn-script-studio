@@ -5,6 +5,7 @@ from app.api.v1 import (
     character_voice,
     collab,
     consistency,
+    errors,
     harness,
     lenses,
     lore,
@@ -34,3 +35,4 @@ api_router.include_router(usage.router)
 api_router.include_router(collab.router)
 api_router.include_router(consistency.router)
 api_router.include_router(style_memory.router)
+api_router.include_router(errors.router)

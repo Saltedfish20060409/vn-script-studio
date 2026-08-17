@@ -6,6 +6,7 @@ from app.models.tables import (
     ChapterLock,
     ChapterMemoryArchive,
     ChapterMemorySlice,
+    ErrorReport,
     LlmUsage,
     LoreCraftCard,
     Project,
@@ -39,4 +40,5 @@ __all__ = [
     "ProjectComment",
     "ProjectChapterRow",
     "WritingActivity",
+    "ErrorReport",
 ]
