@@ -167,6 +167,23 @@
   background: var(--surface, rgba(255, 255, 255, 0.5));
 }
 
+/* reply thread: nested under the top-level comment, indented + tinted */
+.reply {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--surface, #fff) 60%, var(--line, #d8dce4));
+}
+
+.replies {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  border-left: 2px solid color-mix(in srgb, var(--line, #d8dce4) 65%, transparent);
+  padding-left: 0.6rem;
+}
+
 .item.resolved {
   opacity: 0.55;
 }

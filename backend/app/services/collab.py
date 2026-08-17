@@ -430,6 +430,7 @@ def _comment_dict(c: ProjectComment, username: str) -> Dict[str, Any]:
         "projectId": c.project_id,
         "chapterId": c.chapter_id,
         "anchor": c.anchor,
+        "parentId": c.parent_id or "",
         "userId": c.user_id,
         "username": username,
         "text": c.text,
@@ -465,18 +466,34 @@ async def create_comment(
     *,
     text: str,
     anchor: str = "",
+    parent_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     text = (text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="批注内容不能为空")
     if len(text) > 5000:
         raise HTTPException(status_code=400, detail="批注过长（最多 5000 字）")
+    if parent_id:
+        pres = await db.execute(
+            select(ProjectComment).where(
+                ProjectComment.id == parent_id,
+                ProjectComment.project_id == project_id,
+            )
+        )
+        parent = pres.scalar_one_or_none()
+        if parent is None:
+            raise HTTPException(status_code=404, detail="回复的批注不存在")
+        if parent.parent_id:
+            raise HTTPException(
+                status_code=400, detail="回复层级最多两层，请直接回复原批注"
+            )
     now = _now()
     row = ProjectComment(
         id=str(uuid4()),
         project_id=project_id,
         chapter_id=chapter_id,
         anchor=anchor or "",
+        parent_id=parent_id or None,
         user_id=user_id,
         text=text,
         resolved=False,

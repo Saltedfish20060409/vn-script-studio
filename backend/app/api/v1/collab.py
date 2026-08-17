@@ -44,6 +44,8 @@ class CommentIn(BaseModel):
     chapter_id: str = Field(min_length=1, max_length=64)
     anchor: str = Field(default="", max_length=255)
     text: str = Field(min_length=1, max_length=5000)
+    # reply thread: parent comment id (top-level when omitted)
+    parent_id: Optional[str] = Field(default=None, max_length=36)
 
 
 class CommentUpdateIn(BaseModel):
@@ -280,6 +282,7 @@ async def add_comment(
         user.id,
         text=body.text,
         anchor=body.anchor,
+        parent_id=body.parent_id,
     )
     collab.comment_event(project_id, "added", out)
     return out

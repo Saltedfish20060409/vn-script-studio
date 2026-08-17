@@ -137,6 +137,8 @@ export interface ProjectComment {
   chapterId: string;
   /** Empty for chapter-level; else block:<id> or a text range. */
   anchor: string;
+  /** Empty for top-level comments; else the parent comment id (2 levels). */
+  parentId: string;
   userId: string;
   username: string;
   text: string;
@@ -155,7 +157,7 @@ export function listProjectComments(
 
 export function addProjectComment(
   projectId: string,
-  body: { chapter_id: string; text: string; anchor?: string }
+  body: { chapter_id: string; text: string; anchor?: string; parent_id?: string }
 ): Promise<ProjectComment> {
   return apiFetch(`/projects/${projectId}/comments`, {
     method: "POST",

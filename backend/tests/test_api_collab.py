@@ -654,3 +654,77 @@ def test_comments_crud_and_roles():
             assert len(r.json()["comments"]) == 1
 
     _run(_scenario())
+
+
+def test_comment_reply_threads():
+    """Replies: create with parent_id, 2-level limit, cascade delete."""
+    ctx = _mk_two_chapter_project()
+    pid, owner_headers, editor_headers = ctx["pid"], ctx["owner"], ctx["editor"]
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            # top-level comment
+            r = await client.post(
+                f"/api/v1/projects/{pid}/comments",
+                json={"chapter_id": "chA", "text": "第一幕有个伏笔没回收"},
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+            top = r.json()
+            assert top["parentId"] == ""
+
+            # editor replies
+            r = await client.post(
+                f"/api/v1/projects/{pid}/comments",
+                json={
+                    "chapter_id": "chA",
+                    "text": "已经在第三章回收了",
+                    "parent_id": top["id"],
+                },
+                headers=editor_headers,
+            )
+            assert r.status_code == 200, r.text
+            reply = r.json()
+            assert reply["parentId"] == top["id"]
+
+            # nested reply to a reply → 400 (2 levels max)
+            r = await client.post(
+                f"/api/v1/projects/{pid}/comments",
+                json={
+                    "chapter_id": "chA",
+                    "text": "再回复一层",
+                    "parent_id": reply["id"],
+                },
+                headers=owner_headers,
+            )
+            assert r.status_code == 400
+            assert "两层" in r.json()["detail"]
+
+            # reply to nonexistent comment → 404
+            r = await client.post(
+                f"/api/v1/projects/{pid}/comments",
+                json={
+                    "chapter_id": "chA",
+                    "text": "孤儿回复",
+                    "parent_id": "no-such-comment",
+                },
+                headers=owner_headers,
+            )
+            assert r.status_code == 404
+
+            # list returns both with parentId
+            r = await client.get(f"/api/v1/projects/{pid}/comments", headers=owner_headers)
+            comments = r.json()["comments"]
+            assert len(comments) == 2
+            assert any(c["id"] == top["id"] and c["parentId"] == "" for c in comments)
+            assert any(c["id"] == reply["id"] and c["parentId"] == top["id"] for c in comments)
+
+            # deleting the top-level cascades the reply
+            r = await client.delete(
+                f"/api/v1/projects/{pid}/comments/{top['id']}", headers=owner_headers
+            )
+            assert r.status_code == 200
+            r = await client.get(f"/api/v1/projects/{pid}/comments", headers=owner_headers)
+            assert len(r.json()["comments"]) == 0
+
+    _run(_scenario())

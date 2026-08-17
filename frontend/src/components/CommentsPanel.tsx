@@ -17,7 +17,7 @@ type Props = {
   myUserId: string;
 };
 
-/** Collapsible inline annotation panel for the active chapter. */
+/** Collapsible inline annotation panel for the active chapter (reply threads). */
 export function CommentsPanel({
   projectId,
   chapterId,
@@ -31,6 +31,8 @@ export function CommentsPanel({
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState("");
   const mountRef = useRef(true);
 
   useEffect(() => {
@@ -85,6 +87,27 @@ export function CommentsPanel({
     }
   };
 
+  const submitReply = async (parent: ProjectComment) => {
+    const text = replyDraft.trim();
+    if (!text || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await addProjectComment(projectId, {
+        chapter_id: chapterId,
+        text,
+        parent_id: parent.id,
+      });
+      setReplyingTo(null);
+      setReplyDraft("");
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "回复失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const toggleResolved = async (c: ProjectComment) => {
     try {
       await updateProjectComment(projectId, c.id, { resolved: !c.resolved });
@@ -115,7 +138,128 @@ export function CommentsPanel({
     }
   };
 
+  const topLevel = comments.filter((c) => !c.parentId);
+  const repliesOf = (id: string) => comments.filter((c) => c.parentId === id);
   const openCount = comments.filter((c) => !c.resolved).length;
+
+  const renderItem = (c: ProjectComment, isReply: boolean) => {
+    const replies = isReply ? [] : repliesOf(c.id);
+    return (
+      <li
+        key={c.id}
+        className={`${styles.item} ${c.resolved ? styles.resolved : ""} ${
+          isReply ? styles.reply : ""
+        }`}
+      >
+        <div className={styles.itemHead}>
+          <span className={styles.author}>{c.username}</span>
+          <time className={styles.time}>
+            {new Date(c.createdAt).toLocaleString()}
+          </time>
+          <span className={styles.anchor}>{c.anchor || "本章"}</span>
+        </div>
+        {editingId === c.id ? (
+          <div className={styles.editRow}>
+            <textarea
+              value={editDraft}
+              onChange={(e) => setEditDraft(e.target.value)}
+              rows={2}
+              autoFocus
+            />
+            <button
+              type="button"
+              className={styles.primary}
+              onClick={() => void saveEdit(c)}
+            >
+              保存
+            </button>
+            <button
+              type="button"
+              className={styles.ghost}
+              onClick={() => setEditingId(null)}
+            >
+              取消
+            </button>
+          </div>
+        ) : (
+          <p className={styles.text}>{c.text}</p>
+        )}
+        <div className={styles.actions}>
+          {!isReply && (
+            <button
+              type="button"
+              className={styles.ghost}
+              onClick={() => {
+                setReplyingTo(replyingTo === c.id ? null : c.id);
+                setReplyDraft("");
+              }}
+            >
+              {replyingTo === c.id ? "取消回复" : "回复"}
+            </button>
+          )}
+          <button
+            type="button"
+            className={styles.ghost}
+            onClick={() => void toggleResolved(c)}
+          >
+            {c.resolved ? "重新打开" : "标记解决"}
+          </button>
+          {c.userId === myUserId && (
+            <>
+              <button
+                type="button"
+                className={styles.ghost}
+                onClick={() => {
+                  setEditingId(c.id);
+                  setEditDraft(c.text);
+                }}
+              >
+                编辑
+              </button>
+              <button
+                type="button"
+                className={styles.danger}
+                onClick={() => void remove(c)}
+              >
+                删除
+              </button>
+            </>
+          )}
+        </div>
+        {!isReply && replyingTo === c.id && (
+          <div className={styles.editRow}>
+            <textarea
+              value={replyDraft}
+              onChange={(e) => setReplyDraft(e.target.value)}
+              rows={2}
+              placeholder={`回复 ${c.username}…`}
+              autoFocus
+            />
+            <button
+              type="button"
+              className={styles.primary}
+              disabled={busy || !replyDraft.trim()}
+              onClick={() => void submitReply(c)}
+            >
+              回复
+            </button>
+            <button
+              type="button"
+              className={styles.ghost}
+              onClick={() => setReplyingTo(null)}
+            >
+              取消
+            </button>
+          </div>
+        )}
+        {replies.length > 0 && (
+          <ul className={styles.replies}>
+            {replies.map((r) => renderItem(r, true))}
+          </ul>
+        )}
+      </li>
+    );
+  };
 
   return (
     <div className={styles.wrap}>
@@ -127,9 +271,7 @@ export function CommentsPanel({
       >
         <span className={styles.toggleIcon}>💬</span>
         <span>批注</span>
-        {openCount > 0 && (
-          <span className={styles.badge}>{openCount}</span>
-        )}
+        {openCount > 0 && <span className={styles.badge}>{openCount}</span>}
       </button>
       {open && (
         <div className={styles.panel}>
@@ -159,78 +301,7 @@ export function CommentsPanel({
               <p>还没有批注。选中文字，或直接在这里留下意见。</p>
             </div>
           ) : (
-            <ul className={styles.list}>
-              {comments.map((c) => (
-                <li
-                  key={c.id}
-                  className={`${styles.item} ${c.resolved ? styles.resolved : ""}`}
-                >
-                  <div className={styles.itemHead}>
-                    <span className={styles.author}>{c.username}</span>
-                    <time className={styles.time}>
-                      {new Date(c.createdAt).toLocaleString()}
-                    </time>
-                    <span className={styles.anchor}>{c.anchor || "本章"}</span>
-                  </div>
-                  {editingId === c.id ? (
-                    <div className={styles.editRow}>
-                      <textarea
-                        value={editDraft}
-                        onChange={(e) => setEditDraft(e.target.value)}
-                        rows={2}
-                        autoFocus
-                      />
-                      <button
-                        type="button"
-                        className={styles.primary}
-                        onClick={() => void saveEdit(c)}
-                      >
-                        保存
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.ghost}
-                        onClick={() => setEditingId(null)}
-                      >
-                        取消
-                      </button>
-                    </div>
-                  ) : (
-                    <p className={styles.text}>{c.text}</p>
-                  )}
-                  <div className={styles.actions}>
-                    <button
-                      type="button"
-                      className={styles.ghost}
-                      onClick={() => void toggleResolved(c)}
-                    >
-                      {c.resolved ? "重新打开" : "标记解决"}
-                    </button>
-                    {c.userId === myUserId && (
-                      <>
-                        <button
-                          type="button"
-                          className={styles.ghost}
-                          onClick={() => {
-                            setEditingId(c.id);
-                            setEditDraft(c.text);
-                          }}
-                        >
-                          编辑
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.danger}
-                          onClick={() => void remove(c)}
-                        >
-                          删除
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <ul className={styles.list}>{topLevel.map((c) => renderItem(c, false))}</ul>
           )}
         </div>
       )}

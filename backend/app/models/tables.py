@@ -363,6 +363,10 @@ class ProjectComment(Base):
     chapter_id: Mapped[str] = mapped_column(String(64), index=True)
     # chapter-level when empty; else block:<id> or text range
     anchor: Mapped[str] = mapped_column(String(255), default="", index=True)
+    # reply thread: null = top-level comment; else parent comment id (2 levels max)
+    parent_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("project_comments.id", ondelete="CASCADE"), index=True
+    )
     user_id: Mapped[str] = mapped_column(String(36), index=True)
     text: Mapped[str] = mapped_column(Text, default="")
     resolved: Mapped[bool] = mapped_column(Boolean, default=False)
