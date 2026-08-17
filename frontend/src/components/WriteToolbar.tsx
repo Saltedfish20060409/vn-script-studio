@@ -1,3 +1,4 @@
+import { SpeechInputButton } from "./SpeechInputButton";
 import styles from "./StudioApp.module.css";
 
 type Props = {
@@ -7,6 +8,8 @@ type Props = {
   onChapterTitleChange: (value: string) => void;
   onOpenRevise: () => void;
   onDiscardRevise: () => void;
+  /** Speech-to-text result ready to insert at the editor caret */
+  onDictateInsert?: (text: string) => void;
 };
 
 /**
@@ -20,6 +23,7 @@ export function WriteToolbar({
   onChapterTitleChange,
   onOpenRevise,
   onDiscardRevise,
+  onDictateInsert,
 }: Props) {
   return (
     <div className={styles.toolbar}>
@@ -30,6 +34,7 @@ export function WriteToolbar({
           onChange={(e) => onChapterTitleChange(e.target.value)}
         />
       </label>
+      {onDictateInsert ? <SpeechInputButton onInsert={onDictateInsert} /> : null}
       {showReviseActions ? (
         <div className={styles.reviseDraftActions}>
           <button

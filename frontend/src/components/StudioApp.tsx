@@ -1697,6 +1697,23 @@ export function StudioApp() {
                         setReviseDraft(null);
                         setStatus("已丢弃本章改稿预览");
                       }}
+                      onDictateInsert={(text) => {
+                        // Insert transcript at the editor caret; fall back to append.
+                        const ta = editorTaRef.current;
+                        let next = editorRef.current;
+                        if (ta && ta.selectionStart !== null && ta.selectionEnd !== null) {
+                          const pos = ta.selectionStart;
+                          next =
+                            next.slice(0, pos) + text + next.slice(ta.selectionEnd);
+                        } else {
+                          next = next ? `${next}\n${text}` : text;
+                        }
+                        editorRef.current = next;
+                        setEditor(next);
+                        if (rpyPreview) setRpyStale(true);
+                        scheduleEditorCommit();
+                        setStatus("已插入语音转写");
+                      }}
                     />
                     <StudioErrorBoundary label="写作编辑器">
                       <ScriptEditor

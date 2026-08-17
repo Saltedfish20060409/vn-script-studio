@@ -1,0 +1,51 @@
+.wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mic {
+  border: 2px solid var(--line, #d8dce4);
+  background: transparent;
+  border-radius: var(--radius-sm, 8px);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.3rem 0.55rem;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.mic:hover {
+  border-color: var(--accent, #5b7f95);
+}
+
+.listening {
+  border-color: var(--danger, #e11d48);
+  background: color-mix(in srgb, var(--danger, #e11d48) 12%, transparent);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger, #e11d48) 35%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--danger, #e11d48) 0%, transparent);
+  }
+}
+
+.live {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listening {
+    animation: none;
+  }
+}
