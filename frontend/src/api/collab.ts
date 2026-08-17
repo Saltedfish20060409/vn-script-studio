@@ -185,6 +185,28 @@ export function deleteProjectComment(
   });
 }
 
+export interface PresenceEntry {
+  userId: string;
+  username: string;
+  role: string;
+  editingChapterIds: string[];
+  lastActiveAt: string | null;
+}
+
+export interface CollabActivity {
+  presence: PresenceEntry[];
+  recentComments: ProjectComment[];
+  stats: {
+    activeEditors: number;
+    lockedChapters: number;
+    comments7d: number;
+  };
+}
+
+export function getCollabActivity(projectId: string): Promise<CollabActivity> {
+  return apiFetch(`/projects/${projectId}/collab/activity`);
+}
+
 export type CollabEvent =
   | { type: "member"; kind: "added" | "removed" | "role_changed"; userId?: string; username?: string; role?: string }
   | { type: "lock"; kind: "acquired" | "released"; chapterId?: string; userId?: string; username?: string }

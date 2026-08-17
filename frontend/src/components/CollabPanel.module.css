@@ -23,6 +23,98 @@
   font-size: 0.85rem;
 }
 
+.liveBox {
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  padding: 0.8rem 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: color-mix(in srgb, var(--surface, #fff) 55%, var(--line, #d8dce4));
+}
+
+.liveHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.liveStats {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.presenceList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.presenceList li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.88rem;
+}
+
+.dotOn,
+.dotOff {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dotOn {
+  background: var(--ok, #16a34a);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok, #16a34a) 20%, transparent);
+}
+
+.dotOff {
+  background: var(--line, #c4c9d1);
+}
+
+.editing {
+  font-size: 0.8rem;
+  color: var(--accent, #5b7f95);
+}
+
+.idle {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.recentComments {
+  border-top: 1px dashed var(--line);
+  padding-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.liveLabel {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.recentComments ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

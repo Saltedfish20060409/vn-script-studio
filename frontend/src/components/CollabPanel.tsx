@@ -3,10 +3,13 @@ import {
   addProjectMember,
   changeMemberRole,
   createProjectInvite,
+  getCollabActivity,
   listProjectInvites,
   listProjectMembers,
   removeProjectMember,
   revokeProjectInvite,
+  subscribeProjectEvents,
+  type CollabActivity,
   type InviteInfo,
   type MemberInfo,
 } from "../api/collab";
@@ -28,7 +31,32 @@ export function CollabPanel({ projectId }: Props) {
   const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [activity, setActivity] = useState<CollabActivity | null>(null);
   const isOwner = Boolean(user && owner && owner.userId === user.id);
+
+  const refreshActivity = useCallback(async () => {
+    try {
+      const a = await getCollabActivity(projectId);
+      setActivity(a);
+    } catch {
+      /* presence is best-effort */
+    }
+  }, [projectId]);
+
+  // Live presence: poll lightly + refresh on collab SSE events.
+  useEffect(() => {
+    void refreshActivity();
+    const timer = window.setInterval(() => void refreshActivity(), 15000);
+    const unsub = subscribeProjectEvents(projectId, (evt) => {
+      if (evt.type === "lock" || evt.type === "member" || evt.type === "comment") {
+        void refreshActivity();
+      }
+    });
+    return () => {
+      window.clearInterval(timer);
+      unsub();
+    };
+  }, [projectId, refreshActivity]);
 
   const refresh = useCallback(async () => {
     try {
@@ -140,6 +168,49 @@ export function CollabPanel({ projectId }: Props) {
       <div className={styles.toolbar}>
         <span>成员可共同编辑剧本；只读成员（viewer）不能修改。</span>
       </div>
+
+      {activity && (
+        <div className={styles.liveBox}>
+          <div className={styles.liveHead}>
+            <strong>实时协作</strong>
+            <span className={styles.liveStats}>
+              正在编辑 {activity.stats.activeEditors} 人 · 锁 {activity.stats.lockedChapters} 章 · 近 7 日批注{" "}
+              {activity.stats.comments7d} 条
+            </span>
+          </div>
+          <ul className={styles.presenceList}>
+            {activity.presence.map((p) => (
+              <li key={p.userId} data-active={p.editingChapterIds.length > 0}>
+                <span
+                  className={p.editingChapterIds.length > 0 ? styles.dotOn : styles.dotOff}
+                  aria-hidden
+                />
+                <strong>{p.username}</strong>
+                <span className={styles.kind}>{p.role}</span>
+                {p.editingChapterIds.length > 0 ? (
+                  <span className={styles.editing}>正在编辑：{p.editingChapterIds.join("、")}</span>
+                ) : (
+                  <span className={styles.idle}>空闲</span>
+                )}
+              </li>
+            ))}
+          </ul>
+          {activity.recentComments.length > 0 && (
+            <div className={styles.recentComments}>
+              <span className={styles.liveLabel}>最近批注</span>
+              <ul>
+                {activity.recentComments.slice(0, 5).map((c) => (
+                  <li key={c.id}>
+                    <strong>{c.username}</strong>
+                    {c.parentId ? " 回复： " : "："}
+                    {c.text.length > 60 ? `${c.text.slice(0, 60)}…` : c.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <p className={styles.error}>{error}</p>}
 

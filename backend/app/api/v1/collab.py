@@ -77,6 +77,46 @@ async def list_members(
     return {"owner": owner, "members": members}
 
 
+@router.get("/{project_id}/collab/activity")
+async def collab_activity_endpoint(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Live collaboration picture: who is editing now (active locks), recent
+    comments, and quick stats for the collaboration evaluation panel."""
+    await get_project_readable(db, user, project_id)
+    owner = await _owner_info(db, project_id)
+    members = await collab.list_members(db, project_id)
+    data = await collab.collab_activity(db, project_id)
+
+    locks_by_user = data["locksByUser"]
+    presence = []
+    for m in [owner, *members]:
+        if not m.get("userId"):
+            continue
+        locks_of = locks_by_user.get(m["userId"], [])
+        presence.append(
+            {
+                "userId": m["userId"],
+                "username": m["username"],
+                "role": m.get("role") or "editor",
+                "editingChapterIds": [l["chapterId"] for l in locks_of],
+                "lastActiveAt": (
+                    max(l["expiresAt"] for l in locks_of) if locks_of else None
+                ),
+            }
+        )
+    presence.sort(
+        key=lambda p: (not p["editingChapterIds"], p["username"])
+    )
+    return {
+        "presence": presence,
+        "recentComments": data["comments"],
+        "stats": data["stats"],
+    }
+
+
 @router.post("/{project_id}/members")
 async def add_member(
     project_id: str,

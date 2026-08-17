@@ -565,6 +565,49 @@ async def delete_comment(
     await db.commit()
 
 
+async def collab_activity(
+    db: AsyncSession,
+    project_id: str,
+) -> Dict[str, Any]:
+    """Live collaboration picture: who is editing now, recent comments, stats.
+
+    Presence is inferred from active chapter locks (heartbeat TTL), so
+    'editing' means the member holds an unexpired lock on a chapter.
+    """
+    from datetime import timedelta
+
+    locks = await list_locks(db, project_id)
+    since = _now() - timedelta(days=7)
+    res = await db.execute(
+        select(ProjectComment, User.username)
+        .join(User, User.id == ProjectComment.user_id)
+        .where(
+            ProjectComment.project_id == project_id,
+            ProjectComment.created_at >= since,
+        )
+        .order_by(ProjectComment.created_at.desc())
+        .limit(30)
+    )
+    comments = [_comment_dict(c, username) for c, username in res.all()]
+
+    locks_by_user: Dict[str, List[Dict[str, Any]]] = {}
+    for l in locks:
+        locks_by_user.setdefault(l["userId"], []).append(l)
+
+    # Owner row is synthesized by the API layer; here we accept a prebuilt
+    # member list (owner + members) to keep this service DB-only.
+    return {
+        "locks": locks,
+        "comments": comments,
+        "locksByUser": locks_by_user,
+        "stats": {
+            "activeEditors": len(locks_by_user),
+            "lockedChapters": len(locks),
+            "comments7d": len(comments),
+        },
+    }
+
+
 # --------------------------------------------------------------------------
 # Event bus (SSE) — cross-worker via Redis when configured (see event_bus.py)
 # --------------------------------------------------------------------------

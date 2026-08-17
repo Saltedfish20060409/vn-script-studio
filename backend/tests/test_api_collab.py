@@ -728,3 +728,60 @@ def test_comment_reply_threads():
             assert len(r.json()["comments"]) == 0
 
     _run(_scenario())
+
+
+def test_collab_activity_presence_and_stats():
+    """Live picture: active lock → editing presence; comments counted."""
+    ctx = _mk_two_chapter_project()
+    pid, owner_headers, editor_headers = ctx["pid"], ctx["owner"], ctx["editor"]
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            # editor acquires a lock on chapter A (heartbeat TTL ~10 min)
+            r = await client.post(
+                f"/api/v1/projects/{pid}/locks/chA", headers=editor_headers
+            )
+            assert r.status_code == 200, r.text
+
+            # owner leaves a comment
+            r = await client.post(
+                f"/api/v1/projects/{pid}/comments",
+                json={"chapter_id": "chA", "text": "这里需要加一场戏"},
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+
+            r = await client.get(
+                f"/api/v1/projects/{pid}/collab/activity", headers=owner_headers
+            )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            presence = body["presence"]
+            assert any(p["username"] == "mg_owner" for p in presence)
+            editor = next(
+                (p for p in presence if p["username"] == "mg_editor"), None
+            )
+            assert editor is not None
+            assert editor["editingChapterIds"] == ["chA"]
+            assert editor["lastActiveAt"]
+
+            assert len(body["recentComments"]) == 1
+            assert body["recentComments"][0]["text"] == "这里需要加一场戏"
+            assert body["stats"]["activeEditors"] == 1
+            assert body["stats"]["lockedChapters"] == 1
+            assert body["stats"]["comments7d"] == 1
+
+            # viewer can read the activity too (readable scope)
+            viewer_headers = await db_gate.register_headers(client, "act_viewer")
+            r = await client.post(
+                f"/api/v1/projects/{pid}/members",
+                json={"username": "act_viewer", "role": "viewer"},
+                headers=owner_headers,
+            )
+            assert r.status_code == 200, r.text
+            r = await client.get(
+                f"/api/v1/projects/{pid}/collab/activity", headers=viewer_headers
+            )
+            assert r.status_code == 200, r.text
+
+    _run(_scenario())
