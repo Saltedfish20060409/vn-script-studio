@@ -835,6 +835,34 @@ async def analysis_semantic_search(
     }
 
 
+@router.get("/{project_id}/stats")
+async def project_stats(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Writing stats: per-chapter metrics + recent daily activity (heatmap)."""
+    from app.services.writing_stats import chapter_metrics, recent_activity
+
+    row = await get_project_readable(db, user, project_id)
+    vn = row_to_vn(row)
+    chapters = chapter_metrics(vn)
+    total_words = sum(c["words"] for c in chapters)
+    total_lines = sum(c["lines"] for c in chapters)
+    activity = await recent_activity(db, project_id, days=30)
+    return {
+        "projectId": project_id,
+        "totals": {
+            "chapters": len(chapters),
+            "words": total_words,
+            "lines": total_lines,
+            "avgChapterWords": round(total_words / len(chapters), 1) if chapters else 0,
+        },
+        "chapters": chapters,
+        "activity": activity,
+    }
+
+
 @router.get("/{project_id}/snapshots")
 async def list_snapshots(
     project_id: str,

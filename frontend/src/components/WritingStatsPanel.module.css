@@ -1,0 +1,157 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 0.85rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-bg);
+  font-size: 0.88rem;
+}
+
+.error {
+  color: var(--danger, #d64550);
+  padding: 0.75rem 0;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted, #8a8f98);
+  line-height: 1.5;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.7rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.9rem 1rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-bg);
+}
+
+.cardLabel {
+  font-size: 0.78rem;
+  color: var(--muted, #8a8f98);
+}
+
+.cardValue {
+  font-size: 1.6rem;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.cardSub {
+  font-size: 0.78rem;
+  color: var(--muted, #8a8f98);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.sectionTitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.95rem;
+}
+
+.heatmap {
+  display: grid;
+  grid-template-columns: repeat(15, 1fr);
+  gap: 4px;
+}
+
+.cell {
+  aspect-ratio: 1;
+  border-radius: 3px;
+  background: var(--line, #e2e5ea);
+  opacity: 0.6;
+}
+
+.cell.lvl1 {
+  background: #cfe0b4;
+  opacity: 1;
+}
+
+.cell.lvl2 {
+  background: #a8cf7c;
+  opacity: 1;
+}
+
+.cell.lvl3 {
+  background: #7cb651;
+  opacity: 1;
+}
+
+.cell.lvl4 {
+  background: #4f8f2e;
+  opacity: 1;
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.2rem;
+  color: var(--muted, #8a8f98);
+  font-size: 0.88rem;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.table th,
+.table td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  font-weight: 600;
+  color: var(--muted, #8a8f98);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.table td {
+  font-variant-numeric: tabular-nums;
+}
+
+.title {
+  font-weight: 600;
+}
+
+.speakers {
+  color: var(--ink-soft);
+  max-width: 260px;
+}
+
+@media (max-width: 720px) {
+  .heatmap {
+    grid-template-columns: repeat(10, 1fr);
+  }
+
+  .table {
+    font-size: 0.8rem;
+  }
+}

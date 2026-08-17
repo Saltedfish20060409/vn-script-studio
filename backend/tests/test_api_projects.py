@@ -266,3 +266,50 @@ def test_delete_project_with_children_cascades():
             await engine.dispose()
 
     _run(_scenario())
+
+
+def test_project_stats_reports_words_and_activity():
+    """Saving chapters records word deltas; /stats aggregates them."""
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "stats_owner")
+
+            r = await client.post(
+                "/api/v1/projects", json={"title": "统计项目"}, headers=headers
+            )
+            pid = r.json()["id"]
+
+            # Save a chapter with prose → should record activity delta.
+            proj = r.json()
+            proj["chapters"] = [
+                {
+                    "id": "ch1",
+                    "title": "第一章",
+                    "blocks": [
+                        {"type": "label", "id": "a", "name": "a"},
+                        {"type": "narration", "text": "雨夜，末班车从站台缓缓开出。"},
+                        {"type": "dialogue", "characterId": "lx", "text": "我们走吧"},
+                    ],
+                }
+            ]
+            r = await client.put(
+                f"/api/v1/projects/{pid}",
+                json={"data": proj, "updated_at": proj.get("updatedAt"), "force": True},
+                headers=headers,
+            )
+            assert r.status_code == 200, r.text
+
+            # Stats endpoint reports per-chapter words and today's activity.
+            r = await client.get(f"/api/v1/projects/{pid}/stats", headers=headers)
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["totals"]["chapters"] == 1
+            assert body["totals"]["words"] == 16  # 12 narration + 4 dialogue
+            assert body["chapters"][0]["words"] == 16
+            assert body["chapters"][0]["dialogueRatio"] == round(4 / 16, 3)
+            assert body["chapters"][0]["speakers"] == ["lx"]
+            assert len(body["activity"]) >= 1
+            assert body["activity"][-1]["net"] == 16
+            assert body["activity"][-1]["edits"] == 1
+
+    _run(_scenario())

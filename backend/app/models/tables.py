@@ -392,3 +392,29 @@ class ProjectChapterRow(Base):
     blocks: Mapped[list[Any]] = mapped_column(JSONB, default=list)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class WritingActivity(Base):
+    """Per-day word-count deltas for the writing stats dashboard.
+
+    One row per (project_id, activity_date); every chapter save adds/subtracts
+    from that day's tally so the UI can show a calendar heatmap, daily progress
+    and totals without re-diffing snapshots.
+    """
+
+    __tablename__ = "writing_activity"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "activity_date", name="uq_writing_activity_project_date"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    activity_date: Mapped[str] = mapped_column(String(10), index=True)  # YYYY-MM-DD (UTC)
+    words_added: Mapped[int] = mapped_column(Integer, default=0)
+    words_removed: Mapped[int] = mapped_column(Integer, default=0)
+    edits: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

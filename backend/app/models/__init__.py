@@ -17,6 +17,7 @@ from app.models.tables import (
     Share,
     User,
     UserSettings,
+    WritingActivity,
 )
 
 __all__ = [
@@ -37,4 +38,5 @@ __all__ = [
     "ProjectInvite",
     "ProjectComment",
     "ProjectChapterRow",
+    "WritingActivity",
 ]

@@ -25,6 +25,41 @@ export interface ProjectSummary {
   created_at: string;
 }
 
+export type WritingActivityDay = {
+  date: string;
+  added: number;
+  removed: number;
+  net: number;
+  edits: number;
+};
+
+export type ChapterStats = {
+  index: number;
+  id: string;
+  title: string;
+  words: number;
+  lines: number;
+  dialogueWords: number;
+  dialogueRatio: number;
+  speakers: string[];
+};
+
+export type ProjectStats = {
+  projectId: string;
+  totals: {
+    chapters: number;
+    words: number;
+    lines: number;
+    avgChapterWords: number;
+  };
+  chapters: ChapterStats[];
+  activity: WritingActivityDay[];
+};
+
+export function getProjectStats(id: string): Promise<ProjectStats> {
+  return apiFetch<ProjectStats>(`/projects/${id}/stats`);
+}
+
 export function listProjects(): Promise<ProjectSummary[]> {
   return apiFetch<ProjectSummary[]>("/projects");
 }

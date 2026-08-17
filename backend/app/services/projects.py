@@ -231,11 +231,22 @@ async def sync_chapter_rows_from_vn(
     """Persist a project row AND mirror its chapters into project_chapter_rows.
 
     Every chapter-writing path should go through this so the blob and the
-    shadow table stay consistent (stage-1 JSONB split).
+    shadow table stay consistent (stage-1 JSONB split). Also records the
+    word-count delta into writing_activity for the stats dashboard.
     """
+    from app.services.writing_stats import count_blocks_words, record_activity
+
+    prev_vn = row_to_vn(row)
+    prev_words = sum(
+        count_blocks_words(list(c.blocks or [])) for c in (prev_vn.chapters or [])
+    )
     sync_row_from_vn(row, vn)
     chapters = [c.model_dump(mode="json") for c in (vn.chapters or [])]
     await upsert_chapter_rows(db, row.id, chapters)
+    current_words = sum(
+        count_blocks_words(list(c.get("blocks") or [])) for c in chapters
+    )
+    await record_activity(db, row.id, previous_words=prev_words, current_words=current_words)
 
 
 async def load_chapter_rows(

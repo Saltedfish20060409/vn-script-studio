@@ -57,6 +57,7 @@ import { CommentsPanel } from "./CommentsPanel";
 import { PwaInstallPrompt } from "./PwaInstallPrompt";
 import { ProjectExportPanel } from "./ProjectExportPanel";
 import { ProjectHistoryPanel } from "./ProjectHistoryPanel";
+import { WritingStatsPanel } from "./WritingStatsPanel";
 import { StudioBootScreen } from "./StudioBootScreen";
 import { StudioChapterBar } from "./StudioChapterBar";
 import { StudioTabs } from "./StudioTabs";
@@ -155,9 +156,9 @@ export function StudioApp() {
   const [systemSub, setSystemSub] = useState<"variables" | "sprites">(
     cachedWs.systemSub || wsDefaults.systemSub
   );
-  const [projectSub, setProjectSub] = useState<"library" | "export" | "history" | "members">(
-    cachedWs.projectSub || wsDefaults.projectSub
-  );
+  const [projectSub, setProjectSub] = useState<
+    "library" | "stats" | "export" | "history" | "members"
+  >(cachedWs.projectSub || wsDefaults.projectSub);
   const [chapterId, setChapterId] = useState(cachedWs.chapterId || "");
   const otherLock = activeLocks.find(
     (l) => l.chapterId === chapterId && l.userId !== myUserId
@@ -1454,6 +1455,7 @@ export function StudioApp() {
                   {(
                     [
                       ["library", "剧本库"],
+                      ["stats", "写作统计"],
                       ["export", "导出"],
                       ["history", "快照 / 分享"],
                       ["members", "成员"],
@@ -1488,6 +1490,10 @@ export function StudioApp() {
                     onDuplicate={(id) => void duplicateProjectById(id)}
                     onDelete={(id) => void deleteProjectById(id)}
                   />
+                )}
+
+                {projectSub === "stats" && project && (
+                  <WritingStatsPanel projectId={project.id} />
                 )}
 
                 {projectSub === "export" && (
