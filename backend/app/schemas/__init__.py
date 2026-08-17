@@ -189,6 +189,11 @@ class SettingsOut(BaseModel):
     critic_api_key_masked: str = ""
     critic_api_base_url: str = ""
     critic_api_model: str = ""
+    # Effective model actually used (user override or server env), for display.
+    active_model: str = ""
+    active_base_url: str = ""
+    # user = using this account's key; server = falling back to server env
+    credential_source: str = "server"
 
 
 class SettingsPutIn(BaseModel):
@@ -209,6 +214,15 @@ class SettingsPutIn(BaseModel):
     critic_api_key: Optional[str] = None
     critic_api_base_url: Optional[str] = None
     critic_api_model: Optional[str] = None
+
+
+class TestLlmIn(BaseModel):
+    """Test-connection request. Empty fields fall back to saved user creds,
+    then to server env — matching how real requests resolve credentials."""
+
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    model: Optional[str] = None
 
 
 class MapExtractIn(BaseModel):

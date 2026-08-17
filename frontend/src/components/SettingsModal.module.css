@@ -303,6 +303,12 @@
   font-size: 0.85rem;
 }
 
+.okNote {
+  margin: 0;
+  color: var(--ok, #16a34a);
+  font-size: 0.85rem;
+}
+
 .usageBox {
   display: flex;
   flex-direction: column;

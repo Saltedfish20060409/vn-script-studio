@@ -50,6 +50,12 @@ def settings_to_out(row: UserSettings) -> SettingsOut:
     settings = get_settings()
     api_key = decrypt_secret(row.api_key_enc or "", settings)
     critic_key = decrypt_secret(row.critic_api_key_enc or "", settings)
+    active_base_url = (
+        row.api_base_url
+        or settings.deepseek_base_url
+        or "https://api.deepseek.com"
+    )
+    active_model = row.api_model or settings.deepseek_model or "deepseek-chat"
     return SettingsOut(
         theme=row.theme,
         font_scale=row.font_scale,
@@ -70,6 +76,9 @@ def settings_to_out(row: UserSettings) -> SettingsOut:
         critic_api_key_masked=mask_api_key(critic_key),
         critic_api_base_url=row.critic_api_base_url or "",
         critic_api_model=row.critic_api_model or "",
+        active_model=active_model,
+        active_base_url=active_base_url,
+        credential_source="user" if api_key else "server",
     )
 
 

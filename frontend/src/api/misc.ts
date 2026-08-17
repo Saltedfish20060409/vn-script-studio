@@ -289,6 +289,50 @@ export function putSettings(body: Record<string, unknown>): Promise<ServerSettin
 }
 
 // ---------------------------------------------------------------------------
+// LLM model catalogue + connectivity test
+// ---------------------------------------------------------------------------
+
+export interface ModelPreset {
+  id: string;
+  label: string;
+  vendor: string;
+  base_url: string;
+  model: string;
+  json_mode: boolean;
+  context_k: number;
+  note: string;
+}
+
+export interface ActiveLlmInfo {
+  base_url: string;
+  model: string;
+  source: "user" | "server";
+}
+
+export function getModelCatalogue(): Promise<{
+  presets: ModelPreset[];
+  active: ActiveLlmInfo | null;
+}> {
+  return apiFetch<{ presets: ModelPreset[]; active: ActiveLlmInfo | null }>(
+    "/settings/models"
+  );
+}
+
+export function testLlm(body: {
+  api_key?: string;
+  base_url?: string;
+  model?: string;
+}): Promise<{ ok: boolean; latency_ms: number; model: string; error?: string }> {
+  return apiFetch<{ ok: boolean; latency_ms: number; model: string; error?: string }>(
+    "/settings/test-llm",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    }
+  );
+}
+
+// ---------------------------------------------------------------------------
 // LLM usage
 // ---------------------------------------------------------------------------
 

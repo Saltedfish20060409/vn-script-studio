@@ -6,7 +6,15 @@ import {
   type ServerSettingsOut,
   type ThemeMode,
 } from "../lib/settings";
-import { getSettings, getUsage, putSettings, type UsageTotals } from "../api/misc";
+import {
+  getModelCatalogue,
+  getSettings,
+  getUsage,
+  putSettings,
+  testLlm,
+  type ModelPreset,
+  type UsageTotals,
+} from "../api/misc";
 import { MascotFigure } from "./MascotFigure";
 import { mascotLine } from "../lib/mascotCopy";
 import styles from "./SettingsModal.module.css";
@@ -86,6 +94,12 @@ function LlmPane() {
   const [criticKey, setCriticKey] = useState("");
   const [criticBaseUrl, setCriticBaseUrl] = useState("");
   const [criticModel, setCriticModel] = useState("");
+  const [presets, setPresets] = useState<ModelPreset[]>([]);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
 
   const load = useCallback(() => {
     setError("");
@@ -98,6 +112,11 @@ function LlmPane() {
         setCriticModel(out.critic_api_model ?? "");
       })
       .catch((e) => setError(e instanceof Error ? e.message : "读取失败"));
+    getModelCatalogue()
+      .then(({ presets: p }) => setPresets(p))
+      .catch(() => {
+        /* preset catalogue is a nice-to-have */
+      });
   }, []);
 
   useEffect(() => {
@@ -127,6 +146,42 @@ function LlmPane() {
     }
   };
 
+  const runTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await testLlm({
+        // 空字段让后端回退已保存的凭据，因此可以直接测当前输入
+        api_key: apiKey === "" ? undefined : apiKey,
+        base_url: baseUrl,
+        model,
+      });
+      setTestResult(
+        r.ok
+          ? {
+              ok: true,
+              text: `连接成功 · ${r.model} · ${r.latency_ms} ms`,
+            }
+          : { ok: false, text: r.error ?? "连接失败" }
+      );
+    } catch (e) {
+      setTestResult({
+        ok: false,
+        text: e instanceof Error ? e.message : "连接失败",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const applyPreset = (presetId: string) => {
+    const p = presets.find((x) => x.id === presetId);
+    if (!p) return;
+    setBaseUrl(p.base_url);
+    setModel(p.model);
+    setTestResult(null);
+  };
+
   return (
     <div className={styles.form}>
       <p className={styles.note}>
@@ -134,6 +189,34 @@ function LlmPane() {
         留空则回退服务端环境变量配置。
       </p>
       {error && <p className={styles.error}>{error}</p>}
+      {loaded && (
+        <p className={styles.note}>
+          当前生效：{loaded.active_model || "deepseek-chat"} ·{" "}
+          {loaded.credential_source === "user"
+            ? "使用你的 Key"
+            : "使用服务端配置"}
+        </p>
+      )}
+      {presets.length > 0 && (
+        <label>
+          模型预设
+          <select
+            value=""
+            onChange={(e) => applyPreset(e.target.value)}
+            data-testid="model-preset-select"
+          >
+            <option value="">选择预设快速填入…</option>
+            {presets.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <span className={styles.note}>
+            {presets[0]?.note} 选择预设只填 Base URL 与模型名，Key 仍需自己输入。
+          </span>
+        </label>
+      )}
       <label>
         主模型 API Key
         <input
@@ -164,6 +247,11 @@ function LlmPane() {
           placeholder="deepseek-chat"
         />
       </label>
+      {testResult && (
+        <p className={testResult.ok ? styles.okNote : styles.error}>
+          {testResult.text}
+        </p>
+      )}
       <hr className={styles.divider} />
       <p className={styles.note}>可选：独立的评审模型（critic，改稿对照时使用）。</p>
       <label>
@@ -206,6 +294,14 @@ function LlmPane() {
           onClick={() => void save()}
         >
           {saving ? "保存中…" : "保存凭据"}
+        </button>
+        <button
+          type="button"
+          className={styles.ghost}
+          disabled={testing}
+          onClick={() => void runTest()}
+        >
+          {testing ? "测试中…" : "测试连接"}
         </button>
         <button
           type="button"

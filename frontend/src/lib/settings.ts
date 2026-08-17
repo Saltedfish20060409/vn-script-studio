@@ -126,6 +126,10 @@ export interface ServerSettingsOut {
   critic_api_key_masked?: string;
   critic_api_base_url?: string;
   critic_api_model?: string;
+  /** Effective model actually used (user override or server env). */
+  active_model?: string;
+  active_base_url?: string;
+  credential_source?: "user" | "server";
 }
 
 export function fromServerSettings(out: ServerSettingsOut): AppSettings {
