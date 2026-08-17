@@ -346,6 +346,12 @@ export interface VnProject {
   analysisMeta?: AnalysisMeta;
   /** Phase 2: persisted voice-check reports */
   voiceReports?: Array<Record<string, unknown>>;
+  /** Author style memory: LLM-learned writing-style guide from this novel */
+  styleMemory?: {
+    guide?: string;
+    samples?: string[];
+    updatedAt?: string;
+  };
   /** Local read-only share id */
   shareId?: string;
   updatedAt: string;

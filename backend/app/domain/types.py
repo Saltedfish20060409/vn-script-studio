@@ -447,6 +447,8 @@ class VnProject(BaseModel):
     analysisMeta: Optional[AnalysisMeta] = None
     # Persisted voice-check reports (chapterId + fingerprint; may be stale)
     voiceReports: Optional[List[Dict[str, Any]]] = None
+    # Author style memory: LLM-learned writing-style guide from this novel
+    styleMemory: Optional[Dict[str, Any]] = None
     # Local read-only share id
     shareId: Optional[str] = None
     updatedAt: str

@@ -463,6 +463,18 @@ def build_agent_context(
     )
     show_vars_chat_clipped = bool(var_lines and resolved_task == "chat" and not show_vars)
 
+    # Author style memory: LLM-learned writing-style guide (continuity of voice)
+    style_block = ""
+    sm = getattr(project, "styleMemory", None)
+    if isinstance(sm, dict):
+        guide = str(sm.get("guide") or "").strip()
+        if guide:
+            style_block = (
+                "\n## 作者文风记忆（延续作者自己的习惯：续写/改写/润色请贴合此风格；"
+                "它是归纳不是圣旨，具体情节仍听用户）\n" + _clip(guide, 1200)
+            )
+            included.append("文风记忆")
+
     sections: List[str] = [
         "\n".join(meta_lines),
         f"\n## Story Bible（内部参考，禁止整段搬进正文）\n{bible_block}" if bible_block else "",
@@ -513,6 +525,7 @@ def build_agent_context(
             else ""
         ),
         f"\n## 用户选区（审稿/改写焦点）\n{_clip(selection, 2000)}" if selection else "",
+        style_block,
         f"\n## 编排说明\n上下文按任务「{resolved_task}」检索拼装：章摘要本地抽取、大纲节拍检索、对话记忆压缩。人设与 bible 是作者备忘不是讲稿。续写请紧接「当前章节」正文末尾。",
     ]
 

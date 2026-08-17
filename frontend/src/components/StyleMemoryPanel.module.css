@@ -1,0 +1,98 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hint {
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.error {
+  margin: 0;
+  color: var(--danger, #e11d48);
+  font-size: 0.85rem;
+}
+
+.ok {
+  margin: 0;
+  color: var(--ok, #16a34a);
+  font-size: 0.85rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.primary,
+.ghost {
+  font: inherit;
+  font-size: 0.86rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-sm, 8px);
+  cursor: pointer;
+}
+
+.primary {
+  background: var(--accent, #5b7f95);
+  color: #fff;
+  border: 2px solid transparent;
+}
+
+.primary:disabled,
+.ghost:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.ghost {
+  background: transparent;
+  border: 2px solid var(--line, #d8dce4);
+  color: var(--ink);
+}
+
+.card {
+  border: 2px solid var(--line, #d8dce4);
+  border-radius: var(--radius-sm, 8px);
+  padding: 0.75rem 0.9rem;
+  background: color-mix(in srgb, var(--surface, #fff) 60%, var(--line, #d8dce4));
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cardHead {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.cardHead time {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  margin-left: auto;
+}
+
+.guide {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.samples {
+  list-style: none;
+  margin: 0;
+  padding: 0.4rem 0 0;
+  border-top: 1px dashed var(--line, #d8dce4);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}

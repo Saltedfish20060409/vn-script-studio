@@ -24,6 +24,7 @@ import type {
 import { EmptyStage } from "./EmptyStage";
 import { FactExtractReview } from "./FactExtractReview";
 import { CharacterArcsPanel } from "./CharacterArcsPanel";
+import { StyleMemoryPanel } from "./StyleMemoryPanel";
 import { usePrompt } from "../lib/confirmDialog";
 import styles from "./AnalysisPanels.module.css";
 
@@ -57,7 +58,7 @@ export function AnalysisPanels({
 }: Props) {
   const prompt = usePrompt();
   const [sub, setSub] = useState<
-    "branch" | "chars" | "timeline" | "voice" | "consistency" | "arcs"
+    "branch" | "chars" | "timeline" | "voice" | "consistency" | "arcs" | "style"
   >("branch");
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceReport, setVoiceReport] = useState<VoiceReport | null>(null);
@@ -390,6 +391,7 @@ export function AnalysisPanels({
             ["voice", "语气检查"],
             ["consistency", "一致性"],
             ["arcs", "弧线"],
+            ["style", "文风"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -777,6 +779,15 @@ export function AnalysisPanels({
             时间线事件标注角色关键节点（按角色名匹配事件标题/摘要）。
           </p>
           <CharacterArcsPanel project={project} />
+        </div>
+      )}
+
+      {sub === "style" && (
+        <div className={styles.panel}>
+          <StyleMemoryPanel
+            project={project}
+            onChange={(p) => applyRemote(p)}
+          />
         </div>
       )}
     </section>

@@ -722,6 +722,28 @@ export function consistencyAudit(
   });
 }
 
+export interface StyleMemoryOut {
+  project: import("../types/vn").VnProject;
+  guide: string;
+  samples: string[];
+  model?: string;
+}
+
+export function learnStyleMemory(id: string): Promise<StyleMemoryOut> {
+  return apiFetch(`/projects/${id}/style-memory/learn`, {
+    method: "POST",
+    timeoutMs: 240000,
+  });
+}
+
+export function clearStyleMemory(
+  id: string
+): Promise<{ project: import("../types/vn").VnProject }> {
+  return apiFetch(`/projects/${id}/style-memory`, {
+    method: "DELETE",
+  });
+}
+
 export type FactsChanged = {
   chapters: string[];
   bible: boolean;
