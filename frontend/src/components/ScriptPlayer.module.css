@@ -1,0 +1,214 @@
+.wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #10131f 0%, #1a1e31 60%, #0d1020 100%);
+  color: #eef1f8;
+  font-family: var(--font-display, "Noto Serif SC", serif);
+  user-select: none;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.8rem 1.2rem;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.controls .ghost,
+.exit {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  color: #d8dce6;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+}
+
+.controls .ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.exit {
+  margin-right: auto;
+}
+
+.stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.4rem;
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+.titleCard,
+.endCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  text-align: center;
+  max-width: 640px;
+}
+
+.projectTitle {
+  font-size: 0.8rem;
+  letter-spacing: 0.25em;
+  opacity: 0.6;
+  margin: 0;
+}
+
+.chapterTitle {
+  font-size: 1.9rem;
+  margin: 0;
+}
+
+.synopsis {
+  opacity: 0.8;
+  line-height: 1.6;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.start {
+  margin-top: 0.6rem;
+  background: #5b8cff;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 0.7rem 2.2rem;
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.sceneCue {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+  font-size: 1.1rem;
+  opacity: 0.9;
+}
+
+.sceneCue .sub {
+  font-size: 0.8rem;
+  opacity: 0.6;
+  margin: 0;
+}
+
+.continue {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #d8dce6;
+  border-radius: 999px;
+  padding: 0.45rem 1.4rem;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.narrationBox {
+  max-width: 640px;
+  font-size: 1.05rem;
+  line-height: 1.9;
+  color: #dfe4f0;
+  text-align: center;
+  cursor: pointer;
+  padding: 1rem;
+}
+
+.narrationBox p {
+  margin: 0;
+}
+
+.dialogueBox {
+  max-width: 680px;
+  width: 100%;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 1.1rem 1.3rem;
+  cursor: pointer;
+  position: relative;
+}
+
+.speaker {
+  display: inline-block;
+  margin: 0 0 0.5rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  border-bottom: 2px solid;
+  padding-bottom: 0.15rem;
+}
+
+.line {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.7;
+}
+
+.advanceHint {
+  margin: 0.6rem 0 0;
+  font-size: 0.75rem;
+  opacity: 0.45;
+  text-align: right;
+}
+
+.menuBox {
+  max-width: 640px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.menuPrompt {
+  text-align: center;
+  font-size: 1.05rem;
+  opacity: 0.9;
+  margin: 0;
+}
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.choice {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  color: #eef1f8;
+  font: inherit;
+  font-size: 1rem;
+  padding: 0.7rem 1.1rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.choice:hover {
+  background: rgba(91, 140, 255, 0.25);
+  transform: translateX(4px);
+}
+
+.progress {
+  padding: 0.6rem 1.2rem;
+  text-align: center;
+  font-size: 0.75rem;
+  opacity: 0.45;
+  background: rgba(0, 0, 0, 0.3);
+}

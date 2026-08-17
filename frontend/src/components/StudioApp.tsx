@@ -69,6 +69,7 @@ import { WorldPanel } from "./WorldPanel";
 import { WriteToolbar } from "./WriteToolbar";
 import { StudioErrorBoundary } from "./StudioErrorBoundary";
 import { SaveConflictDialog, type SaveConflictChoice } from "./SaveConflictDialog";
+import { ScriptPlayer } from "./ScriptPlayer";
 import {
   clearConflictDraft,
   downloadProjectJson,
@@ -162,6 +163,7 @@ export function StudioApp() {
   const [projectSub, setProjectSub] = useState<
     "library" | "stats" | "export" | "history" | "members"
   >(cachedWs.projectSub || wsDefaults.projectSub);
+  const [playOpen, setPlayOpen] = useState(false);
   const [chapterId, setChapterId] = useState(cachedWs.chapterId || "");
   const otherLock = activeLocks.find(
     (l) => l.chapterId === chapterId && l.userId !== myUserId
@@ -1426,6 +1428,14 @@ export function StudioApp() {
   return (
     <>
       <PwaInstallPrompt />
+      {playOpen && project && chapter && (
+        <ScriptPlayer
+          chapter={chapter}
+          characters={project.characters ?? []}
+          projectTitle={project.title}
+          onExit={() => setPlayOpen(false)}
+        />
+      )}
       <SaveConflictDialog
         open={Boolean(saveConflict)}
         localTitle={saveConflict?.local.title}
@@ -1680,6 +1690,19 @@ export function StudioApp() {
                       chapterTitle={chapter?.title ?? ""}
                       myUserId={myUserId}
                     />
+                    <div className={styles.aiQuick} style={{ marginTop: "0.9rem" }}>
+                      <button
+                        type="button"
+                        className={styles.primary}
+                        onClick={() => {
+                          commitEditor();
+                          setPlayOpen(true);
+                        }}
+                        title="以视觉小说方式试玩当前章节（分支/选项可点）"
+                      >
+                        ▶ 试玩本章
+                      </button>
+                    </div>
                   </section>
                 )}
                 {writeSub === "analysis" && (
