@@ -6,6 +6,14 @@
   align-items: flex-start;
   gap: 0.3rem;
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.22));
+  /* 缓慢移动：wander 换位时平滑过渡（拖拽时禁用） */
+  transition:
+    left 1.5s cubic-bezier(0.22, 1, 0.36, 1),
+    top 1.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pet.dragging {
+  transition: none;
 }
 
 .body {

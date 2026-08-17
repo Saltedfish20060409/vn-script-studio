@@ -134,6 +134,22 @@ export const PET_ANIMATIONS: Record<PetActionId, PetAnimationSpec> = {
 
 export const PET_ACTIONS = Object.keys(PET_ANIMATIONS) as PetActionId[];
 
+/** 待机池：桌宠会不规律地在这些动作之间切换（dock=趴在编辑器旁） */
+export const IDLE_POOL_DOCK: PetActionId[] = [
+  "breath_idle", // 呼吸
+  "perch_top", // 趴在文本框顶
+  "peek_over", // 从框顶探头
+  "read_over_shoulder", // 侧身偷看文稿
+  "fall_asleep", // 打瞌睡（P2，缺帧占位）
+];
+
+/** 角落待机池：缩在角落时的姿态 */
+export const IDLE_POOL_CORNER: PetActionId[] = [
+  "breath_idle",
+  "hide_corner", // 蜷坐
+  "fall_asleep",
+];
+
 /** 单帧 URL（按文档命名规则；base 已含方向后缀如 `_r`，此处不再追加） */
 export function petFrameUrl(spec: PetAnimationSpec, frameIndex: number): string {
   const dir = spec.canvas === "A" ? "A_body" : "B_peek";
