@@ -122,6 +122,44 @@ async def get_snapshot_payload(
     return dict(payload) if isinstance(payload, dict) else payload
 
 
+async def maybe_auto_snapshot(
+    db: AsyncSession,
+    project_id: str,
+    vn: VnProject,
+    *,
+    min_interval_minutes: int = 60,
+) -> bool:
+    """Create an automatic cloud backup snapshot at most once per interval.
+
+    Called from save paths; dedupe inside create_snapshot already skips
+    unchanged content. Never raises — backup failure must not break saving.
+    The caller commits (this only flushes).
+    """
+    try:
+        res = await db.execute(
+            select(ProjectSnapshotRow.created_at)
+            .where(ProjectSnapshotRow.project_id == project_id)
+            .order_by(ProjectSnapshotRow.created_at.desc())
+            .limit(1)
+        )
+        last = res.scalar_one_or_none()
+        now = _now()
+        if last is not None:
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            if (now - last).total_seconds() < min_interval_minutes * 60:
+                return False
+        await create_snapshot(
+            db,
+            project_id,
+            vn,
+            label=f"自动备份 {now.strftime('%m-%d %H:%M')}",
+        )
+        return True
+    except Exception:  # noqa: BLE001 — auto backup is best-effort
+        return False
+
+
 async def delete_snapshot(
     db: AsyncSession, project_id: str, snap_id: str
 ) -> bool:

@@ -237,6 +237,9 @@ async def put_project(
         merged = merge_project_changes(server_vn, client_vn, chapter_ids, sections)
         # JSONB split stage 1: persist blob + chapter rows together.
         await sync_chapter_rows_from_vn(db, row, merged)
+        from app.services.snapshots import maybe_auto_snapshot
+
+        await maybe_auto_snapshot(db, project_id, row_to_vn(row))
         await db.commit()
         await db.refresh(row)
         return project_to_dict(row_to_vn(row))
@@ -267,6 +270,9 @@ async def put_project(
     data["id"] = project_id
     vn = normalize_project(data)
     await sync_chapter_rows_from_vn(db, row, vn)
+    from app.services.snapshots import maybe_auto_snapshot
+
+    await maybe_auto_snapshot(db, project_id, row_to_vn(row))
     await db.commit()
     await db.refresh(row)
     return project_to_dict(row_to_vn(row))
@@ -288,6 +294,9 @@ async def patch_project(
     if body.genre is not None:
         vn.genre = body.genre
     await sync_chapter_rows_from_vn(db, row, vn)
+    from app.services.snapshots import maybe_auto_snapshot
+
+    await maybe_auto_snapshot(db, project_id, row_to_vn(row))
     await db.commit()
     await db.refresh(row)
     return project_to_dict(row_to_vn(row))

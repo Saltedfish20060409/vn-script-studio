@@ -206,6 +206,7 @@ export function ProjectHistoryPanel({
             <li key={s.id}>
               <span>
                 {s.label}
+                {s.label.startsWith("自动备份") ? " · ⏱" : ""}
                 <br />
                 <small>{new Date(s.createdAt).toLocaleString()}</small>
               </span>
