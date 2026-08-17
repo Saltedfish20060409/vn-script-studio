@@ -838,6 +838,8 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
           content: ln.text,
           speakerId: ln.speakerId,
           speakerName: ln.speakerName,
+          action: ln.action || undefined,
+          mood: ln.mood || undefined,
         }));
         setChatMessages([...nextMsgs, ...newMsgs]);
         const focusLines = res.lines
@@ -858,6 +860,8 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
           content: res.reply,
           speakerId: res.speakerId,
           speakerName: res.speakerName,
+          action: res.action || undefined,
+          mood: res.mood || undefined,
         };
         setChatMessages([...nextMsgs, replyMsg]);
         setLastReplyLines([{ speaker: "self", text: res.reply }]);

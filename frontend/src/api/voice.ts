@@ -1,4 +1,4 @@
-﻿import type { VnProject } from "../types/vn";
+import type { VnProject } from "../types/vn";
 import { apiFetch } from "./http";
 // ---------------------------------------------------------------------------
 // Character workshop (角色工坊)
@@ -241,9 +241,17 @@ export function workshopChat(
 ): Promise<{
   mode: string;
   reply?: string;
+  action?: string;
+  mood?: string;
   speakerId?: string;
   speakerName?: string;
-  lines?: Array<{ speakerId: string; speakerName: string; text: string }>;
+  lines?: Array<{
+    speakerId: string;
+    speakerName: string;
+    text: string;
+    action?: string;
+    mood?: string;
+  }>;
   model?: string;
 }> {
   return apiFetch(`/projects/${projectId}/characters/${characterId}/workshop/chat`, {

@@ -8,6 +8,10 @@ export type ChatMsg = {
   content: string;
   speakerId?: string;
   speakerName?: string;
+  /** 台词伴随的微动作（如：叹了口气） */
+  action?: string;
+  /** 情绪标签（如：烦躁） */
+  mood?: string;
 };
 
 type Props = {
@@ -107,8 +111,12 @@ export function VoiceChatZone({
             }`}
           >
             {m.speakerName && m.role !== "user" && (
-              <span className={styles.bubbleName}>{m.speakerName}</span>
+              <span className={styles.bubbleName}>
+                {m.speakerName}
+                {m.mood ? <em className={styles.bubbleMood}>{m.mood}</em> : null}
+              </span>
             )}
+            {m.action ? <span className={styles.bubbleAction}>（{m.action}）</span> : null}
             {m.content}
           </div>
         ))}

@@ -47,15 +47,24 @@ async def synthesize_voice_mind(
     rejects = [str(x).strip() for x in (char.voiceRejectNotes or []) if str(x).strip()]
     prefers = [str(x).strip() for x in (char.voicePreferNotes or []) if str(x).strip()]
     from app.core.character_voice.corpus import confirmed_axes
+    from app.core.character_voice.extract import format_script_anchors_for_prompt
 
     dirs = confirmed_axes(char)
+    # Script anchors: the character's own written dialogue in the novel —
+    # read-only evidence so the mind pack matches what's actually on page
+    # (beyond the hand-picked corpus samples).
+    anchors = format_script_anchors_for_prompt(project, character_id, limit=8, max_chars=900)
+    anchor_lines = anchors.splitlines()[1:] if anchors else []
+    script_anchors_used = len(anchor_lines)
 
     system = (
-        "你是角色思维包蒸馏助手。根据作者挑选的正例对白，写一张**轻量角色思维包**（中文 markdown）。\n"
+        "你是角色思维包蒸馏助手。根据作者挑选的正例对白（**正例**）与角色在剧本中已写的对白（**剧本锚点**），"
+        "写一张**轻量角色思维包**（中文 markdown）。\n"
         "结构必须含这些小节标题：\n"
         "## 视角一句话\n## 心智模型\n## 表达 DNA\n## 决策启发式\n## 审阅时问什么\n"
         "## 反模式\n## 诚实边界\n"
-        "要求：可操作、短句条目、面向视觉小说可演对白；禁止大段原文照抄正例；"
+        "要求：可操作、短句条目、面向视觉小说可演对白；禁止大段原文照抄正例或剧本锚点；"
+        "「视角一句话」必须是该角色最典型的**一句话**（可直接作为语气摘要，不加引号、不分行）；"
         "已确认方向与作者【偏好】优先写入「表达 DNA」与「心智模型」；忌讳写入「反模式」；"
         "诚实边界写明此卡非真人、服从工程 style_guide 与角色事实卡。\n"
         "只输出 markdown 正文，不要包 JSON。"
@@ -69,6 +78,7 @@ async def synthesize_voice_mind(
             f"已确认方向：{'、'.join(dirs) if dirs else '（尚无）'}",
             "正例：",
             *samples_txt[:24],
+            anchors or "剧本锚点：（无）",
             "偏好笔记：" + ("；".join(prefers[-10:]) if prefers else "（无）"),
             "忌讳笔记：" + ("；".join(rejects[-8:]) if rejects else "（无）"),
         ]
@@ -97,12 +107,21 @@ async def synthesize_voice_mind(
     if not content or len(content) < 40:
         raise RuntimeError("思维包生成结果过短")
 
-    voice_line = char.voice or ""
+    # suggestedVoice: take the「视角一句话」section line (the model wrote it
+    # to be exactly that one sentence), instead of guessing the first short
+    # line or keeping the old card's voice. The API only applies it to the
+    # character's voice field when that field is still empty.
+    voice_line = ""
+    in_perspective = False
     for line in content.splitlines():
-        if "视角一句话" in line or line.startswith("##"):
+        t = line.strip()
+        if t.startswith("##"):
+            in_perspective = "视角一句话" in t
             continue
-        t = line.strip().lstrip("-•* ").strip()
-        if t and len(t) < 120 and not voice_line:
+        if not in_perspective:
+            continue
+        t = t.lstrip("-•*").strip()
+        if t and len(t) <= 60 and not voice_line:
             voice_line = t
             break
 
@@ -117,6 +136,7 @@ async def synthesize_voice_mind(
             "readyForMind",
         )},
         "suggestedVoice": voice_line or None,
+        "scriptAnchorsUsed": script_anchors_used,
         "model": used_model or (cfg.model or "deepseek-chat"),
         "ready": True,
     }

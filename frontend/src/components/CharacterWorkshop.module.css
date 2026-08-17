@@ -1687,6 +1687,26 @@
   margin-bottom: 0.15rem;
 }
 
+.bubbleMood {
+  font-style: normal;
+  font-size: 0.68rem;
+  color: var(--accent, #5b7f95);
+  border: 1px solid color-mix(in srgb, var(--accent, #5b7f95) 40%, var(--line));
+  border-radius: 999px;
+  padding: 0.02rem 0.4rem;
+  margin-left: 0.45rem;
+  vertical-align: middle;
+}
+
+.bubbleAction {
+  display: block;
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--ink-soft);
+  opacity: 0.8;
+  margin-bottom: 0.15rem;
+}
+
 .chatInput {
   display: flex;
   gap: 0.45rem;
