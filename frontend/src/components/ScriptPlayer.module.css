@@ -211,4 +211,13 @@
   font-size: 0.75rem;
   opacity: 0.45;
   background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.keys {
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
 }

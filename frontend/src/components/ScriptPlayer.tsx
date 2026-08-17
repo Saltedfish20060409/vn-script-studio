@@ -102,6 +102,67 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
     move(state, ended);
   };
 
+  // Skip scene/show/hide cues in one go (keyboard "skip").
+  const skipCues = useCallback(() => {
+    setHistory((h) => [...h.slice(-300), cursor]);
+    let s = cursor;
+    let ended = false;
+    for (let i = 0; i < 60; i++) {
+      const b = scopeOf(s, chapter.blocks ?? [])[s.index];
+      if (!b) {
+        ended = true;
+        break;
+      }
+      if (b.type === "scene" || b.type === "show" || b.type === "hide") {
+        const r = advance(s, chapter.blocks ?? []);
+        s = r.state;
+        ended = r.ended;
+      } else {
+        break;
+      }
+    }
+    move(s, ended);
+  }, [cursor, chapter.blocks, move]);
+
+  // VN-style keyboard shortcuts while playing.
+  useEffect(() => {
+    if (phase !== "playing") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onExit();
+        return;
+      }
+      if (e.key === "Tab") {
+        e.preventDefault();
+        skipCues();
+        return;
+      }
+      const b = scopeOf(cursor, chapter.blocks ?? [])[cursor.index] ?? null;
+      if (b?.type === "menu") {
+        if (/^[1-9]$/.test(e.key)) {
+          const idx = Number(e.key) - 1;
+          const choice = b.choices[idx];
+          if (choice) {
+            e.preventDefault();
+            onChoose(choice);
+          }
+        }
+        return;
+      }
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        advanceStep();
+      } else if (e.key === "Backspace" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        goBack();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, cursor, chapter.blocks, skipCues]);
+
   if (phase === "intro") {
     return (
       <div className={styles.wrap}>
@@ -220,6 +281,9 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
       <div className={styles.progress}>
         <span>
           第 {cursor.index + 1} / {chapter.blocks?.length ?? 0} 步
+        </span>
+        <span className={styles.keys}>
+          Enter/空格 继续 · ←/Backspace 后退 · Tab 跳过提示 · Esc 退出 · 菜单按数字选择
         </span>
       </div>
     </div>

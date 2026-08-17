@@ -15,7 +15,7 @@ import {
   type ModelPreset,
   type UsageTotals,
 } from "../api/misc";
-import { changeLocale, t, useLocale } from "../lib/i18n";
+import { t } from "../lib/i18n";
 import { MascotFigure } from "./MascotFigure";
 import { mascotLine } from "../lib/mascotCopy";
 import styles from "./SettingsModal.module.css";
@@ -412,7 +412,6 @@ function BgPanPreview({  image,
 
 export function SettingsModal({ open, onClose, settings, onChange }: Props) {
   const [pane, setPane] = useState<Pane>("theme");
-  const locale = useLocale();
   const fileRef = useRef<HTMLInputElement>(null);
   const idleLineRef = useRef(mascotLine("settings"));
   const panLineRef = useRef(mascotLine("settingsPan"));
@@ -565,17 +564,6 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                 >
                   恢复默认字号
                 </button>
-                <label>
-                  {t("settings.lang")}
-                  <select
-                    value={locale}
-                    onChange={(e) => changeLocale(e.target.value as "zh" | "en")}
-                    data-testid="lang-select"
-                  >
-                    <option value="zh">{t("settings.lang.zh")}</option>
-                    <option value="en">{t("settings.lang.en")}</option>
-                  </select>
-                </label>
                 <p className={styles.note}>
                   模型 API Key 可在「模型」页签按账号配置（可选）；写作工艺与自检
                   由服务端环境变量配置。
@@ -723,12 +711,14 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
           </div>
         </div>
         <div className={styles.mascotDock} aria-hidden>
-          <MascotFigure
-            className={styles.mascotFigure}
-            size="md"
-            mood={holdingBg ? "cheer" : "idle"}
-            line={mascotText}
-          />
+          {(pane === "theme" || pane === "bg") && (
+            <MascotFigure
+              className={styles.mascotFigure}
+              size="md"
+              mood={holdingBg ? "cheer" : "idle"}
+              line={mascotText}
+            />
+          )}
         </div>
       </div>
     </div>

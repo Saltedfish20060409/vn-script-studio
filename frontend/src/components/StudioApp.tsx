@@ -67,6 +67,8 @@ import { StudioChapterBar } from "./StudioChapterBar";
 import { StudioTabs } from "./StudioTabs";
 import { StudioTopBar } from "./StudioTopBar";
 import { TemplatePicker } from "./TemplatePicker";
+import { OnboardingOverlay } from "./OnboardingOverlay";
+import { hasSeenTour } from "../lib/onboarding";
 import { WorldPanel } from "./WorldPanel";
 import { WriteToolbar } from "./WriteToolbar";
 import { StudioErrorBoundary } from "./StudioErrorBoundary";
@@ -163,9 +165,10 @@ export function StudioApp() {
     cachedWs.systemSub || wsDefaults.systemSub
   );
   const [projectSub, setProjectSub] = useState<
-    "library" | "stats" | "export" | "history" | "members"
+    "library" | "stats" | "analysis" | "export" | "history" | "members"
   >(cachedWs.projectSub || wsDefaults.projectSub);
   const [playOpen, setPlayOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(() => !hasSeenTour());
   const [chapterId, setChapterId] = useState(cachedWs.chapterId || "");
   const otherLock = activeLocks.find(
     (l) => l.chapterId === chapterId && l.userId !== myUserId
@@ -1458,6 +1461,9 @@ export function StudioApp() {
   return (
     <>
       <PwaInstallPrompt />
+      {tourOpen && project && (
+        <OnboardingOverlay onDone={() => setTourOpen(false)} />
+      )}
       {playOpen && project && chapter && (
         <ScriptPlayer
           chapter={chapter}
@@ -1551,6 +1557,7 @@ export function StudioApp() {
                     [
                       ["library", "剧本库"],
                       ["stats", "写作统计"],
+                      ["analysis", "结构分析"],
                       ["export", "导出"],
                       ["history", "快照 / 分享"],
                       ["members", "成员"],
@@ -1590,6 +1597,16 @@ export function StudioApp() {
 
                 {projectSub === "stats" && project && (
                   <WritingStatsPanel projectId={project.id} />
+                )}
+
+                {projectSub === "analysis" && project && (
+                  <AnalysisPanels
+                    project={project}
+                    chapterId={chapterId}
+                    draft={editor}
+                    onChange={updateActive}
+                    onRemoteProject={applyRemoteProject}
+                  />
                 )}
 
                 {projectSub === "export" && (
