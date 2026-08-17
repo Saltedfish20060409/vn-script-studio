@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.domain.types import Character, Location, ScriptBlock, VnProject
+from app.domain.types import Character, Location, SceneChapter, ScriptBlock, VnProject
 
 from .chapter_digest import digest_all_chapters, format_chapter_digest_index
 from .longform_memory import select_outline_beats
@@ -272,6 +272,19 @@ def build_agent_context(
         project.chapters[0] if project.chapters else None
     )
 
+    # Perf: blocks→plain conversion is O(blocks) and hot in character scoring /
+    # chapter excerpts below — memoize per chapter so each chapter converts once.
+    plain_cache: Dict[str, str] = {}
+
+    def plain_of(ch: Optional[SceneChapter]) -> str:
+        if ch is None:
+            return ""
+        cached = plain_cache.get(ch.id)
+        if cached is None:
+            cached = _blocks_to_plain(ch.blocks, project.characters)
+            plain_cache[ch.id] = cached
+        return cached
+
     ask_tokens = _tokenize("\n".join([userMessage or "", selection or ""]))
     # Only score against the user ask / selection — never seed with every name
     # (that would make every character card match itself).
@@ -335,7 +348,7 @@ def build_agent_context(
         hay = f"{c.displayName} {c.defineName} {_js(c.voice)} {_js(c.bio)} {_js(c.relationships)} {_js(getattr(c, 'voiceMind', None))}"
         score = _score_haystack(hay, effective_tokens)
         if focus_chapter:
-            plain = _blocks_to_plain(focus_chapter.blocks, project.characters)
+            plain = plain_of(focus_chapter)
             if (
                 c.displayName in plain
                 or c.defineName in plain
@@ -402,7 +415,7 @@ def build_agent_context(
     for ch in project.chapters:
         if focus_chapter and ch.id == focus_chapter.id:
             continue
-        plain = _blocks_to_plain(ch.blocks, project.characters)
+        plain = plain_of(ch)
         hay = f"{ch.title}\n{ch.synopsis or ''}\n{plain}"
         score = _score_haystack(hay, effective_tokens)
         already = score >= 4 and any(f"### {ch.title}" in b for b in other_chapter_blocks)
@@ -417,7 +430,7 @@ def build_agent_context(
     focus_body = ""
     focus_digest = next((d for d in digests if focus_chapter and d.chapterId == focus_chapter.id), None)
     if focus_chapter:
-        plain = _blocks_to_plain(focus_chapter.blocks, project.characters)
+        plain = plain_of(focus_chapter)
         focus_budget = (
             1800
             if resolved_task == "outline"
