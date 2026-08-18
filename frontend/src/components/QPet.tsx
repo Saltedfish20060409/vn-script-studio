@@ -164,6 +164,10 @@ export function QPet({ editorRef, cheerSignal }: Props) {
   const [walkDir, setWalkDir] = useState<1 | -1>(1);
   const [wanderTick, setWanderTick] = useState(0);
   const posRef = useRef(pos);
+  const stanceRef = useRef(stance);
+  useEffect(() => {
+    stanceRef.current = stance;
+  }, [stance]);
   useEffect(() => {
     posRef.current = pos;
   }, [pos]);
@@ -287,10 +291,14 @@ export function QPet({ editorRef, cheerSignal }: Props) {
   }, [enabled, mode, stance, isEdge]);
 
   // 一段时间后散步：水平分段行走（走走停停，像走路而非瞬移）
-  // wanderTick 在每次散步完成后 +1，确保「散完一次还会再散」
+  // 注意：依赖里【不能有 stance】—— idleCycle 每 5~12s 切一次待机，
+  // 若依赖 stance 会让散步定时器被反复重置而永远不触发。睡眠检查用
+  // stanceRef 读取当前姿态。
   useEffect(() => {
     if (!enabled || mode === "free" || isEdge || wanderingRef.current) return;
-    if (stance === "fall_asleep") return; // 睡着时不散步
+    if (stanceRef.current === "fall_asleep") {
+      return; // 睡着：暂停散步（睡醒时 wakeUp 会 +1 tick 恢复调度）
+    }
     wanderTimer.current = window.setTimeout(
       () => {
         const target = walkTarget(editorRef);
@@ -342,7 +350,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
       if (wanderTimer.current) window.clearTimeout(wanderTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, mode, isEdge, wanderTick, stance]);
+  }, [enabled, mode, isEdge, wanderTick]);
 
   // 编辑器可见 → dock（趴框顶为主）；不可见 → corner；free/edge 不干预
   useEffect(() => {
@@ -384,13 +392,23 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cheerSignal, enabled]);
 
-  // 打瞌睡：较长时间无交互触发（≥3 分钟），睡着时长随机（45~120s）
-  const wakeUp = useCallback((withLine: boolean) => {
-    if (sleepTimer.current) window.clearTimeout(sleepTimer.current);
-    sleepTimer.current = null;
-    setStance("breath_idle");
-    if (withLine) say("（揉揉眼睛）我睡着了吗？……嗯，醒了。");
-  }, [say]);
+  // 打瞌睡：较长时间【不与桌宠交互】触发（≥3 分钟），睡着时长随机（45~120s）。
+  // 页面活动（写稿/滚动）不算——只有点击/拖拽/双击/右键桌宠才刷新计时。
+  const wakeUp = useCallback(
+    (withLine: boolean) => {
+      if (sleepTimer.current) window.clearTimeout(sleepTimer.current);
+      sleepTimer.current = null;
+      setStance("breath_idle");
+      setWanderTick((t) => t + 1); // 睡醒恢复散步调度
+      if (withLine) say("（揉揉眼睛）我睡着了吗？……嗯，醒了。");
+    },
+    [say]
+  );
+
+  const bumpPetActivity = useCallback(() => {
+    lastActivityRef.current = Date.now();
+    if (stanceRef.current === "fall_asleep") wakeUp(false);
+  }, [wakeUp]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -408,31 +426,10 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     return () => window.clearInterval(t);
   }, [enabled, stance, isEdge, dragging, wakeUp]);
 
-  // 全局活动监听：鼠标/键盘/触摸都会刷新「最后活动」，并唤醒睡着的桌宠
-  useEffect(() => {
-    let lastBump = 0;
-    const bump = () => {
-      const now = Date.now();
-      if (now - lastBump < 800) return;
-      lastBump = now;
-      lastActivityRef.current = now;
-      if (stance === "fall_asleep") wakeUp(false);
-    };
-    window.addEventListener("pointerdown", bump);
-    window.addEventListener("keydown", bump);
-    window.addEventListener("mousemove", bump);
-    window.addEventListener("touchstart", bump);
-    return () => {
-      window.removeEventListener("pointerdown", bump);
-      window.removeEventListener("keydown", bump);
-      window.removeEventListener("mousemove", bump);
-      window.removeEventListener("touchstart", bump);
-    };
-  }, [stance, wakeUp]);
-
   // 拖拽 / 点击 / 贴边
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    bumpPetActivity(); // 与桌宠的交互 → 刷新无交互计时
     // 打断进行中的散步
     wanderingRef.current = false;
     segTimers.current.forEach((t) => window.clearTimeout(t));
@@ -575,6 +572,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     }, 240);
   };
   const onDoubleClick = () => {
+    bumpPetActivity();
     if (clickTimer.current) window.clearTimeout(clickTimer.current);
     setStance("react_cheer");
     say("摸头杀……开心。");
@@ -655,6 +653,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
         onDoubleClick={onDoubleClick}
         onContextMenu={(e) => {
           e.preventDefault();
+          bumpPetActivity();
           setMenuOpen((v) => !v);
         }}
         title="点击互动 · 双击摸头 · 拖到边缘探头 · 右键菜单"
