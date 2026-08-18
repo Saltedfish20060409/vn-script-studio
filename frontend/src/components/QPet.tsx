@@ -23,6 +23,8 @@ type PetMode = "dock" | "corner" | "free" | "edge-left" | "edge-right";
 const PET_W = 108;
 const PET_H = 152;
 const DOCK_GAP = 10;
+/** 无交互多久触发打瞌睡（至少 3 分钟） */
+const SLEEP_AFTER_MS = 3 * 60 * 1000;
 
 const MOOD_FOR_STANCE: Record<PetActionId, MascotMood> = {
   breath_idle: "idle",
@@ -160,6 +162,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
   const [dragging, setDragging] = useState(false);
   const [moveMs, setMoveMs] = useState(1500);
   const [walkDir, setWalkDir] = useState<1 | -1>(1);
+  const [wanderTick, setWanderTick] = useState(0);
   const posRef = useRef(pos);
   useEffect(() => {
     posRef.current = pos;
@@ -178,6 +181,8 @@ export function QPet({ editorRef, cheerSignal }: Props) {
   const clickTimer = useRef<number | null>(null);
   const moveTimer = useRef<number | null>(null);
   const segTimers = useRef<number[]>([]);
+  const sleepTimer = useRef<number | null>(null);
+  const lastActivityRef = useRef(Date.now());
   const prevCheer = useRef(cheerSignal ?? 0);
   /** 散步进行中：跳过「姿态→dock 位置」联动，否则位置会被拉回编辑器旁 */
   const wanderingRef = useRef(false);
@@ -267,9 +272,10 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stance, mode, enabled]);
 
-  // 多套待机不规律切换（edge 模式保持探头；散步中不打断）
+  // 多套待机不规律切换（edge 模式保持探头；散步/睡眠中不打断）
   useEffect(() => {
     if (!enabled || isEdge || wanderingRef.current) return;
+    if (stance === "fall_asleep") return; // 睡着时不切待机
     idleTimer.current = window.setTimeout(() => {
       const pool = mode === "dock" ? IDLE_POOL_DOCK : IDLE_POOL_CORNER;
       const next = pool[Math.floor(Math.random() * pool.length)];
@@ -281,8 +287,10 @@ export function QPet({ editorRef, cheerSignal }: Props) {
   }, [enabled, mode, stance, isEdge]);
 
   // 一段时间后散步：水平分段行走（走走停停，像走路而非瞬移）
+  // wanderTick 在每次散步完成后 +1，确保「散完一次还会再散」
   useEffect(() => {
     if (!enabled || mode === "free" || isEdge || wanderingRef.current) return;
+    if (stance === "fall_asleep") return; // 睡着时不散步
     wanderTimer.current = window.setTimeout(
       () => {
         const target = walkTarget(editorRef);
@@ -297,6 +305,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
           setMoveMs(1500);
           suppressDockSyncRef.current = true; // 保留散步终点，不被联动拉回
           setStance(target.stance);
+          setWanderTick((t) => t + 1); // 调度下一次散步
         };
 
         if (Math.abs(dx) < 8) {
@@ -333,7 +342,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
       if (wanderTimer.current) window.clearTimeout(wanderTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, mode, isEdge]);
+  }, [enabled, mode, isEdge, wanderTick, stance]);
 
   // 编辑器可见 → dock（趴框顶为主）；不可见 → corner；free/edge 不干预
   useEffect(() => {
@@ -374,6 +383,52 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cheerSignal, enabled]);
+
+  // 打瞌睡：较长时间无交互触发（≥3 分钟），睡着时长随机（45~120s）
+  const wakeUp = useCallback((withLine: boolean) => {
+    if (sleepTimer.current) window.clearTimeout(sleepTimer.current);
+    sleepTimer.current = null;
+    setStance("breath_idle");
+    if (withLine) say("（揉揉眼睛）我睡着了吗？……嗯，醒了。");
+  }, [say]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const check = () => {
+      if (stance === "fall_asleep") return; // 已在睡
+      if (isEdge || dragging || wanderingRef.current) return;
+      const idleMs = Date.now() - lastActivityRef.current;
+      if (idleMs >= SLEEP_AFTER_MS) {
+        setStance("fall_asleep");
+        const sleepMs = 45000 + Math.random() * 75000; // 45~120s 随机
+        sleepTimer.current = window.setTimeout(() => wakeUp(true), sleepMs);
+      }
+    };
+    const t = window.setInterval(check, 15000);
+    return () => window.clearInterval(t);
+  }, [enabled, stance, isEdge, dragging, wakeUp]);
+
+  // 全局活动监听：鼠标/键盘/触摸都会刷新「最后活动」，并唤醒睡着的桌宠
+  useEffect(() => {
+    let lastBump = 0;
+    const bump = () => {
+      const now = Date.now();
+      if (now - lastBump < 800) return;
+      lastBump = now;
+      lastActivityRef.current = now;
+      if (stance === "fall_asleep") wakeUp(false);
+    };
+    window.addEventListener("pointerdown", bump);
+    window.addEventListener("keydown", bump);
+    window.addEventListener("mousemove", bump);
+    window.addEventListener("touchstart", bump);
+    return () => {
+      window.removeEventListener("pointerdown", bump);
+      window.removeEventListener("keydown", bump);
+      window.removeEventListener("mousemove", bump);
+      window.removeEventListener("touchstart", bump);
+    };
+  }, [stance, wakeUp]);
 
   // 拖拽 / 点击 / 贴边
   const onPointerDown = (e: React.PointerEvent) => {
@@ -496,6 +551,11 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     // 单击
     if (clickTimer.current) window.clearTimeout(clickTimer.current);
     clickTimer.current = window.setTimeout(() => {
+      if (stance === "fall_asleep") {
+        // 点睡着的桌宠 → 直接唤醒
+        wakeUp(true);
+        return;
+      }
       if (isEdge) {
         // 贴边时点击 → 从边缘探出跳回屏幕内
         const vw = window.innerWidth;
@@ -549,6 +609,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
       if (wanderTimer.current) window.clearTimeout(wanderTimer.current);
       if (clickTimer.current) window.clearTimeout(clickTimer.current);
       if (moveTimer.current) window.clearTimeout(moveTimer.current);
+      if (sleepTimer.current) window.clearTimeout(sleepTimer.current);
       segTimers.current.forEach((t) => window.clearTimeout(t));
     },
     []

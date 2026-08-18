@@ -124,7 +124,9 @@ export const PET_ANIMATIONS: Record<PetActionId, PetAnimationSpec> = {
   react_fluster: oneShot("react_fluster", 4, [80, 140, 160, 160]),
   react_cheer: oneShot("react_cheer", 4, [100, 160, 160, 160]),
   // ---- P2 ----
-  fall_asleep: a("fall_asleep", 5, [300, 300, 400, 250, 60000], false, {
+  // 睡眠时长由组件控制（3min 无交互触发、随机睡 45~120s）；末帧停很久，
+  // 避免帧动画抢先唤醒
+  fall_asleep: a("fall_asleep", 5, [300, 300, 400, 250, 180000], false, {
     anchor: { sit_contact: { x: 256, y: 384 } },
   }),
   drag_held: a("drag_held", 2, [220, 220], true),
@@ -140,14 +142,12 @@ export const IDLE_POOL_DOCK: PetActionId[] = [
   "perch_top", // 趴在文本框顶
   "peek_over", // 从框顶探头
   "read_over_shoulder", // 侧身偷看文稿
-  "fall_asleep", // 打瞌睡（P2，缺帧占位）
 ];
 
 /** 角落待机池：缩在角落时的姿态 */
 export const IDLE_POOL_CORNER: PetActionId[] = [
   "breath_idle",
   "hide_corner", // 蜷坐
-  "fall_asleep",
 ];
 
 /** 单帧 URL（按文档命名规则；base 已含方向后缀如 `_r`，此处不再追加） */
