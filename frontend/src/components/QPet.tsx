@@ -95,53 +95,12 @@ function dockPosFor(stance: PetActionId, rect: DOMRect): { x: number; y: number 
   return dockFromEditorRect(rect);
 }
 
-/** 散步目标：水平带内随机点（像走路一样主要沿左右移动，不做对角线大跳）。
- *  底部带 / 中部带 始终可选；编辑器可见时加「框顶带」（在文本框上走动）。 */
-function walkTarget(editorRef?: React.RefObject<HTMLTextAreaElement | null>): {
-  x: number;
-  y: number;
-  stance: PetActionId;
-} {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const bands: Array<{
-    y: number;
-    xMin: number;
-    xMax: number;
-    stance: PetActionId;
-  }> = [
-    {
-      y: clampY(vh - PET_H - 24),
-      xMin: 12,
-      xMax: vw - PET_W - 20,
-      stance: "breath_idle",
-    }, // 页面底部沿
-    {
-      y: clampY(vh * 0.55),
-      xMin: 12,
-      xMax: vw - PET_W - 20,
-      stance: "breath_idle",
-    }, // 页面中部带
-  ];
-  const el = editorRef?.current;
-  if (el) {
-    const r = el.getBoundingClientRect();
-    if (r.width > 40) {
-      bands.push({
-        y: clampY(r.top - 96),
-        xMin: Math.max(0, r.left - 24),
-        xMax: Math.min(vw - PET_W, r.right - PET_W + 24),
-        stance: "perch_top",
-      }); // 文本框顶带（在上沿来回走）
-    }
-  }
-  const band = bands[Math.floor(Math.random() * bands.length)];
-  const span = Math.max(1, band.xMax - band.xMin);
-  return {
-    x: clampX(band.xMin + Math.random() * span),
-    y: band.y,
-    stance: band.stance,
-  };
+/** 散步一步：保持当前高度（纯水平），最多走页面宽度的 1/8，方向随机。 */
+function walkStepTarget(from: { x: number; y: number }): { x: number; y: number } {
+  const dir = Math.random() < 0.5 ? -1 : 1;
+  const maxDx = Math.max(60, window.innerWidth / 8);
+  const dx = dir * maxDx * (0.5 + Math.random() * 0.5); // 1/16 ~ 1/8 屏
+  return { x: clampX(from.x + dx), y: from.y }; // y 不变，纯水平
 }
 
 type Props = {
@@ -290,66 +249,68 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     };
   }, [enabled, mode, stance, isEdge]);
 
-  // 一段时间后散步：水平分段行走（走走停停，像走路而非瞬移）
-  // 注意：依赖里【不能有 stance】—— idleCycle 每 5~12s 切一次待机，
-  // 若依赖 stance 会让散步定时器被反复重置而永远不触发。睡眠检查用
-  // stanceRef 读取当前姿态。
+  // 一段时间后散步：纯水平、一小步（≤ 页面 1/8）、走走停停有顿挫感。
+  // 依赖里【不能有 stance】—— idleCycle 切待机会把散步定时器反复重置；
+  // 当前姿态用 stanceRef 读取。趴框/探头/睡着时不散步（稍后再看）。
   useEffect(() => {
     if (!enabled || mode === "free" || isEdge || wanderingRef.current) return;
-    if (stanceRef.current === "fall_asleep") {
-      return; // 睡着：暂停散步（睡醒时 wakeUp 会 +1 tick 恢复调度）
+    const s = stanceRef.current;
+    if (s === "fall_asleep" || s === "perch_top" || s === "peek_over") {
+      // 趴着/探头/睡着：30s 后再检查（睡醒/换姿态后自然恢复调度）
+      wanderTimer.current = window.setTimeout(
+        () => setWanderTick((v) => v + 1),
+        30000
+      );
+    } else {
+      // 40~120s 随机触发一次，间隔长且随机性强
+      wanderTimer.current = window.setTimeout(
+        () => {
+          const from = posRef.current;
+          const target = walkStepTarget(from);
+          const dx = target.x - from.x;
+          setWalkDir(dx < -4 ? -1 : 1); // 目标在左 → 朝左走（镜像）
+          wanderingRef.current = true;
+          setStance("walk_side_r");
+
+          const finish = () => {
+            wanderingRef.current = false;
+            setMoveMs(1500);
+            suppressDockSyncRef.current = true; // 保留散步终点，不被联动拉回
+            setStance("breath_idle");
+            setWanderTick((t) => t + 1); // 调度下一次散步
+          };
+
+          if (Math.abs(dx) < 8) {
+            setMoveMs(800);
+            setPos({ x: target.x, y: target.y });
+            moveTimer.current = window.setTimeout(finish, 1000);
+            return;
+          }
+
+          // 分小段走：每小段 ≤ 屏 1/24，走 950ms + 停 450ms → 明显顿挫
+          const seg = Math.max(36, window.innerWidth / 24);
+          const n = Math.max(2, Math.ceil(Math.abs(dx) / seg));
+          const stepMs = 950;
+          const pauseMs = 450;
+          for (let i = 1; i <= n; i++) {
+            const timer = window.setTimeout(() => {
+              setMoveMs(stepMs);
+              // y 不变：纯水平移动
+              setPos({ x: from.x + (dx * i) / n, y: from.y });
+            }, (i - 1) * (stepMs + pauseMs));
+            segTimers.current.push(timer);
+          }
+          moveTimer.current = window.setTimeout(
+            finish,
+            n * (stepMs + pauseMs) + 200
+          );
+        },
+        40000 + Math.random() * 80000
+      );
     }
-    wanderTimer.current = window.setTimeout(
-      () => {
-        const target = walkTarget(editorRef);
-        const from = posRef.current;
-        const dx = target.x - from.x;
-        setWalkDir(dx < -4 ? -1 : 1); // 目标在左 → 朝左走（镜像）
-        wanderingRef.current = true;
-        setStance("walk_side_r");
-
-        const finish = () => {
-          wanderingRef.current = false;
-          setMoveMs(1500);
-          suppressDockSyncRef.current = true; // 保留散步终点，不被联动拉回
-          setStance(target.stance);
-          setWanderTick((t) => t + 1); // 调度下一次散步
-        };
-
-        if (Math.abs(dx) < 8) {
-          // 几乎没水平位移 → 只做短促垂直微调
-          setMoveMs(700);
-          setPos({ x: target.x, y: target.y });
-          moveTimer.current = window.setTimeout(finish, 900);
-          return;
-        }
-
-        // 水平分 N 段走：每段 850ms 过渡 + 220ms 停顿 → 步伐感
-        const seg = 170;
-        const n = Math.max(1, Math.ceil(Math.abs(dx) / seg));
-        const stepMs = 850;
-        const pauseMs = 220;
-        for (let i = 1; i <= n; i++) {
-          const timer = window.setTimeout(() => {
-            setMoveMs(stepMs);
-            setPos({ x: from.x + (dx * i) / n, y: from.y });
-          }, (i - 1) * (stepMs + pauseMs));
-          segTimers.current.push(timer);
-        }
-        // 水平走完后，垂直短促微调到位
-        const horizEnd = n * (stepMs + pauseMs) + 120;
-        moveTimer.current = window.setTimeout(() => {
-          setMoveMs(650);
-          setPos({ x: target.x, y: target.y });
-          moveTimer.current = window.setTimeout(finish, 850);
-        }, horizEnd);
-      },
-      12000 + Math.random() * 16000
-    );
     return () => {
       if (wanderTimer.current) window.clearTimeout(wanderTimer.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, mode, isEdge, wanderTick]);
 
   // 编辑器可见 → dock（趴框顶为主）；不可见 → corner；free/edge 不干预
