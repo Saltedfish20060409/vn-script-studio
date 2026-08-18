@@ -15,9 +15,8 @@ data/
 .cache/
 .pip-tmp/
 .npm-cache/
-.cursor/*
-!.cursor/rules/
-!.cursor/rules/**
+.npmrc
+.cursor/
 *.tsbuildinfo
 
 # Python
