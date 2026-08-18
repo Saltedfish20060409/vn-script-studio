@@ -33,6 +33,88 @@
   display: block;
 }
 
+/* ---- 占位模式的动作动画（美术帧未交付时也能看出"额外动画"） ---- */
+.petShake {
+  animation: petShake 0.5s ease-in-out 2;
+}
+
+.petJump {
+  animation: petJump 0.55s cubic-bezier(0.22, 1, 0.36, 1) 1;
+}
+
+.petNod {
+  animation: petNod 1.6s ease-in-out infinite;
+}
+
+.petBob {
+  animation: petBob 0.5s ease-in-out infinite;
+}
+
+.petLean {
+  animation: petLean 0.9s ease-in-out infinite;
+}
+
+@keyframes petShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-6px) rotate(-3deg);
+  }
+  75% {
+    transform: translateX(6px) rotate(3deg);
+  }
+}
+
+@keyframes petJump {
+  0% {
+    transform: translateY(0);
+  }
+  35% {
+    transform: translateY(-22px) scale(1.05);
+  }
+  70% {
+    transform: translateY(2px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes petNod {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  40% {
+    transform: rotate(-6deg) translateY(3px);
+  }
+  70% {
+    transform: rotate(4deg) translateY(0);
+  }
+}
+
+@keyframes petBob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes petLean {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-7deg) translateY(2px);
+  }
+}
+
 .bubble {
   max-width: 230px;
   background: var(--panel-bg, #f6f8fc);
