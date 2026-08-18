@@ -7,8 +7,6 @@ import {
 } from "../lib/deskPet";
 import { mascotLine } from "../lib/mascotCopy";
 import {
-  IDLE_POOL_CORNER,
-  IDLE_POOL_DOCK,
   PET_ANIMATIONS,
   PET_CANVAS,
   petFrameUrl,
@@ -53,6 +51,13 @@ const CLICK_POOL: Array<{ stance: PetActionId; text: string | null }> = [
   { stance: "read_over_shoulder", text: "在看我吗？" },
 ];
 
+/** 原地小动作池（占位阶段也有动画/表情） */
+const MINI_ACTIONS: PetActionId[] = [
+  "react_cheer", // 跳一下
+  "read_over_shoulder", // 张望
+  "hide_corner", // 坐下蜷
+];
+
 function clampX(x: number, w = PET_W): number {
   return Math.max(0, Math.min(x, window.innerWidth - w - 8));
 }
@@ -74,7 +79,7 @@ function cornerPos(): { x: number; y: number } {
   };
 }
 
-/** 姿态 → dock 位置：坐/趴框顶、探头贴框顶、其余站右侧 */
+/** 姿态 → 编辑器对齐位置（到达框边目标时用） */
 function dockPosFor(stance: PetActionId, rect: DOMRect): { x: number; y: number } {
   const s = PET_ANIMATIONS[stance];
   const c = PET_CANVAS[s.canvas];
@@ -95,12 +100,49 @@ function dockPosFor(stance: PetActionId, rect: DOMRect): { x: number; y: number 
   return dockFromEditorRect(rect);
 }
 
-/** 散步一步：保持当前高度（纯水平），最多走页面宽度的 1/8，方向随机。 */
-function walkStepTarget(from: { x: number; y: number }): { x: number; y: number } {
-  const dir = Math.random() < 0.5 ? -1 : 1;
-  const maxDx = Math.max(60, window.innerWidth / 8);
-  const dx = dir * maxDx * (0.5 + Math.random() * 0.5); // 1/16 ~ 1/8 屏
-  return { x: clampX(from.x + dx), y: from.y }; // y 不变，纯水平
+/** 自由游走目标：编辑器可见时偏好框边（趴框顶/站两侧/探头），
+ *  也随机去屏幕别处；不可见时屏幕随机点（中下部为主）。 */
+function pickTarget(
+  editorRef?: React.RefObject<HTMLTextAreaElement | null>
+): { x: number; y: number; onArrive: "perch" | "peek" | "stand" } {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const targets: Array<{ x: number; y: number; onArrive: "perch" | "peek" | "stand" }> = [];
+  const el = editorRef?.current;
+  const r = el ? el.getBoundingClientRect() : null;
+  if (r && r.width > 40) {
+    targets.push({
+      x: clampX(r.left + r.width / 2 - PET_W / 2),
+      y: clampY(r.top - 96),
+      onArrive: "perch",
+    }); // 趴框顶
+    targets.push({
+      x: clampX(r.right + DOCK_GAP),
+      y: clampY(r.bottom - PET_H),
+      onArrive: "stand",
+    }); // 框右侧
+    targets.push({
+      x: clampX(r.left - PET_W - 10),
+      y: clampY(r.bottom - PET_H),
+      onArrive: "stand",
+    }); // 框左侧
+    targets.push({
+      x: clampX(r.left + r.width / 2 - 48, 96),
+      y: clampY(r.top - 56, 96),
+      onArrive: "peek",
+    }); // 框顶探头
+  }
+  targets.push({
+    x: clampX(vw * (0.08 + Math.random() * 0.84)),
+    y: clampY(vh * (0.4 + Math.random() * 0.5)),
+    onArrive: "stand",
+  }); // 屏幕中下部随机
+  targets.push({
+    x: clampX(vw * (0.08 + Math.random() * 0.84)),
+    y: clampY(vh - PET_H - 24),
+    onArrive: "stand",
+  }); // 屏幕底部随机
+  return targets[Math.floor(Math.random() * targets.length)];
 }
 
 type Props = {
@@ -108,7 +150,8 @@ type Props = {
   cheerSignal?: number;
 };
 
-/** Q 版桌宠：散步 / 贴边探头 / 多待机 / 点击反应 / 拖拽。 */
+/** Q 版桌宠：像桌宠模拟器一样在屏幕上自由游走 —— 随机走向各处、
+ *  停停走走、做小动作、被戳有反应、可拖拽、会打瞌睡。 */
 export function QPet({ editorRef, cheerSignal }: Props) {
   const [enabled, setEnabled] = useState(getDeskPetState().enabled);
   const [mode, setMode] = useState<PetMode>("corner");
@@ -121,15 +164,13 @@ export function QPet({ editorRef, cheerSignal }: Props) {
   const [dragging, setDragging] = useState(false);
   const [moveMs, setMoveMs] = useState(1500);
   const [walkDir, setWalkDir] = useState<1 | -1>(1);
-  const [wanderTick, setWanderTick] = useState(0);
+  const [behaviorTick, setBehaviorTick] = useState(0);
   const posRef = useRef(pos);
   const stanceRef = useRef(stance);
   useEffect(() => {
-    stanceRef.current = stance;
-  }, [stance]);
-  useEffect(() => {
     posRef.current = pos;
-  }, [pos]);
+    stanceRef.current = stance;
+  }, [pos, stance]);
   const dragRef = useRef<{
     startX: number;
     startY: number;
@@ -139,20 +180,18 @@ export function QPet({ editorRef, cheerSignal }: Props) {
   } | null>(null);
   const prevEnabledRef = useRef(getDeskPetState().enabled);
   const lineTimer = useRef<number | null>(null);
-  const idleTimer = useRef<number | null>(null);
-  const wanderTimer = useRef<number | null>(null);
+  const blinkTimer = useRef<number | null>(null);
+  const behaviorTimer = useRef<number | null>(null);
   const clickTimer = useRef<number | null>(null);
   const moveTimer = useRef<number | null>(null);
   const segTimers = useRef<number[]>([]);
   const sleepTimer = useRef<number | null>(null);
   const lastActivityRef = useRef(Date.now());
   const prevCheer = useRef(cheerSignal ?? 0);
-  /** 散步进行中：跳过「姿态→dock 位置」联动，否则位置会被拉回编辑器旁 */
+  /** 走位/行为进行中：防止重复调度 */
   const wanderingRef = useRef(false);
-  /** 手动拖放到框边后的一次性抑制：防止姿态联动把落点居中拉走 */
-  const suppressDockSyncRef = useRef(false);
 
-  // 设置开关同步：只在「关→开」时归位，位置更新（拖拽保存）不重置
+  // 设置开关同步：只在「关→开」时归位
   useEffect(() => {
     const onStore = () => {
       const st = getDeskPetState();
@@ -222,61 +261,46 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stance, framesReady]);
 
-  // 姿态 → dock 位置联动（散步中、手动拖放后的一次触发内跳过）
+  // 呼吸时随机眨眼
   useEffect(() => {
-    if (mode !== "dock" || !enabled || wanderingRef.current) return;
-    if (suppressDockSyncRef.current) {
-      suppressDockSyncRef.current = false; // 消费一次性抑制
-      return;
-    }
-    const el = editorRef?.current;
-    if (!el) return;
-    setPos(dockPosFor(stance, el.getBoundingClientRect()));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stance, mode, enabled]);
-
-  // 多套待机不规律切换（edge 模式保持探头；散步/睡眠中不打断）
-  useEffect(() => {
-    if (!enabled || isEdge || wanderingRef.current) return;
-    if (stance === "fall_asleep") return; // 睡着时不切待机
-    idleTimer.current = window.setTimeout(() => {
-      const pool = mode === "dock" ? IDLE_POOL_DOCK : IDLE_POOL_CORNER;
-      const next = pool[Math.floor(Math.random() * pool.length)];
-      setStance(next);
-    }, 5000 + Math.random() * 7000);
+    if (!enabled || stance !== "breath_idle") return;
+    blinkTimer.current = window.setTimeout(() => {
+      setStance("blink");
+    }, 2600 + Math.random() * 3600);
     return () => {
-      if (idleTimer.current) window.clearTimeout(idleTimer.current);
+      if (blinkTimer.current) window.clearTimeout(blinkTimer.current);
     };
-  }, [enabled, mode, stance, isEdge]);
+  }, [enabled, stance]);
 
-  // 一段时间后散步：仅发生在角落自由活动时（corner）。dock（趴在编辑器
-  // 旁）不散步——位置由「待机切换→dock 联动」管理，避免被拉来拉去。
+  // 行为循环：像桌宠模拟器一样自由活动 —— 每 8~20s 随机决定
+  // 「走向某处 / 原地小动作 / 待机呼吸」。free（拖放摆放）与 edge 不活动。
   useEffect(() => {
-    if (!enabled || mode === "free" || isEdge || wanderingRef.current) return;
-    if (mode === "dock") return; // 趴在编辑器旁：安静待着，不散步
-    const s = stanceRef.current;
-    if (s === "fall_asleep") {
-      // 睡着：30s 后再检查（睡醒后自然恢复调度）
-      wanderTimer.current = window.setTimeout(
-        () => setWanderTick((v) => v + 1),
-        30000
-      );
-    } else {
-      // 40~120s 随机触发一次，间隔长且随机性强
-      wanderTimer.current = window.setTimeout(
-        () => {
+    if (!enabled || isEdge || dragging || wanderingRef.current) return;
+    if (mode === "free") return; // 拖到哪停哪，尊重摆放
+    if (stanceRef.current === "fall_asleep") return; // 睡着（wakeUp 恢复）
+    behaviorTimer.current = window.setTimeout(
+      () => {
+        const roll = Math.random();
+        if (roll < 0.5) {
+          // 走向目标（水平为主，分段顿挫）
+          const target = pickTarget(editorRef);
           const from = posRef.current;
-          const target = walkStepTarget(from);
           const dx = target.x - from.x;
-          setWalkDir(dx < -4 ? -1 : 1); // 目标在左 → 朝左走（镜像）
+          setWalkDir(dx < -4 ? -1 : 1);
           wanderingRef.current = true;
           setStance("walk_side_r");
 
           const finish = () => {
             wanderingRef.current = false;
             setMoveMs(1500);
-            setStance("breath_idle");
-            setWanderTick((t) => t + 1); // 调度下一次散步
+            setStance(
+              target.onArrive === "perch"
+                ? "perch_top"
+                : target.onArrive === "peek"
+                  ? "peek_over"
+                  : "breath_idle"
+            );
+            setBehaviorTick((t) => t + 1); // 调度下一个行为
           };
 
           if (Math.abs(dx) < 8) {
@@ -286,7 +310,8 @@ export function QPet({ editorRef, cheerSignal }: Props) {
             return;
           }
 
-          // 分小段走：每小段 ≤ 屏 1/24，走 950ms + 停 450ms → 明显顿挫
+          // 水平分小段走（每小段 ≤ 屏 1/24，走 950ms + 停 450ms），
+          // 水平走完后垂直短促微调（斜向分量小）
           const seg = Math.max(36, window.innerWidth / 24);
           const n = Math.max(2, Math.ceil(Math.abs(dx) / seg));
           const stepMs = 950;
@@ -294,25 +319,38 @@ export function QPet({ editorRef, cheerSignal }: Props) {
           for (let i = 1; i <= n; i++) {
             const timer = window.setTimeout(() => {
               setMoveMs(stepMs);
-              // y 不变：纯水平移动
               setPos({ x: from.x + (dx * i) / n, y: from.y });
             }, (i - 1) * (stepMs + pauseMs));
             segTimers.current.push(timer);
           }
-          moveTimer.current = window.setTimeout(
-            finish,
-            n * (stepMs + pauseMs) + 200
-          );
-        },
-        40000 + Math.random() * 80000
-      );
-    }
+          moveTimer.current = window.setTimeout(() => {
+            setMoveMs(650);
+            setPos({ x: target.x, y: target.y });
+            moveTimer.current = window.setTimeout(finish, 850);
+          }, n * (stepMs + pauseMs) + 120);
+        } else if (roll < 0.75) {
+          // 原地小动作（跳一下 / 张望 / 坐下蜷），2.5s 后回呼吸
+          const act = MINI_ACTIONS[Math.floor(Math.random() * MINI_ACTIONS.length)];
+          setStance(act);
+          moveTimer.current = window.setTimeout(() => {
+            setStance("breath_idle");
+            setBehaviorTick((t) => t + 1);
+          }, 2500);
+        } else {
+          // 待机呼吸（静静站一会儿）
+          setStance("breath_idle");
+          setBehaviorTick((t) => t + 1);
+        }
+      },
+      8000 + Math.random() * 12000
+    );
     return () => {
-      if (wanderTimer.current) window.clearTimeout(wanderTimer.current);
+      if (behaviorTimer.current) window.clearTimeout(behaviorTimer.current);
     };
-  }, [enabled, mode, isEdge, wanderTick]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, mode, isEdge, dragging, behaviorTick]);
 
-  // 编辑器可见 → dock（趴框顶为主）；不可见 → corner；free/edge 不干预
+  // 编辑器可见 → dock（行为目标偏框边）；不可见 → corner（自由游走）
   useEffect(() => {
     if (!enabled || mode === "free" || isEdge) return;
     const el = editorRef?.current;
@@ -329,15 +367,11 @@ export function QPet({ editorRef, cheerSignal }: Props) {
       rect.left < window.innerWidth &&
       rect.right > 0;
     if (inView) {
+      if (mode !== "dock") setBehaviorTick((t) => t + 1); // 进入写作页后尽快活动
       setMode("dock");
-      if (stance === "breath_idle" && Math.random() < 0.7) {
-        setStance("perch_top");
-      }
     } else {
       setMode("corner");
-      setPos(cornerPos());
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, mode, editorRef, isEdge]);
 
   // 外部庆祝信号
@@ -352,14 +386,13 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cheerSignal, enabled]);
 
-  // 打瞌睡：较长时间【不与桌宠交互】触发（≥3 分钟），睡着时长随机（45~120s）。
-  // 页面活动（写稿/滚动）不算——只有点击/拖拽/双击/右键桌宠才刷新计时。
+  // 打瞌睡：≥3 分钟【不与桌宠交互】触发，睡着时长随机（45~120s）
   const wakeUp = useCallback(
     (withLine: boolean) => {
       if (sleepTimer.current) window.clearTimeout(sleepTimer.current);
       sleepTimer.current = null;
       setStance("breath_idle");
-      setWanderTick((t) => t + 1); // 睡醒恢复散步调度
+      setBehaviorTick((t) => t + 1); // 睡醒恢复行为循环
       if (withLine) say("（揉揉眼睛）我睡着了吗？……嗯，醒了。");
     },
     [say]
@@ -389,8 +422,8 @@ export function QPet({ editorRef, cheerSignal }: Props) {
   // 拖拽 / 点击 / 贴边
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    bumpPetActivity(); // 与桌宠的交互 → 刷新无交互计时
-    // 打断进行中的散步
+    bumpPetActivity();
+    // 打断进行中的走位/小动作
     wanderingRef.current = false;
     segTimers.current.forEach((t) => window.clearTimeout(t));
     segTimers.current = [];
@@ -444,28 +477,26 @@ export function QPet({ editorRef, cheerSignal }: Props) {
         setDeskPetPos({ x: vw - showW * 0.45, y: finalPos.y });
         return;
       }
-      // 2) 拖到文本框上沿/框后 → 触发姿态；水平位置跟随落点，不强制居中
+      // 2) 拖到文本框上沿/框后 → 触发姿态；水平位置跟随落点
       const el = editorRef?.current;
       const r = el ? el.getBoundingClientRect() : null;
       const inView = r && r.width > 40;
       if (inView) {
         const overlapX =
           finalPos.x > r.left - 40 && finalPos.x < r.right + 40 - showW;
-        const onTop = Math.abs(finalPos.y - r.top) < 60; // 紧贴框顶
+        const onTop = Math.abs(finalPos.y - r.top) < 60;
         const behind =
-          finalPos.y >= r.top - 130 && finalPos.y <= r.top + 60; // 框上/框后
+          finalPos.y >= r.top - 130 && finalPos.y <= r.top + 60;
         const nearRight =
           Math.abs(finalPos.x - r.right) < 130 &&
           finalPos.y > r.top - 80 &&
           finalPos.y < r.bottom + 80;
         if (overlapX && onTop) {
-          // 趴在框顶：x 保持落点（拖到哪趴哪）
           const s = PET_ANIMATIONS.perch_top;
           const c = PET_CANVAS[s.canvas];
           const h = (PET_W / c.w) * c.h;
           const ratio = (s.anchor?.sit_contact?.y ?? c.h / 2) / c.h;
           const p = { x: clampX(finalPos.x), y: clampY(r.top - h * ratio) };
-          suppressDockSyncRef.current = true;
           setMode("dock");
           setStance("perch_top");
           setPos(p);
@@ -474,9 +505,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
           return;
         }
         if (overlapX && behind) {
-          // 躲在框后探头：x 保持落点
           const p = { x: clampX(finalPos.x, 96), y: clampY(r.top - 56, 96) };
-          suppressDockSyncRef.current = true;
           setMode("dock");
           setStance("peek_over");
           setPos(p);
@@ -485,9 +514,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
           return;
         }
         if (nearRight) {
-          // 明确拖到右侧附近 → 站回编辑器旁
           const p = dockFromEditorRect(r);
-          suppressDockSyncRef.current = true;
           setMode("dock");
           setStance("breath_idle");
           setPos(p);
@@ -495,12 +522,11 @@ export function QPet({ editorRef, cheerSignal }: Props) {
           return;
         }
       }
-      // 3) 其他位置 → 自由停留（位置持久化，拖到哪停在哪）
+      // 3) 其他位置 → 自由停留（拖到哪停在哪）
       setPos(finalPos);
       setDeskPetPos(finalPos);
       setStance("drop_land");
       window.setTimeout(() => {
-        setMode("free");
         setStance("breath_idle");
       }, 320);
       return;
@@ -509,12 +535,10 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     if (clickTimer.current) window.clearTimeout(clickTimer.current);
     clickTimer.current = window.setTimeout(() => {
       if (stance === "fall_asleep") {
-        // 点睡着的桌宠 → 直接唤醒
         wakeUp(true);
         return;
       }
       if (isEdge) {
-        // 贴边时点击 → 从边缘探出跳回屏幕内
         const vw = window.innerWidth;
         setMode("free");
         setStance("react_cheer");
@@ -544,6 +568,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     setMode("dock");
     setStance("breath_idle");
     setMoveMs(1500);
+    setBehaviorTick((t) => t + 1); // 立即恢复行为循环
     const el = editorRef?.current;
     if (el) setPos(dockPosFor("breath_idle", el.getBoundingClientRect()));
     else setPos(cornerPos());
@@ -563,8 +588,8 @@ export function QPet({ editorRef, cheerSignal }: Props) {
   useEffect(
     () => () => {
       if (lineTimer.current) window.clearTimeout(lineTimer.current);
-      if (idleTimer.current) window.clearTimeout(idleTimer.current);
-      if (wanderTimer.current) window.clearTimeout(wanderTimer.current);
+      if (blinkTimer.current) window.clearTimeout(blinkTimer.current);
+      if (behaviorTimer.current) window.clearTimeout(behaviorTimer.current);
       if (clickTimer.current) window.clearTimeout(clickTimer.current);
       if (moveTimer.current) window.clearTimeout(moveTimer.current);
       if (sleepTimer.current) window.clearTimeout(sleepTimer.current);
@@ -616,7 +641,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
           bumpPetActivity();
           setMenuOpen((v) => !v);
         }}
-        title="点击互动 · 双击摸头 · 拖到边缘探头 · 右键菜单"
+        title="点击互动 · 双击摸头 · 拖到框边/屏幕边缘 · 右键菜单"
       >
         {framesReady ? (
           <img
@@ -666,6 +691,8 @@ function placeholderAnim(stance: PetActionId): string {
     case "peek_over":
     case "peek_side_r":
     case "peek_under":
+      return styles.petLean;
+    case "read_over_shoulder":
       return styles.petLean;
     default:
       return "";
