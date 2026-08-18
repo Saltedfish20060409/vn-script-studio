@@ -100,13 +100,13 @@ function dockPosFor(stance: PetActionId, rect: DOMRect): { x: number; y: number 
   return dockFromEditorRect(rect);
 }
 
-/** 自由游走目标：编辑器可见时偏好框边（趴框顶/站两侧/探头），
- *  也随机去屏幕别处；不可见时屏幕随机点（中下部为主）。 */
+/** 自由游走目标：普通游走保持当前高度（纯水平）；框边目标（趴框顶/
+ *  站两侧/探头）需要改变高度时才斜向移动。编辑器可见时偏好框边。 */
 function pickTarget(
-  editorRef?: React.RefObject<HTMLTextAreaElement | null>
+  editorRef: React.RefObject<HTMLTextAreaElement | null> | undefined,
+  from: { x: number; y: number }
 ): { x: number; y: number; onArrive: "perch" | "peek" | "stand" } {
   const vw = window.innerWidth;
-  const vh = window.innerHeight;
   const targets: Array<{ x: number; y: number; onArrive: "perch" | "peek" | "stand" }> = [];
   const el = editorRef?.current;
   const r = el ? el.getBoundingClientRect() : null;
@@ -115,7 +115,7 @@ function pickTarget(
       x: clampX(r.left + r.width / 2 - PET_W / 2),
       y: clampY(r.top - 96),
       onArrive: "perch",
-    }); // 趴框顶
+    }); // 趴框顶（斜向上去）
     targets.push({
       x: clampX(r.right + DOCK_GAP),
       y: clampY(r.bottom - PET_H),
@@ -130,18 +130,19 @@ function pickTarget(
       x: clampX(r.left + r.width / 2 - 48, 96),
       y: clampY(r.top - 56, 96),
       onArrive: "peek",
-    }); // 框顶探头
+    }); // 框顶探头（斜向上去）
   }
+  // 普通游走：保持当前高度 → 纯水平移动
   targets.push({
     x: clampX(vw * (0.08 + Math.random() * 0.84)),
-    y: clampY(vh * (0.4 + Math.random() * 0.5)),
+    y: from.y,
     onArrive: "stand",
-  }); // 屏幕中下部随机
+  });
   targets.push({
     x: clampX(vw * (0.08 + Math.random() * 0.84)),
-    y: clampY(vh - PET_H - 24),
+    y: from.y,
     onArrive: "stand",
-  }); // 屏幕底部随机
+  });
   return targets[Math.floor(Math.random() * targets.length)];
 }
 
@@ -282,9 +283,9 @@ export function QPet({ editorRef, cheerSignal }: Props) {
       () => {
         const roll = Math.random();
         if (roll < 0.5) {
-          // 走向目标（水平为主，分段顿挫）
-          const target = pickTarget(editorRef);
+          // 走向目标（普通目标纯水平；框边目标平滑斜向）
           const from = posRef.current;
+          const target = pickTarget(editorRef, from);
           const dx = target.x - from.x;
           setWalkDir(dx < -4 ? -1 : 1);
           wanderingRef.current = true;
