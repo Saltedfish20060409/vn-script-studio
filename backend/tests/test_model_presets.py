@@ -35,6 +35,21 @@ def test_ollama_local_present():
     assert o["base_url"].startswith("http://localhost")
 
 
+def test_old_models_removed_and_latest_present():
+    """Presets track the current generation — retired names must not linger."""
+    ids = {p["id"] for p in MODEL_PRESETS}
+    for retired in (
+        "moonshot-v1-32k",
+        "moonshot-v1-128k",
+        "glm-4-plus",
+        "gpt-4o",
+        "gpt-4o-mini",
+    ):
+        assert retired not in ids, f"retired model still listed: {retired}"
+    for latest in ("deepseek-chat", "kimi-k2.6", "qwen-max", "glm-5", "gpt-5"):
+        assert latest in ids, f"missing latest model: {latest}"
+
+
 def test_find_unknown_returns_none():
     assert find_preset("no-such-model") is None
 
