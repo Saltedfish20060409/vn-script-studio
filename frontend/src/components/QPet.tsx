@@ -23,8 +23,6 @@ type PetMode = "dock" | "corner" | "free" | "edge-left" | "edge-right";
 const PET_W = 108;
 const PET_H = 152;
 const DOCK_GAP = 10;
-/** 散步移动的过渡时长（ms）：要「慢」，所以比普通换位长 */
-const WALK_MS = 5200;
 
 const MOOD_FOR_STANCE: Record<PetActionId, MascotMood> = {
   breath_idle: "idle",
@@ -95,33 +93,53 @@ function dockPosFor(stance: PetActionId, rect: DOMRect): { x: number; y: number 
   return dockFromEditorRect(rect);
 }
 
-/** 散步兴趣点：文本框顶 / 框右侧 / 页面底部中间 / 页面中部左右 */
-function walkTargets(editorRef?: React.RefObject<HTMLTextAreaElement | null>) {
+/** 散步目标：水平带内随机点（像走路一样主要沿左右移动，不做对角线大跳）。
+ *  底部带 / 中部带 始终可选；编辑器可见时加「框顶带」（在文本框上走动）。 */
+function walkTarget(editorRef?: React.RefObject<HTMLTextAreaElement | null>): {
+  x: number;
+  y: number;
+  stance: PetActionId;
+} {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const spots: Array<{ x: number; y: number; stance: PetActionId }> = [
-    { x: clampX(vw / 2 - PET_W / 2), y: clampY(vh - PET_H - 20), stance: "breath_idle" }, // 页面底部中间
-    { x: clampX(vw * 0.16), y: clampY(vh * 0.55), stance: "breath_idle" }, // 页面中部偏左
-    { x: clampX(vw - PET_W - 20), y: clampY(vh * 0.42), stance: "breath_idle" }, // 右侧中部
-    { x: clampX(vw * 0.5 - PET_W / 2), y: clampY(vh * 0.2), stance: "breath_idle" }, // 中上部
+  const bands: Array<{
+    y: number;
+    xMin: number;
+    xMax: number;
+    stance: PetActionId;
+  }> = [
+    {
+      y: clampY(vh - PET_H - 24),
+      xMin: 12,
+      xMax: vw - PET_W - 20,
+      stance: "breath_idle",
+    }, // 页面底部沿
+    {
+      y: clampY(vh * 0.55),
+      xMin: 12,
+      xMax: vw - PET_W - 20,
+      stance: "breath_idle",
+    }, // 页面中部带
   ];
   const el = editorRef?.current;
   if (el) {
     const r = el.getBoundingClientRect();
     if (r.width > 40) {
-      spots.push({
-        x: clampX(r.left + r.width / 2 - PET_W / 2),
+      bands.push({
         y: clampY(r.top - 96),
+        xMin: Math.max(0, r.left - 24),
+        xMax: Math.min(vw - PET_W, r.right - PET_W + 24),
         stance: "perch_top",
-      }); // 趴回文本框顶
-      spots.push({
-        x: clampX(r.right + DOCK_GAP),
-        y: clampY(r.bottom - PET_H),
-        stance: "breath_idle",
-      }); // 框右侧
+      }); // 文本框顶带（在上沿来回走）
     }
   }
-  return spots;
+  const band = bands[Math.floor(Math.random() * bands.length)];
+  const span = Math.max(1, band.xMax - band.xMin);
+  return {
+    x: clampX(band.xMin + Math.random() * span),
+    y: band.y,
+    stance: band.stance,
+  };
 }
 
 type Props = {
@@ -142,6 +160,10 @@ export function QPet({ editorRef, cheerSignal }: Props) {
   const [dragging, setDragging] = useState(false);
   const [moveMs, setMoveMs] = useState(1500);
   const [walkDir, setWalkDir] = useState<1 | -1>(1);
+  const posRef = useRef(pos);
+  useEffect(() => {
+    posRef.current = pos;
+  }, [pos]);
   const dragRef = useRef<{
     startX: number;
     startY: number;
@@ -155,6 +177,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
   const wanderTimer = useRef<number | null>(null);
   const clickTimer = useRef<number | null>(null);
   const moveTimer = useRef<number | null>(null);
+  const segTimers = useRef<number[]>([]);
   const prevCheer = useRef(cheerSignal ?? 0);
   /** 散步进行中：跳过「姿态→dock 位置」联动，否则位置会被拉回编辑器旁 */
   const wanderingRef = useRef(false);
@@ -257,25 +280,52 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     };
   }, [enabled, mode, stance, isEdge]);
 
-  // 一段时间后散步：慢速走向兴趣点（walk 姿态 + 方向）
+  // 一段时间后散步：水平分段行走（走走停停，像走路而非瞬移）
   useEffect(() => {
     if (!enabled || mode === "free" || isEdge || wanderingRef.current) return;
     wanderTimer.current = window.setTimeout(
       () => {
-        const spots = walkTargets(editorRef);
-        const target = spots[Math.floor(Math.random() * spots.length)];
-        const dx = target.x - pos.x;
+        const target = walkTarget(editorRef);
+        const from = posRef.current;
+        const dx = target.x - from.x;
         setWalkDir(dx < -4 ? -1 : 1); // 目标在左 → 朝左走（镜像）
         wanderingRef.current = true;
-        setMoveMs(WALK_MS);
         setStance("walk_side_r");
-        setPos(target);
-        if (moveTimer.current) window.clearTimeout(moveTimer.current);
-        moveTimer.current = window.setTimeout(() => {
+
+        const finish = () => {
           wanderingRef.current = false;
           setMoveMs(1500);
+          suppressDockSyncRef.current = true; // 保留散步终点，不被联动拉回
           setStance(target.stance);
-        }, WALK_MS + 300);
+        };
+
+        if (Math.abs(dx) < 8) {
+          // 几乎没水平位移 → 只做短促垂直微调
+          setMoveMs(700);
+          setPos({ x: target.x, y: target.y });
+          moveTimer.current = window.setTimeout(finish, 900);
+          return;
+        }
+
+        // 水平分 N 段走：每段 850ms 过渡 + 220ms 停顿 → 步伐感
+        const seg = 170;
+        const n = Math.max(1, Math.ceil(Math.abs(dx) / seg));
+        const stepMs = 850;
+        const pauseMs = 220;
+        for (let i = 1; i <= n; i++) {
+          const timer = window.setTimeout(() => {
+            setMoveMs(stepMs);
+            setPos({ x: from.x + (dx * i) / n, y: from.y });
+          }, (i - 1) * (stepMs + pauseMs));
+          segTimers.current.push(timer);
+        }
+        // 水平走完后，垂直短促微调到位
+        const horizEnd = n * (stepMs + pauseMs) + 120;
+        moveTimer.current = window.setTimeout(() => {
+          setMoveMs(650);
+          setPos({ x: target.x, y: target.y });
+          moveTimer.current = window.setTimeout(finish, 850);
+        }, horizEnd);
       },
       12000 + Math.random() * 16000
     );
@@ -283,7 +333,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
       if (wanderTimer.current) window.clearTimeout(wanderTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, mode, pos, isEdge]);
+  }, [enabled, mode, isEdge]);
 
   // 编辑器可见 → dock（趴框顶为主）；不可见 → corner；free/edge 不干预
   useEffect(() => {
@@ -328,6 +378,11 @@ export function QPet({ editorRef, cheerSignal }: Props) {
   // 拖拽 / 点击 / 贴边
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    // 打断进行中的散步
+    wanderingRef.current = false;
+    segTimers.current.forEach((t) => window.clearTimeout(t));
+    segTimers.current = [];
+    if (moveTimer.current) window.clearTimeout(moveTimer.current);
     dragRef.current = {
       startX: e.clientX,
       startY: e.clientY,
@@ -494,6 +549,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
       if (wanderTimer.current) window.clearTimeout(wanderTimer.current);
       if (clickTimer.current) window.clearTimeout(clickTimer.current);
       if (moveTimer.current) window.clearTimeout(moveTimer.current);
+      segTimers.current.forEach((t) => window.clearTimeout(t));
     },
     []
   );
