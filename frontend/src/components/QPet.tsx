@@ -304,30 +304,34 @@ export function QPet({ editorRef, cheerSignal }: Props) {
           };
 
           if (Math.abs(dx) < 8) {
+            // 几乎没水平位移：直接平滑过渡到位（x、y 一起）
             setMoveMs(800);
             setPos({ x: target.x, y: target.y });
             moveTimer.current = window.setTimeout(finish, 1000);
             return;
           }
 
-          // 水平分小段走（每小段 ≤ 屏 1/24，走 950ms + 停 450ms），
-          // 水平走完后垂直短促微调（斜向分量小）
+          // 分小段走（每小段 ≤ 屏 1/24，走 950ms + 停 450ms）：
+          // x、y 都按比例分摊进每一段 → 平滑斜向，不会「走完突然纵跳」
           const seg = Math.max(36, window.innerWidth / 24);
           const n = Math.max(2, Math.ceil(Math.abs(dx) / seg));
           const stepMs = 950;
           const pauseMs = 450;
+          const dy = target.y - from.y;
           for (let i = 1; i <= n; i++) {
             const timer = window.setTimeout(() => {
               setMoveMs(stepMs);
-              setPos({ x: from.x + (dx * i) / n, y: from.y });
+              setPos({
+                x: from.x + (dx * i) / n,
+                y: from.y + (dy * i) / n,
+              });
             }, (i - 1) * (stepMs + pauseMs));
             segTimers.current.push(timer);
           }
-          moveTimer.current = window.setTimeout(() => {
-            setMoveMs(650);
-            setPos({ x: target.x, y: target.y });
-            moveTimer.current = window.setTimeout(finish, 850);
-          }, n * (stepMs + pauseMs) + 120);
+          moveTimer.current = window.setTimeout(
+            finish,
+            n * (stepMs + pauseMs) + 200
+          );
         } else if (roll < 0.75) {
           // 原地小动作（跳一下 / 张望 / 坐下蜷），2.5s 后回呼吸
           const act = MINI_ACTIONS[Math.floor(Math.random() * MINI_ACTIONS.length)];
@@ -418,6 +422,14 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     const t = window.setInterval(check, 15000);
     return () => window.clearInterval(t);
   }, [enabled, stance, isEdge, dragging, wakeUp]);
+
+  // 菜单打开时：点菜单外任意处关闭（菜单内按钮 stopPropagation 不受影响）
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = () => setMenuOpen(false);
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [menuOpen]);
 
   // 拖拽 / 点击 / 贴边
   const onPointerDown = (e: React.PointerEvent) => {
@@ -661,7 +673,10 @@ export function QPet({ editorRef, cheerSignal }: Props) {
         )}
       </div>
       {menuOpen && (
-        <div className={styles.menu}>
+        <div
+          className={styles.menu}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <button type="button" onClick={dockHome}>
             回到编辑器
           </button>
