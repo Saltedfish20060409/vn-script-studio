@@ -158,6 +158,8 @@ export function QPet({ editorRef, cheerSignal }: Props) {
   const prevCheer = useRef(cheerSignal ?? 0);
   /** 散步进行中：跳过「姿态→dock 位置」联动，否则位置会被拉回编辑器旁 */
   const wanderingRef = useRef(false);
+  /** 手动拖放到框边后的一次性抑制：防止姿态联动把落点居中拉走 */
+  const suppressDockSyncRef = useRef(false);
 
   // 设置开关同步：只在「关→开」时归位，位置更新（拖拽保存）不重置
   useEffect(() => {
@@ -229,9 +231,13 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stance, framesReady]);
 
-  // 姿态 → dock 位置联动（散步中跳过）
+  // 姿态 → dock 位置联动（散步中、手动拖放后的一次触发内跳过）
   useEffect(() => {
     if (mode !== "dock" || !enabled || wanderingRef.current) return;
+    if (suppressDockSyncRef.current) {
+      suppressDockSyncRef.current = false; // 消费一次性抑制
+      return;
+    }
     const el = editorRef?.current;
     if (!el) return;
     setPos(dockPosFor(stance, el.getBoundingClientRect()));
@@ -371,51 +377,58 @@ export function QPet({ editorRef, cheerSignal }: Props) {
         setDeskPetPos({ x: vw - showW * 0.45, y: finalPos.y });
         return;
       }
-      // 2) 拖到文本框附近/上面 → 触发趴框顶 / 框后探头 / 站旁边
+      // 2) 拖到文本框上沿/框后 → 触发姿态；水平位置跟随落点，不强制居中
       const el = editorRef?.current;
       const r = el ? el.getBoundingClientRect() : null;
       const inView = r && r.width > 40;
-      const horizOverlap =
-        inView &&
-        finalPos.x > r.left - 60 &&
-        finalPos.x < r.right + 60 - showW;
-      if (inView && horizOverlap && Math.abs(finalPos.y - r.top) < 150) {
-        // 拖到文本框上沿 → 趴在框顶
-        setMode("dock");
-        setStance("perch_top");
-        setPos(dockPosFor("perch_top", r));
-        setDeskPetPos(dockPosFor("perch_top", r));
-        say("那我趴这儿陪你写。");
-        return;
+      if (inView) {
+        const overlapX =
+          finalPos.x > r.left - 40 && finalPos.x < r.right + 40 - showW;
+        const onTop = Math.abs(finalPos.y - r.top) < 60; // 紧贴框顶
+        const behind =
+          finalPos.y >= r.top - 130 && finalPos.y <= r.top + 60; // 框上/框后
+        const nearRight =
+          Math.abs(finalPos.x - r.right) < 130 &&
+          finalPos.y > r.top - 80 &&
+          finalPos.y < r.bottom + 80;
+        if (overlapX && onTop) {
+          // 趴在框顶：x 保持落点（拖到哪趴哪）
+          const s = PET_ANIMATIONS.perch_top;
+          const c = PET_CANVAS[s.canvas];
+          const h = (PET_W / c.w) * c.h;
+          const ratio = (s.anchor?.sit_contact?.y ?? c.h / 2) / c.h;
+          const p = { x: clampX(finalPos.x), y: clampY(r.top - h * ratio) };
+          suppressDockSyncRef.current = true;
+          setMode("dock");
+          setStance("perch_top");
+          setPos(p);
+          setDeskPetPos(p);
+          say("那我趴这儿陪你写。");
+          return;
+        }
+        if (overlapX && behind) {
+          // 躲在框后探头：x 保持落点
+          const p = { x: clampX(finalPos.x, 96), y: clampY(r.top - 56, 96) };
+          suppressDockSyncRef.current = true;
+          setMode("dock");
+          setStance("peek_over");
+          setPos(p);
+          setDeskPetPos(p);
+          say("躲在这儿偷看你写……");
+          return;
+        }
+        if (nearRight) {
+          // 明确拖到右侧附近 → 站回编辑器旁
+          const p = dockFromEditorRect(r);
+          suppressDockSyncRef.current = true;
+          setMode("dock");
+          setStance("breath_idle");
+          setPos(p);
+          setDeskPetPos(p);
+          return;
+        }
       }
-      if (
-        inView &&
-        horizOverlap &&
-        finalPos.y >= r.top - 200 &&
-        finalPos.y <= r.bottom + 40
-      ) {
-        // 拖到框上/框后 → 躲在文本框后面探头
-        setMode("dock");
-        setStance("peek_over");
-        setPos(dockPosFor("peek_over", r));
-        setDeskPetPos(dockPosFor("peek_over", r));
-        say("躲在这儿偷看你写……");
-        return;
-      }
-      if (
-        inView &&
-        Math.abs(finalPos.x - r.right) < 180 &&
-        finalPos.y > r.top - 120 &&
-        finalPos.y < r.bottom + 120
-      ) {
-        // 拖到右侧附近 → 站回编辑器旁边
-        setMode("dock");
-        setStance("breath_idle");
-        setPos(dockFromEditorRect(r));
-        setDeskPetPos(dockFromEditorRect(r));
-        return;
-      }
-      // 3) 其他位置 → 自由停留
+      // 3) 其他位置 → 自由停留（位置持久化，拖到哪停在哪）
       setPos(finalPos);
       setDeskPetPos(finalPos);
       setStance("drop_land");
