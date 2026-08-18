@@ -1,5 +1,5 @@
 import type { VnProject } from "../types/vn";
-import { API_BASE, apiFetch, getToken } from "./http";
+import { API_BASE, apiFetch, buildApiHeaders } from "./http";
 // ---------------------------------------------------------------------------
 // Writing pipeline (Plan → Write → Check → Revise + quality gate)
 // ---------------------------------------------------------------------------
@@ -113,13 +113,9 @@ export async function pipelineRunStream(
   onEvent: (evt: PipelineStreamEvent) => void,
   signal?: AbortSignal
 ): Promise<JobStatus> {
-  const token = getToken();
   const res = await fetch(`${API_BASE}/projects/${id}/pipeline/run`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    headers: buildApiHeaders(undefined, true),
     body: JSON.stringify({ ...body, async_mode: true, stream: true }),
     signal,
   });

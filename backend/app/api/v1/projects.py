@@ -1304,9 +1304,9 @@ async def agent_chapter_revise(
         model=creds["model"],
     )
     critic = DeepSeekConfig(
-        apiKey=settings.critic_api_key or creds["api_key"],
-        baseUrl=settings.critic_api_base_url or creds["base_url"],
-        model=settings.critic_api_model or creds["model"],
+        apiKey=creds.get("critic_api_key") or creds["api_key"],
+        baseUrl=creds.get("critic_base_url") or creds["base_url"],
+        model=creds.get("critic_model") or creds["model"],
     )
 
     if body.async_mode:
@@ -1609,9 +1609,9 @@ async def _build_agent_request(
         craftMode=settings.agent_craft_mode,
         selfReview=settings.agent_self_review,
         lensIds=body.lens_ids,
-        criticApiKey=settings.critic_api_key or None,
-        criticApiBaseUrl=settings.critic_api_base_url or None,
-        criticApiModel=settings.critic_api_model or None,
+        criticApiKey=creds.get("critic_api_key") or None,
+        criticApiBaseUrl=creds.get("critic_base_url") or None,
+        criticApiModel=creds.get("critic_model") or None,
         apiKey=creds["api_key"],
         apiBaseUrl=creds["base_url"],
         apiModel=creds["model"],

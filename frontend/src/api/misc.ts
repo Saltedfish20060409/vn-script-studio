@@ -316,7 +316,7 @@ export interface ModelPreset {
 export interface ActiveLlmInfo {
   base_url: string;
   model: string;
-  source: "user" | "server";
+  source: "user" | "server" | "client";
 }
 
 export function getModelCatalogue(): Promise<{

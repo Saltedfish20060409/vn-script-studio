@@ -13,7 +13,7 @@ import {
   ApiError,
   apiFetch,
   authedRawFetch,
-  getToken,
+  buildApiHeaders,
   readErrorPayload,
 } from "./http";
 export interface ProjectSummary {
@@ -525,13 +525,9 @@ export async function runAgentStream(
   onEvent: (evt: AgentStreamEvent) => void,
   signal?: AbortSignal
 ): Promise<AgentRunOut> {
-  const token = getToken();
   const res = await fetch(`${API_BASE}/projects/${id}/agent/stream`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    headers: buildApiHeaders(undefined, true),
     body: JSON.stringify(body),
     signal,
   });

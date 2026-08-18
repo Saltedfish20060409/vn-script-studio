@@ -194,7 +194,7 @@ class SettingsOut(BaseModel):
     # Effective model actually used (user override or server env), for display.
     active_model: str = ""
     active_base_url: str = ""
-    # user = using this account's key; server = falling back to server env
+    # user = account DB key; server = env fallback; client = X-LLM-* headers
     credential_source: str = "server"
 
 
@@ -219,8 +219,8 @@ class SettingsPutIn(BaseModel):
 
 
 class TestLlmIn(BaseModel):
-    """Test-connection request. Empty fields fall back to saved user creds,
-    then to server env — matching how real requests resolve credentials."""
+    """Test-connection request. Empty fields fall back to X-LLM-* request
+    headers, then saved user creds, then server env."""
 
     api_key: Optional[str] = None
     base_url: Optional[str] = None

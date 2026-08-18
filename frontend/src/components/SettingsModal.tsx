@@ -10,12 +10,15 @@ import {
   getModelCatalogue,
   getSettings,
   getUsage,
-  putSettings,
   testLlm,
   type ModelPreset,
   type UsageTotals,
 } from "../api/misc";
 import { t } from "../lib/i18n";
+import {
+  loadLlmCredentials,
+  saveLlmCredentials,
+} from "../lib/llmCredentials";
 import {
   getDeskPetState,
   setDeskPetEnabled,
@@ -89,11 +92,13 @@ function UsagePane() {
   );
 }
 
-/** 用户级 LLM 凭据：优先用自己的 key，留空则回退服务端环境变量。 */
+/** 本机 LLM 凭据：Key / URL 存在浏览器，请求后端时带上以连接模型。 */
 function LlmPane() {
-  const [loaded, setLoaded] = useState<ServerSettingsOut | null>(null);
+  const [serverFallback, setServerFallback] = useState<ServerSettingsOut | null>(
+    null
+  );
   const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [savedNote, setSavedNote] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
@@ -109,14 +114,16 @@ function LlmPane() {
 
   const load = useCallback(() => {
     setError("");
+    setSavedNote("");
+    const local = loadLlmCredentials();
+    setApiKey(local.apiKey);
+    setBaseUrl(local.baseUrl);
+    setModel(local.model);
+    setCriticKey(local.criticApiKey);
+    setCriticBaseUrl(local.criticBaseUrl);
+    setCriticModel(local.criticModel);
     getSettings()
-      .then((out) => {
-        setLoaded(out);
-        setBaseUrl(out.api_base_url ?? "");
-        setModel(out.api_model ?? "");
-        setCriticBaseUrl(out.critic_api_base_url ?? "");
-        setCriticModel(out.critic_api_model ?? "");
-      })
+      .then(setServerFallback)
       .catch((e) => setError(e instanceof Error ? e.message : "读取失败"));
     getModelCatalogue()
       .then(({ presets: p }) => setPresets(p))
@@ -129,35 +136,51 @@ function LlmPane() {
     load();
   }, [load]);
 
-  const save = async () => {
-    setSaving(true);
+  const persist = (next: {
+    apiKey: string;
+    baseUrl: string;
+    model: string;
+    criticKey: string;
+    criticBaseUrl: string;
+    criticModel: string;
+  }) => {
+    saveLlmCredentials({
+      apiKey: next.apiKey,
+      baseUrl: next.baseUrl,
+      model: next.model,
+      criticApiKey: next.criticKey,
+      criticBaseUrl: next.criticBaseUrl,
+      criticModel: next.criticModel,
+    });
+  };
+
+  const save = () => {
     setError("");
-    try {
-      await putSettings({
-        // api_key 仅在用户输入新值或显式清空时发送；留空保持不变
-        api_key: apiKey === "" ? undefined : apiKey,
-        api_base_url: baseUrl,
-        api_model: model,
-        critic_api_key: criticKey === "" ? undefined : criticKey,
-        critic_api_base_url: criticBaseUrl,
-        critic_api_model: criticModel,
-      });
-      setApiKey("");
-      setCriticKey("");
-      load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "保存失败");
-    } finally {
-      setSaving(false);
-    }
+    persist({
+      apiKey,
+      baseUrl,
+      model,
+      criticKey,
+      criticBaseUrl,
+      criticModel,
+    });
+    setSavedNote(t("settings.savedLocal"));
+    setTestResult(null);
   };
 
   const runTest = async () => {
     setTesting(true);
     setTestResult(null);
+    persist({
+      apiKey,
+      baseUrl,
+      model,
+      criticKey,
+      criticBaseUrl,
+      criticModel,
+    });
     try {
       const r = await testLlm({
-        // 空字段让后端回退已保存的凭据，因此可以直接测当前输入
         api_key: apiKey === "" ? undefined : apiKey,
         base_url: baseUrl,
         model,
@@ -186,23 +209,25 @@ function LlmPane() {
     setBaseUrl(p.base_url);
     setModel(p.model);
     setTestResult(null);
+    setSavedNote("");
   };
+
+  const sourceLabel = apiKey
+    ? t("settings.activeClient")
+    : serverFallback?.has_api_key
+      ? t("settings.activeUser")
+      : t("settings.activeServer");
 
   return (
     <div className={styles.form}>
       <p className={styles.note}>{t("settings.llmNote")}</p>
       {error && <p className={styles.error}>{error}</p>}
-      {loaded && (
-        <p className={styles.note}>
-          {t("settings.activeModel", {
-            model: loaded.active_model || "deepseek-chat",
-          })}{" "}
-          ·{" "}
-          {loaded.credential_source === "user"
-            ? t("settings.activeUser")
-            : t("settings.activeServer")}
-        </p>
-      )}
+      <p className={styles.note}>
+        {t("settings.activeModel", {
+          model: model || serverFallback?.active_model || "deepseek-chat",
+        })}{" "}
+        · {sourceLabel}
+      </p>
       {presets.length > 0 && (
         <label>
           {t("settings.preset")}
@@ -229,9 +254,7 @@ function LlmPane() {
           type="password"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
-          placeholder={
-            loaded?.has_api_key ? `已配置 ${loaded.api_key_masked}` : "sk-…"
-          }
+          placeholder="sk-…"
           autoComplete="off"
         />
       </label>
@@ -253,6 +276,7 @@ function LlmPane() {
           placeholder="deepseek-chat"
         />
       </label>
+      {savedNote && <p className={styles.okNote}>{savedNote}</p>}
       {testResult && (
         <p className={testResult.ok ? styles.okNote : styles.error}>
           {testResult.text}
@@ -266,11 +290,7 @@ function LlmPane() {
           type="password"
           value={criticKey}
           onChange={(e) => setCriticKey(e.target.value)}
-          placeholder={
-            loaded?.has_critic_api_key
-              ? `已配置 ${loaded.critic_api_key_masked}`
-              : "sk-…（可选）"
-          }
+          placeholder="sk-…（可选）"
           autoComplete="off"
         />
       </label>
@@ -293,13 +313,8 @@ function LlmPane() {
         />
       </label>
       <div className={styles.llmActions}>
-        <button
-          type="button"
-          className={styles.primary}
-          disabled={saving}
-          onClick={() => void save()}
-        >
-          {saving ? t("settings.saveBusy") : t("settings.save")}
+        <button type="button" className={styles.primary} onClick={save}>
+          {t("settings.save")}
         </button>
         <button
           type="button"
@@ -312,19 +327,19 @@ function LlmPane() {
         <button
           type="button"
           className={styles.ghost}
-          onClick={() => void (async () => {
-            setSaving(true);
-            setError("");
-            try {
-              await putSettings({ api_key: "" });
-              setApiKey("");
-              load();
-            } catch (e) {
-              setError(e instanceof Error ? e.message : "清除失败");
-            } finally {
-              setSaving(false);
-            }
-          })()}
+          onClick={() => {
+            setApiKey("");
+            persist({
+              apiKey: "",
+              baseUrl,
+              model,
+              criticKey,
+              criticBaseUrl,
+              criticModel,
+            });
+            setSavedNote("");
+            setTestResult(null);
+          }}
         >
           {t("settings.clearMainKey")}
         </button>
@@ -589,8 +604,7 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                   </span>
                 </label>
                 <p className={styles.note}>
-                  模型 API Key 可在「模型」页签按账号配置（可选）；写作工艺与自检
-                  由服务端环境变量配置。
+                  模型 API Key 与 Base URL 在「模型」页签保存在本机；请求后端时用于连接对应模型。
                 </p>
               </div>
             )}

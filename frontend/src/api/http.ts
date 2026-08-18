@@ -3,6 +3,7 @@
 // Type-only import from ./auth (auth.ts imports values from here) — erased at
 // runtime, so this does not create a runtime circular dependency.
 import type { TokenOut } from "./auth";
+import { applyLlmHeaders } from "../lib/llmCredentials";
 
 export const TOKEN_KEY = "vnss-token";
 export const REFRESH_TOKEN_KEY = "vnss-refresh-token";
@@ -137,19 +138,26 @@ async function fetchWithTimeout(
   }
 }
 
+/** Auth + browser-local LLM credentials (X-LLM-*). */
+export function buildApiHeaders(init?: HeadersInit, jsonBody = false): Headers {
+  const headers = new Headers(init);
+  if (jsonBody && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  applyLlmHeaders(headers);
+  return headers;
+}
+
 /** Core fetch helper: prefixes /api/v1, attaches bearer token, handles JSON. */
 export async function apiFetch<T = unknown>(
   path: string,
   options: ApiFetchOptions = {}
 ): Promise<T> {
-  const token = getToken();
-  const headers = new Headers(options.headers);
   const isFormData =
     typeof FormData !== "undefined" && options.body instanceof FormData;
-  if (!isFormData && options.body != null && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const headers = buildApiHeaders(options.headers, !isFormData && options.body != null);
 
   let res = await fetchWithTimeout(`${API_BASE}${path}`, {
     ...options,
@@ -159,12 +167,10 @@ export async function apiFetch<T = unknown>(
   // Expired access token → try one refresh, then replay the request once.
   if (res.status === 401 && !options.skipAuthRedirect) {
     if (await refreshOnce()) {
-      const h2 = new Headers(options.headers);
-      if (!isFormData && options.body != null && !h2.has("Content-Type")) {
-        h2.set("Content-Type", "application/json");
-      }
-      const t2 = getToken();
-      if (t2) h2.set("Authorization", `Bearer ${t2}`);
+      const h2 = buildApiHeaders(
+        options.headers,
+        !isFormData && options.body != null
+      );
       res = await fetchWithTimeout(`${API_BASE}${path}`, {
         ...options,
         headers: h2,
@@ -241,15 +247,11 @@ export async function authedRawFetch(
   path: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const token = getToken();
-  const headers = new Headers(options.headers);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const headers = buildApiHeaders(options.headers);
   let res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (res.status === 401) {
     if (await refreshOnce()) {
-      const h2 = new Headers(options.headers);
-      const t2 = getToken();
-      if (t2) h2.set("Authorization", `Bearer ${t2}`);
+      const h2 = buildApiHeaders(options.headers);
       res = await fetch(`${API_BASE}${path}`, { ...options, headers: h2 });
     }
   }

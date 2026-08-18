@@ -2,7 +2,7 @@ export type ThemeMode = "day" | "night";
 /** Wallpaper chrome: auto follows day→mist / night→ink. */
 export type PanelGlass = "auto" | "mist" | "ink";
 
-/** Appearance + tool background only. LLM credentials live on the server. */
+/** Appearance + tool background only. LLM credentials live in the browser. */
 export interface AppSettings {
   theme: ThemeMode;
   /** UI font scale, 1 = 100% */
@@ -129,7 +129,7 @@ export interface ServerSettingsOut {
   /** Effective model actually used (user override or server env). */
   active_model?: string;
   active_base_url?: string;
-  credential_source?: "user" | "server";
+  credential_source?: "user" | "server" | "client";
 }
 
 export function fromServerSettings(out: ServerSettingsOut): AppSettings {

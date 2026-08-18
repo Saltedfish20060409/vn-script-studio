@@ -147,6 +147,7 @@ async def user_llm_credentials(
     api_key = decrypt_secret(row.api_key_enc or "", settings)
     if not api_key:
         return None
+    critic_key = decrypt_secret(row.critic_api_key_enc or "", settings)
     return {
         "api_key": api_key,
         "base_url": row.api_base_url
@@ -155,4 +156,7 @@ async def user_llm_credentials(
         "model": row.api_model or settings.deepseek_model or "deepseek-chat",
         "provider": settings.llm_provider or "openai",
         "source": "user",
+        "critic_api_key": critic_key,
+        "critic_base_url": row.critic_api_base_url or "",
+        "critic_model": row.critic_api_model or "",
     }

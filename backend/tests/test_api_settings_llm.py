@@ -45,7 +45,7 @@ def test_model_catalogue_shape():
             assert len(body["presets"]) >= 5
             assert body["active"] is not None  # server test key always present
             assert body["active"]["model"]
-            assert body["active"]["source"] in ("user", "server")
+            assert body["active"]["source"] in ("user", "server", "client")
 
     _run(_scenario())
 
@@ -100,6 +100,37 @@ def test_test_llm_upstream_error_reports_failure():
             body = r.json()
             assert body["ok"] is False
             assert "401" in body["error"]
+
+    _run(_scenario())
+
+
+def test_test_llm_uses_request_headers():
+    """Browser X-LLM-* headers are used to reach the upstream model."""
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "llm_hdr")
+            headers = {
+                **headers,
+                "X-LLM-Api-Key": "sk-from-browser",
+                "X-LLM-Base-Url": "https://api.moonshot.cn",
+                "X-LLM-Model": "moonshot-v1-32k",
+            }
+            with patch(
+                "app.core.llm_http.chat_completions",
+                new_callable=AsyncMock,
+                return_value=_ok_response("moonshot-v1-32k"),
+            ) as mocked:
+                r = await client.post(
+                    "/api/v1/settings/test-llm", json={}, headers=headers
+                )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["ok"] is True
+            cfg = mocked.await_args.args[0]
+            assert cfg.apiKey == "sk-from-browser"
+            assert cfg.baseUrl == "https://api.moonshot.cn"
+            assert cfg.model == "moonshot-v1-32k"
 
     _run(_scenario())
 

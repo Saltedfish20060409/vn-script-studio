@@ -90,7 +90,7 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def usage_context_middleware(request, call_next):
-        """Carry the authenticated user id for LLM usage accounting."""
+        """Carry usage user id and browser-supplied X-LLM-* credentials."""
         from app.core.usage import set_usage_user
 
         user_id: str | None = None
@@ -108,10 +108,17 @@ def create_app() -> FastAPI:
                 except Exception:  # noqa: BLE001 - invalid token falls through
                     user_id = None
         set_usage_user(user_id)
+        from app.core.llm_client_override import (
+            parse_llm_headers,
+            set_client_llm_override,
+        )
+
+        set_client_llm_override(parse_llm_headers(request.headers))
         try:
             return await call_next(request)
         finally:
             set_usage_user(None)
+            set_client_llm_override(None)
 
     app.include_router(api_router)
 

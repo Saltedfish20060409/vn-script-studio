@@ -349,13 +349,16 @@ async def create_project_row(
 
 
 def server_llm_credentials(settings: Settings) -> dict[str, str]:
-    """LLM credentials come only from server env — never from the client."""
+    """Server-env LLM credentials (lowest priority after client headers / user DB)."""
     return {
         "api_key": settings.deepseek_api_key,
         "base_url": settings.deepseek_base_url or "https://api.deepseek.com",
         "model": settings.deepseek_model or "deepseek-chat",
         "provider": settings.llm_provider or "openai",
         "source": "server",
+        "critic_api_key": settings.critic_api_key,
+        "critic_base_url": settings.critic_api_base_url,
+        "critic_model": settings.critic_api_model,
     }
 
 
@@ -364,14 +367,20 @@ async def resolve_llm_credentials(
     user_id: str,
     settings: Settings,
 ) -> dict[str, str]:
-    """Resolve LLM credentials: the user's own key when configured, else server env.
+    """Resolve LLM credentials: browser headers > user DB key > server env.
 
-    Multi-user deployments: each user may bring their own DeepSeek key (stored
-    encrypted in user_settings); without one the server-level key is used.
+    The frontend stores the user's key/URL locally and sends them as X-LLM-*
+    headers. Encrypted per-account keys remain a fallback for older clients.
     """
+    from app.core.llm_client_override import (
+        get_client_llm_override,
+        merge_llm_credentials,
+    )
     from app.services.settings import user_llm_credentials
 
     user_creds = await user_llm_credentials(db, user_id, settings)
-    if user_creds:
-        return user_creds
-    return server_llm_credentials(settings)
+    return merge_llm_credentials(
+        override=get_client_llm_override(),
+        user_creds=user_creds,
+        server=server_llm_credentials(settings),
+    )
