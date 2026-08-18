@@ -249,14 +249,14 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     };
   }, [enabled, mode, stance, isEdge]);
 
-  // 一段时间后散步：纯水平、一小步（≤ 页面 1/8）、走走停停有顿挫感。
-  // 依赖里【不能有 stance】—— idleCycle 切待机会把散步定时器反复重置；
-  // 当前姿态用 stanceRef 读取。趴框/探头/睡着时不散步（稍后再看）。
+  // 一段时间后散步：仅发生在角落自由活动时（corner）。dock（趴在编辑器
+  // 旁）不散步——位置由「待机切换→dock 联动」管理，避免被拉来拉去。
   useEffect(() => {
     if (!enabled || mode === "free" || isEdge || wanderingRef.current) return;
+    if (mode === "dock") return; // 趴在编辑器旁：安静待着，不散步
     const s = stanceRef.current;
-    if (s === "fall_asleep" || s === "perch_top" || s === "peek_over") {
-      // 趴着/探头/睡着：30s 后再检查（睡醒/换姿态后自然恢复调度）
+    if (s === "fall_asleep") {
+      // 睡着：30s 后再检查（睡醒后自然恢复调度）
       wanderTimer.current = window.setTimeout(
         () => setWanderTick((v) => v + 1),
         30000
@@ -275,7 +275,6 @@ export function QPet({ editorRef, cheerSignal }: Props) {
           const finish = () => {
             wanderingRef.current = false;
             setMoveMs(1500);
-            suppressDockSyncRef.current = true; // 保留散步终点，不被联动拉回
             setStance("breath_idle");
             setWanderTick((t) => t + 1); // 调度下一次散步
           };
