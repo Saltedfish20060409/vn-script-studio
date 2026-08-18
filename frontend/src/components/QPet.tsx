@@ -24,7 +24,7 @@ const PET_W = 108;
 const PET_H = 152;
 const DOCK_GAP = 10;
 /** 散步移动的过渡时长（ms）：要「慢」，所以比普通换位长 */
-const WALK_MS = 4200;
+const WALK_MS = 5200;
 
 const MOOD_FOR_STANCE: Record<PetActionId, MascotMood> = {
   breath_idle: "idle",
@@ -156,6 +156,8 @@ export function QPet({ editorRef, cheerSignal }: Props) {
   const clickTimer = useRef<number | null>(null);
   const moveTimer = useRef<number | null>(null);
   const prevCheer = useRef(cheerSignal ?? 0);
+  /** 散步进行中：跳过「姿态→dock 位置」联动，否则位置会被拉回编辑器旁 */
+  const wanderingRef = useRef(false);
 
   // 设置开关同步：只在「关→开」时归位，位置更新（拖拽保存）不重置
   useEffect(() => {
@@ -227,18 +229,18 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stance, framesReady]);
 
-  // 姿态 → dock 位置联动
+  // 姿态 → dock 位置联动（散步中跳过）
   useEffect(() => {
-    if (mode !== "dock" || !enabled) return;
+    if (mode !== "dock" || !enabled || wanderingRef.current) return;
     const el = editorRef?.current;
     if (!el) return;
     setPos(dockPosFor(stance, el.getBoundingClientRect()));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stance, mode, enabled]);
 
-  // 多套待机不规律切换（edge 模式保持探头，不切换）
+  // 多套待机不规律切换（edge 模式保持探头；散步中不打断）
   useEffect(() => {
-    if (!enabled || isEdge) return;
+    if (!enabled || isEdge || wanderingRef.current) return;
     idleTimer.current = window.setTimeout(() => {
       const pool = mode === "dock" ? IDLE_POOL_DOCK : IDLE_POOL_CORNER;
       const next = pool[Math.floor(Math.random() * pool.length)];
@@ -251,23 +253,25 @@ export function QPet({ editorRef, cheerSignal }: Props) {
 
   // 一段时间后散步：慢速走向兴趣点（walk 姿态 + 方向）
   useEffect(() => {
-    if (!enabled || mode === "free" || isEdge) return;
+    if (!enabled || mode === "free" || isEdge || wanderingRef.current) return;
     wanderTimer.current = window.setTimeout(
       () => {
         const spots = walkTargets(editorRef);
         const target = spots[Math.floor(Math.random() * spots.length)];
         const dx = target.x - pos.x;
         setWalkDir(dx < -4 ? -1 : 1); // 目标在左 → 朝左走（镜像）
+        wanderingRef.current = true;
         setMoveMs(WALK_MS);
         setStance("walk_side_r");
         setPos(target);
         if (moveTimer.current) window.clearTimeout(moveTimer.current);
         moveTimer.current = window.setTimeout(() => {
+          wanderingRef.current = false;
           setMoveMs(1500);
           setStance(target.stance);
-        }, WALK_MS + 200);
+        }, WALK_MS + 300);
       },
-      18000 + Math.random() * 22000
+      12000 + Math.random() * 16000
     );
     return () => {
       if (wanderTimer.current) window.clearTimeout(wanderTimer.current);
@@ -351,27 +355,74 @@ export function QPet({ editorRef, cheerSignal }: Props) {
         x: clampX(d.originX + (e.clientX - d.startX)),
         y: clampY(d.originY + (e.clientY - d.startY)),
       };
-      // 贴边 → 吸附成「探出头」：拖到左右边缘留一半在屏幕内
+      // 1) 贴屏幕边缘 → 吸附成「探出头」
       const vw = window.innerWidth;
       if (finalPos.x <= 6) {
         setMode("edge-left");
         setStance("peek_side_r");
         setPos({ x: -showW * 0.55, y: finalPos.y });
         setDeskPetPos({ x: -showW * 0.55, y: finalPos.y });
-      } else if (finalPos.x >= vw - showW - 6) {
+        return;
+      }
+      if (finalPos.x >= vw - showW - 6) {
         setMode("edge-right");
         setStance("peek_side_r");
         setPos({ x: vw - showW * 0.45, y: finalPos.y });
         setDeskPetPos({ x: vw - showW * 0.45, y: finalPos.y });
-      } else {
-        setPos(finalPos);
-        setDeskPetPos(finalPos);
-        setStance("drop_land");
-        window.setTimeout(() => {
-          setMode("free");
-          setStance("breath_idle");
-        }, 320);
+        return;
       }
+      // 2) 拖到文本框附近/上面 → 触发趴框顶 / 框后探头 / 站旁边
+      const el = editorRef?.current;
+      const r = el ? el.getBoundingClientRect() : null;
+      const inView = r && r.width > 40;
+      const horizOverlap =
+        inView &&
+        finalPos.x > r.left - 60 &&
+        finalPos.x < r.right + 60 - showW;
+      if (inView && horizOverlap && Math.abs(finalPos.y - r.top) < 150) {
+        // 拖到文本框上沿 → 趴在框顶
+        setMode("dock");
+        setStance("perch_top");
+        setPos(dockPosFor("perch_top", r));
+        setDeskPetPos(dockPosFor("perch_top", r));
+        say("那我趴这儿陪你写。");
+        return;
+      }
+      if (
+        inView &&
+        horizOverlap &&
+        finalPos.y >= r.top - 200 &&
+        finalPos.y <= r.bottom + 40
+      ) {
+        // 拖到框上/框后 → 躲在文本框后面探头
+        setMode("dock");
+        setStance("peek_over");
+        setPos(dockPosFor("peek_over", r));
+        setDeskPetPos(dockPosFor("peek_over", r));
+        say("躲在这儿偷看你写……");
+        return;
+      }
+      if (
+        inView &&
+        Math.abs(finalPos.x - r.right) < 180 &&
+        finalPos.y > r.top - 120 &&
+        finalPos.y < r.bottom + 120
+      ) {
+        // 拖到右侧附近 → 站回编辑器旁边
+        setMode("dock");
+        setStance("breath_idle");
+        setPos(dockFromEditorRect(r));
+        setDeskPetPos(dockFromEditorRect(r));
+        return;
+      }
+      // 3) 其他位置 → 自由停留
+      setPos(finalPos);
+      setDeskPetPos(finalPos);
+      setStance("drop_land");
+      window.setTimeout(() => {
+        setMode("free");
+        setStance("breath_idle");
+      }, 320);
       return;
     }
     // 单击
