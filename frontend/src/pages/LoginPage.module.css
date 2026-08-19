@@ -334,14 +334,17 @@ html[data-theme="night"] .slash {
 
 .finePrint {
   margin: 0.85rem 0 0;
-  font-size: 0.78rem;
-  line-height: 1.5;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--line);
+  font-size: 0.86rem;
+  line-height: 1.55;
   color: var(--ink-soft);
 }
 
 .finePrint a {
   color: var(--accent);
-  font-weight: 650;
+  font-weight: 700;
+  text-underline-offset: 0.2em;
 }
 
 @keyframes rise {

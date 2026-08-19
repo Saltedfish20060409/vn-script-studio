@@ -95,7 +95,7 @@ export function StudioTopBar({
               {exportLabel}
             </button>
             <button type="button" role="menuitem" onClick={onOpenHelp}>
-              使用说明
+              帮助 / FAQ
             </button>
             <button
               type="button"
@@ -123,7 +123,7 @@ export function StudioTopBar({
         </button>
         <button
           type="button"
-          className={`${styles.ghost} ${styles.topOnly}`}
+          className={styles.ghost}
           onClick={onOpenHelp}
         >
           帮助
