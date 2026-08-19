@@ -37,7 +37,9 @@ export default defineConfig({
         DATABASE_URL:
           process.env.E2E_DATABASE_URL ||
           "postgresql+asyncpg://vnss:vnss@localhost:54102/vnss_e2e",
-        DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || "e2e-placeholder",
+        DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || "",
+        AUTH_AUTO_VERIFY: "true",
+        RATE_LIMIT_ENABLED: "false",
         // get_settings() hard-rejects the default SECRET_KEY; CI has no
         // backend/.env so the spawned uvicorn must receive a valid key.
         SECRET_KEY:

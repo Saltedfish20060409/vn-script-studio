@@ -14,6 +14,7 @@ from app.core.harness.roles import build_role_system
 from app.core.llm_http import chat_completions, content_from_response
 from app.core.renpy import project_to_context
 from app.domain.types import VnProject
+from app.llm_models import DEFAULT_LLM_MODEL
 
 
 async def run_harness_llm(
@@ -26,7 +27,7 @@ async def run_harness_llm(
 ) -> Dict[str, Any]:
     if not config.apiKey or "your-key" in config.apiKey:
         raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
-    model = config.model or "deepseek-chat"
+    model = config.model or DEFAULT_LLM_MODEL
     extra = ""
     if project is not None:
         extra = "作品上下文（节选）：\n" + project_to_context(project)[:3500]

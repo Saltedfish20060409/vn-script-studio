@@ -10,6 +10,7 @@ from app.core.character_voice.corpus import corpus_stats, find_character
 from app.core.llm_http import content_from_response
 from app.core.llm_provider import provider_from_config
 from app.domain.types import VnProject
+from app.llm_models import DEFAULT_LLM_MODEL
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
 
@@ -137,6 +138,6 @@ async def synthesize_voice_mind(
         )},
         "suggestedVoice": voice_line or None,
         "scriptAnchorsUsed": script_anchors_used,
-        "model": used_model or (cfg.model or "deepseek-chat"),
+        "model": used_model or (cfg.model or DEFAULT_LLM_MODEL),
         "ready": True,
     }

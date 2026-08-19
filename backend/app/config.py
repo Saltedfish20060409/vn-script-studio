@@ -67,6 +67,9 @@ class Settings(BaseSettings):
     # in tests or single-user local setups behind a proxy that already limits).
     rate_limit_enabled: bool = True
 
+    # Test/e2e only: skip Resend and mark new accounts verified.
+    auth_auto_verify: bool = False
+
     # Resend transactional email (verify / password reset). Empty = email auth off.
     resend_api_key: str = ""
     resend_from_email: str = "noreply@send.studio.nexesr.top"

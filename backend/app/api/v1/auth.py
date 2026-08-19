@@ -92,7 +92,7 @@ async def register(
         _client_ip(request), "register", limit=20, enabled=settings.rate_limit_enabled
     ):
         raise HTTPException(status_code=429, detail="注册过于频繁，请稍后再试")
-    if not (settings.resend_api_key or "").strip():
+    if not (settings.resend_api_key or "").strip() and not settings.auth_auto_verify:
         raise HTTPException(
             status_code=503, detail="邮件服务未配置，暂时无法注册（请联系管理员）"
         )
@@ -113,11 +113,18 @@ async def register(
         username=username,
         password_hash=hash_password(body.password),
         email=email,
-        email_verified_at=None,
+        email_verified_at=datetime.now(timezone.utc) if settings.auth_auto_verify else None,
     )
     db.add(user)
     await db.flush()
     db.add(UserSettings(user_id=user.id, bg=dict(DEFAULT_BG)))
+    if settings.auth_auto_verify:
+        await db.commit()
+        return RegisterOut(
+            ok=True,
+            message="注册成功，请登录",
+            email=email,
+        )
     token = await issue_email_token(db, user, "verify")
     try:
         await send_verify_email(settings, user, token)

@@ -56,6 +56,7 @@ from app.schemas import (
     FactsAckStaleIn,
     FactsRejectIn,
     FactsScanIn,
+    GenerateRpyIn,
     LintIn,
     MapExtractAcceptIn,
     MapExtractIn,
@@ -415,6 +416,52 @@ async def export_docx(
             "Content-Disposition": f'attachment; filename="{safe_filename(vn.title, ".docx")}"'
         },
     )
+
+
+@router.post("/{project_id}/generate-rpy")
+async def generate_rpy_from_prose_api(
+    project_id: str,
+    body: GenerateRpyIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Turn a chapter's natural-language manuscript into Ren'Py blocks."""
+    from app.core.prose_rpy import generate_rpy_from_prose, prose_fingerprint
+    from app.core.usage import quota_exceeded
+
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    ch = next((c for c in vn.chapters if c.id == body.chapter_id), None)
+    if ch is None:
+        raise HTTPException(status_code=404, detail="章节不存在")
+
+    creds = await resolve_llm_credentials(db, user.id, settings)
+    cfg = None
+    use_llm = body.use_llm and bool(creds.get("api_key"))
+    if use_llm:
+        if await quota_exceeded(db, user.id, settings.llm_daily_token_cap):
+            raise HTTPException(status_code=429, detail="今日 LLM 用量已达上限，请明日再试")
+        cfg = DeepSeekConfig(
+            apiKey=creds["api_key"],
+            baseUrl=creds["base_url"],
+            model=creds["model"],
+        )
+    try:
+        rpy, blocks = await generate_rpy_from_prose(
+            vn, body.prose, cfg, use_llm=use_llm
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return {
+        "rpy": rpy,
+        "blocks": blocks,
+        "usedLlm": use_llm,
+        "proseHash": prose_fingerprint(body.prose),
+    }
 
 
 @router.get("/{project_id}/export/json")

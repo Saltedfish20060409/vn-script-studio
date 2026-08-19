@@ -80,9 +80,10 @@ def _app_base(settings: Settings) -> str:
 def _sticker(settings: Settings, filename: str, alt: str) -> str:
     src = f"{_app_base(settings)}/email/{filename}"
     return (
-        f'<p style="margin:20px 0;text-align:center">'
+        f'<p style="margin:20px 0;text-align:center;background:#ffffff">'
         f'<img src="{html_lib.escape(src)}" alt="{html_lib.escape(alt)}" '
-        f'width="220" style="max-width:220px;height:auto;border:0;display:inline-block" />'
+        f'width="220" style="max-width:220px;height:auto;border:0;display:inline-block;'
+        f'background:#ffffff" />'
         f"</p>"
     )
 
@@ -120,7 +121,7 @@ async def send_verify_email(settings: Settings, user: User, token: str) -> None:
         "<p>欢迎来到 VN Script Studio。<br />"
         "角色、章节、地图和审稿，都可以在这里慢慢搭起来，"
         "用来辅助你的视觉小说/轻小说写作。</p>",
-        _sticker(settings, "welcome-typing.png", "看板娘贴纸：打字"),
+        _sticker(settings, "welcome-typing.gif", "看板娘贴纸：打字"),
         "<p>先点下面的按钮验证邮箱（48 小时内有效），验证后就能登录开工：</p>",
         _btn(link, "验证邮箱"),
         "<p>如果这不是你本人注册的，忽略这封邮件即可。</p>",
@@ -141,7 +142,7 @@ async def send_reset_email(settings: Settings, user: User, token: str) -> None:
     html = _shell(
         f"<p>你好，{name}：</p>",
         "<p>收到你的密码重置请求了。</p>",
-        _sticker(settings, "reset-notes.png", "看板娘贴纸：记录"),
+        _sticker(settings, "reset-notes.gif", "看板娘贴纸：记录"),
         "<p>点下面按钮设置新密码（2 小时内有效）：</p>",
         _btn(link, "重置密码"),
         "<p>如果不是你本人操作，请忽略；密码不会被改动。</p>",

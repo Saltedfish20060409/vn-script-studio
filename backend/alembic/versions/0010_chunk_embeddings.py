@@ -30,20 +30,19 @@ def _has_extension(name: str) -> bool:
 
 
 def upgrade() -> None:
-    vector_ok = False
-    try:
-        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-        vector_ok = True
-    except Exception:  # noqa: BLE001 — stock PG lacks the extension files
-        # The failed statement aborts the transaction; roll back to a clean
-        # state so the migration can complete without the table.
-        try:
-            op.get_bind().rollback()
-        except Exception:  # noqa: BLE001
-            pass
-    if not vector_ok:
-        return
     bind = op.get_bind()
+    # Stock postgres images do not ship pgvector. CREATE EXTENSION then
+    # aborts the *outer* Alembic transaction (env.py wraps all revisions
+    # in one begin_transaction), which used to wipe 0001–0009 as well.
+    if not _has_extension("vector"):
+        return
+    nested = bind.begin_nested()
+    try:
+        bind.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
+        nested.commit()
+    except Exception:  # noqa: BLE001 — available in catalog but CREATE fails
+        nested.rollback()
+        return
     insp = sa.inspect(bind)
     if "project_chunk_embeddings" in insp.get_table_names():
         return
@@ -64,13 +63,17 @@ def upgrade() -> None:
         ["project_id"],
     )
     # Convert the column to the pgvector type when possible.
+    nested = bind.begin_nested()
     try:
-        op.execute(
-            "ALTER TABLE project_chunk_embeddings "
-            "ALTER COLUMN embedding TYPE vector(1536)"
+        bind.execute(
+            sa.text(
+                "ALTER TABLE project_chunk_embeddings "
+                "ALTER COLUMN embedding TYPE vector(1536)"
+            )
         )
+        nested.commit()
     except Exception:  # noqa: BLE001 — vector type unavailable, keep float[]
-        pass
+        nested.rollback()
 
 
 def downgrade() -> None:

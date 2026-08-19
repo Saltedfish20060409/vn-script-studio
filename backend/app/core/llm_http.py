@@ -9,6 +9,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 import httpx
 
 from app.core.ai import DeepSeekConfig
+from app.llm_models import DEFAULT_LLM_MODEL, resolve_chat_model
 
 # Retry these transient upstream statuses
 _RETRY_STATUSES = {408, 429, 500, 502, 503, 504}
@@ -32,21 +33,18 @@ async def chat_completions(
     if not config.apiKey or "your-key" in config.apiKey:
         raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
     base_url = (config.baseUrl or "https://api.deepseek.com").rstrip("/")
-    model = config.model or "deepseek-chat"
+    model, body = _chat_body(
+        config,
+        messages=messages,
+        temperature=temperature,
+        response_format=response_format,
+        max_tokens=max_tokens,
+        stream=stream,
+    )
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {config.apiKey}",
     }
-    body: Dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "stream": stream,
-    }
-    if response_format is not None:
-        body["response_format"] = response_format
-    if max_tokens:
-        body["max_tokens"] = max_tokens
 
     last_exc: Optional[Exception] = None
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -100,6 +98,31 @@ async def chat_completions(
     raise RuntimeError("LLM 请求失败")
 
 
+def _chat_body(
+    config: DeepSeekConfig,
+    *,
+    messages: List[Dict[str, str]],
+    temperature: float,
+    response_format: Optional[Dict[str, Any]],
+    max_tokens: Optional[int],
+    stream: bool,
+) -> tuple[str, Dict[str, Any]]:
+    model, thinking = resolve_chat_model(config.model or DEFAULT_LLM_MODEL)
+    body: Dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "stream": stream,
+    }
+    if thinking:
+        body["thinking"] = {"type": thinking}
+    if response_format is not None:
+        body["response_format"] = response_format
+    if max_tokens:
+        body["max_tokens"] = max_tokens
+    return model, body
+
+
 def _backoff_seconds(attempt: int) -> float:
     # 0.6, 1.2, 2.4 … + jitter
     base = 0.6 * (2**attempt)
@@ -123,21 +146,18 @@ async def stream_chat_completions(
     if not config.apiKey or "your-key" in config.apiKey:
         raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
     base_url = (config.baseUrl or "https://api.deepseek.com").rstrip("/")
-    model = config.model or "deepseek-chat"
+    _model, body = _chat_body(
+        config,
+        messages=messages,
+        temperature=temperature,
+        response_format=response_format,
+        max_tokens=max_tokens,
+        stream=True,
+    )
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {config.apiKey}",
     }
-    body: Dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "stream": True,
-    }
-    if response_format is not None:
-        body["response_format"] = response_format
-    if max_tokens:
-        body["max_tokens"] = max_tokens
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         async with client.stream(

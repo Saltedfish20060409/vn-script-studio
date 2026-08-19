@@ -224,7 +224,7 @@ function LlmPane() {
       {error && <p className={styles.error}>{error}</p>}
       <p className={styles.note}>
         {t("settings.activeModel", {
-          model: model || serverFallback?.active_model || "deepseek-chat",
+          model: model || serverFallback?.active_model || "deepseek-v4-flash",
         })}{" "}
         · {sourceLabel}
       </p>
@@ -273,7 +273,7 @@ function LlmPane() {
           type="text"
           value={model}
           onChange={(e) => setModel(e.target.value)}
-          placeholder="deepseek-chat"
+          placeholder="deepseek-v4-flash"
         />
       </label>
       {savedNote && <p className={styles.okNote}>{savedNote}</p>}
@@ -309,7 +309,7 @@ function LlmPane() {
           type="text"
           value={criticModel}
           onChange={(e) => setCriticModel(e.target.value)}
-          placeholder="deepseek-chat"
+          placeholder="deepseek-v4-flash"
         />
       </label>
       <div className={styles.llmActions}>

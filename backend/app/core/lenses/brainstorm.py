@@ -15,6 +15,7 @@ from app.core.lenses import (
     resolve_project_lenses,
 )
 from app.core.llm_http import chat_completions, content_from_response
+from app.llm_models import DEFAULT_LLM_MODEL
 from app.core.mentors import build_mentor_prompt_for_project
 from app.core.pipeline.ledger import format_ledger_for_agent, get_ledger
 from app.core.renpy import project_to_context
@@ -38,7 +39,7 @@ async def _chat(
         timeout=120,
     )
     content, model = content_from_response(res)
-    return {"content": content.strip(), "model": model or (cfg.model or "deepseek-chat")}
+    return {"content": content.strip(), "model": model or (cfg.model or DEFAULT_LLM_MODEL)}
 
 
 def _work_snippet(

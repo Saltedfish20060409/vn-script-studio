@@ -1,6 +1,7 @@
 """Unit tests for browser-supplied LLM credential headers (no DB)."""
 
 from app.core.llm_client_override import merge_llm_credentials, parse_llm_headers
+from app.llm_models import DEFAULT_LLM_MODEL
 
 
 def test_parse_llm_headers_empty():
@@ -87,3 +88,9 @@ def test_merge_independent_critic():
     assert out["critic_api_key"] == "sk-critic"
     assert out["critic_base_url"] == "https://critic.example"
     assert out["critic_model"] == "critic-model"
+
+
+def test_merge_empty_model_uses_v4_flash_default():
+    out = merge_llm_credentials(override=None, user_creds=None, server={})
+    assert out["model"] == DEFAULT_LLM_MODEL
+    assert out["critic_model"] == DEFAULT_LLM_MODEL

@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 /**
  * End-to-end smoke tests — the critical user journey:
- * register → login → create project → write a script → save → export .rpy.
+ * register → login → create project → write prose → save → generate RPY → export.
  *
  * These run against a real backend + built frontend (see playwright.config.ts).
  * Each test uses a unique username so parallel/serial reruns stay isolated.
@@ -14,63 +14,72 @@ function randomName(prefix: string): string {
   return `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
 }
 
+async function dismissTour(page: Page) {
+  const overlay = page.getByTestId("onboarding-overlay");
+  if (await overlay.isVisible().catch(() => false)) {
+    await page.getByRole("button", { name: "跳过" }).click();
+  }
+}
+
 async function register(page: Page, username: string) {
   await page.goto("/login");
   await page.getByRole("tab", { name: "注册" }).click();
   await page.fill("#vnss-username", username);
+  await page.fill("#vnss-email", `${username}@e2e.test`);
   await page.fill("#vnss-password", PASSWORD);
   await page.fill("#vnss-confirm", PASSWORD);
-  await page.getByRole("button", { name: "注册并进入" }).click();
+  await page.getByRole("button", { name: "注册并发送验证邮件" }).click();
+  await page.getByRole("button", { name: "返回登录" }).click();
+  await page.fill("#vnss-username", username);
+  await page.fill("#vnss-password", PASSWORD);
+  await page.getByRole("button", { name: "开始创作" }).click();
 }
 
 /** New users land on the empty library — create a blank project to reach the editor. */
 async function createBlankProject(page: Page) {
+  await dismissTour(page);
   await page.getByRole("button", { name: "空白剧本" }).click();
-  await page
-    .getByRole("textbox", { name: "新剧本标题" })
-    .fill("E2E 测试剧本");
+  await page.getByRole("textbox", { name: "新剧本标题" }).fill("E2E 测试剧本");
   await page.getByRole("button", { name: "创建" }).click();
+  await dismissTour(page);
 }
 
 test("注册 → 登录 → 建项目 → 写作 → 保存 → 导出", async ({ page }) => {
   const username = randomName("e2e_");
   await register(page, username);
 
-  // New user → empty library → create a blank project (lands in script editor).
   await createBlankProject(page);
   await expect(page.getByLabel("作品标题")).toHaveValue("E2E 测试剧本", {
     timeout: 15_000,
   });
 
-  // Write a script draft (script editor is the visible textarea on load).
   const editor = page.getByTestId("script-editor");
   await expect(editor).toBeVisible();
   const draft = [
-    "label start:",
-    "",
-    "scene bg station_night",
     "夏夜，雨声在空荡荡的站厅里回荡。",
     "",
-    "夏言 \"末班车已经开走了……\"",
+    "夏言：末班车已经开走了……",
   ].join("\n");
   await editor.fill(draft);
   await expect(editor).toHaveValue(draft);
 
-  // Autosave is debounced (~800ms) — wait for it to flush, then reload to
-  // prove the draft persisted to the backend. Round-tripping through the
-  // block codec may normalize blank lines, so assert key content instead of
-  // exact equality.
   await page.waitForTimeout(2500);
   await page.reload();
+  await dismissTour(page);
   const after = page.getByTestId("script-editor");
-  await expect(after).toHaveValue(/scene bg station_night/, { timeout: 15_000 });
+  await expect(after).toHaveValue(/站厅里回荡/, { timeout: 15_000 });
   await expect(after).toHaveValue(/末班车已经开走了/);
 
-  // Export .rpy: top bar button navigates to the export tab and generates.
-  await page.getByRole("button", { name: "导出 .rpy" }).click();
-  await expect(page.getByRole("button", { name: /下载 .rpy/ })).toBeVisible({
+  await page.getByRole("tab", { name: "RPY" }).click();
+  await page.getByRole("button", { name: "根据剧本生成" }).click();
+  await expect(page.getByTestId("script-editor")).toHaveValue(/末班车/, {
     timeout: 30_000,
   });
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "导出 .rpy" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/\.rpy$/);
 });
 
 test("登出后回到登录页，旧账号可重新登录", async ({ page }) => {
@@ -81,11 +90,9 @@ test("登出后回到登录页，旧账号可重新登录", async ({ page }) => 
     timeout: 15_000,
   });
 
-  // Logout via top bar.
   await page.getByRole("button", { name: "退出" }).click();
   await expect(page).toHaveURL(/\/login/);
 
-  // Login again with the same credentials.
   await page.fill("#vnss-username", username);
   await page.fill("#vnss-password", PASSWORD);
   await page.getByRole("button", { name: "开始创作" }).click();

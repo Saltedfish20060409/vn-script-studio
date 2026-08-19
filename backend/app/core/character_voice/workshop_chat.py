@@ -15,6 +15,7 @@ from app.core.character_voice.corpus import (
 from app.core.llm_http import content_from_response
 from app.core.llm_provider import provider_from_config
 from app.domain.types import Character, VnProject
+from app.llm_models import DEFAULT_LLM_MODEL
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
 
@@ -69,7 +70,7 @@ async def workshop_chat(
 
     if not cfg.apiKey or "your-key" in cfg.apiKey:
         raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
-    model = cfg.model or "deepseek-chat"
+    model = cfg.model or DEFAULT_LLM_MODEL
     provider = provider_from_config(cfg)
 
     if mode == "duo":

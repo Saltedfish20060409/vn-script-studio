@@ -22,10 +22,10 @@ def test_preset_shape():
 
 
 def test_deepseek_default_present():
-    d = find_preset("deepseek-chat")
+    d = find_preset("deepseek-v4-flash")
     assert d is not None
     assert d["base_url"] == "https://api.deepseek.com"
-    assert d["model"] == "deepseek-chat"
+    assert d["model"] == "deepseek-v4-flash"
     assert d["json_mode"] is True
 
 
@@ -39,6 +39,8 @@ def test_old_models_removed_and_latest_present():
     """Presets track the current generation — retired names must not linger."""
     ids = {p["id"] for p in MODEL_PRESETS}
     for retired in (
+        "deepseek-chat",
+        "deepseek-reasoner",
         "moonshot-v1-32k",
         "moonshot-v1-128k",
         "glm-4-plus",
@@ -46,7 +48,14 @@ def test_old_models_removed_and_latest_present():
         "gpt-4o-mini",
     ):
         assert retired not in ids, f"retired model still listed: {retired}"
-    for latest in ("deepseek-chat", "kimi-k2.6", "qwen-max", "glm-5", "gpt-5"):
+    for latest in (
+        "deepseek-v4-flash",
+        "deepseek-v4-pro",
+        "kimi-k2.6",
+        "qwen-max",
+        "glm-5",
+        "gpt-5",
+    ):
         assert latest in ids, f"missing latest model: {latest}"
 
 

@@ -1056,6 +1056,29 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
         showGuide={showGuide}
         onShowGuide={handleShowGuide}
       />
+      <div className={styles.castBar}>
+        <div>
+          <p className={styles.castKicker}>当前角色</p>
+          <p className={styles.castName}>
+            {character?.displayName || "未选择"}
+          </p>
+        </div>
+        <div className={styles.castActions}>
+          <button
+            type="button"
+            className={styles.railToggle}
+            aria-expanded={railOpen}
+            onClick={handleRailToggle}
+          >
+            {railOpen ? "收起名单" : "换角色"}
+          </button>
+          {!showGuide ? (
+            <button type="button" className={styles.ghostLink} onClick={handleShowGuide}>
+              查看引导
+            </button>
+          ) : null}
+        </div>
+      </div>
 
       <VoiceProgressRail
         sampleCount={sampleCount}

@@ -34,6 +34,7 @@ export function normalizeProject(
             {
               id: "ch1",
               title: "第一章",
+              prose: "",
               blocks: [{ type: "label", id: "start", name: "start" }],
             },
           ],
@@ -82,6 +83,7 @@ export function projectFromPlainText(title: string, text: string): VnProject {
       {
         id: "ch1",
         title: "第一章",
+        prose: text,
         blocks: [{ type: "label", id: "start", name: "start" }, ...blocks],
       },
     ],

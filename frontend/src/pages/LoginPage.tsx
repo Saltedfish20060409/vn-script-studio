@@ -181,7 +181,7 @@ export default function LoginPage() {
             Studio
           </h1>
           <p className={styles.sub}>
-            非线性叙事工作台——角色、章节、地图与审稿，写完再导出 .rpy。
+            非线性叙事工作台——角色、章节、地图与审稿。先写剧本，再导出 Word 或 .rpy。
           </p>
         </div>
       </section>

@@ -26,6 +26,15 @@
   box-shadow: var(--shadow-lg);
 }
 
+@media (max-width: 820px) {
+  .gear {
+    bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+    left: 0.65rem;
+    width: 44px;
+    height: 44px;
+  }
+}
+
 .backdrop {
   position: fixed;
   inset: 0;

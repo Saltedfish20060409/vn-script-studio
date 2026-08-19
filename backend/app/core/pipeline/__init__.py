@@ -12,10 +12,6 @@ from app.core.pipeline.ledger import (
     get_ledger,
     set_ledger,
 )
-from app.core.pipeline.style_skill import (
-    load_style_skill,
-    style_skill_meta,
-)
 
 __all__ = [
     "load_style_skill",
@@ -28,6 +24,10 @@ __all__ = [
 
 
 def __getattr__(name: str):
+    if name in {"load_style_skill", "style_skill_meta"}:
+        from app.core.pipeline import style_skill as _ss
+
+        return getattr(_ss, name)
     if name in {"run_pipeline", "stage_check", "stage_check_async"}:
         from app.core.pipeline import orchestrator as _orch
 

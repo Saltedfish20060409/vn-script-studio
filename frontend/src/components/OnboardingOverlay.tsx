@@ -2,30 +2,46 @@ import { useState } from "react";
 import { markTourSeen } from "../lib/onboarding";
 import styles from "./OnboardingOverlay.module.css";
 
-const STEPS = [
-  {
-    emoji: "✍️",
-    title: "剧本就是一切",
-    body: "写作页的编辑器直接写 Ren'Py 风格脚本：旁白用双引号行，对白用 角色名 \"台词\"。写完后点「▶ 试玩本章」立刻在播放器里看效果。",
-  },
-  {
-    emoji: "🗺️",
-    title: "设定先行",
-    body: "顶部「世界」页管理角色卡、设定库（bible）、地点地图；「项目」页看写作统计、导出与快照。设定写得越全，AI 助手越懂你的作品。",
-  },
-  {
-    emoji: "📊",
-    title: "让 AI 帮你分析",
-    body: "写作页切到「分析」：分支树看剧情结构、弧线看角色出场热度、一致性查跨章矛盾、语气检查人设是否走形。项目页也有「结构分析」直达。",
-  },
-  {
-    emoji: "🤖",
-    title: "右下角是你的 AI 编辑",
-    body: "Agent 可以直接改工程（加角色/改设定/写大纲），也能续写、改写、润色。不确定怎么用？直接问它：\"先不要改工程，给我本章修改意见\"。",
-  },
-];
+function isNarrow(): boolean {
+  try {
+    return window.matchMedia("(max-width: 820px)").matches;
+  } catch {
+    return false;
+  }
+}
+
+function steps(narrow: boolean) {
+  return [
+    {
+      emoji: "✍️",
+      title: "先写人话",
+      body: "写作页默认是自然语言剧本：旁白直接写，对白写成「角色名：台词」。需要上演脚本时切到 RPY，可手写或点「根据剧本生成」。顶栏导出跟当前视图走（剧本 → .docx，RPY → .rpy）。试玩读的是 RPY 稿。",
+    },
+    {
+      emoji: "🗺️",
+      title: "设定先行",
+      body: narrow
+        ? "底栏切「设定」管角色卡和世界观，「地图」管地点；「项目」里看统计、导出与快照。设定写得越全，AI 越懂你的作品。"
+        : "顶部「设定」页管理角色卡、设定库、地点地图；「项目」页看写作统计、导出与快照。设定写得越全，AI 助手越懂你的作品。",
+    },
+    {
+      emoji: "📊",
+      title: "让 AI 帮你分析",
+      body: "写作页切到「分析」：分支树看剧情结构、弧线看角色出场热度、一致性查跨章矛盾、语气检查人设是否走形。项目页也有「结构分析」直达。",
+    },
+    {
+      emoji: "🤖",
+      title: narrow ? "侧边贴片是 AI 编辑" : "右下角是你的 AI 编辑",
+      body: narrow
+        ? "手机上 Agent 贴在屏幕侧边，点开即可。可以直接改工程（加角色/改设定/写大纲），也能续写、改写、润色。不确定就说：「先不要改工程，给我本章修改意见」。更完整的说明在顶栏「更多 → 使用说明」。"
+        : "Agent 可以直接改工程（加角色/改设定/写大纲），也能续写、改写、润色。不确定怎么用？直接问它：「先不要改工程，给我本章修改意见」。顶栏「更多 → 使用说明」随时可再看一遍。",
+    },
+  ];
+}
 
 export function OnboardingOverlay({ onDone }: { onDone: () => void }) {
+  const [narrow] = useState(isNarrow);
+  const STEPS = steps(narrow);
   const [step, setStep] = useState(0);
   const last = step === STEPS.length - 1;
   const s = STEPS[step];

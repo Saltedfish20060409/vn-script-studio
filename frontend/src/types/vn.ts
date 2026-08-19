@@ -75,6 +75,10 @@ export interface SceneChapter {
   title: string;
   synopsis?: string;
   blocks: ScriptBlock[];
+  /** Natural-language manuscript (default writing surface). */
+  prose?: string;
+  /** Fingerprint of prose last used to generate RPY. */
+  rpyFromProseHash?: string;
 }
 
 /** Story setting — independent from character cards */

@@ -1,0 +1,124 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(6, 8, 12, 0.55);
+  animation: fade 180ms var(--ease-out, ease);
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.sheet {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem 1.15rem;
+  width: min(640px, 100%);
+  max-height: min(86dvh, 720px);
+  padding: 1.15rem 1.2rem 1rem;
+  overflow: auto;
+  border: 2px solid var(--line);
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-lg);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+  color: var(--ink);
+  animation: rise 260ms var(--ease-out, ease);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px) skewX(-1deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.mascot {
+  align-self: start;
+}
+
+.body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.idx {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin: 0.4rem 0 0.2rem;
+}
+
+.sections h3 {
+  margin: 0 0 0.2rem;
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.sections p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.55rem;
+}
+
+.primary {
+  min-height: 44px;
+  padding: 0.45rem 1rem;
+  border: 2px solid var(--line);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-display);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+}
+
+@media (max-width: 640px) {
+  .sheet {
+    grid-template-columns: 1fr;
+  }
+
+  .mascot {
+    display: none;
+  }
+}

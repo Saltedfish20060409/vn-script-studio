@@ -55,7 +55,13 @@ def test_markdown_structure():
     assert "[label start]" not in md
 
 
-def test_docx_generates_valid_bytes():
+def test_markdown_uses_prose_when_present():
+    vn = _vn()
+    vn.chapters[0].prose = "雨还在下。\n\n林夏没有追上去。"
+    md = project_to_markdown(vn)
+    assert "雨还在下。" in md
+    assert "林夏没有追上去。" in md
+    assert "**林夏**：末班车已经开走了……" not in md
     content = project_to_docx(_vn())
     assert content[:2] == b"PK"  # docx is a zip
     assert len(content) > 1000

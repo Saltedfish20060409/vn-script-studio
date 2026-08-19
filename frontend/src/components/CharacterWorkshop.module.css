@@ -165,6 +165,44 @@
   color: var(--ink);
 }
 
+.castBar {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 2px solid var(--line);
+  background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+}
+
+.castKicker {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+}
+
+.castName {
+  margin: 0.1rem 0 0;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.castActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
 @media (max-width: 900px) {
   .railToggle {
     display: inline-flex;
@@ -175,7 +213,7 @@
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 40;
+    z-index: 390;
     border: none;
     margin: 0;
     padding: 0;
@@ -188,7 +226,7 @@
     top: 0;
     left: 0;
     bottom: 0;
-    z-index: 41;
+    z-index: 391;
     width: min(300px, 86vw);
     max-width: 100%;
     padding: calc(0.85rem + env(safe-area-inset-top, 0px)) 0.85rem
@@ -215,6 +253,14 @@
 
   .heroMeta {
     align-items: flex-start;
+  }
+
+  .hero .railToggle {
+    display: none;
+  }
+
+  .castBar {
+    display: flex;
   }
 }
 
@@ -884,7 +930,7 @@
 .guideOverlay {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 395;
   display: grid;
   place-items: center;
   padding: 1.25rem;

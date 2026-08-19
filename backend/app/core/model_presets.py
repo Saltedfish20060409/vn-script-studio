@@ -4,34 +4,47 @@ Every preset speaks the OpenAI-compatible /v1/chat/completions wire format,
 so a single client (llm_http) serves them all. Presets only fill in the
 base URL and model name; the user still supplies their own API key.
 
-Presets track the latest mainstream models (updated 2026-08):
-DeepSeek-V4, Kimi K2.6, Qwen3.7, GLM-5, GPT-5.
+DeepSeek V4 official IDs are deepseek-v4-flash / deepseek-v4-pro.
+``*-think`` suffixes are this studio's alias for thinking mode (rewritten
+in llm_http before the request leaves the server).
 """
 
 from __future__ import annotations
 
 from typing import Dict, List
 
+from app.llm_models import DEFAULT_LLM_MODEL
+
 MODEL_PRESETS: List[Dict[str, object]] = [
     {
-        "id": "deepseek-chat",
-        "label": "DeepSeek-V4（deepseek-chat）",
+        "id": "deepseek-v4-flash",
+        "label": "DeepSeek-V4 Flash",
         "vendor": "DeepSeek",
         "base_url": "https://api.deepseek.com",
-        "model": "deepseek-chat",
+        "model": DEFAULT_LLM_MODEL,
         "json_mode": True,
         "context_k": 1000,
-        "note": "默认。V4 百万级上下文，写作/审稿/事实抽取通用，性价比高。",
+        "note": "默认。官方 ID deepseek-v4-flash，非思考（等价旧 deepseek-chat）。",
     },
     {
-        "id": "deepseek-reasoner",
-        "label": "DeepSeek-V4 推理（deepseek-reasoner）",
+        "id": "deepseek-v4-flash-think",
+        "label": "DeepSeek-V4 Flash 推理",
         "vendor": "DeepSeek",
         "base_url": "https://api.deepseek.com",
-        "model": "deepseek-reasoner",
+        "model": "deepseek-v4-flash-think",
         "json_mode": False,
         "context_k": 1000,
-        "note": "推理模型，适合深度分析/跨章审计；不支持 JSON 结构化输出。",
+        "note": "思考模式（等价旧 deepseek-reasoner）。请求改写为官方 Flash + thinking；不支持 JSON 模式。",
+    },
+    {
+        "id": "deepseek-v4-pro",
+        "label": "DeepSeek-V4 Pro",
+        "vendor": "DeepSeek",
+        "base_url": "https://api.deepseek.com",
+        "model": "deepseek-v4-pro",
+        "json_mode": True,
+        "context_k": 1000,
+        "note": "官方旗舰。默认非思考，质量优先。",
     },
     {
         "id": "kimi-k2.6",

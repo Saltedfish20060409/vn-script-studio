@@ -10,6 +10,8 @@ from __future__ import annotations
 from contextvars import ContextVar
 from typing import Mapping, Optional
 
+from app.llm_models import DEFAULT_LLM_MODEL
+
 _client_llm: ContextVar[Optional[dict[str, str]]] = ContextVar(
     "client_llm_override", default=None
 )
@@ -93,10 +95,10 @@ def merge_llm_credentials(
     return {
         "api_key": api_key,
         "base_url": base_url or "https://api.deepseek.com",
-        "model": model or "deepseek-chat",
+        "model": model or DEFAULT_LLM_MODEL,
         "provider": _pick(server.get("provider")) or "openai",
         "source": source,
         "critic_api_key": critic_api_key,
         "critic_base_url": critic_base_url or base_url or "https://api.deepseek.com",
-        "critic_model": critic_model or model or "deepseek-chat",
+        "critic_model": critic_model or model or DEFAULT_LLM_MODEL,
     }

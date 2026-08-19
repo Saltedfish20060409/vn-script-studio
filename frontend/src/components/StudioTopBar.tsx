@@ -14,7 +14,9 @@ type Props = {
   onImportClick: () => void;
   onFileChange: (e: ChangeEvent<HTMLInputElement>) => void;
   onSaveChapter: () => void;
-  onExportRpy: () => void;
+  onExport: () => void;
+  exportLabel: string;
+  onOpenHelp: () => void;
   onOpenCollab: () => void;
   onLogout: () => void;
 };
@@ -35,7 +37,9 @@ export function StudioTopBar({
   onImportClick,
   onFileChange,
   onSaveChapter,
-  onExportRpy,
+  onExport,
+  exportLabel,
+  onOpenHelp,
   onOpenCollab,
   onLogout,
 }: Props) {
@@ -86,9 +90,12 @@ export function StudioTopBar({
               type="button"
               role="menuitem"
               className={styles.moreMenuOnly}
-              onClick={onExportRpy}
+              onClick={onExport}
             >
-              导出 .rpy
+              {exportLabel}
+            </button>
+            <button type="button" role="menuitem" onClick={onOpenHelp}>
+              使用说明
             </button>
             <button
               type="button"
@@ -110,9 +117,9 @@ export function StudioTopBar({
         <button
           type="button"
           className={`${styles.primary} ${styles.topOnly}`}
-          onClick={onExportRpy}
+          onClick={onExport}
         >
-          导出 .rpy
+          {exportLabel}
         </button>
         <button
           type="button"

@@ -15,6 +15,7 @@ import {
   exportMarkdown,
   exportRenpyBundle,
   exportRpy,
+  generateRpyFromProse,
   getChapterMemoryArchive,
   getProject,
   getSettings,
@@ -71,7 +72,8 @@ import { OnboardingOverlay } from "./OnboardingOverlay";
 import { hasSeenTour } from "../lib/onboarding";
 import { QPet } from "./QPet";
 import { WorldPanel } from "./WorldPanel";
-import { WriteToolbar } from "./WriteToolbar";
+import { WriteToolbar, type WriteMode } from "./WriteToolbar";
+import { HelpSheet } from "./HelpSheet";
 import { StudioErrorBoundary } from "./StudioErrorBoundary";
 import { SaveConflictDialog, type SaveConflictChoice } from "./SaveConflictDialog";
 import { ScriptPlayer } from "./ScriptPlayer";
@@ -83,6 +85,7 @@ import {
 import { StatusToast } from "./StatusToast";
 import { classifyStatusToast } from "../lib/statusToast";
 import { blockTextRange, blocksToEditable, editableToBlocks } from "../lib/scriptCodec";
+import { chapterProse, proseFingerprint, rpyIsStale } from "../lib/scriptProse";
 import { normalizeProject } from "../lib/vnLocal";
 import { diffProjectAgainst } from "../lib/projectDiff";
 import {
@@ -176,6 +179,17 @@ export function StudioApp() {
     (l) => l.chapterId === chapterId && l.userId !== myUserId
   );
   const [editor, setEditor] = useState("");
+  const [writeMode, setWriteMode] = useState<WriteMode>(() => {
+    try {
+      return localStorage.getItem("vnss-write-mode") === "rpy" ? "rpy" : "prose";
+    } catch {
+      return "prose";
+    }
+  });
+  const writeModeRef = useRef<WriteMode>(writeMode);
+  writeModeRef.current = writeMode;
+  const [generatingRpy, setGeneratingRpy] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [selection, setSelection] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -358,8 +372,7 @@ export function StudioApp() {
     if (!project || !chapterId) return;
     const ch = project.chapters.find((c) => c.id === chapterId);
     if (!ch) return;
-    editorRef.current = blocksToEditable(ch.blocks, project.characters);
-    setEditor(editorRef.current);
+    loadEditorFromChapter(ch, project.characters, writeModeRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.id, chapterId]);
 
@@ -697,17 +710,46 @@ export function StudioApp() {
     [project, chapterId]
   );
 
+  function loadEditorFromChapter(
+    ch: VnProject["chapters"][number],
+    characters: VnProject["characters"],
+    mode: WriteMode
+  ) {
+    const text =
+      mode === "prose"
+        ? chapterProse(ch, characters)
+        : blocksToEditable(ch.blocks, characters);
+    editorRef.current = text;
+    setEditor(text);
+  }
+
+  function flushChapter(
+    p: VnProject,
+    chId: string,
+    text: string,
+    mode: WriteMode
+  ): VnProject {
+    return {
+      ...p,
+      chapters: p.chapters.map((c) => {
+        if (c.id !== chId) return c;
+        return mode === "prose"
+          ? { ...c, prose: text }
+          : { ...c, blocks: editableToBlocks(text) };
+      }),
+    };
+  }
+
   function commitEditor() {
     if (editorCommitTimer.current) {
       window.clearTimeout(editorCommitTimer.current);
       editorCommitTimer.current = null;
     }
     if (!project || !chapter) return;
-    const blocks = editableToBlocks(editorRef.current);
-    updateActive((p) => ({
-      ...p,
-      chapters: p.chapters.map((c) => (c.id === chapter.id ? { ...c, blocks } : c)),
-    }));
+    const mode = writeModeRef.current;
+    const text = editorRef.current;
+    const chId = chapter.id;
+    updateActive((p) => flushChapter(p, chId, text, mode));
   }
 
   function scheduleEditorCommit() {
@@ -717,12 +759,113 @@ export function StudioApp() {
 
   function buildLatestProject(): VnProject | null {
     if (!project) return null;
-    return {
-      ...project,
-      chapters: project.chapters.map((c) =>
-        c.id === chapterId ? { ...c, blocks: editableToBlocks(editorRef.current) } : c
-      ),
-    };
+    if (!chapter) return project;
+    return flushChapter(
+      project,
+      chapter.id,
+      editorRef.current,
+      writeModeRef.current
+    );
+  }
+
+  function persistWriteMode(next: WriteMode) {
+    writeModeRef.current = next;
+    setWriteMode(next);
+    try {
+      localStorage.setItem("vnss-write-mode", next);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function switchWriteMode(next: WriteMode) {
+    if (!project || !chapter || next === writeModeRef.current) return;
+    if (editorCommitTimer.current) {
+      window.clearTimeout(editorCommitTimer.current);
+      editorCommitTimer.current = null;
+    }
+    const flushed = flushChapter(
+      project,
+      chapter.id,
+      editorRef.current,
+      writeModeRef.current
+    );
+    updateActive(() => flushed);
+    persistWriteMode(next);
+    const ch = flushed.chapters.find((c) => c.id === chapter.id);
+    if (ch) loadEditorFromChapter(ch, flushed.characters, next);
+  }
+
+  async function generateRpyFromManuscript() {
+    if (!project || !chapter) return;
+    if (editorCommitTimer.current) {
+      window.clearTimeout(editorCommitTimer.current);
+      editorCommitTimer.current = null;
+    }
+    const flushed = flushChapter(
+      project,
+      chapter.id,
+      editorRef.current,
+      writeModeRef.current
+    );
+    const ch = flushed.chapters.find((c) => c.id === chapter.id);
+    const prose = (ch?.prose || "").trim() || chapterProse(ch, flushed.characters);
+    if (!prose.trim()) {
+      setError("先写一点自然语言剧本，再生成 RPY。");
+      return;
+    }
+    setGeneratingRpy(true);
+    setError("");
+    try {
+      const out = await generateRpyFromProse(project.id, chapter.id, prose, true);
+      const next: VnProject = {
+        ...flushed,
+        chapters: flushed.chapters.map((c) =>
+          c.id === chapter.id
+            ? {
+                ...c,
+                prose,
+                blocks: out.blocks,
+                rpyFromProseHash: proseFingerprint(prose),
+              }
+            : c
+        ),
+      };
+      updateActive(() => next);
+      persistWriteMode("rpy");
+      const updated = next.chapters.find((c) => c.id === chapter.id);
+      if (updated) loadEditorFromChapter(updated, next.characters, "rpy");
+      setRpyPreview(out.rpy);
+      setRpyStale(false);
+      setStatus(out.usedLlm ? "已根据剧本生成 RPY" : "已按规则把剧本转成 RPY（未走模型）");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "生成 RPY 失败");
+    } finally {
+      setGeneratingRpy(false);
+    }
+  }
+
+  async function exportCurrentView() {
+    if (!project || !chapter) return;
+    if (editorCommitTimer.current) {
+      window.clearTimeout(editorCommitTimer.current);
+      editorCommitTimer.current = null;
+    }
+    const latest = buildLatestProject();
+    if (!latest) return;
+    commitEditor();
+    try {
+      await persistProject(latest);
+      if (writeModeRef.current === "rpy") {
+        const text = await exportRpy(latest.id);
+        downloadText(`${latest.title || "script"}.rpy`, text, "text/plain;charset=utf-8");
+      } else {
+        const blob = await exportDocx(latest.id);
+        downloadBlob(`${latest.title || "script"}.docx`, blob);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "导出失败");
+    }
   }
 
   async function generateRpy() {
@@ -991,6 +1134,7 @@ export function StudioApp() {
         {
           id,
           title: title.trim() || "新章节",
+          prose: "",
           blocks: [{ type: "label", id: "start", name: "start" }],
         },
       ],
@@ -1165,8 +1309,7 @@ export function StudioApp() {
       const ch = restored.chapters[0];
       if (ch) {
         setChapterId(ch.id);
-        editorRef.current = blocksToEditable(ch.blocks, restored.characters);
-        setEditor(editorRef.current);
+        loadEditorFromChapter(ch, restored.characters, writeModeRef.current);
       }
       setStatus(`已回退到「${snap.label}」`);
     } catch (e) {
@@ -1532,11 +1675,9 @@ export function StudioApp() {
             e.target.value = "";
           }}
           onSaveChapter={commitEditor}
-          onExportRpy={() => {
-            setTab("project");
-            setProjectSub("export");
-            void generateRpy();
-          }}
+          onExport={() => void exportCurrentView()}
+          exportLabel={writeMode === "rpy" ? "导出 .rpy" : "导出 .docx"}
+          onOpenHelp={() => setHelpOpen(true)}
           onOpenCollab={() => {
             setTab("project");
             setProjectSub("members");
@@ -1697,7 +1838,15 @@ export function StudioApp() {
                   <section className={styles.panel}>
                     <WriteToolbar
                       chapterTitle={chapter?.title ?? ""}
+                      writeMode={writeMode}
+                      rpyStale={rpyIsStale({
+                        prose: writeMode === "prose" ? editor : chapter?.prose,
+                        rpyFromProseHash: chapter?.rpyFromProseHash,
+                      })}
+                      generating={generatingRpy}
                       showReviseActions={Boolean(reviseDraft)}
+                      onWriteModeChange={switchWriteMode}
+                      onGenerateRpy={() => void generateRpyFromManuscript()}
                       onChapterTitleChange={(title) => {
                         updateActive((p) => ({
                           ...p,
@@ -1748,6 +1897,11 @@ export function StudioApp() {
                           setTab("map");
                           setStatus(`已在地图定位「${label}」`);
                         }}
+                        placeholder={
+                          writeMode === "prose"
+                            ? "用自然语言写剧本。旁白直接写，对白写成「林夏：……」"
+                            : 'Ren\'Py：旁白用 "……"，对白用 角色名 "台词"'
+                        }
                         onChange={(next) => {
                           editorRef.current = next;
                           setEditor(next);
@@ -1772,6 +1926,26 @@ export function StudioApp() {
                         className={styles.primary}
                         onClick={() => {
                           commitEditor();
+                          const latest = buildLatestProject();
+                          const ch =
+                            latest?.chapters.find((c) => c.id === chapterId) ??
+                            chapter;
+                          const playable = (ch?.blocks ?? []).some(
+                            (b) =>
+                              b.type === "dialogue" ||
+                              b.type === "narration" ||
+                              b.type === "menu"
+                          );
+                          if (!playable) {
+                            setError(
+                              "试玩读的是 RPY 稿。请切到 RPY 后点「根据剧本生成」，或直接手写脚本。"
+                            );
+                            persistWriteMode("rpy");
+                            if (ch) {
+                              loadEditorFromChapter(ch, project.characters, "rpy");
+                            }
+                            return;
+                          }
                           setPlayOpen(true);
                         }}
                         title="以视觉小说方式试玩当前章节（分支/选项可点）"
@@ -1851,8 +2025,15 @@ export function StudioApp() {
                   onJumpToChapter={(id, blockIndex) => {
                     commitEditor();
                     if (typeof blockIndex === "number") {
+                      persistWriteMode("rpy");
                       pendingEditorFocus.current = { chapterId: id, blockIndex };
                       setEditorFocusNonce((n) => n + 1);
+                      if (id === chapterId) {
+                        const ch = project.chapters.find((c) => c.id === id);
+                        if (ch) {
+                          loadEditorFromChapter(ch, project.characters, "rpy");
+                        }
+                      }
                     } else {
                       pendingEditorFocus.current = null;
                     }
@@ -1896,8 +2077,7 @@ export function StudioApp() {
                 const ch = p.chapters.find((c) => c.id === chapterId) ?? p.chapters[0];
                 if (ch) {
                   setChapterId(ch.id);
-                  editorRef.current = blocksToEditable(ch.blocks, p.characters);
-                  setEditor(editorRef.current);
+                  loadEditorFromChapter(ch, p.characters, writeModeRef.current);
                 }
               }}
               onChapterFocus={(id) => {
@@ -1918,6 +2098,7 @@ export function StudioApp() {
             onChange={setSettings}
           />
         )}
+        <HelpSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
         {mapExtractReview ? (
           <MapExtractReview
             proposal={mapExtractReview.proposal}

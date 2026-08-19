@@ -22,6 +22,9 @@ def upgrade() -> None:
     insp = sa.inspect(bind)
     if "chapter_locks" not in insp.get_table_names():
         return
+    existing = {c["name"] for c in insp.get_unique_constraints("chapter_locks")}
+    if "uq_chapter_locks_project_chapter" in existing:
+        return
     # Drop duplicate rows first (keep the most recent per chapter) so the
     # unique index can be created.
     bind.execute(
@@ -35,10 +38,6 @@ def upgrade() -> None:
             """
         )
     )
-    try:
-        bind.commit()
-    except Exception:  # noqa: BLE001
-        pass
     op.create_unique_constraint(
         "uq_chapter_locks_project_chapter",
         "chapter_locks",

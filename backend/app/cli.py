@@ -75,7 +75,7 @@ def eval(
 
     用法：
       python -m app eval                          # 用 .env 的模型
-      python -m app eval -m deepseek-chat
+      python -m app eval -m deepseek-v4-flash
       python -m app eval -m qwen2.5:7b --base-url http://localhost:11434 --api-key ollama
     """
     from app.core.demo import create_demo_project

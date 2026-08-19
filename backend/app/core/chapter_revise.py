@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.domain.types import VnProject
+from app.llm_models import DEFAULT_LLM_MODEL
 
 from .agent_context import _blocks_to_plain
 from .ai import DeepSeekConfig
@@ -700,7 +701,7 @@ async def _chat_json(
         timeout=180,
     )
     raw, model = content_from_response(res)
-    return raw or "{}", model or (config.model or "deepseek-chat"), usage_from_response(res)
+    return raw or "{}", model or (config.model or DEFAULT_LLM_MODEL), usage_from_response(res)
 
 
 async def _chat_text(
@@ -722,7 +723,7 @@ async def _chat_text(
         timeout=240,
     )
     raw, model = content_from_response(res)
-    return raw.strip(), model or (config.model or "deepseek-chat"), usage_from_response(res)
+    return raw.strip(), model or (config.model or DEFAULT_LLM_MODEL), usage_from_response(res)
 
 
 def _strip_rewrite_wrapper(text: str) -> str:

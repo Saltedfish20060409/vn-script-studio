@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from app.domain.types import VnProject
+from app.llm_models import DEFAULT_LLM_MODEL
 
 from .ai import DeepSeekConfig
 from .llm_http import content_from_response
@@ -107,5 +108,5 @@ async def run_voice_check(
     return VoiceReport(
         summary=parsed.get("summary") or "无摘要",
         issues=issues,
-        model=used_model or (config.model or "deepseek-chat"),
+        model=used_model or (config.model or DEFAULT_LLM_MODEL),
     )

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 from app.domain.types import AiRequest, AiResponse, VnProject
+from app.llm_models import DEFAULT_LLM_MODEL
 
 from .renpy import project_to_context
 
@@ -54,7 +55,7 @@ async def run_ai(config: DeepSeekConfig, request: AiRequest) -> AiResponse:
 
     from app.core.llm_http import chat_completions, content_from_response
 
-    model = config.model or "deepseek-chat"
+    model = config.model or DEFAULT_LLM_MODEL
     user_parts = [
         p
         for p in [

@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.llm_models import DEFAULT_LLM_MODEL
 from app.core import (
     create_demo_project,
     empty_project,
@@ -353,7 +354,7 @@ def server_llm_credentials(settings: Settings) -> dict[str, str]:
     return {
         "api_key": settings.deepseek_api_key,
         "base_url": settings.deepseek_base_url or "https://api.deepseek.com",
-        "model": settings.deepseek_model or "deepseek-chat",
+        "model": settings.deepseek_model or DEFAULT_LLM_MODEL,
         "provider": settings.llm_provider or "openai",
         "source": "server",
         "critic_api_key": settings.critic_api_key,

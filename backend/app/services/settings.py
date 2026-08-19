@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.config import Settings, get_settings
+from app.llm_models import DEFAULT_LLM_MODEL
 from app.models import UserSettings
 from app.schemas import SettingsOut, SettingsPutIn
 from app.security import decrypt_secret, encrypt_secret, mask_api_key
@@ -55,7 +56,7 @@ def settings_to_out(row: UserSettings) -> SettingsOut:
         or settings.deepseek_base_url
         or "https://api.deepseek.com"
     )
-    active_model = row.api_model or settings.deepseek_model or "deepseek-chat"
+    active_model = row.api_model or settings.deepseek_model or DEFAULT_LLM_MODEL
     return SettingsOut(
         theme=row.theme,
         font_scale=row.font_scale,
@@ -153,7 +154,7 @@ async def user_llm_credentials(
         "base_url": row.api_base_url
         or settings.deepseek_base_url
         or "https://api.deepseek.com",
-        "model": row.api_model or settings.deepseek_model or "deepseek-chat",
+        "model": row.api_model or settings.deepseek_model or DEFAULT_LLM_MODEL,
         "provider": settings.llm_provider or "openai",
         "source": "user",
         "critic_api_key": critic_key,

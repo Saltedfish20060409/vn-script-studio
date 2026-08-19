@@ -50,6 +50,7 @@ from app.domain.types import (
     AgentResponse,
     VnProject,
 )
+from app.llm_models import DEFAULT_LLM_MODEL
 
 DEFAULT_MAX_STEPS = 6
 
@@ -140,7 +141,7 @@ async def run_agent_loop(
 ) -> AgentResponse:
     if not config.apiKey or "your-key" in config.apiKey:
         raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
-    model = config.model or "deepseek-chat"
+    model = config.model or DEFAULT_LLM_MODEL
     provider = provider_from_config(config)
 
     async def emit(evt: Dict[str, Any]) -> None:

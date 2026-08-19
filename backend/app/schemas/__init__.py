@@ -316,6 +316,12 @@ class ChapterReviseApplyIn(BaseModel):
     conversation_id: Optional[str] = None
 
 
+class GenerateRpyIn(BaseModel):
+    chapter_id: str = Field(min_length=1, max_length=64)
+    prose: str = Field(min_length=1, max_length=200_000)
+    use_llm: bool = True
+
+
 class SnapshotCompareIn(BaseModel):
     """Diff a stored snapshot against another snapshot (or the live project)."""
 

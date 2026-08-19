@@ -20,6 +20,7 @@ from app.core.character_voice.extract import format_script_anchors_for_prompt
 from app.core.llm_http import content_from_response
 from app.core.llm_provider import provider_from_config
 from app.domain.types import Character, VnProject
+from app.llm_models import DEFAULT_LLM_MODEL
 
 # longSuitable: better for multi-turn「长场次」; still usable in 三选一.
 SCENARIO_TEMPLATES: List[Dict[str, Any]] = [
@@ -574,7 +575,7 @@ async def _post_json_with_model(
         raise RuntimeError("模型未返回有效 JSON") from exc
     if not isinstance(parsed, dict):
         raise RuntimeError("模型返回非对象 JSON")
-    model_name = model_name or (cfg.model or "deepseek-chat")
+    model_name = model_name or (cfg.model or DEFAULT_LLM_MODEL)
     parsed["_model"] = model_name
     return parsed, model_name
 

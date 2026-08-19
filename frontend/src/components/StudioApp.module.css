@@ -660,6 +660,19 @@
   letter-spacing: 0.05em;
 }
 
+.tabLabelWide {
+  font-family: var(--font-display);
+  font-weight: 650;
+  letter-spacing: 0.05em;
+}
+
+.tabLabelNarrow {
+  display: none;
+  font-family: var(--font-display);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
 .tab:hover {
   color: var(--ink);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
@@ -1317,6 +1330,40 @@
   font-size: 0.84rem;
 }
 
+@media (max-width: 820px) {
+  .hintInline {
+    display: none;
+  }
+
+  .modeSwitch {
+    flex-shrink: 0;
+  }
+}
+
+.modeSwitch {
+  display: inline-flex;
+  border: 2px solid var(--line);
+}
+
+.modeOn,
+.modeOff {
+  min-height: 36px;
+  padding: 0.3rem 0.75rem;
+  border: none;
+  background: transparent;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+
+.modeOn {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
 .reviseDraftActions {
   display: flex;
   flex-wrap: wrap;
@@ -1606,6 +1653,18 @@
 
   .tabLabel {
     font-size: 0.78rem;
+  }
+
+  .tabIdx {
+    display: none;
+  }
+
+  .tabLabelWide {
+    display: none;
+  }
+
+  .tabLabelNarrow {
+    display: inline;
   }
 
   .main {

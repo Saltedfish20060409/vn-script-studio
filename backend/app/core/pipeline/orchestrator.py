@@ -15,6 +15,7 @@ from app.core.pipeline.beat_check import merge_beat_issues, resolve_beat_issues
 from app.core.pipeline.ledger import format_ledger_for_agent, get_ledger
 from app.core.pipeline.style_skill import load_style_skill
 from app.domain.types import VnProject
+from app.llm_models import DEFAULT_LLM_MODEL
 from app.services.novel_memory import get_latest_continuity
 
 
@@ -136,7 +137,7 @@ async def stage_write(
             except Exception:  # noqa: BLE001 - token sink must not break run
                 pass
         content = "".join(chunks)
-        model = cfg.model or "deepseek-chat"
+        model = cfg.model or DEFAULT_LLM_MODEL
     else:
         llm = await run_harness_llm(
             cfg, role="writer", user_prompt=user, project=project, temperature=0.75

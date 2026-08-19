@@ -166,6 +166,10 @@ class SceneChapter(BaseModel):
     title: str
     synopsis: Optional[str] = None
     blocks: List[ScriptBlock] = Field(default_factory=list)
+    # Natural-language manuscript (default writing surface). Independent of blocks.
+    prose: Optional[str] = None
+    # Fingerprint of prose last used to generate RPY (stale when it drifts).
+    rpyFromProseHash: Optional[str] = None
 
 
 class StoryBible(BaseModel):

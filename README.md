@@ -1,9 +1,45 @@
 # VN Script Studio
 
 面向**视觉小说 / 轻小说向剧本**的 AI 辅助写作工作室。  
-前后端分离：FastAPI + React (Vite) + PostgreSQL，以 Ren'Py 可上演脚本为目标。
+默认用自然语言写剧本，需要上演时再切到 Ren'Py（`.rpy`）。
 
-## 系统形态
+应用内顶栏 **更多 → 使用说明** 有完整操作说明（含手机）。首次进入也会有引导。
+
+---
+
+## 给作者
+
+在线试用：[studio.nexesr.top](https://studio.nexesr.top)（需注册并验证邮箱）。
+
+自建见下方「给开发者」。
+
+### 怎么写
+
+- **写作页默认是自然语言剧本**：旁白直接写，对白写成「角色名：台词」。
+- 同一编辑器可切到 **RPY**：两份稿互不覆盖。RPY 可手写，也可点「根据剧本生成」（设置里填了模型 Key 则走 AI，否则用规则解析）。
+- 剧本改过、RPY 没重生时会提示过期。
+- **顶栏导出跟当前视图**：剧本 → `.docx`，RPY → `.rpy`。整包工程 / Markdown / Ren'Py 项目 zip 在「项目 → 导出」。
+- **试玩读的是 RPY 稿**。只写了自然语言时，先生成或手写脚本再试玩。
+
+### 其它常用入口
+
+| 入口 | 做什么 |
+|------|--------|
+| 设定 | 角色卡、世界观、设定库 |
+| 地图 | 从剧本抽地点，点地点可跳回写作 |
+| 角色工坊 | 定声音 → 思维包 → 试聊。手机上点「换角色」打开名单 |
+| Agent | 桌面多在右下角；手机是屏幕侧边贴片 |
+| 齿轮（设置） | 外观、自己的模型 Key、用量 |
+
+忘记密码走登录页找回。协作在顶栏「协作」：邀请成员、锁章节、批注。
+
+---
+
+## 给开发者
+
+前后端分离：FastAPI + React (Vite) + PostgreSQL。
+
+### 系统形态
 
 ```
 vn-script-studio/
@@ -20,7 +56,7 @@ vn-script-studio/
 | 数据库 | PostgreSQL 16（Docker） |
 | LLM | OpenAI 兼容 Chat Completions（默认 DeepSeek） |
 
-## 快速开始
+### 快速开始
 
 日常开发（Windows）可一键启动：
 
@@ -48,6 +84,7 @@ pip install -r requirements.txt
 copy .env.example .env          # 或 cp .env.example .env
 # 编辑 .env：DATABASE_URL 端口需与 docker-compose 一致（默认宿主机 54102）
 # 填入 DEEPSEEK_API_KEY 以启用 Agent
+# 填入 RESEND_API_KEY 以启用注册验证 / 找回密码邮件
 
 # 前端
 cd ../frontend
@@ -67,14 +104,17 @@ npm run dev
 
 打开 http://localhost:5173 ，注册账号后即可使用。Vite 已将 `/api` 代理到后端。
 
+本地若未配 Resend，注册会返回 503。只跑前端 e2e 时后端会设 `AUTH_AUTO_VERIFY=true`，新账号直接已验证。
+
 Postgres 用 Docker 常驻即可，不必每次重建；每次写代码通常只需前后端两个进程（或跑一次 `dev.ps1`）。
 
-## 主要 API（`/api/v1`）
+### 主要 API（`/api/v1`）
 
 | 分组 | 说明 |
 |------|------|
-| `POST /auth/register` `POST /auth/login` `GET /auth/me` | JWT 认证 |
+| `POST /auth/register` `POST /auth/login` `GET /auth/me` | JWT 认证（注册需邮箱验证） |
 | `GET/POST /projects` … | 云端剧本库 CRUD、导入、导出、快照（content-addressed） |
+| `POST /projects/{id}/generate-rpy` | 自然语言剧本 → Ren'Py（有 Key 走 LLM，否则规则解析） |
 | `POST /projects/{id}/agent` | 审稿 Agent（多步 loop + trace；服务端 apply） |
 | `GET/PUT …/agent/session` · `…/agent/conversations` | 对话 / 记忆 / 多会话 / 撤回栈 |
 | `POST …/agent/chapter-revise` · `…/apply` | 章节回炉（可 async_mode → job） |
@@ -91,7 +131,7 @@ Postgres 用 Docker 常驻即可，不必每次重建；每次写代码通常只
 
 完整契约见运行中的 [OpenAPI](http://localhost:8000/docs)。
 
-## CLI
+### CLI
 
 ```bash
 cd backend
@@ -104,7 +144,7 @@ python -m app eval
 python -m app eval -m qwen2.5:7b --base-url http://localhost:11434 --api-key ollama
 ```
 
-## 环境变量（backend/.env）
+### 环境变量（backend/.env）
 
 | 变量 | 说明 |
 |------|------|
@@ -120,15 +160,17 @@ python -m app eval -m qwen2.5:7b --base-url http://localhost:11434 --api-key oll
 | `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` | 可选：pgvector 语义搜索的 embedding 端点；留空 = 启发式关键词检索 |
 | `LLM_DAILY_TOKEN_CAP` | 每日 LLM 用量上限（0 = 不限） |
 | `RATE_LIMIT_ENABLED` | 登录/注册按 IP 限速（默认 true；测试或已有限速的反代可关） |
+| `RESEND_API_KEY` / `RESEND_FROM_EMAIL` / `PUBLIC_APP_URL` | 注册验证与找回密码邮件。未配置则无法注册 |
+| `AUTH_AUTO_VERIFY` | 仅测试/e2e：跳过发信并直接验证新账号 |
 
 前端「设置」含外观、工具背景、用量与**模型凭据**（用户级 Key 按账号加密存储）；服务端级模型接入改 `backend/.env` 后重启 API。
 
-## 可选功能：多 worker SSE 与语义搜索
+### 可选功能：多 worker SSE 与语义搜索
 
 - **多 worker 协作事件**：`uvicorn app.main:app --workers N` 时，设 `REDIS_URL` 即可让锁/成员/批注事件跨 worker 实时广播；不设则回退单 worker 进程内（docker-compose 已含 redis 服务）。
 - **pgvector 语义搜索**：将 docker-compose 的 postgres 镜像换成 `pgvector/pgvector:pg16` 并 `CREATE EXTENSION vector`，再配置 `EMBEDDING_*` 环境变量，`POST /analysis/semantic-search` 即用向量相似度；缺省自动回落启发式关键词排序（无需额外配置）。
 
-## 测试
+### 测试
 
 ```bash
 cd backend
@@ -142,7 +184,7 @@ pytest tests/ -q
 > 前端：`cd frontend && npm test`（vitest，纯函数单测）。
 > 前端 e2e：`cd frontend && npm run build && npm run test:e2e`（需本地 PG 可达，见 playwright.config.ts）。
 
-## 备份 / 恢复
+### 备份 / 恢复
 
 ```powershell
 cd backend
@@ -155,13 +197,13 @@ cd backend
 
 依赖本机可用的 `pg_dump` / `pg_restore`（或 PostgreSQL 客户端安装目录）。
 
-## 与旧版差异
+### 与旧版差异
 
 - 工程与 Agent 会话进入 PostgreSQL，不再依赖浏览器 localStorage 作为主存储
 - 分享为云端 token，跨设备可访问
 - Agent 写回由服务端 `apply_agent_actions` 完成后返回最新工程
 - 旧 Next.js monorepo（legacy/）已随迁移完成而移除；历史版本见 git
 
-## 许可与声明
+### 许可与声明
 
 自用 / 协作向工作室。使用第三方模型 API 时请遵守对应服务商条款。AI 生成内容请人工审稿后再进入发行流程。

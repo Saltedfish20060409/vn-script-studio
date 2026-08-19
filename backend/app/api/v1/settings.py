@@ -8,6 +8,7 @@ from app.core.ai import DeepSeekConfig
 from app.core.llm_http import content_from_response
 from app.core.llm_provider import provider_from_config
 from app.db import get_db
+from app.llm_models import DEFAULT_LLM_MODEL
 from app.models import User
 from app.schemas import SettingsOut, SettingsPutIn, TestLlmIn
 from app.security import get_current_user
@@ -79,7 +80,7 @@ async def test_llm_api(
         or creds.get("base_url")
         or "https://api.deepseek.com"
     )
-    model = (body.model or "").strip() or creds.get("model") or "deepseek-chat"
+    model = (body.model or "").strip() or creds.get("model") or DEFAULT_LLM_MODEL
     cfg = DeepSeekConfig(apiKey=api_key, baseUrl=base_url, model=model)
     provider = provider_from_config(cfg)
 

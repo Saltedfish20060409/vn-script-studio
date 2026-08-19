@@ -82,7 +82,12 @@ def project_to_markdown(project: VnProject) -> str:
         if ch.synopsis:
             md.append(f"*{ch.synopsis}*")
             md.append("")
-        _walk_blocks(list(ch.blocks or []), chars, md, 0)
+        prose = (getattr(ch, "prose", None) or "").strip()
+        if prose:
+            md.append(prose)
+            md.append("")
+        else:
+            _walk_blocks(list(ch.blocks or []), chars, md, 0)
     return "\n".join(md).strip() + "\n"
 
 
@@ -103,7 +108,12 @@ def project_to_docx(project: VnProject) -> bytes:
         if ch.synopsis:
             p = doc.add_paragraph(ch.synopsis)
             p.italic = True
-        _blocks_to_docx(list(ch.blocks or []), chars, doc)
+        prose = (getattr(ch, "prose", None) or "").strip()
+        if prose:
+            for para in prose.split("\n"):
+                doc.add_paragraph(para)
+        else:
+            _blocks_to_docx(list(ch.blocks or []), chars, doc)
     import io
 
     buf = io.BytesIO()

@@ -187,6 +187,29 @@ export async function exportDocx(id: string): Promise<Blob> {
   return res.blob();
 }
 
+export type GenerateRpyOut = {
+  rpy: string;
+  blocks: import("../types/vn").ScriptBlock[];
+  usedLlm: boolean;
+  proseHash: string;
+};
+
+export async function generateRpyFromProse(
+  id: string,
+  chapterId: string,
+  prose: string,
+  useLlm = true
+): Promise<GenerateRpyOut> {
+  return apiFetch<GenerateRpyOut>(`/projects/${id}/generate-rpy`, {
+    method: "POST",
+    body: JSON.stringify({
+      chapter_id: chapterId,
+      prose,
+      use_llm: useLlm,
+    }),
+  });
+}
+
 /** Full Ren'Py project skeleton (script/options/gui/README) as a zip blob. */
 export async function exportRenpyBundle(id: string): Promise<Blob> {
   const res = await authedRawFetch(`/projects/${id}/export/bundle`);

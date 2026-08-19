@@ -1,25 +1,30 @@
 import { SpeechInputButton } from "./SpeechInputButton";
 import styles from "./StudioApp.module.css";
 
+export type WriteMode = "prose" | "rpy";
+
 type Props = {
   chapterTitle: string;
-  /** Whether an uncommitted revise draft exists for this chapter */
+  writeMode: WriteMode;
+  rpyStale?: boolean;
+  generating?: boolean;
   showReviseActions: boolean;
+  onWriteModeChange: (mode: WriteMode) => void;
+  onGenerateRpy: () => void;
   onChapterTitleChange: (value: string) => void;
   onOpenRevise: () => void;
   onDiscardRevise: () => void;
-  /** Speech-to-text result ready to insert at the editor caret */
   onDictateInsert?: (text: string) => void;
 };
 
-/**
- * Script-editor toolbar: chapter title input plus either the revise-draft
- * actions or the location-hint line. Pure presentational — all actions are
- * prop callbacks provided by StudioApp.
- */
 export function WriteToolbar({
   chapterTitle,
+  writeMode,
+  rpyStale,
+  generating,
   showReviseActions,
+  onWriteModeChange,
+  onGenerateRpy,
   onChapterTitleChange,
   onOpenRevise,
   onDiscardRevise,
@@ -34,6 +39,40 @@ export function WriteToolbar({
           onChange={(e) => onChapterTitleChange(e.target.value)}
         />
       </label>
+      <div className={styles.modeSwitch} role="tablist" aria-label="写作格式">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={writeMode === "prose"}
+          className={writeMode === "prose" ? styles.modeOn : styles.modeOff}
+          onClick={() => onWriteModeChange("prose")}
+        >
+          剧本
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={writeMode === "rpy"}
+          className={writeMode === "rpy" ? styles.modeOn : styles.modeOff}
+          onClick={() => onWriteModeChange("rpy")}
+        >
+          RPY
+        </button>
+      </div>
+      {writeMode === "rpy" ? (
+        <button
+          type="button"
+          className={styles.ghost}
+          disabled={generating}
+          onClick={onGenerateRpy}
+          title="根据自然语言剧本生成 Ren'Py 脚本"
+        >
+          {generating ? "生成中…" : "根据剧本生成"}
+        </button>
+      ) : null}
+      {rpyStale && writeMode === "rpy" ? (
+        <span className={styles.hintInline}>剧本已改，RPY 可能过期</span>
+      ) : null}
       {onDictateInsert ? <SpeechInputButton onInsert={onDictateInsert} /> : null}
       {showReviseActions ? (
         <div className={styles.reviseDraftActions}>
@@ -54,11 +93,11 @@ export function WriteToolbar({
             丢弃预览
           </button>
         </div>
-      ) : (
+      ) : writeMode === "prose" ? (
         <span className={styles.hintInline}>
-          地名会高亮，点击可跳到地图 · 续写用右下角 Agent
+          默认写自然语言剧本；切到 RPY 可手写或一键生成
         </span>
-      )}
+      ) : null}
     </div>
   );
 }

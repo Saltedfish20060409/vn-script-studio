@@ -182,3 +182,75 @@ def test_stream_chat_completions_skips_non_content_events():
 
     chunks = asyncio.run(_run())
     assert "".join(chunks) == "A"
+
+
+def test_v4_flash_sends_thinking_disabled():
+    posts = AsyncMock(return_value=_ok_response())
+    mock_client = MagicMock()
+    mock_client.post = posts
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    async def _run():
+        with patch("app.core.llm_http.httpx.AsyncClient", return_value=mock_client):
+            await chat_completions(
+                DeepSeekConfig(
+                    apiKey="sk-test",
+                    baseUrl="https://api.deepseek.com",
+                    model="deepseek-v4-flash",
+                ),
+                messages=[{"role": "user", "content": "hi"}],
+            )
+
+    asyncio.run(_run())
+    body = posts.await_args.kwargs["json"]
+    assert body["model"] == "deepseek-v4-flash"
+    assert body["thinking"] == {"type": "disabled"}
+
+
+def test_legacy_reasoner_rewrites_to_flash_thinking():
+    posts = AsyncMock(return_value=_ok_response())
+    mock_client = MagicMock()
+    mock_client.post = posts
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    async def _run():
+        with patch("app.core.llm_http.httpx.AsyncClient", return_value=mock_client):
+            await chat_completions(
+                DeepSeekConfig(
+                    apiKey="sk-test",
+                    baseUrl="https://api.deepseek.com",
+                    model="deepseek-reasoner",
+                ),
+                messages=[{"role": "user", "content": "hi"}],
+            )
+
+    asyncio.run(_run())
+    body = posts.await_args.kwargs["json"]
+    assert body["model"] == "deepseek-v4-flash"
+    assert body["thinking"] == {"type": "enabled"}
+
+
+def test_non_deepseek_omits_thinking_field():
+    posts = AsyncMock(return_value=_ok_response())
+    mock_client = MagicMock()
+    mock_client.post = posts
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    async def _run():
+        with patch("app.core.llm_http.httpx.AsyncClient", return_value=mock_client):
+            await chat_completions(
+                DeepSeekConfig(
+                    apiKey="sk-test",
+                    baseUrl="https://api.moonshot.cn",
+                    model="kimi-k2.6",
+                ),
+                messages=[{"role": "user", "content": "hi"}],
+            )
+
+    asyncio.run(_run())
+    body = posts.await_args.kwargs["json"]
+    assert body["model"] == "kimi-k2.6"
+    assert "thinking" not in body
