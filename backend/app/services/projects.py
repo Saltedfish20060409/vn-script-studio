@@ -4,10 +4,10 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.llm_models import DEFAULT_LLM_MODEL
 from app.core import (
     create_demo_project,
@@ -317,6 +317,17 @@ async def create_project_row(
         )
     else:
         project = empty_project(title or "未命名剧本")
+
+    cap = int(getattr(get_settings(), "max_projects_per_user", 0) or 0)
+    if cap > 0:
+        owned = await db.scalar(
+            select(func.count()).select_from(Project).where(Project.owner_id == user.id)
+        )
+        if int(owned or 0) >= cap:
+            raise HTTPException(
+                status_code=403,
+                detail=f"项目数已达上限（{cap}）。删除不用的剧本后再建。",
+            )
 
     if title:
         project.title = title

@@ -43,6 +43,9 @@ async def _cfg(settings: Settings, db: AsyncSession, user_id: str) -> DeepSeekCo
     creds = await resolve_llm_credentials(db, user_id, settings)
     if not creds["api_key"]:
         raise HTTPException(status_code=400, detail="服务端未配置 DEEPSEEK_API_KEY")
+    from app.core.usage import ensure_under_quota
+
+    await ensure_under_quota(db, user_id, settings, creds)
     return DeepSeekConfig(
         apiKey=creds["api_key"],
         baseUrl=creds["base_url"],
@@ -132,13 +135,19 @@ async def pipeline_run(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
+    from app.core.rate_limit import require_rate
+
+    require_rate(
+        user.id,
+        "pipeline_run",
+        80,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+        detail="流水线调用过于频繁，请稍后再试",
+    )
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     cfg = await _cfg(settings, db, user.id)
-    from app.core.usage import quota_exceeded
-
-    if await quota_exceeded(db, user.id, settings.llm_daily_token_cap):
-        raise HTTPException(status_code=429, detail="今日 LLM 用量已达上限，请明日再试")
     stages = body.stages
     if stages is None:
         run_stages = ["plan", "write", "check", "revise", "check"]
@@ -347,8 +356,10 @@ async def pipeline_check(
     cfg = None
     try:
         cfg = await _cfg(settings, db, user.id)
-    except HTTPException:
-        pass
+    except HTTPException as exc:
+        if exc.status_code != 400:
+            raise
+        cfg = None
     return await stage_check_async(
         draft,
         cfg=cfg,
@@ -374,8 +385,10 @@ async def pipeline_gate(
     cfg = None
     try:
         cfg = await _cfg(settings, db, user.id)
-    except HTTPException:
-        pass
+    except HTTPException as exc:
+        if exc.status_code != 400:
+            raise
+        cfg = None
 
     if body.finalize:
         if not body.chapter_id:

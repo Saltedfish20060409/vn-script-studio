@@ -388,7 +388,9 @@ export default function LoginPage() {
             </form>
           )}
           <p className={styles.finePrint}>
-            <Link to="/">返回</Link>
+            <Link to="/help">帮助与 FAQ</Link>
+            <span aria-hidden> · </span>
+            AI 生成内容请自行审稿后再用于发行。
           </p>
         </div>
       </section>

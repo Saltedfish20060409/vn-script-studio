@@ -88,10 +88,19 @@ async def register(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    if not check_rate(
-        _client_ip(request), "register", limit=20, enabled=settings.rate_limit_enabled
-    ):
+    if not settings.allow_registration:
+        raise HTTPException(status_code=403, detail="目前暂停注册")
+    ip = _client_ip(request)
+    if not check_rate(ip, "register", limit=20, enabled=settings.rate_limit_enabled):
         raise HTTPException(status_code=429, detail="注册过于频繁，请稍后再试")
+    if not check_rate(
+        ip,
+        "register_hour",
+        limit=80,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+    ):
+        raise HTTPException(status_code=429, detail="该网络今日注册次数较多，请稍后再试")
     if not (settings.resend_api_key or "").strip() and not settings.auth_auto_verify:
         raise HTTPException(
             status_code=503, detail="邮件服务未配置，暂时无法注册（请联系管理员）"
@@ -168,6 +177,8 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用户名或密码错误",
         )
+    if user.disabled_at is not None:
+        raise HTTPException(status_code=403, detail="账号已被停用")
     if user.email and not is_email_verified(user):
         raise HTTPException(
             status_code=403,

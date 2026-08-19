@@ -21,6 +21,9 @@ const SharePage = lazy(() =>
 const InvitePage = lazy(() =>
   import("./pages/InvitePage").then((m) => ({ default: m.default }))
 );
+const HelpPage = lazy(() =>
+  import("./pages/HelpPage").then((m) => ({ default: m.default }))
+);
 const StudioApp = lazy(() =>
   import("./components/StudioApp").then((m) => ({ default: m.StudioApp }))
 );
@@ -54,6 +57,7 @@ export default function App() {
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/share/:token" element={<SharePage />} />
               <Route path="/invite" element={<InvitePage />} />
+              <Route path="/help" element={<HelpPage />} />
               <Route
                 path="/"
                 element={

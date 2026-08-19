@@ -33,8 +33,8 @@ function steps(narrow: boolean) {
       emoji: "🤖",
       title: narrow ? "侧边贴片是 AI 编辑" : "右下角是你的 AI 编辑",
       body: narrow
-        ? "手机上 Agent 贴在屏幕侧边，点开即可。可以直接改工程（加角色/改设定/写大纲），也能续写、改写、润色。不确定就说：「先不要改工程，给我本章修改意见」。更完整的说明在顶栏「更多 → 使用说明」。"
-        : "Agent 可以直接改工程（加角色/改设定/写大纲），也能续写、改写、润色。不确定怎么用？直接问它：「先不要改工程，给我本章修改意见」。顶栏「更多 → 使用说明」随时可再看一遍。",
+        ? "手机上 Agent 贴在屏幕侧边，点开即可。可以直接改工程，也能续写、改写、润色。不确定就说：「先不要改工程，给我本章修改意见」。顶栏「帮助」或登录页「帮助与 FAQ」有完整说明。"
+        : "Agent 可以直接改工程（加角色/改设定/写大纲），也能续写、改写、润色。不确定怎么用？直接问它：「先不要改工程，给我本章修改意见」。顶栏「帮助」随时可再看；完整 FAQ 在「帮助与 FAQ」。",
     },
   ];
 }
@@ -66,6 +66,13 @@ export function OnboardingOverlay({ onDone }: { onDone: () => void }) {
         </div>
         <h1 className={styles.title}>{s.title}</h1>
         <p className={styles.body}>{s.body}</p>
+        {last ? (
+          <p className={styles.helpLink}>
+            <a href="/help" target="_blank" rel="noreferrer">
+              打开帮助与 FAQ
+            </a>
+          </p>
+        ) : null}
         <div className={styles.dots} aria-hidden>
           {STEPS.map((_, i) => (
             <span key={i} className={i === step ? styles.dotOn : styles.dot} />

@@ -61,6 +61,9 @@ async def _cfg(settings: Settings, db: AsyncSession, user_id: str) -> DeepSeekCo
             status_code=400,
             detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
         )
+    from app.core.usage import ensure_under_quota
+
+    await ensure_under_quota(db, user_id, settings, creds)
     return DeepSeekConfig(
         apiKey=creds["api_key"],
         baseUrl=creds["base_url"],
@@ -176,6 +179,16 @@ async def generate_character_voice_samples(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
+    from app.core.rate_limit import require_rate
+
+    require_rate(
+        user.id,
+        "llm_write",
+        240,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+        detail="声音生成过于频繁，请稍后再试",
+    )
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     _char_or_404(vn, character_id)
@@ -333,6 +346,16 @@ async def synthesize_character_voice_mind(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
+    from app.core.rate_limit import require_rate
+
+    require_rate(
+        user.id,
+        "llm_write",
+        240,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+        detail="声音合成过于频繁，请稍后再试",
+    )
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     _char_or_404(vn, character_id)
@@ -439,6 +462,16 @@ async def workshop_character_chat(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
+    from app.core.rate_limit import require_rate
+
+    require_rate(
+        user.id,
+        "llm_write",
+        240,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+        detail="工坊对话过于频繁，请稍后再试",
+    )
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     _char_or_404(vn, character_id)

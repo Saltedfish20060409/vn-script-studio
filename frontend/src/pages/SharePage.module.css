@@ -291,6 +291,23 @@
   letter-spacing: 0.06em;
 }
 
+.footer p {
+  margin: 0 0 0.45rem;
+}
+
+.disclaimer {
+  letter-spacing: 0;
+  line-height: 1.5;
+  max-width: 36rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.footer a {
+  color: var(--accent);
+  font-weight: 650;
+}
+
 @keyframes rise {
   from {
     opacity: 0;

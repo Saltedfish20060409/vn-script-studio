@@ -124,7 +124,8 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health():
-        return {"ok": True}
+        """Liveness for Cloudflare / uptime probes. Always 200 if the process is up."""
+        return {"ok": True, "service": "vnss"}
 
     return app
 

@@ -33,6 +33,7 @@ from app.core import (
     uid,
 )
 from app.core.ai import DeepSeekConfig
+from app.core.rate_limit import check_rate
 from app.core.snapshots import decode_snapshot_payload
 from app.core.voice_reports import persist_voice_report
 from app.db import get_db
@@ -134,7 +135,16 @@ async def create_project(
     body: ProjectCreateIn,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
+    if not check_rate(
+        user.id,
+        "create_project",
+        limit=40,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+    ):
+        raise HTTPException(status_code=429, detail="新建过于频繁，请稍后再试")
     if body.template_id:
         from app.core.templates import TEMPLATES
 
@@ -157,11 +167,20 @@ async def create_project(
 async def import_project(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
     file: Optional[UploadFile] = File(None),
     text: Optional[str] = Form(None),
     title: Optional[str] = Form(None),
     json_body: Optional[str] = Form(None),
 ):
+    if not check_rate(
+        user.id,
+        "create_project",
+        limit=40,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+    ):
+        raise HTTPException(status_code=429, detail="导入过于频繁，请稍后再试")
     vn: Optional[VnProject] = None
     if json_body:
         try:
@@ -324,7 +343,16 @@ async def duplicate_project(
     project_id: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
+    if not check_rate(
+        user.id,
+        "create_project",
+        limit=40,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+    ):
+        raise HTTPException(status_code=429, detail="复制过于频繁，请稍后再试")
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     data = project_to_dict(vn)
@@ -427,9 +455,18 @@ async def generate_rpy_from_prose_api(
     settings: Settings = Depends(get_settings),
 ):
     """Turn a chapter's natural-language manuscript into Ren'Py blocks."""
+    from app.core.rate_limit import require_rate
     from app.core.prose_rpy import generate_rpy_from_prose, prose_fingerprint
-    from app.core.usage import quota_exceeded
+    from app.core.usage import ensure_under_quota
 
+    require_rate(
+        user.id,
+        "llm_write",
+        240,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+        detail="生成过于频繁，请稍后再试",
+    )
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     ch = next((c for c in vn.chapters if c.id == body.chapter_id), None)
@@ -440,8 +477,7 @@ async def generate_rpy_from_prose_api(
     cfg = None
     use_llm = body.use_llm and bool(creds.get("api_key"))
     if use_llm:
-        if await quota_exceeded(db, user.id, settings.llm_daily_token_cap):
-            raise HTTPException(status_code=429, detail="今日 LLM 用量已达上限，请明日再试")
+        await ensure_under_quota(db, user.id, settings, creds)
         cfg = DeepSeekConfig(
             apiKey=creds["api_key"],
             baseUrl=creds["base_url"],
@@ -510,6 +546,9 @@ async def map_extract(
         }
     else:
         creds = await resolve_llm_credentials(db, user.id, settings)
+        from app.core.usage import ensure_under_quota
+
+        await ensure_under_quota(db, user.id, settings, creds)
         cfg = DeepSeekConfig(
             apiKey=creds["api_key"],
             baseUrl=creds["base_url"],
@@ -666,6 +705,9 @@ async def analysis_facts_scan(
         from app.core.fact_llm import enrich_fact_candidates
 
         creds = await resolve_llm_credentials(db, user.id, settings)
+        from app.core.usage import ensure_under_quota
+
+        await ensure_under_quota(db, user.id, settings, creds)
         cfg = DeepSeekConfig(
             apiKey=creds["api_key"],
             baseUrl=creds["base_url"],
@@ -998,7 +1040,18 @@ async def create_snapshot(
     body: SnapshotCreateIn,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
+    from app.core.rate_limit import require_rate
+
+    require_rate(
+        user.id,
+        "create_snapshot",
+        200,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+        detail="快照创建过于频繁，请稍后再试",
+    )
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     out = await create_snapshot_row(db, project_id, vn, label=body.label)
@@ -1331,8 +1384,17 @@ async def agent_chapter_revise(
     settings: Settings = Depends(get_settings),
 ):
     """Two-pass chapter revise: diagnose → full rewrite preview (not written yet)."""
-    from app.core.chapter_revise import run_chapter_revise
+    from app.core.rate_limit import require_rate
+    from app.core.usage import ensure_under_quota
 
+    require_rate(
+        user.id,
+        "llm_write",
+        240,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+        detail="改稿过于频繁，请稍后再试",
+    )
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     creds = await resolve_llm_credentials(db, user.id, settings)
@@ -1341,10 +1403,7 @@ async def agent_chapter_revise(
             status_code=400,
             detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
         )
-    from app.core.usage import quota_exceeded
-
-    if await quota_exceeded(db, user.id, settings.llm_daily_token_cap):
-        raise HTTPException(status_code=429, detail="今日 LLM 用量已达上限，请明日再试")
+    await ensure_under_quota(db, user.id, settings, creds)
     cfg = DeepSeekConfig(
         apiKey=creds["api_key"],
         baseUrl=creds["base_url"],
@@ -1525,6 +1584,9 @@ async def agent_ingest_settings(
     if not body.attachments:
         raise HTTPException(status_code=400, detail="请先上传附件")
 
+    from app.core.usage import ensure_under_quota
+
+    await ensure_under_quota(db, user.id, settings, creds)
     cfg = DeepSeekConfig(
         apiKey=creds["api_key"],
         baseUrl=creds["base_url"],
@@ -1789,6 +1851,17 @@ async def run_project_agent(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
+    from app.core.rate_limit import require_rate
+    from app.core.usage import ensure_under_quota
+
+    require_rate(
+        user.id,
+        "llm_write",
+        240,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+        detail="Agent 调用过于频繁，请稍后再试",
+    )
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     creds = await resolve_llm_credentials(db, user.id, settings)
@@ -1797,10 +1870,7 @@ async def run_project_agent(
             status_code=400,
             detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
         )
-    from app.core.usage import quota_exceeded
-
-    if await quota_exceeded(db, user.id, settings.llm_daily_token_cap):
-        raise HTTPException(status_code=429, detail="今日 LLM 用量已达上限，请明日再试")
+    await ensure_under_quota(db, user.id, settings, creds)
 
     req, last_user = await _build_agent_request(db, project_id, vn, body, settings, creds)
 
@@ -1831,6 +1901,17 @@ async def run_project_agent_stream(
     "actions"|"review"|"done"|"error", ...}. The final `done` event carries the
     full AgentRunOut payload (same shape as POST /agent).
     """
+    from app.core.rate_limit import require_rate
+    from app.core.usage import ensure_under_quota
+
+    require_rate(
+        user.id,
+        "llm_write",
+        240,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+        detail="Agent 调用过于频繁，请稍后再试",
+    )
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     creds = await resolve_llm_credentials(db, user.id, settings)
@@ -1839,10 +1920,7 @@ async def run_project_agent_stream(
             status_code=400,
             detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
         )
-    from app.core.usage import quota_exceeded
-
-    if await quota_exceeded(db, user.id, settings.llm_daily_token_cap):
-        raise HTTPException(status_code=429, detail="今日 LLM 用量已达上限，请明日再试")
+    await ensure_under_quota(db, user.id, settings, creds)
 
     req, last_user = await _build_agent_request(db, project_id, vn, body, settings, creds)
     cfg = DeepSeekConfig(
@@ -1919,6 +1997,9 @@ async def voice_check(
             status_code=400,
             detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
         )
+    from app.core.usage import ensure_under_quota
+
+    await ensure_under_quota(db, user.id, settings, creds)
     cfg = DeepSeekConfig(
         apiKey=creds["api_key"],
         baseUrl=creds["base_url"],
@@ -1987,6 +2068,9 @@ async def run_project_ai(
             status_code=400,
             detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
         )
+    from app.core.usage import ensure_under_quota
+
+    await ensure_under_quota(db, user.id, settings, creds)
     cfg = DeepSeekConfig(
         apiKey=creds["api_key"],
         baseUrl=creds["base_url"],

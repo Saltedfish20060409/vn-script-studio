@@ -124,6 +124,13 @@ export function StudioTopBar({
         <button
           type="button"
           className={`${styles.ghost} ${styles.topOnly}`}
+          onClick={onOpenHelp}
+        >
+          帮助
+        </button>
+        <button
+          type="button"
+          className={`${styles.ghost} ${styles.topOnly}`}
           onClick={onOpenCollab}
         >
           协作

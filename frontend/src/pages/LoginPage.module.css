@@ -332,6 +332,18 @@ html[data-theme="night"] .slash {
   color: var(--ink);
 }
 
+.finePrint {
+  margin: 0.85rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.finePrint a {
+  color: var(--accent);
+  font-weight: 650;
+}
+
 @keyframes rise {
   from {
     opacity: 0;

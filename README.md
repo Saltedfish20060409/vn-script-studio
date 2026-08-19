@@ -3,7 +3,7 @@
 面向**视觉小说 / 轻小说向剧本**的 AI 辅助写作工作室。  
 默认用自然语言写剧本，需要上演时再切到 Ren'Py（`.rpy`）。
 
-应用内顶栏 **更多 → 使用说明** 有完整操作说明（含手机）。首次进入也会有引导。
+应用内顶栏 **帮助**，以及公开页 [帮助与 FAQ](https://studio.nexesr.top/help)。AI 生成内容请自行审稿后再用于发行。
 
 ---
 
@@ -156,10 +156,13 @@ python -m app eval -m qwen2.5:7b --base-url http://localhost:11434 --api-key oll
 | `AGENT_SELF_REVIEW` | 自检：`auto` / `on` / `off` |
 | `CRITIC_API_KEY` / `CRITIC_API_BASE_URL` / `CRITIC_API_MODEL` | 可选责编模型（空则复用写作模型） |
 | `CORS_ORIGINS` | 前端源，逗号分隔 |
-| `REDIS_URL` | 可选：多 worker 部署时跨 worker SSE 广播（`redis://localhost:6379/0`）；留空 = 单 worker 进程内 |
+| `REDIS_URL` | 协作 SSE 与接口限流跨 worker；留空 = 单进程内存。线上 compose 会写入 `redis://redis:6379/0` |
 | `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` | 可选：pgvector 语义搜索的 embedding 端点；留空 = 启发式关键词检索 |
-| `LLM_DAILY_TOKEN_CAP` | 每日 LLM 用量上限（0 = 不限） |
-| `RATE_LIMIT_ENABLED` | 登录/注册按 IP 限速（默认 true；测试或已有限速的反代可关） |
+| `LLM_DAILY_TOKEN_CAP` | 用户自备 Key 的每日上限（**0 = 不限**，默认） |
+| `LLM_SHARED_KEY_DAILY_CAP` | 仅当请求落到**服务端** `DEEPSEEK_API_KEY` 时的每日上限（默认 20 万；无服务端 Key 则不会触发） |
+| `MAX_PROJECTS_PER_USER` | 每账号项目数上限（默认 80） |
+| `ALLOW_REGISTRATION` | `false` 一键关注册 |
+| `RATE_LIMIT_ENABLED` | 登录/注册/新建限流（默认 true；限额较宽） |
 | `RESEND_API_KEY` / `RESEND_FROM_EMAIL` / `PUBLIC_APP_URL` | 注册验证与找回密码邮件。未配置则无法注册 |
 | `AUTH_AUTO_VERIFY` | 仅测试/e2e：跳过发信并直接验证新账号 |
 
@@ -184,7 +187,11 @@ pytest tests/ -q
 > 前端：`cd frontend && npm test`（vitest，纯函数单测）。
 > 前端 e2e：`cd frontend && npm run build && npm run test:e2e`（需本地 PG 可达，见 playwright.config.ts）。
 
-### 备份 / 恢复
+### 备份 / 恢复 / 监控
+
+线上：`scripts/ops/backup_pg.sh` 每天 03:00 UTC `pg_dump`（保留 14 份，目录 `/opt/vn-script-studio/backups`）。健康检查 `GET /health`（Cloudflare 可对 `https://studio.nexesr.top/health` 配 uptime）。容器日志 json-file 轮转（20MB × 5）。封禁：`python -m app ban <用户名>`。
+
+本机 Windows：
 
 ```powershell
 cd backend

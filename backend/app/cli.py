@@ -181,5 +181,39 @@ def eval(
         typer.echo(text)
 
 
+@cli.command()
+def ban(username: str):
+    """Disable a user account (cannot log in)."""
+    _set_disabled(username, True)
+
+
+@cli.command()
+def unban(username: str):
+    """Re-enable a previously banned account."""
+    _set_disabled(username, False)
+
+
+def _set_disabled(username: str, disabled: bool) -> None:
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+
+    from app.db import AsyncSessionLocal
+    from app.models import User
+
+    async def _run() -> None:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(User).where(User.username == username))
+            user = result.scalar_one_or_none()
+            if user is None:
+                typer.echo(f"用户不存在：{username}", err=True)
+                raise typer.Exit(1)
+            user.disabled_at = datetime.now(timezone.utc) if disabled else None
+            await session.commit()
+            typer.echo(("已停用" if disabled else "已解禁") + f"：{username}")
+
+    asyncio.run(_run())
+
+
 if __name__ == "__main__":
     cli()

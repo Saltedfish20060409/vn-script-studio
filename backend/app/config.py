@@ -48,8 +48,18 @@ class Settings(BaseSettings):
         "+https://github.com/Saltedfish20060409/vn-script-studio)"
     )
 
-    # LLM usage accounting / quota. 0 = unlimited (soft cap per user per day).
+    # LLM usage accounting / quota. 0 = unlimited.
+    # Applies to users bringing their own Key (BYOK). We do not bill for that.
     llm_daily_token_cap: int = 0
+    # Cap only when the request falls through to the *server* DeepSeek key.
+    # 0 = also unlimited. Default 200k so a shared key cannot be drained.
+    llm_shared_key_daily_cap: int = 200_000
+
+    # Soft storage caps (generous — anti-abuse, not a product paywall).
+    max_projects_per_user: int = 80
+
+    # Kill switch: set ALLOW_REGISTRATION=false to stop new sign-ups.
+    allow_registration: bool = True
 
     # Optional Redis URL (redis://host:6379/0). When set and reachable, the
     # collab SSE event bus bridges workers via Redis pub/sub so multi-worker

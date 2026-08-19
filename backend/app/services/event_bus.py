@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from typing import Any, Dict, Optional, Set
 
 logger = logging.getLogger(__name__)
 
+_ORIGIN = uuid.uuid4().hex
 _subscribers: Dict[str, Set[asyncio.Queue]] = {}
 
 _redis_pub: Any = None  # lazily-created async Redis client
@@ -88,6 +90,8 @@ def _start_redis_listener() -> None:
                     try:
                         payload = json.loads(data)
                     except json.JSONDecodeError:
+                        continue
+                    if str(payload.get("origin") or "") == _ORIGIN:
                         continue
                     project_id = str(payload.get("projectId") or "")
                     if project_id:
@@ -165,6 +169,7 @@ def broadcast(project_id: str, event: Dict[str, Any]) -> None:
             client.publish(_channel(project_id), json.dumps({
                 "projectId": project_id,
                 "event": event,
+                "origin": _ORIGIN,
             })),
             name="collab-redis-publish",
         )

@@ -50,6 +50,9 @@ async def _cfg(settings: Settings, db: AsyncSession, user_id: str) -> DeepSeekCo
             status_code=400,
             detail="服务端未配置 DEEPSEEK_API_KEY",
         )
+    from app.core.usage import ensure_under_quota
+
+    await ensure_under_quota(db, user_id, settings, creds)
     return DeepSeekConfig(
         apiKey=creds["api_key"],
         baseUrl=creds["base_url"],
@@ -92,13 +95,19 @@ async def harness_run(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
+    from app.core.rate_limit import require_rate
+
+    require_rate(
+        user.id,
+        "harness_run",
+        120,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+        detail="Harness 调用过于频繁，请稍后再试",
+    )
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     cfg = await _cfg(settings, db, user.id)
-    from app.core.usage import quota_exceeded
-
-    if await quota_exceeded(db, user.id, settings.llm_daily_token_cap):
-        raise HTTPException(status_code=429, detail="今日 LLM 用量已达上限，请明日再试")
 
     if body.mode == "audit" or (
         body.role == "editor" and body.mode == "generate" and body.draft

@@ -80,6 +80,10 @@ def pack() -> None:
         tar.add(dist, arcname="frontend/dist")
         tar.add(DEPLOY / "nginx.conf", arcname="nginx.conf")
         tar.add(DEPLOY / "docker-compose.yml", arcname="docker-compose.yml")
+        ops = ROOT / "scripts" / "ops"
+        if ops.is_dir():
+            tar.add(ops, arcname="scripts/ops")
+
     print("packed", TAR_PATH, "bytes", TAR_PATH.stat().st_size)
 
 
@@ -127,6 +131,17 @@ def upload_and_start() -> None:
             print("wrote .env")
         else:
             print(".env exists, keeping")
+
+        run(
+            c,
+            f"grep -q '^REDIS_URL=' {REMOTE_DIR}/.env || "
+            f"echo 'REDIS_URL=redis://redis:6379/0' >> {REMOTE_DIR}/.env",
+        )
+        run(c, f"chmod +x {REMOTE_DIR}/scripts/ops/*.sh 2>/dev/null || true")
+        run(
+            c,
+            f"bash {REMOTE_DIR}/scripts/ops/install_cron.sh {REMOTE_DIR}",
+        )
 
         sftp = c.open_sftp()
         sftp.put(str(DEPLOY / "vnss.yaml"), "/data/coolify/proxy/dynamic/vnss.yaml")

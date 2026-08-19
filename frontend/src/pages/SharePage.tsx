@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { getShare, type ShareOut } from "../api/client";
 import type { VnProject } from "../types/vn";
+import { HELP_DISCLAIMER } from "../lib/helpContent";
 import styles from "./SharePage.module.css";
 
 export default function SharePage() {
@@ -180,7 +181,11 @@ export default function SharePage() {
         <ChapterList project={p} />
       </ShareSection>
       <footer className={styles.footer}>
-        由 VN Script Studio 生成 · 只读发布
+        <p>由 VN Script Studio 生成 · 只读发布</p>
+        <p className={styles.disclaimer}>{HELP_DISCLAIMER}</p>
+        <p>
+          <Link to="/help">帮助与 FAQ</Link>
+        </p>
       </footer>
     </div>
   );

@@ -96,8 +96,51 @@
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
   margin-top: 0.55rem;
+}
+
+.disclaimer {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.faqList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.15rem 0 0;
+}
+
+.faqList details {
+  border: 2px solid var(--line);
+  padding: 0.35rem 0.6rem;
+  background: color-mix(in srgb, var(--panel-bg) 88%, transparent);
+}
+
+.faqList summary {
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-weight: 650;
+  font-size: 0.86rem;
+}
+
+.faqList p {
+  margin: 0.35rem 0 0.1rem;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.link {
+  color: var(--accent);
+  font-weight: 650;
+  text-underline-offset: 0.2em;
 }
 
 .primary {

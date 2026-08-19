@@ -52,6 +52,17 @@
   color: var(--ink-soft);
 }
 
+.helpLink {
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.helpLink a {
+  color: var(--accent);
+  font-weight: 650;
+  text-underline-offset: 0.2em;
+}
+
 .dots {
   display: flex;
   gap: 0.4rem;

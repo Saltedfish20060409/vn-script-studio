@@ -33,6 +33,9 @@ async def learn_style_memory_endpoint(
     creds = await resolve_llm_credentials(db, user.id, settings)
     if not creds.get("api_key"):
         raise HTTPException(status_code=400, detail="服务端未配置 DEEPSEEK_API_KEY")
+    from app.core.usage import ensure_under_quota
+
+    await ensure_under_quota(db, user.id, settings, creds)
     config = DeepSeekConfig(
         apiKey=creds["api_key"],
         baseUrl=creds["base_url"],

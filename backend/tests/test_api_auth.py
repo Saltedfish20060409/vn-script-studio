@@ -153,3 +153,27 @@ def test_register_invalid_payload_422():
             assert r.status_code == 422
 
     _run(_scenario())
+
+
+def test_register_closed_403():
+    async def _scenario():
+        from app.config import get_settings
+        from app.db import get_db
+        from app.main import create_app
+
+        closed = db_gate.test_settings().model_copy(update={"allow_registration": False})
+        app = create_app()
+        app.dependency_overrides[get_db] = db_gate.override_get_db
+        app.dependency_overrides[get_settings] = lambda: closed
+        async with db_gate.make_client(app) as client:
+            r = await client.post(
+                "/api/v1/auth/register",
+                json={
+                    "username": "closedreg",
+                    "email": "closedreg@example.com",
+                    "password": "secret123",
+                },
+            )
+            assert r.status_code == 403, r.text
+
+    _run(_scenario())

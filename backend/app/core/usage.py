@@ -127,6 +127,22 @@ async def today_usage(db, user_id: str) -> Dict[str, Any]:
     return await user_usage_totals(db, user_id, since=start)
 
 
+def effective_daily_cap(settings, creds: Optional[Dict[str, Any]] = None) -> int:
+    """Token cap for this request.
+
+    BYOK (client/user key): ``llm_daily_token_cap`` (default 0 = unlimited).
+    Shared server key: ``llm_shared_key_daily_cap`` (default 200k) so a
+    public instance cannot be drained if an operator later sets DEEPSEEK_API_KEY.
+    """
+    user_cap = int(getattr(settings, "llm_daily_token_cap", 0) or 0)
+    source = str((creds or {}).get("source") or "")
+    if source == "server":
+        shared = int(getattr(settings, "llm_shared_key_daily_cap", 0) or 0)
+        if shared > 0:
+            return shared if user_cap <= 0 else min(user_cap, shared)
+    return user_cap
+
+
 async def quota_exceeded(
     db,
     user_id: str,
@@ -137,3 +153,27 @@ async def quota_exceeded(
         return False
     used = await today_usage(db, user_id)
     return int(used["totalTokens"]) >= int(daily_cap)
+
+
+async def quota_exceeded_for(
+    db,
+    user_id: str,
+    settings,
+    creds: Optional[Dict[str, Any]] = None,
+) -> bool:
+    return await quota_exceeded(db, user_id, effective_daily_cap(settings, creds))
+
+
+async def ensure_under_quota(
+    db,
+    user_id: str,
+    settings,
+    creds: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Raise 429 when this request's effective daily cap is already spent."""
+    if await quota_exceeded_for(db, user_id, settings, creds):
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=429, detail="今日 LLM 用量已达上限，请明日再试"
+        )

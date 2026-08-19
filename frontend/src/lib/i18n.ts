@@ -43,7 +43,7 @@ const zh = {
   "settings.criticModel": "评审模型名",
   "settings.criticHint": "可选：独立的评审模型（critic，改稿对照时使用）。",
   "settings.llmNote":
-    "Key、Base URL 与模型名保存在本机浏览器。调用工作室接口时会带给后端，由后端连接对应模型。留空则回退服务端环境变量。",
+    "Key 存在本机浏览器，请求时带给后端去连模型。本站不提供共用额度，用量走你自己的账户。留空则回退服务端环境变量（公网实例通常为空）。",
   "common.cancel": "取消",
   "common.save": "保存",
   "common.ok": "好的",
@@ -87,7 +87,7 @@ const en: Record<keyof typeof zh, string> = {
   "settings.criticHint":
     "Optional separate review model (used when comparing revisions).",
   "settings.llmNote":
-    "Key, base URL and model name stay in this browser. Studio API calls send them so the backend can reach your model. Empty falls back to the server environment.",
+    "Keys stay in this browser and are sent with Studio API calls so the backend can reach your model. We do not provide a shared quota — usage bills your own account. Empty falls back to the server environment (usually empty on the public instance).",
   "common.cancel": "Cancel",
   "common.save": "Save",
   "common.ok": "OK",
