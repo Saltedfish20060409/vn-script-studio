@@ -3,6 +3,7 @@ from app.models.tables import (
     AgentJob,
     AgentSession,
     AnalysisInboxItem,
+    AuthEmailToken,
     ChapterLock,
     ChapterMemoryArchive,
     ChapterMemorySlice,
@@ -23,6 +24,7 @@ from app.models.tables import (
 
 __all__ = [
     "User",
+    "AuthEmailToken",
     "Project",
     "Share",
     "AgentSession",

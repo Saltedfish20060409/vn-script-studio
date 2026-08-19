@@ -22,6 +22,11 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Bump to drop leftover hashed chunks from previous deploys.
+        cacheId: "vnss-20260819b",
+        cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
         // Cache the app shell + hashed assets; API calls are network-only
         // (collab events / saves must never be served stale).
         navigateFallback: "/index.html",
@@ -49,6 +54,7 @@ export default defineConfig({
     },
   },
   build: {
+    emptyOutDir: true,
     rollupOptions: {
       output: {
         manualChunks: {

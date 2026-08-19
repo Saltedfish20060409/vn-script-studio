@@ -18,17 +18,48 @@ class RefreshIn(BaseModel):
 class RegisterIn(BaseModel):
     username: str = Field(min_length=2, max_length=64)
     password: str = Field(min_length=6, max_length=128)
+    email: str = Field(min_length=3, max_length=255)
+
+
+class RegisterOut(BaseModel):
+    ok: bool = True
+    message: str
+    email: str
 
 
 class LoginIn(BaseModel):
-    username: str
+    username: str  # username or email
     password: str
 
 
 class UserOut(BaseModel):
     id: str
     username: str
+    email: Optional[str] = None
+    email_verified: bool = True
     created_at: datetime
+
+
+class EmailTokenIn(BaseModel):
+    token: str = Field(min_length=8, max_length=200)
+
+
+class ResendVerifyIn(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+
+
+class ForgotPasswordIn(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+
+
+class ResetPasswordIn(BaseModel):
+    token: str = Field(min_length=8, max_length=200)
+    password: str = Field(min_length=6, max_length=128)
+
+
+class OkMessageOut(BaseModel):
+    ok: bool = True
+    message: str = ""
 
 
 class ProjectSummary(BaseModel):

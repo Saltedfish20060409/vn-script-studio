@@ -94,6 +94,17 @@ html[data-theme="night"] .slash {
   opacity: 0.7;
 }
 
+.heroInner {
+  position: relative;
+  z-index: 4;
+  max-width: 28rem;
+  /* keep title clear of the standee column */
+  padding-right: min(28vw, 200px);
+  animation: rise 380ms var(--ease-out);
+  /* text only — let clicks reach the mascot button underneath */
+  pointer-events: none;
+}
+
 .portraitSlot {
   position: absolute;
   right: 3%;
@@ -108,8 +119,8 @@ html[data-theme="night"] .slash {
   display: grid;
   place-items: end center;
   transform: none;
-  /* below brand copy so Script Studio / 副文永不被挡住 */
-  z-index: 1;
+  /* above brand copy for hit-testing; copy uses pointer-events: none */
+  z-index: 5;
   cursor: pointer;
   color: inherit;
   font: inherit;
@@ -123,15 +134,6 @@ html[data-theme="night"] .slash {
 
 .portraitSlot:active {
   transform: translateY(1px);
-}
-
-.heroInner {
-  position: relative;
-  z-index: 4;
-  max-width: 28rem;
-  /* keep title clear of the standee column */
-  padding-right: min(28vw, 200px);
-  animation: rise 380ms var(--ease-out);
 }
 
 .kicker {
@@ -292,6 +294,42 @@ html[data-theme="night"] .slash {
   color: var(--danger);
   font-size: 0.85rem;
   font-weight: 600;
+}
+
+.okNote {
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+  border: 2px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.auxLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  justify-content: space-between;
+}
+
+.ghostLink {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.ghostLink:hover {
+  color: var(--ink);
 }
 
 @keyframes rise {

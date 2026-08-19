@@ -9,6 +9,12 @@ import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 const LoginPage = lazy(() =>
   import("./pages/LoginPage").then((m) => ({ default: m.default }))
 );
+const VerifyEmailPage = lazy(() =>
+  import("./pages/VerifyEmailPage").then((m) => ({ default: m.default }))
+);
+const ResetPasswordPage = lazy(() =>
+  import("./pages/ResetPasswordPage").then((m) => ({ default: m.default }))
+);
 const SharePage = lazy(() =>
   import("./pages/SharePage").then((m) => ({ default: m.default }))
 );
@@ -44,6 +50,8 @@ export default function App() {
           <Suspense fallback={<RouteFallback />}>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/share/:token" element={<SharePage />} />
               <Route path="/invite" element={<InvitePage />} />
               <Route

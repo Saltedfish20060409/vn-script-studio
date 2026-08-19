@@ -12,6 +12,7 @@ import {
   login as apiLogin,
   me as apiMe,
   register as apiRegister,
+  type RegisterOut,
   type UserOut,
 } from "../api/client";
 import { AuthContext } from "../lib/authContext";
@@ -59,12 +60,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u);
   }, []);
 
-  const register = useCallback(async (username: string, password: string) => {
-    await apiRegister(username, password);
-    setTokenState(getToken());
-    const u = await apiMe();
-    setUser(u);
-  }, []);
+  const register = useCallback(
+    async (username: string, password: string, email: string): Promise<RegisterOut> => {
+      return apiRegister(username, password, email);
+    },
+    []
+  );
 
   const logout = useCallback(() => {
     clearToken();

@@ -31,12 +31,14 @@
 }
 
 .submit {
+  display: inline-block;
   padding: 0.6rem 1.2rem;
   border-radius: 8px;
   border: none;
   background: var(--accent, #002fa7);
   color: #fff;
   font-size: 0.9rem;
+  text-decoration: none;
   cursor: pointer;
 }
 

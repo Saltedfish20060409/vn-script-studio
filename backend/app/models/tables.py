@@ -33,12 +33,34 @@ class User(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True)
+    email_verified_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     projects: Mapped[list["Project"]] = relationship(back_populates="owner")
     settings: Mapped[Optional["UserSettings"]] = relationship(
         back_populates="user", uselist=False
     )
+
+
+class AuthEmailToken(Base):
+    """One-time email verify / password-reset tokens."""
+
+    __tablename__ = "auth_email_tokens"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    purpose: Mapped[str] = mapped_column(String(16))  # verify | reset
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class Project(Base):
@@ -110,7 +132,7 @@ class UserSettings(Base):
     self_review: Mapped[str] = mapped_column(String(16), default="auto")
     api_key_enc: Mapped[str] = mapped_column(Text, default="")
     api_base_url: Mapped[str] = mapped_column(String(255), default="https://api.deepseek.com")
-    api_model: Mapped[str] = mapped_column(String(128), default="deepseek-chat")
+    api_model: Mapped[str] = mapped_column(String(128), default="deepseek-v4-flash")
     critic_api_key_enc: Mapped[str] = mapped_column(Text, default="")
     critic_api_base_url: Mapped[str] = mapped_column(String(255), default="")
     critic_api_model: Mapped[str] = mapped_column(String(128), default="")

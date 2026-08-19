@@ -1,12 +1,12 @@
 import { createContext, useContext } from "react";
-import type { UserOut } from "../api/client";
+import type { RegisterOut, UserOut } from "../api/client";
 
 export interface AuthContextValue {
   token: string | null;
   user: UserOut | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string, email: string) => Promise<RegisterOut>;
   logout: () => void;
 }
 

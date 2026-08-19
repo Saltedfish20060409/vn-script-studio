@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
-    deepseek_model: str = "deepseek-chat"
+    deepseek_model: str = "deepseek-v4-flash"
     # openai (default, e.g. DeepSeek) | ollama (local model via Ollama OpenAI endpoint)
     llm_provider: str = "openai"
 
@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     # Auth rate limiting (login/register per-IP). Set false to disable (e.g.
     # in tests or single-user local setups behind a proxy that already limits).
     rate_limit_enabled: bool = True
+
+    # Resend transactional email (verify / password reset). Empty = email auth off.
+    resend_api_key: str = ""
+    resend_from_email: str = "noreply@send.studio.nexesr.top"
+    public_app_url: str = "http://localhost:5173"
 
     @property
     def cors_origin_list(self) -> List[str]:

@@ -133,6 +133,9 @@ def test_settings():
             agent_self_review="auto",
             moegirl_enabled=False,  # lore endpoints never hit Moegirl network
             rate_limit_enabled=False,  # integration tests register many users
+            resend_api_key="re_test_key",
+            resend_from_email="noreply@example.com",
+            public_app_url="http://localhost:5173",
         )
     return _TEST_SETTINGS
 
@@ -155,9 +158,29 @@ def make_client(app):
 
 
 async def register_headers(client, username: str = "tester", password: str = "secret123") -> dict:
-    """Register a throwaway user and return Bearer auth headers."""
-    r = await client.post(
-        "/api/v1/auth/register", json={"username": username, "password": password}
-    )
+    """Register a throwaway user (verified) and return Bearer auth headers."""
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock, patch
+
+    from sqlalchemy import select
+
+    from app.models import User
+
+    email = f"{username.replace(' ', '_')}@example.com"
+    with patch("app.api.v1.auth.send_verify_email", new_callable=AsyncMock):
+        r = await client.post(
+            "/api/v1/auth/register",
+            json={"username": username, "email": email, "password": password},
+        )
     assert r.status_code == 200, f"register failed: {r.status_code} {r.text}"
+    async with SessionLocal() as session:
+        result = await session.execute(select(User).where(User.username == username))
+        user = result.scalar_one()
+        user.email_verified_at = datetime.now(timezone.utc)
+        await session.commit()
+    r = await client.post(
+        "/api/v1/auth/login",
+        json={"username": username, "password": password},
+    )
+    assert r.status_code == 200, f"login failed: {r.status_code} {r.text}"
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
