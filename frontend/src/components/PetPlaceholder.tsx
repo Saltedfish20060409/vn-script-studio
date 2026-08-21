@@ -10,10 +10,15 @@ export function PetPlaceholder({
   mood = "idle",
   className = "",
   title = "桌宠",
+  eyeX = 0,
+  eyeY = 0,
 }: {
   mood?: MascotMood;
   className?: string;
   title?: string;
+  /** 眼珠跟随偏移（px，-4~4），让占位更“活” */
+  eyeX?: number;
+  eyeY?: number;
 }) {
   return (
     <svg
@@ -51,8 +56,7 @@ export function PetPlaceholder({
         <ellipse cx="282" cy="168" rx="28" ry="34" fill="#7eb6e8" stroke="#4a7aaa" strokeWidth="3" />
       </g>
 
-      {/* L2 身体：卫衣 + 裙 + 腿套 */}
-      <g className={styles.layerBody}>
+      {/* L2 身体：卫衣 + 裙 + 腿套 */}      <g className={styles.layerBody}>
         <path
           d="M132 286 L228 286 L248 400 Q180 430 112 400 Z"
           fill="#f4f6fb"
@@ -100,7 +104,7 @@ export function PetPlaceholder({
       {/* L4 五官（刘海下） */}
       <g className={styles.layerFace}>
         {renderBrows(mood)}
-        {renderEyes(mood)}
+        {renderEyes(mood, eyeX, eyeY)}
         {/* 左颊绷带 */}
         <g transform="translate(108 198) rotate(-18)">
           <rect x="0" y="0" width="28" height="12" rx="2" fill="#fff" stroke="#c9b8ae" strokeWidth="1.5" />
@@ -193,10 +197,12 @@ function renderBrows(mood: MascotMood) {
   );
 }
 
-function renderEyes(mood: MascotMood) {
-  // 异色瞳：左蓝右褐
+function renderEyes(mood: MascotMood, eyeX = 0, eyeY = 0) {
+  // 异色瞳：左蓝右褐；眼珠跟随鼠标偏移（小幅度）
   const left = "#3b82c4";
   const right = "#c45a4a";
+  const dx = Math.max(-4, Math.min(4, eyeX));
+  const dy = Math.max(-4, Math.min(4, eyeY));
   switch (mood) {
     case "cheer":
     case "angel":
@@ -224,28 +230,28 @@ function renderEyes(mood: MascotMood) {
     case "think":
       return (
         <g>
-          <circle cx="130" cy="170" r="15" fill={left} />
-          <circle cx="230" cy="174" r="12" fill={right} />
-          <circle cx="134" cy="166" r="4" fill="#fff" opacity="0.9" />
+          <circle cx={130 + dx} cy={170 + dy} r="15" fill={left} />
+          <circle cx={230 + dx} cy={174 + dy} r="12" fill={right} />
+          <circle cx={134 + dx} cy={166 + dy} r="4" fill="#fff" opacity="0.9" />
         </g>
       );
     case "fluster":
     case "puzzled":
       return (
         <g>
-          <circle cx="130" cy="172" r="17" fill={left} />
-          <circle cx="230" cy="172" r="17" fill={right} />
-          <circle cx="124" cy="166" r="5" fill="#fff" opacity="0.9" />
-          <circle cx="224" cy="166" r="5" fill="#fff" opacity="0.9" />
+          <circle cx={130 + dx} cy={172 + dy} r="17" fill={left} />
+          <circle cx={230 + dx} cy={172 + dy} r="17" fill={right} />
+          <circle cx={124 + dx} cy={166 + dy} r="5" fill="#fff" opacity="0.9" />
+          <circle cx={224 + dx} cy={166 + dy} r="5" fill="#fff" opacity="0.9" />
         </g>
       );
     default:
       return (
         <g>
-          <circle cx="130" cy="174" r="16" fill={left} />
-          <circle cx="230" cy="174" r="16" fill={right} />
-          <circle cx="135" cy="168" r="5" fill="#fff" opacity="0.92" />
-          <circle cx="235" cy="168" r="5" fill="#fff" opacity="0.92" />
+          <circle cx={130 + dx} cy={174 + dy} r="16" fill={left} />
+          <circle cx={230 + dx} cy={174 + dy} r="16" fill={right} />
+          <circle cx={135 + dx * 1.3} cy={168 + dy * 1.3} r="5" fill="#fff" opacity="0.92" />
+          <circle cx={235 + dx * 1.3} cy={168 + dy * 1.3} r="5" fill="#fff" opacity="0.92" />
         </g>
       );
   }

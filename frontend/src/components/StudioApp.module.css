@@ -491,6 +491,20 @@
   text-overflow: ellipsis;
   clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
   box-shadow: var(--shadow-sm);
+  transition:
+    transform 180ms var(--ease-spring),
+    box-shadow 180ms var(--ease-out),
+    filter 180ms var(--ease-out);
+}
+
+.chapterChip:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+.chapterChip:active,
+.chapterChipOn:active {
+  transform: translateY(1px) scale(0.98);
 }
 
 .chapterChip span,
@@ -524,6 +538,7 @@
   font-weight: 650;
   box-shadow: 3px 3px 0
     color-mix(in srgb, var(--shard, var(--accent-hot)) 30%, transparent);
+  animation: vnssPop 360ms var(--ease-spring) both;
 }
 
 .chapterChipOn em {
@@ -712,8 +727,8 @@
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   border-color: var(--line);
   border-bottom-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  transform: translateY(-1px);
   box-shadow: none;
-  transform: none;
 }
 
 .tabActive {
@@ -724,6 +739,7 @@
   clip-path: polygon(0 0, 100% 0, 100% 100%, 10px 100%, 0 calc(100% - 10px));
   box-shadow: 4px 0 0
     color-mix(in srgb, var(--shard, var(--accent-hot)) 28%, transparent);
+  animation: vnssPop 380ms var(--ease-spring) both;
 }
 
 .tabActive .tabIdx {

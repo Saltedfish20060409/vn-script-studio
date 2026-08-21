@@ -21,6 +21,42 @@
   border-right: 2px solid var(--line);
 }
 
+/* 文库风插画光斑 */
+.hero::before,
+.hero::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(6px);
+}
+
+.hero::before {
+  width: min(46vw, 340px);
+  height: min(46vw, 340px);
+  top: -8%;
+  right: -4%;
+  background: radial-gradient(
+    circle at 35% 35%,
+    color-mix(in srgb, var(--accent) 22%, transparent),
+    transparent 70%
+  );
+  animation: vnssGlowPulse 6s ease-in-out infinite;
+}
+
+.hero::after {
+  width: min(30vw, 220px);
+  height: min(30vw, 220px);
+  bottom: 12%;
+  left: 30%;
+  background: radial-gradient(
+    circle at 40% 40%,
+    color-mix(in srgb, var(--accent-hot) 16%, transparent),
+    transparent 70%
+  );
+  animation: vnssGlowPulse 8s ease-in-out infinite reverse;
+}
+
 .slash {
   position: absolute;
   inset: -10% -20% auto auto;
@@ -125,6 +161,7 @@ html[data-theme="night"] .slash {
   color: inherit;
   font: inherit;
   overflow: visible;
+  animation: vnssPop 640ms var(--ease-spring) both, vnssFloaty 3.8s ease-in-out 640ms infinite;
 }
 
 .portraitSlot:focus-visible {
@@ -154,6 +191,12 @@ html[data-theme="night"] .slash {
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--ink);
+  /* 文库风渐变标题 + 光效 */
+  background: var(--grad-title);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--accent) 22%, transparent));
 }
 
 .sub {
@@ -181,9 +224,10 @@ html[data-theme="night"] .slash {
   background: var(--rail-grad);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
-  animation: var(--slash-in);
+  animation: vnssPop 560ms var(--ease-spring) both;
   backdrop-filter: var(--rail-blur);
   -webkit-backdrop-filter: var(--rail-blur);
+  border-radius: var(--radius-lg);
 }
 
 .cardSlash {
@@ -231,10 +275,15 @@ html[data-theme="night"] .slash {
   letter-spacing: 0.08em;
   color: var(--ink-soft);
   cursor: pointer;
+  transition: color 200ms var(--ease-out), background 200ms var(--ease-out);
+}
+
+.tab:hover {
+  color: var(--accent);
 }
 
 .tabActive {
-  background: var(--accent);
+  background: var(--grad-accent);
   color: var(--on-accent);
 }
 
@@ -257,15 +306,25 @@ html[data-theme="night"] .slash {
   min-height: 44px;
   padding: 0.65rem 0.75rem;
   border: 2px solid var(--line) !important;
-  border-radius: var(--radius-sm) !important;
+  border-radius: var(--radius-md) !important;
   background: var(--input-bg) !important;
+  transition:
+    border-color 200ms var(--ease-out),
+    box-shadow 200ms var(--ease-out),
+    transform 200ms var(--ease-out);
+}
+
+.form input:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent),
+    0 4px 12px -4px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .submit {
   margin-top: 0.35rem;
   min-height: 48px;
   border: 2px solid var(--line);
-  background: var(--accent);
+  background: var(--grad-accent);
   color: var(--on-accent);
   font-family: var(--font-display);
   font-size: 1rem;
@@ -274,11 +333,38 @@ html[data-theme="night"] .slash {
   text-transform: uppercase;
   cursor: pointer;
   box-shadow: var(--shadow);
+  border-radius: var(--radius-md);
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 180ms var(--ease-out),
+    box-shadow 180ms var(--ease-out),
+    filter 180ms var(--ease-out);
+}
+
+.submit::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 100%;
+  background: var(--grad-sheen);
+  transform: translateX(-120%);
 }
 
 .submit:hover:not(:disabled) {
-  transform: translate(-2px, -2px);
-  box-shadow: 6px 6px 0 color-mix(in srgb, var(--accent) 35%, transparent);
+  transform: translateY(-2px);
+  filter: brightness(1.06);
+  box-shadow: var(--shadow-lg);
+}
+
+.submit:hover:not(:disabled)::after {
+  animation: vnssShimmer 900ms var(--ease-out);
+}
+
+.submit:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
 }
 
 .submit:disabled {

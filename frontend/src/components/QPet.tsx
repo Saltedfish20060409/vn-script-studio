@@ -166,6 +166,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
   const [moveMs, setMoveMs] = useState(1500);
   const [walkDir, setWalkDir] = useState<1 | -1>(1);
   const [behaviorTick, setBehaviorTick] = useState(0);
+  const [eyePos, setEyePos] = useState({ x: 0, y: 0 });
   const posRef = useRef(pos);
   const stanceRef = useRef(stance);
   useEffect(() => {
@@ -272,6 +273,26 @@ export function QPet({ editorRef, cheerSignal }: Props) {
       if (blinkTimer.current) window.clearTimeout(blinkTimer.current);
     };
   }, [enabled, stance]);
+
+  // 占位眼珠跟随鼠标：让 Q 版小人更「活」
+  useEffect(() => {
+    if (!enabled) return;
+    const onMove = (e: MouseEvent) => {
+      const p = posRef.current;
+      const cx = p.x + showW / 2;
+      const cy = p.y + 60;
+      const dx = e.clientX - cx;
+      const dy = e.clientY - cy;
+      const dist = Math.max(1, Math.abs(dx) + Math.abs(dy));
+      const k = Math.min(1, 40 / dist); // 距离越近看得越“聚”
+      setEyePos({
+        x: Math.max(-4, Math.min(4, (dx / dist) * 4 * k)),
+        y: Math.max(-4, Math.min(4, (dy / dist) * 4 * k)),
+      });
+    };
+    window.addEventListener("mousemove", onMove);
+    return () => window.removeEventListener("mousemove", onMove);
+  }, [enabled, showW]);
 
   // 行为循环：像桌宠模拟器一样自由活动 —— 每 8~20s 随机决定
   // 「走向某处 / 原地小动作 / 待机呼吸」。free（拖放摆放）与 edge 不活动。
@@ -669,7 +690,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
           />
         ) : (
           <div className={animClass} style={{ transform: `scaleX(${flip})` }}>
-            <PetPlaceholder mood={mood} />
+            <PetPlaceholder mood={mood} eyeX={eyePos.x} eyeY={eyePos.y} />
           </div>
         )}
       </div>

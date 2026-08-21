@@ -18,7 +18,10 @@
 
 .frame:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent),
+    0 10px 26px -10px color-mix(in srgb, var(--accent) 26%, transparent);
+  transition: border-color 200ms var(--ease-out), box-shadow 200ms var(--ease-out);
 }
 
 /* Shared text metrics — must stay identical or the caret drifts */
