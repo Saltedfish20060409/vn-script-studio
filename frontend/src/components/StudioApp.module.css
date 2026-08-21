@@ -360,6 +360,12 @@
   box-shadow: 3px 3px 0 color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+.adminAlert {
+  border-color: #c62828 !important;
+  color: #c62828 !important;
+  font-weight: 700;
+}
+
 .primary {
   background: var(--accent);
   border-color: var(--line);

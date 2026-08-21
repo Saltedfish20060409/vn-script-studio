@@ -65,3 +65,37 @@ def test_admin_username_set_parses():
     assert s.admin_username_set == {"alice", "bob"}
     empty = Settings.model_construct(secret_key="x" * 64, admin_usernames="")
     assert empty.admin_username_set == set()
+
+
+def test_flag_user_new_and_busy_is_danger():
+    from datetime import datetime, timedelta, timezone
+
+    from app.api.v1.admin import _flag_user
+
+    created = datetime.now(timezone.utc) - timedelta(hours=6)
+    flags, labels, severity = _flag_user(
+        project_count=10,
+        tokens_today=0,
+        calls_today=0,
+        created_at=created,
+        disabled_at=None,
+        max_projects=80,
+    )
+    assert "new_and_busy" in flags
+    assert severity == "danger"
+    assert labels
+
+
+def test_flag_user_projects_warn():
+    from app.api.v1.admin import _flag_user
+
+    flags, _labels, severity = _flag_user(
+        project_count=45,
+        tokens_today=0,
+        calls_today=0,
+        created_at=None,
+        disabled_at=None,
+        max_projects=80,
+    )
+    assert "projects_warn" in flags
+    assert severity == "warn"

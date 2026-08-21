@@ -4,6 +4,7 @@ from pydantic import EmailStr, TypeAdapter
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
 
 from app.config import Settings, get_settings
 from app.core.rate_limit import check_rate
@@ -62,13 +63,17 @@ def _tokens(user_id: str, settings: Settings) -> TokenOut:
     )
 
 
-def _user_out(user: User) -> UserOut:
+def _user_out(user: User, settings: Optional[Settings] = None) -> UserOut:
+    is_admin = bool(
+        settings and user.username in settings.admin_username_set
+    )
     return UserOut(
         id=user.id,
         username=user.username,
         email=user.email,
         email_verified=is_email_verified(user),
         created_at=user.created_at,
+        is_admin=is_admin,
     )
 
 
@@ -297,5 +302,8 @@ async def refresh(
 
 
 @router.get("/me", response_model=UserOut)
-async def me(user: User = Depends(get_current_user)):
-    return _user_out(user)
+async def me(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    return _user_out(user, settings)

@@ -8,6 +8,7 @@
  */
 export * from "./http";
 export * from "./auth";
+export * from "./admin";
 export * from "./projects";
 export * from "./pipeline";
 export * from "./voice";

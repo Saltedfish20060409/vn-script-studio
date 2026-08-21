@@ -74,7 +74,9 @@ import { QPet } from "./QPet";
 import { WorldPanel } from "./WorldPanel";
 import { WriteToolbar, type WriteMode } from "./WriteToolbar";
 import { HelpSheet } from "./HelpSheet";
+import { AdminPanel } from "./AdminPanel";
 import { StudioErrorBoundary } from "./StudioErrorBoundary";
+import { fetchAdminOverview } from "../api/admin";
 import { SaveConflictDialog, type SaveConflictChoice } from "./SaveConflictDialog";
 import { ScriptPlayer } from "./ScriptPlayer";
 import {
@@ -190,6 +192,8 @@ export function StudioApp() {
   writeModeRef.current = writeMode;
   const [generatingRpy, setGeneratingRpy] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [adminAlert, setAdminAlert] = useState(false);
   const [selection, setSelection] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -256,6 +260,29 @@ export function StudioApp() {
     if (settings) applySettingsToDom(settings);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!user?.is_admin) {
+      setAdminAlert(false);
+      return;
+    }
+    let cancelled = false;
+    const tick = () => {
+      void fetchAdminOverview()
+        .then((ov) => {
+          if (!cancelled) setAdminAlert(ov.danger_count > 0);
+        })
+        .catch(() => {
+          /* admin probe is best-effort */
+        });
+    };
+    tick();
+    const id = window.setInterval(tick, 120_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [user?.is_admin]);
 
   // Chapter revise preview chip (survives refresh via localStorage)
   useEffect(() => {
@@ -1678,6 +1705,9 @@ export function StudioApp() {
           onExport={() => void exportCurrentView()}
           exportLabel={writeMode === "rpy" ? "导出 .rpy" : "导出 .docx"}
           onOpenHelp={() => setHelpOpen(true)}
+          onOpenAdmin={() => setAdminOpen(true)}
+          showAdmin={Boolean(user?.is_admin)}
+          adminAlert={adminAlert}
           onOpenCollab={() => {
             setTab("project");
             setProjectSub("members");
@@ -2099,6 +2129,7 @@ export function StudioApp() {
           />
         )}
         <HelpSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
+        <AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} />
         {mapExtractReview ? (
           <MapExtractReview
             proposal={mapExtractReview.proposal}

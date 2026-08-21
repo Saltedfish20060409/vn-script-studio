@@ -1,0 +1,240 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(6, 8, 12, 0.55);
+}
+
+.panel {
+  width: min(920px, 100%);
+  max-height: min(90dvh, 820px);
+  overflow: auto;
+  padding: 1.15rem 1.2rem 1.25rem;
+  border: 2px solid var(--line);
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-lg);
+  color: var(--ink);
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%);
+}
+
+.head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 0.85rem;
+}
+
+.idx {
+  margin: 0 0 0.25rem;
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+}
+
+.title {
+  margin: 0 0 0.3rem;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+}
+
+.lead {
+  margin: 0;
+  max-width: 36rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.close,
+.refresh,
+.tab,
+.tabOn,
+.ban,
+.unban {
+  font: inherit;
+  cursor: pointer;
+  border: 2px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  min-height: 40px;
+  padding: 0.35rem 0.75rem;
+}
+
+.close:hover,
+.refresh:hover,
+.tab:hover {
+  border-color: var(--accent);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+}
+
+.stat {
+  padding: 0.55rem 0.65rem;
+  border: 2px solid var(--line);
+  background: color-mix(in srgb, var(--panel-bg) 88%, transparent);
+}
+
+.stat span {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
+
+.stat strong {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+}
+
+.statDanger {
+  border-color: #c62828;
+  background: color-mix(in srgb, #c62828 12%, var(--panel-bg));
+}
+
+.statDanger strong {
+  color: #c62828;
+}
+
+.banner {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 2px solid #c62828;
+  background: color-mix(in srgb, #c62828 14%, var(--panel-bg));
+  color: #8b1a1a;
+  font-weight: 650;
+  font-size: 0.88rem;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.65rem;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tabOn {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 650;
+}
+
+.error {
+  margin: 0 0 0.55rem;
+  color: #c62828;
+  font-size: 0.88rem;
+}
+
+.tableWrap {
+  overflow: auto;
+  border: 2px solid var(--line);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.table th,
+.table td {
+  padding: 0.55rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.table th {
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--panel-bg) 92%, var(--ink) 4%);
+}
+
+.rowDanger {
+  background: color-mix(in srgb, #c62828 16%, transparent);
+}
+
+.rowWarn {
+  background: color-mix(in srgb, #e6a817 14%, transparent);
+}
+
+.rowDisabled {
+  opacity: 0.72;
+}
+
+.name {
+  font-weight: 650;
+}
+
+.meta {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.flags {
+  margin: 0;
+  padding-left: 1rem;
+  color: #8b1a1a;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.rowWarn .flags {
+  color: #8a5a00;
+}
+
+.ok {
+  color: var(--ink-soft);
+}
+
+.ban {
+  background: color-mix(in srgb, #c62828 12%, transparent);
+  border-color: #c62828;
+  color: #8b1a1a;
+  font-weight: 650;
+}
+
+.unban {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.empty {
+  text-align: center;
+  color: var(--ink-soft);
+  padding: 1.2rem !important;
+}
+
+@media (max-width: 720px) {
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .table th:nth-child(3),
+  .table td:nth-child(3) {
+    display: none;
+  }
+}

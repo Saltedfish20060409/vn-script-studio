@@ -38,6 +38,7 @@ class UserOut(BaseModel):
     email: Optional[str] = None
     email_verified: bool = True
     created_at: datetime
+    is_admin: bool = False
 
 
 class EmailTokenIn(BaseModel):

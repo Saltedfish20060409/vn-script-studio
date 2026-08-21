@@ -1,0 +1,257 @@
+import { useCallback, useEffect, useState } from "react";
+import {
+  banUser,
+  fetchAdminOverview,
+  unbanUser,
+  type AdminOverviewOut,
+  type AdminUserOut,
+} from "../api/admin";
+import { ApiError } from "../api/http";
+import styles from "./AdminPanel.module.css";
+
+type Props = {
+  open: boolean;
+  onClose: () => void;
+};
+
+export function AdminPanel({ open, onClose }: Props) {
+  const [data, setData] = useState<AdminOverviewOut | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState<"all" | "anomalies" | "disabled">("all");
+  const [acting, setActing] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const overview = await fetchAdminOverview({
+        anomaliesOnly: filter === "anomalies",
+        disabledOnly: filter === "disabled",
+      });
+      setData(overview);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "加载失败");
+    } finally {
+      setBusy(false);
+    }
+  }, [filter]);
+
+  useEffect(() => {
+    if (!open) return;
+    void load();
+  }, [open, load]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  async function toggleBan(u: AdminUserOut) {
+    const name = u.username;
+    if (u.disabled_at) {
+      if (!window.confirm(`解禁「${name}」？`)) return;
+    } else if (
+      !window.confirm(
+        `封禁「${name}」？对方将无法登录与刷新令牌。`
+      )
+    ) {
+      return;
+    }
+    setActing(name);
+    setError("");
+    try {
+      if (u.disabled_at) await unbanUser(name);
+      else await banUser(name);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "操作失败");
+    } finally {
+      setActing(null);
+    }
+  }
+
+  const alertCount = (data?.danger_count ?? 0) + (data?.warn_count ?? 0);
+
+  return (
+    <div
+      className={styles.backdrop}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="admin-panel-title"
+      onClick={onClose}
+    >
+      <div className={styles.panel} onClick={(e) => e.stopPropagation()}>
+        <header className={styles.head}>
+          <div>
+            <p className={styles.idx}>ADMIN</p>
+            <h2 id="admin-panel-title" className={styles.title}>
+              用户管理
+            </h2>
+            <p className={styles.lead}>
+              异常会标红：新号狂建、项目逼近上限、今日调用偏高等。平常无告警可忽略。
+            </p>
+          </div>
+          <button type="button" className={styles.close} onClick={onClose}>
+            关闭
+          </button>
+        </header>
+
+        <div className={styles.stats}>
+          <div className={styles.stat}>
+            <span>用户</span>
+            <strong>{data?.user_count ?? "—"}</strong>
+          </div>
+          <div
+            className={`${styles.stat} ${
+              (data?.danger_count ?? 0) > 0 ? styles.statDanger : ""
+            }`}
+          >
+            <span>需关注</span>
+            <strong>{alertCount || 0}</strong>
+          </div>
+          <div className={styles.stat}>
+            <span>已封禁</span>
+            <strong>{data?.disabled_count ?? "—"}</strong>
+          </div>
+          <div className={styles.stat}>
+            <span>项目上限</span>
+            <strong>{data?.max_projects_per_user ?? "—"}</strong>
+          </div>
+        </div>
+
+        {(data?.danger_count ?? 0) > 0 ? (
+          <p className={styles.banner} role="status">
+            有 {data?.danger_count} 个账号触发红色异常，建议先看下方标红行。
+          </p>
+        ) : null}
+
+        <div className={styles.toolbar}>
+          <div className={styles.filters} role="tablist" aria-label="筛选">
+            {(
+              [
+                ["all", "全部"],
+                ["anomalies", "仅异常"],
+                ["disabled", "已封禁"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={filter === id}
+                className={filter === id ? styles.tabOn : styles.tab}
+                onClick={() => setFilter(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className={styles.refresh}
+            onClick={() => void load()}
+            disabled={busy}
+          >
+            {busy ? "刷新中…" : "刷新"}
+          </button>
+        </div>
+
+        {error ? (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>用户</th>
+                <th>项目</th>
+                <th>今日调用</th>
+                <th>异常</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data?.users ?? []).map((u) => (
+                <tr
+                  key={u.id}
+                  className={
+                    u.severity === "danger"
+                      ? styles.rowDanger
+                      : u.severity === "warn"
+                        ? styles.rowWarn
+                        : u.disabled_at
+                          ? styles.rowDisabled
+                          : undefined
+                  }
+                >
+                  <td>
+                    <div className={styles.name}>{u.username}</div>
+                    <div className={styles.meta}>
+                      {u.email || "无邮箱"}
+                      {u.created_at
+                        ? ` · 注册 ${new Date(u.created_at).toLocaleDateString()}`
+                        : ""}
+                      {u.disabled_at ? " · 已封禁" : ""}
+                    </div>
+                  </td>
+                  <td>{u.project_count}</td>
+                  <td>
+                    {u.calls_today}
+                    <span className={styles.meta}>
+                      {" "}
+                      / {u.tokens_today.toLocaleString()} tok
+                    </span>
+                  </td>
+                  <td>
+                    {u.flag_labels.length ? (
+                      <ul className={styles.flags}>
+                        {u.flag_labels.map((lab) => (
+                          <li key={lab}>{lab}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <span className={styles.ok}>正常</span>
+                    )}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className={
+                        u.disabled_at ? styles.unban : styles.ban
+                      }
+                      disabled={acting === u.username}
+                      onClick={() => void toggleBan(u)}
+                    >
+                      {acting === u.username
+                        ? "…"
+                        : u.disabled_at
+                          ? "解禁"
+                          : "封禁"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {!busy && (data?.users?.length ?? 0) === 0 ? (
+                <tr>
+                  <td colSpan={5} className={styles.empty}>
+                    暂无匹配用户
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -13,6 +13,7 @@ export interface UserOut {
   email?: string | null;
   email_verified?: boolean;
   created_at: string;
+  is_admin?: boolean;
 }
 
 export interface RegisterOut {
