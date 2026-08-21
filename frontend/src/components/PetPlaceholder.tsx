@@ -201,8 +201,8 @@ function renderEyes(mood: MascotMood, eyeX = 0, eyeY = 0) {
   // 异色瞳：左蓝右褐；眼珠跟随鼠标偏移（小幅度）
   const left = "#3b82c4";
   const right = "#c45a4a";
-  const dx = Math.max(-4, Math.min(4, eyeX));
-  const dy = Math.max(-4, Math.min(4, eyeY));
+  const dx = Math.max(-6, Math.min(6, eyeX));
+  const dy = Math.max(-6, Math.min(6, eyeY));
   switch (mood) {
     case "cheer":
     case "angel":

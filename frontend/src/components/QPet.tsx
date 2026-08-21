@@ -286,8 +286,8 @@ export function QPet({ editorRef, cheerSignal }: Props) {
       const dist = Math.max(1, Math.abs(dx) + Math.abs(dy));
       const k = Math.min(1, 40 / dist); // 距离越近看得越“聚”
       setEyePos({
-        x: Math.max(-4, Math.min(4, (dx / dist) * 4 * k)),
-        y: Math.max(-4, Math.min(4, (dy / dist) * 4 * k)),
+        x: Math.max(-6, Math.min(6, (dx / dist) * 6 * k)),
+        y: Math.max(-6, Math.min(6, (dy / dist) * 6 * k)),
       });
     };
     window.addEventListener("mousemove", onMove);

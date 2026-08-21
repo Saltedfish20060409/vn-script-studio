@@ -181,11 +181,11 @@
 @keyframes vnssPop {
   0% {
     opacity: 0;
-    transform: translateY(16px) scale(0.92);
+    transform: translateY(22px) scale(0.86);
   }
-  60% {
+  62% {
     opacity: 1;
-    transform: translateY(-4px) scale(1.02);
+    transform: translateY(-5px) scale(1.05);
   }
   100% {
     opacity: 1;
@@ -208,17 +208,17 @@
     transform: translateY(0);
   }
   50% {
-    transform: translateY(-8px);
+    transform: translateY(-14px);
   }
 }
 
 @keyframes vnssGlowPulse {
   0%,
   100% {
-    opacity: 0.55;
+    opacity: 0.35;
   }
   50% {
-    opacity: 1;
+    opacity: 0.95;
   }
 }
 
@@ -275,14 +275,14 @@
   position: absolute;
   top: 0;
   left: 0;
-  width: 40%;
+  width: 55%;
   height: 100%;
   background: var(--grad-sheen);
-  transform: translateX(-120%);
+  transform: translateX(-140%);
 }
 
 .vnss-btn-grad:hover::after {
-  animation: vnssShimmer 900ms var(--ease-out);
+  animation: vnssShimmer 1100ms var(--ease-out);
 }
 .vnss-stagger > *:nth-child(7) {
   animation-delay: calc(var(--stagger) * 6);

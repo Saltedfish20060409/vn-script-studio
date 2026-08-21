@@ -51,10 +51,10 @@
   left: 30%;
   background: radial-gradient(
     circle at 40% 40%,
-    color-mix(in srgb, var(--accent-hot) 16%, transparent),
+    color-mix(in srgb, var(--accent-hot) 28%, transparent),
     transparent 70%
   );
-  animation: vnssGlowPulse 8s ease-in-out infinite reverse;
+  animation: vnssGlowPulse 7s ease-in-out infinite reverse;
 }
 
 .slash {
@@ -347,10 +347,10 @@ html[data-theme="night"] .slash {
   position: absolute;
   top: 0;
   left: 0;
-  width: 40%;
+  width: 55%;
   height: 100%;
   background: var(--grad-sheen);
-  transform: translateX(-120%);
+  transform: translateX(-140%);
 }
 
 .submit:hover:not(:disabled) {
@@ -473,8 +473,13 @@ html[data-theme="night"] .slash {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* 与全局策略一致：只缩短，不整卡掐死（卡片弹跳/看板娘浮动保留但加速） */
   .heroInner,
   .card {
-    animation: none;
+    animation-duration: 240ms;
+  }
+
+  .portraitSlot {
+    animation-duration: 360ms;
   }
 }
