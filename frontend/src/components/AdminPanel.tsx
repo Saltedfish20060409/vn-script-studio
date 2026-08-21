@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   banUser,
   fetchAdminOverview,
+  grantAdmin,
+  revokeAdmin,
   unbanUser,
   type AdminOverviewOut,
   type AdminUserOut,
@@ -64,11 +66,31 @@ export function AdminPanel({ open, onClose }: Props) {
     ) {
       return;
     }
-    setActing(name);
+    setActing(`ban:${name}`);
     setError("");
     try {
       if (u.disabled_at) await unbanUser(name);
       else await banUser(name);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "操作失败");
+    } finally {
+      setActing(null);
+    }
+  }
+
+  async function toggleAdmin(u: AdminUserOut) {
+    const name = u.username;
+    if (u.is_admin) {
+      if (!window.confirm(`撤销「${name}」的管理员？`)) return;
+    } else if (!window.confirm(`授予「${name}」管理员？`)) {
+      return;
+    }
+    setActing(`admin:${name}`);
+    setError("");
+    try {
+      if (u.is_admin) await revokeAdmin(name);
+      else await grantAdmin(name);
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "操作失败");
@@ -95,7 +117,7 @@ export function AdminPanel({ open, onClose }: Props) {
               用户管理
             </h2>
             <p className={styles.lead}>
-              异常会标红：新号狂建、项目逼近上限、今日调用偏高等。平常无告警可忽略。
+              每行右侧有「授管理 / 撤管理」和「封禁」。管理员写在数据库，改完立即生效。
             </p>
           </div>
           <button type="button" className={styles.close} onClick={onClose}>
@@ -103,7 +125,7 @@ export function AdminPanel({ open, onClose }: Props) {
           </button>
         </header>
 
-        <div className={styles.stats}>
+        <div className={`${styles.stats} vnss-stagger`}>
           <div className={styles.stat}>
             <span>用户</span>
             <strong>{data?.user_count ?? "—"}</strong>
@@ -117,12 +139,12 @@ export function AdminPanel({ open, onClose }: Props) {
             <strong>{alertCount || 0}</strong>
           </div>
           <div className={styles.stat}>
-            <span>已封禁</span>
-            <strong>{data?.disabled_count ?? "—"}</strong>
+            <span>管理员</span>
+            <strong>{data?.admin_count ?? "—"}</strong>
           </div>
           <div className={styles.stat}>
-            <span>项目上限</span>
-            <strong>{data?.max_projects_per_user ?? "—"}</strong>
+            <span>已封禁</span>
+            <strong>{data?.disabled_count ?? "—"}</strong>
           </div>
         </div>
 
@@ -173,11 +195,11 @@ export function AdminPanel({ open, onClose }: Props) {
           <table className={styles.table}>
             <thead>
               <tr>
+                <th className={styles.colActions}>操作</th>
                 <th>用户</th>
                 <th>项目</th>
                 <th>今日调用</th>
                 <th>异常</th>
-                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -194,8 +216,43 @@ export function AdminPanel({ open, onClose }: Props) {
                           : undefined
                   }
                 >
+                  <td className={styles.colActions}>
+                    <div className={styles.actions}>
+                      <button
+                        type="button"
+                        className={u.is_admin ? styles.revoke : styles.grant}
+                        disabled={acting === `admin:${u.username}`}
+                        onClick={() => void toggleAdmin(u)}
+                      >
+                        {acting === `admin:${u.username}`
+                          ? "…"
+                          : u.is_admin
+                            ? "撤管理"
+                            : "授管理"}
+                      </button>
+                      <button
+                        type="button"
+                        className={
+                          u.disabled_at ? styles.unban : styles.ban
+                        }
+                        disabled={acting === `ban:${u.username}`}
+                        onClick={() => void toggleBan(u)}
+                      >
+                        {acting === `ban:${u.username}`
+                          ? "…"
+                          : u.disabled_at
+                            ? "解禁"
+                            : "封禁"}
+                      </button>
+                    </div>
+                  </td>
                   <td>
-                    <div className={styles.name}>{u.username}</div>
+                    <div className={styles.name}>
+                      {u.username}
+                      {u.is_admin ? (
+                        <span className={styles.adminBadge}>管理</span>
+                      ) : null}
+                    </div>
                     <div className={styles.meta}>
                       {u.email || "无邮箱"}
                       {u.created_at
@@ -222,22 +279,6 @@ export function AdminPanel({ open, onClose }: Props) {
                     ) : (
                       <span className={styles.ok}>正常</span>
                     )}
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className={
-                        u.disabled_at ? styles.unban : styles.ban
-                      }
-                      disabled={acting === u.username}
-                      onClick={() => void toggleBan(u)}
-                    >
-                      {acting === u.username
-                        ? "…"
-                        : u.disabled_at
-                          ? "解禁"
-                          : "封禁"}
-                    </button>
                   </td>
                 </tr>
               ))}

@@ -7,6 +7,7 @@ export interface AdminUserOut {
   username: string;
   email?: string | null;
   disabled_at?: string | null;
+  is_admin?: boolean;
   created_at?: string | null;
   project_count: number;
   tokens_today: number;
@@ -19,6 +20,7 @@ export interface AdminUserOut {
 export interface AdminOverviewOut {
   user_count: number;
   disabled_count: number;
+  admin_count?: number;
   danger_count: number;
   warn_count: number;
   max_projects_per_user: number;
@@ -29,6 +31,13 @@ export interface BanOut {
   ok: boolean;
   username: string;
   disabled: boolean;
+  message: string;
+}
+
+export interface AdminFlagOut {
+  ok: boolean;
+  username: string;
+  is_admin: boolean;
   message: string;
 }
 
@@ -53,6 +62,20 @@ export function banUser(username: string): Promise<BanOut> {
 export function unbanUser(username: string): Promise<BanOut> {
   return apiFetch<BanOut>(
     `/admin/users/${encodeURIComponent(username)}/unban`,
+    { method: "POST" }
+  );
+}
+
+export function grantAdmin(username: string): Promise<AdminFlagOut> {
+  return apiFetch<AdminFlagOut>(
+    `/admin/users/${encodeURIComponent(username)}/grant-admin`,
+    { method: "POST" }
+  );
+}
+
+export function revokeAdmin(username: string): Promise<AdminFlagOut> {
+  return apiFetch<AdminFlagOut>(
+    `/admin/users/${encodeURIComponent(username)}/revoke-admin`,
     { method: "POST" }
   );
 }

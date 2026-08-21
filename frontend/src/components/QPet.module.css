@@ -169,9 +169,3 @@
     transform: none;
   }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .bubble {
-    animation: none;
-  }
-}

@@ -23,7 +23,7 @@ export default defineConfig({
       },
       workbox: {
         // Bump to drop leftover hashed chunks from previous deploys.
-        cacheId: "vnss-20260821a",
+        cacheId: "vnss-20260821d",
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,

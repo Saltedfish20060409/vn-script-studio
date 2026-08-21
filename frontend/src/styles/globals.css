@@ -43,9 +43,15 @@
   --chrome-h: 48px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
-  --dur-fast: 140ms;
-  --dur: 220ms;
-  --dur-slow: 320ms;
+  --ease-soft: cubic-bezier(0.45, 0.05, 0.55, 0.95);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 160ms;
+  --dur: 280ms;
+  --dur-slow: 480ms;
+  --dur-enter: 560ms;
+  --stagger: 70ms;
+  --parallax-y: 18px;
   --glass-blur: 12px;
   --slash: #002fa7;
   --shard: #e11d48;
@@ -76,13 +82,108 @@
   }
 }
 
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(var(--parallax-y)) scale(0.94);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes veilIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(4px);
+  }
+}
+
+@keyframes sheetIn {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.92);
+    clip-path: inset(12% 6% 0 6%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes pressRipple {
+  from {
+    transform: scale(0.92);
+    opacity: 0.35;
+  }
+  to {
+    transform: scale(1.08);
+    opacity: 0;
+  }
+}
+
 .vnss-slash-in {
   animation: var(--slash-in);
 }
 
+.vnss-rise-in {
+  animation: riseIn var(--dur-enter) var(--ease-emphasized) both;
+}
+
+.vnss-veil-in {
+  animation: veilIn var(--dur) var(--ease-out) both;
+}
+
+.vnss-sheet-in {
+  animation: sheetIn var(--dur-enter) var(--ease-spring) both;
+}
+
+.vnss-stagger > * {
+  animation: riseIn var(--dur-slow) var(--ease-emphasized) both;
+}
+
+.vnss-stagger > *:nth-child(1) {
+  animation-delay: calc(var(--stagger) * 0);
+}
+.vnss-stagger > *:nth-child(2) {
+  animation-delay: calc(var(--stagger) * 1);
+}
+.vnss-stagger > *:nth-child(3) {
+  animation-delay: calc(var(--stagger) * 2);
+}
+.vnss-stagger > *:nth-child(4) {
+  animation-delay: calc(var(--stagger) * 3);
+}
+.vnss-stagger > *:nth-child(5) {
+  animation-delay: calc(var(--stagger) * 4);
+}
+.vnss-stagger > *:nth-child(6) {
+  animation-delay: calc(var(--stagger) * 5);
+}
+.vnss-stagger > *:nth-child(7) {
+  animation-delay: calc(var(--stagger) * 6);
+}
+.vnss-stagger > *:nth-child(8) {
+  animation-delay: calc(var(--stagger) * 7);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .vnss-slash-in {
-    animation: none !important;
+  /* 产品默认要活泼反馈；系统「减少动态效果」只略缩短，不整站掐死 */
+  :root {
+    --dur-fast: 90ms;
+    --dur: 140ms;
+    --dur-slow: 200ms;
+    --dur-enter: 220ms;
+    --stagger: 30ms;
+    --parallax-y: 8px;
   }
 }
 
@@ -416,11 +517,11 @@ button {
 }
 
 button:hover:not(:disabled) {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
 }
 
 button:active:not(:disabled) {
-  transform: scale(0.97) translateY(0);
+  transform: scale(0.94) translateY(0);
 }
 
 a {
@@ -428,16 +529,8 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-
-  button:hover:not(:disabled),
-  button:active:not(:disabled) {
-    transform: none;
+  /* 不禁用按钮反馈，只略减幅度 */
+  button:hover:not(:disabled) {
+    transform: translateY(-1px);
   }
 }

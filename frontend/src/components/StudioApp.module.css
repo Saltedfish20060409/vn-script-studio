@@ -366,6 +366,34 @@
   font-weight: 700;
 }
 
+.adminBtn {
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--field-bg));
+  color: var(--accent);
+  padding: 0.4rem 0.85rem;
+  min-height: 36px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  animation: adminPulse 2.4s var(--ease-soft, ease-in-out) infinite;
+}
+
+.adminBtn:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+  transform: translateY(-2px) scale(1.03);
+}
+
+@keyframes adminPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+}
+
 .primary {
   background: var(--accent);
   border-color: var(--line);
@@ -863,8 +891,8 @@
 @keyframes panelIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
-    filter: blur(2px);
+    transform: translateY(22px) scale(0.96);
+    filter: blur(5px);
   }
   to {
     opacity: 1;

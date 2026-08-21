@@ -113,11 +113,13 @@
 @keyframes toastIn {
   from {
     opacity: 0;
-    transform: translateY(-8px) skewX(-1.5deg);
+    transform: translateX(24px) translateY(-12px) scale(0.9) skewX(-2deg);
+    filter: blur(3px);
   }
   to {
     opacity: 1;
     transform: none;
+    filter: none;
   }
 }
 

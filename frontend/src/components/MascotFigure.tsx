@@ -95,12 +95,9 @@ function CollegeSilhouette({
         strokeWidth="1"
       />
       <circle cx="50" cy="44" r="18" fill={fill} stroke={stroke} strokeWidth="2" />
+      {/* 背发 */}
       <path d={hairPath(variant)} fill={accent} stroke={stroke} strokeWidth="1.5" />
-      <path
-        d="M34 38 C42 28 58 28 66 38 L62 42 C56 34 44 34 38 42 Z"
-        fill={accent}
-        opacity="0.95"
-      />
+      {/* 五官（前发之下） */}
       {mood === "wince" || mood === "angry" ? (
         <>
           <path d={`M40 ${eyeY} L46 ${eyeY - 2}`} stroke={stroke} strokeWidth="2" />
@@ -118,6 +115,23 @@ function CollegeSilhouette({
         stroke={stroke}
         strokeWidth="1.8"
         strokeLinecap="round"
+      />
+      {/* 前发刘海盖额 */}
+      <path
+        d="M34 38 C42 28 58 28 66 38 L62 44 C56 36 44 36 38 44 Z"
+        fill={accent}
+        stroke={stroke}
+        strokeWidth="1.2"
+      />
+      <path
+        d="M40 40 C46 48 48 56 49 62 C47 54 44 48 40 44 Z"
+        fill={accent}
+        opacity="0.95"
+      />
+      <path
+        d="M60 40 C54 48 52 56 51 62 C53 54 56 48 60 44 Z"
+        fill={accent}
+        opacity="0.95"
       />
       {mood === "think" || mood === "puzzled" ? (
         <circle cx="72" cy="28" r="3" fill={accent} stroke={stroke} strokeWidth="1" />

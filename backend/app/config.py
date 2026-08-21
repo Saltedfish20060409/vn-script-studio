@@ -61,8 +61,10 @@ class Settings(BaseSettings):
     # Kill switch: set ALLOW_REGISTRATION=false to stop new sign-ups.
     allow_registration: bool = True
 
-    # Comma-separated usernames that may call /api/v1/admin/* (ban/unban).
-    # Empty = no HTTP admin surface; use `python -m app ban` on the host instead.
+    # Bootstrap only when users.is_admin is empty for everyone:
+    # - listed usernames become the first admin(s); OR
+    # - if empty, the first authenticated user is promoted (handy for local).
+    # Day-to-day grant/revoke uses /admin and needs no restart.
     admin_usernames: str = ""
 
     # Optional Redis URL (redis://host:6379/0). When set and reachable, the

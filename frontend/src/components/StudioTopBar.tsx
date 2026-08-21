@@ -142,7 +142,7 @@ export function StudioTopBar({
         {showAdmin && onOpenAdmin ? (
           <button
             type="button"
-            className={`${styles.ghost} ${adminAlert ? styles.adminAlert : ""}`}
+            className={`${styles.adminBtn} ${adminAlert ? styles.adminAlert : ""}`}
             onClick={onOpenAdmin}
           >
             管理

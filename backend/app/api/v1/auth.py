@@ -63,10 +63,7 @@ def _tokens(user_id: str, settings: Settings) -> TokenOut:
     )
 
 
-def _user_out(user: User, settings: Optional[Settings] = None) -> UserOut:
-    is_admin = bool(
-        settings and user.username in settings.admin_username_set
-    )
+def _user_out(user: User, *, is_admin: bool = False) -> UserOut:
     return UserOut(
         id=user.id,
         username=user.username,
@@ -189,6 +186,9 @@ async def login(
             status_code=403,
             detail="邮箱尚未验证，请先查收验证邮件（可在注册页重新发送）",
         )
+    from app.services.admin_access import ensure_admin_access
+
+    await ensure_admin_access(user, settings, db)
     return _tokens(user.id, settings)
 
 
@@ -305,5 +305,9 @@ async def refresh(
 async def me(
     user: User = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
 ):
-    return _user_out(user, settings)
+    from app.services.admin_access import ensure_admin_access
+
+    is_admin = await ensure_admin_access(user, settings, db)
+    return _user_out(user, is_admin=is_admin)

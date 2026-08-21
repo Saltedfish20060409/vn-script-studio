@@ -138,8 +138,11 @@ async def get_current_user(
 async def get_admin_user(
     user: User = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Require a logged-in user listed in ADMIN_USERNAMES."""
-    if user.username not in settings.admin_username_set:
+    """Require a DB admin (or bootstrap seed when no admins exist yet)."""
+    from app.services.admin_access import ensure_admin_access
+
+    if not await ensure_admin_access(user, settings, db):
         raise HTTPException(status_code=403, detail="需要管理员权限")
     return user

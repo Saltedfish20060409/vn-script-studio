@@ -4,7 +4,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
-COPY .env.example .env.example
+COPY alembic ./alembic
+COPY alembic.ini .
 
 ENV PYTHONPATH=/app
 EXPOSE 8000

@@ -67,6 +67,111 @@ def test_admin_username_set_parses():
     assert empty.admin_username_set == set()
 
 
+def test_ensure_admin_uses_db_flag_without_env():
+    import asyncio
+
+    from app.config import Settings
+    from app.services.admin_access import ensure_admin_access
+
+    user = type("U", (), {"username": "anyone", "is_admin": True})()
+    settings = Settings.model_construct(secret_key="x" * 64, admin_usernames="")
+
+    async def _run():
+        return await ensure_admin_access(user, settings, db=None)  # type: ignore[arg-type]
+
+    assert asyncio.run(_run()) is True
+
+
+def test_ensure_admin_seed_when_no_db_admins(monkeypatch):
+    import asyncio
+
+    from app.config import Settings
+    from app.services import admin_access
+
+    class FakeUser:
+        username = "seed"
+        is_admin = False
+
+    class FakeDb:
+        async def commit(self):
+            return None
+
+        async def refresh(self, _u):
+            return None
+
+    async def fake_count(_db):
+        return 0
+
+    monkeypatch.setattr(admin_access, "count_db_admins", fake_count)
+    user = FakeUser()
+    settings = Settings.model_construct(
+        secret_key="x" * 64, admin_usernames="seed"
+    )
+
+    async def _run():
+        return await admin_access.ensure_admin_access(user, settings, FakeDb())
+
+    assert asyncio.run(_run()) is True
+    assert user.is_admin is True
+
+
+def test_ensure_admin_empty_env_bootstraps_first_user(monkeypatch):
+    import asyncio
+
+    from app.config import Settings
+    from app.services import admin_access
+
+    class FakeUser:
+        username = "localdev"
+        is_admin = False
+
+    class FakeDb:
+        async def commit(self):
+            return None
+
+        async def refresh(self, _u):
+            return None
+
+    async def fake_count(_db):
+        return 0
+
+    monkeypatch.setattr(admin_access, "count_db_admins", fake_count)
+    user = FakeUser()
+    settings = Settings.model_construct(secret_key="x" * 64, admin_usernames="")
+
+    async def _run():
+        return await admin_access.ensure_admin_access(user, settings, FakeDb())
+
+    assert asyncio.run(_run()) is True
+    assert user.is_admin is True
+
+
+def test_ensure_admin_env_ignored_when_db_has_admins(monkeypatch):
+    import asyncio
+
+    from app.config import Settings
+    from app.services import admin_access
+
+    class FakeUser:
+        username = "seed"
+        is_admin = False
+
+    async def fake_count(_db):
+        return 2
+
+    monkeypatch.setattr(admin_access, "count_db_admins", fake_count)
+    user = FakeUser()
+    settings = Settings.model_construct(
+        secret_key="x" * 64, admin_usernames="seed"
+    )
+
+    async def _run():
+        return await admin_access.ensure_admin_access(user, settings, object())  # type: ignore[arg-type]
+
+    assert asyncio.run(_run()) is False
+    assert user.is_admin is False
+
+
 def test_flag_user_new_and_busy_is_danger():
     from datetime import datetime, timedelta, timezone
 

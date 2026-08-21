@@ -1,4 +1,4 @@
-"""Operator admin API — ban / unban + anomaly-flagged user list."""
+"""Operator admin API — ban / unban / grant-admin + anomaly-flagged user list."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from app.db import get_db
 from app.models import User
 from app.models.tables import LlmUsage, Project
 from app.security import get_admin_user
+from app.services.admin_access import count_db_admins
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -32,6 +33,7 @@ class AdminUserOut(BaseModel):
     username: str
     email: Optional[str] = None
     disabled_at: Optional[datetime] = None
+    is_admin: bool = False
     created_at: Optional[datetime] = None
     project_count: int = 0
     tokens_today: int = 0
@@ -48,9 +50,17 @@ class BanOut(BaseModel):
     message: str = ""
 
 
+class AdminFlagOut(BaseModel):
+    ok: bool = True
+    username: str
+    is_admin: bool
+    message: str = ""
+
+
 class AdminOverviewOut(BaseModel):
     user_count: int
     disabled_count: int
+    admin_count: int = 0
     danger_count: int
     warn_count: int
     max_projects_per_user: int
@@ -171,6 +181,9 @@ async def _load_admin_users(
             disabled_at=u.disabled_at,
             max_projects=cap,
         )
+        if bool(getattr(u, "is_admin", False)):
+            flags = [*flags, "admin"]
+            labels = [*labels, "管理员"]
         if anomalies_only and severity == "ok" and u.disabled_at is None:
             continue
         out.append(
@@ -179,6 +192,7 @@ async def _load_admin_users(
                 username=u.username,
                 email=u.email,
                 disabled_at=u.disabled_at,
+                is_admin=bool(getattr(u, "is_admin", False)),
                 created_at=u.created_at,
                 project_count=pc,
                 tokens_today=tokens,
@@ -192,6 +206,7 @@ async def _load_admin_users(
     rank = {"danger": 0, "warn": 1, "ok": 2}
     out.sort(
         key=lambda row: (
+            0 if row.is_admin else 1,
             0 if row.disabled_at is None else 1,
             rank.get(row.severity, 9),
             -row.project_count,
@@ -236,6 +251,7 @@ async def admin_overview(
     return AdminOverviewOut(
         user_count=total,
         disabled_count=disabled,
+        admin_count=await count_db_admins(db),
         danger_count=sum(1 for u in users if u.severity == "danger"),
         warn_count=sum(1 for u in users if u.severity == "warn"),
         max_projects_per_user=int(
@@ -299,3 +315,54 @@ async def unban_user(
     user.disabled_at = None
     await db.commit()
     return BanOut(ok=True, username=name, disabled=False, message="已解禁")
+
+
+@router.post("/users/{username}/grant-admin", response_model=AdminFlagOut)
+async def grant_admin(
+    username: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+):
+    name = username.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="用户名不能为空")
+    result = await db.execute(select(User).where(User.username == name))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if user.disabled_at is not None:
+        raise HTTPException(status_code=400, detail="请先解禁再授予管理员")
+    user.is_admin = True
+    await db.commit()
+    return AdminFlagOut(ok=True, username=name, is_admin=True, message="已设为管理员")
+
+
+@router.post("/users/{username}/revoke-admin", response_model=AdminFlagOut)
+async def revoke_admin(
+    username: str,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    name = username.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="用户名不能为空")
+    result = await db.execute(select(User).where(User.username == name))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if not user.is_admin:
+        return AdminFlagOut(
+            ok=True, username=name, is_admin=False, message="本来就不是管理员"
+        )
+    remaining = await count_db_admins(db)
+    if remaining <= 1:
+        raise HTTPException(status_code=400, detail="不能撤销最后一位管理员")
+    if name == admin.username:
+        raise HTTPException(
+            status_code=400, detail="不能撤销自己的管理员（请让其他管理员操作）"
+        )
+    user.is_admin = False
+    await db.commit()
+    return AdminFlagOut(
+        ok=True, username=name, is_admin=False, message="已撤销管理员"
+    )

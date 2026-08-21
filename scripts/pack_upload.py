@@ -76,10 +76,22 @@ def pack() -> None:
         tar.add(ROOT / "backend" / "alembic", arcname="backend/alembic", filter=filter_backend)
         tar.add(ROOT / "backend" / "alembic.ini", arcname="backend/alembic.ini")
         tar.add(ROOT / "backend" / "requirements.txt", arcname="backend/requirements.txt")
-        tar.add(DEPLOY / "Dockerfile", arcname="backend/Dockerfile")
+        dockerfile = ROOT / "backend" / "Dockerfile"
+        if not dockerfile.exists():
+            dockerfile = DEPLOY / "Dockerfile"
+        tar.add(dockerfile, arcname="backend/Dockerfile")
         tar.add(dist, arcname="frontend/dist")
-        tar.add(DEPLOY / "nginx.conf", arcname="nginx.conf")
-        tar.add(DEPLOY / "docker-compose.yml", arcname="docker-compose.yml")
+        nginx = DEPLOY / "nginx.conf"
+        if not nginx.exists():
+            nginx = ROOT / "nginx.conf"
+        if nginx.exists():
+            tar.add(nginx, arcname="nginx.conf")
+        compose = DEPLOY / "docker-compose.yml"
+        if not compose.exists():
+            compose = ROOT / "deploy" / "docker-compose.yml"
+        if not compose.exists():
+            compose = ROOT / "docker-compose.yml"
+        tar.add(compose, arcname="docker-compose.yml")
         ops = ROOT / "scripts" / "ops"
         if ops.is_dir():
             tar.add(ops, arcname="scripts/ops")
@@ -143,10 +155,14 @@ def upload_and_start() -> None:
             f"bash {REMOTE_DIR}/scripts/ops/install_cron.sh {REMOTE_DIR}",
         )
 
-        sftp = c.open_sftp()
-        sftp.put(str(DEPLOY / "vnss.yaml"), "/data/coolify/proxy/dynamic/vnss.yaml")
-        sftp.close()
-        print("wrote traefik vnss.yaml")
+        yaml_local = DEPLOY / "vnss.yaml"
+        if yaml_local.exists():
+            sftp = c.open_sftp()
+            sftp.put(str(yaml_local), "/data/coolify/proxy/dynamic/vnss.yaml")
+            sftp.close()
+            print("wrote traefik vnss.yaml")
+        else:
+            print("vnss.yaml missing locally — skip traefik rewrite (keep remote)")
 
         print("docker compose up...")
         out = run(

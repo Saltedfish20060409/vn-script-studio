@@ -2,8 +2,45 @@
   width: 100%;
   height: auto;
   display: block;
-  /* 占位也有呼吸感：轻微上下浮动（真实帧图交付后由逐帧动画接管） */
-  animation: petFloat 1.6s ease-in-out infinite;
+  background: transparent;
+  animation: petFloat 1.5s var(--ease-soft, ease-in-out) infinite;
+}
+
+.shadow {
+  fill: var(--line);
+  opacity: 0.16;
+}
+
+.layerBack {
+  transform-origin: 180px 160px;
+  animation: hairSway 2.8s var(--ease-soft, ease-in-out) infinite;
+}
+
+.layerBody {
+  transform-origin: 180px 360px;
+  animation: breathBody 1.6s var(--ease-soft, ease-in-out) infinite;
+}
+
+.layerHead {
+  transform-origin: 180px 168px;
+}
+
+.layerFace {
+  transform-origin: 180px 168px;
+}
+
+.layerBangs {
+  transform-origin: 180px 90px;
+  animation: bangsBob 2.2s var(--ease-soft, ease-in-out) infinite;
+}
+
+.layerFront {
+  transform-origin: 180px 120px;
+}
+
+.ahoge {
+  transform-origin: 186px 40px;
+  animation: ahogeWiggle 2.4s var(--ease-spring, ease-in-out) infinite;
 }
 
 @keyframes petFloat {
@@ -12,12 +49,46 @@
     transform: translateY(0);
   }
   50% {
-    transform: translateY(-3px);
+    transform: translateY(-6px);
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .placeholder {
-    animation: none;
+@keyframes breathBody {
+  0%,
+  100% {
+    transform: scaleY(1) translateY(0);
+  }
+  50% {
+    transform: scaleY(1.03) translateY(-2px);
+  }
+}
+
+@keyframes hairSway {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-1.8deg);
+  }
+}
+
+@keyframes bangsBob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(2px);
+  }
+}
+
+@keyframes ahogeWiggle {
+  0%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(10deg);
   }
 }

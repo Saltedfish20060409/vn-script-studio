@@ -6,10 +6,11 @@
   place-items: center;
   padding: 1rem;
   background: rgba(6, 8, 12, 0.55);
-  animation: fade 180ms var(--ease-out, ease);
+  backdrop-filter: blur(4px);
+  animation: veilIn var(--dur, 220ms) var(--ease-out, ease);
 }
 
-@keyframes fade {
+@keyframes veilIn {
   from {
     opacity: 0;
   }
@@ -31,13 +32,14 @@
   box-shadow: var(--shadow-lg);
   clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
   color: var(--ink);
-  animation: rise 260ms var(--ease-out, ease);
+  animation: sheetIn var(--dur-enter, 420ms) var(--ease-spring, ease);
+  transform-origin: 50% 40%;
 }
 
-@keyframes rise {
+@keyframes sheetIn {
   from {
     opacity: 0;
-    transform: translateY(12px) skewX(-1deg);
+    transform: translateY(16px) scale(0.97) skewX(-1deg);
   }
   to {
     opacity: 1;

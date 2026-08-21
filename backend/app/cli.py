@@ -219,6 +219,41 @@ def list_banned():
     asyncio.run(_run())
 
 
+@cli.command("grant-admin")
+def grant_admin(username: str):
+    """Set users.is_admin = true (no restart)."""
+    _set_admin(username, True)
+
+
+@cli.command("revoke-admin")
+def revoke_admin(username: str):
+    """Set users.is_admin = false (refuses if last admin)."""
+    _set_admin(username, False)
+
+
+@cli.command("list-admins")
+def list_admins():
+    """Print usernames with is_admin."""
+    from sqlalchemy import select
+
+    from app.db import AsyncSessionLocal
+    from app.models import User
+
+    async def _run() -> None:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(User).where(User.is_admin.is_(True)).order_by(User.username)
+            )
+            rows = list(result.scalars().all())
+            if not rows:
+                typer.echo("(无管理员；可用 ADMIN_USERNAMES 破局后登录落库)")
+                return
+            for u in rows:
+                typer.echo(u.username)
+
+    asyncio.run(_run())
+
+
 def _set_disabled(username: str, disabled: bool) -> None:
     from datetime import datetime, timezone
 
@@ -237,6 +272,40 @@ def _set_disabled(username: str, disabled: bool) -> None:
             user.disabled_at = datetime.now(timezone.utc) if disabled else None
             await session.commit()
             typer.echo(("已停用" if disabled else "已解禁") + f"：{username}")
+
+    asyncio.run(_run())
+
+
+def _set_admin(username: str, is_admin: bool) -> None:
+    from sqlalchemy import func, select
+
+    from app.db import AsyncSessionLocal
+    from app.models import User
+
+    async def _run() -> None:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(User).where(User.username == username))
+            user = result.scalar_one_or_none()
+            if user is None:
+                typer.echo(f"用户不存在：{username}", err=True)
+                raise typer.Exit(1)
+            if not is_admin and user.is_admin:
+                n = int(
+                    (
+                        await session.execute(
+                            select(func.count())
+                            .select_from(User)
+                            .where(User.is_admin.is_(True))
+                        )
+                    ).scalar_one()
+                    or 0
+                )
+                if n <= 1:
+                    typer.echo("不能撤销最后一位管理员", err=True)
+                    raise typer.Exit(1)
+            user.is_admin = is_admin
+            await session.commit()
+            typer.echo(("已设为管理员" if is_admin else "已撤销管理员") + f"：{username}")
 
     asyncio.run(_run())
 

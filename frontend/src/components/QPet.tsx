@@ -18,8 +18,8 @@ import styles from "./QPet.module.css";
 
 type PetMode = "dock" | "corner" | "free" | "edge-left" | "edge-right";
 
-const PET_W = 108;
-const PET_H = 152;
+const PET_W = 120;
+const PET_H = 168;
 const DOCK_GAP = 10;
 /** 无交互多久触发打瞌睡（至少 3 分钟） */
 const SLEEP_AFTER_MS = 3 * 60 * 1000;
@@ -668,7 +668,7 @@ export function QPet({ editorRef, cheerSignal }: Props) {
             onLoad={() => markFrameResult(stance, true)}
           />
         ) : (
-          <div className={animClass}>
+          <div className={animClass} style={{ transform: `scaleX(${flip})` }}>
             <PetPlaceholder mood={mood} />
           </div>
         )}

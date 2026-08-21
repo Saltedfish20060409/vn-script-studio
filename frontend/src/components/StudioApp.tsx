@@ -194,6 +194,8 @@ export function StudioApp() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminAlert, setAdminAlert] = useState(false);
+  /** 以 overview 探测为准：避免旧会话 /me 缺 is_admin 时顶栏不显示「管理」 */
+  const [adminCapable, setAdminCapable] = useState(false);
   const [selection, setSelection] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -262,7 +264,8 @@ export function StudioApp() {
   }, []);
 
   useEffect(() => {
-    if (!user?.is_admin) {
+    if (!user?.id) {
+      setAdminCapable(false);
       setAdminAlert(false);
       return;
     }
@@ -270,10 +273,15 @@ export function StudioApp() {
     const tick = () => {
       void fetchAdminOverview()
         .then((ov) => {
-          if (!cancelled) setAdminAlert(ov.danger_count > 0);
+          if (cancelled) return;
+          setAdminCapable(true);
+          setAdminAlert(ov.danger_count > 0);
         })
         .catch(() => {
-          /* admin probe is best-effort */
+          if (cancelled) return;
+          // 403/401：非管理员；若 /me 已标 is_admin 仍保留入口（配置短暂不一致时）
+          setAdminCapable(Boolean(user.is_admin));
+          if (!user.is_admin) setAdminAlert(false);
         });
     };
     tick();
@@ -282,7 +290,7 @@ export function StudioApp() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [user?.is_admin]);
+  }, [user?.id, user?.is_admin]);
 
   // Chapter revise preview chip (survives refresh via localStorage)
   useEffect(() => {
@@ -1706,7 +1714,7 @@ export function StudioApp() {
           exportLabel={writeMode === "rpy" ? "导出 .rpy" : "导出 .docx"}
           onOpenHelp={() => setHelpOpen(true)}
           onOpenAdmin={() => setAdminOpen(true)}
-          showAdmin={Boolean(user?.is_admin)}
+          showAdmin={Boolean(user?.is_admin || adminCapable)}
           adminAlert={adminAlert}
           onOpenCollab={() => {
             setTab("project");
@@ -1716,7 +1724,7 @@ export function StudioApp() {
         />
 
         <div className={styles.layout}>
-          <main className={styles.main}>
+          <main className={`${styles.main} vnss-rise-in`} key={tab}>
             <StudioTabs
               tab={tab}
               onSelect={(id) => {
