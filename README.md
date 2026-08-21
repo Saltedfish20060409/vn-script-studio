@@ -162,6 +162,7 @@ python -m app eval -m qwen2.5:7b --base-url http://localhost:11434 --api-key oll
 | `LLM_SHARED_KEY_DAILY_CAP` | 仅当请求落到**服务端** `DEEPSEEK_API_KEY` 时的每日上限（默认 20 万；无服务端 Key 则不会触发） |
 | `MAX_PROJECTS_PER_USER` | 每账号项目数上限（默认 80） |
 | `ALLOW_REGISTRATION` | `false` 一键关注册 |
+| `ADMIN_USERNAMES` | 逗号分隔管理员用户名；可调用 `/api/v1/admin/*` 封禁/解禁。空 = 仅 CLI |
 | `RATE_LIMIT_ENABLED` | 登录/注册/新建限流（默认 true；限额较宽） |
 | `RESEND_API_KEY` / `RESEND_FROM_EMAIL` / `PUBLIC_APP_URL` | 注册验证与找回密码邮件。未配置则无法注册 |
 | `AUTH_AUTO_VERIFY` | 仅测试/e2e：跳过发信并直接验证新账号 |
@@ -189,7 +190,7 @@ pytest tests/ -q
 
 ### 备份 / 恢复 / 监控
 
-线上：`scripts/ops/backup_pg.sh` 每天 03:00 UTC `pg_dump`（保留 14 份，目录 `/opt/vn-script-studio/backups`）。健康检查 `GET /health`（Cloudflare 可对 `https://studio.nexesr.top/health` 配 uptime）。容器日志 json-file 轮转（20MB × 5）。封禁：`python -m app ban <用户名>`。
+线上：`scripts/ops/backup_pg.sh` 每天 03:00 UTC `pg_dump`（保留 14 份，目录 `/opt/vn-script-studio/backups`）。健康检查 `GET /health`（Cloudflare 可对 `https://studio.nexesr.top/health` 配 uptime）。容器日志 json-file 轮转（20MB × 5）。封禁字段为 `users.disabled_at`（登录 / refresh / 鉴权均检查）：`docker exec -it vnss-api python -m app ban <用户名>` / `unban` / `list-banned`；或设 `ADMIN_USERNAMES` 后调 `POST /api/v1/admin/users/{username}/ban`。
 
 本机 Windows：
 

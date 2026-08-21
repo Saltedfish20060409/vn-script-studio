@@ -288,9 +288,12 @@ async def refresh(
         raise HTTPException(status_code=401, detail="刷新令牌无效")
     user_id = str(payload["sub"])
     result = await db.execute(select(User).where(User.id == user_id))
-    if result.scalar_one_or_none() is None:
+    user = result.scalar_one_or_none()
+    if user is None:
         raise HTTPException(status_code=401, detail="用户不存在")
-    return _tokens(user_id, settings)
+    if user.disabled_at is not None:
+        raise HTTPException(status_code=403, detail="账号已被停用")
+    return _tokens(user.id, settings)
 
 
 @router.get("/me", response_model=UserOut)

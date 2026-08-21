@@ -183,7 +183,7 @@ def eval(
 
 @cli.command()
 def ban(username: str):
-    """Disable a user account (cannot log in)."""
+    """Disable a user account (cannot log in / refresh)."""
     _set_disabled(username, True)
 
 
@@ -191,6 +191,32 @@ def ban(username: str):
 def unban(username: str):
     """Re-enable a previously banned account."""
     _set_disabled(username, False)
+
+
+@cli.command("list-banned")
+def list_banned():
+    """Print usernames with disabled_at set."""
+    from sqlalchemy import select
+
+    from app.db import AsyncSessionLocal
+    from app.models import User
+
+    async def _run() -> None:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(User)
+                .where(User.disabled_at.is_not(None))
+                .order_by(User.disabled_at.desc())
+            )
+            rows = list(result.scalars().all())
+            if not rows:
+                typer.echo("(无封禁账号)")
+                return
+            for u in rows:
+                when = u.disabled_at.isoformat() if u.disabled_at else ""
+                typer.echo(f"{u.username}\t{when}")
+
+    asyncio.run(_run())
 
 
 def _set_disabled(username: str, disabled: bool) -> None:

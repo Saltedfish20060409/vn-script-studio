@@ -133,3 +133,13 @@ async def get_current_user(
     if user.disabled_at is not None:
         raise HTTPException(status_code=403, detail="账号已被停用")
     return user
+
+
+async def get_admin_user(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    """Require a logged-in user listed in ADMIN_USERNAMES."""
+    if user.username not in settings.admin_username_set:
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    return user

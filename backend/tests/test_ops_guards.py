@@ -53,3 +53,15 @@ def test_require_rate_raises_on_limit():
         assert exc.status_code == 429
     else:
         raise AssertionError("expected 429")
+
+
+def test_admin_username_set_parses():
+    from app.config import Settings
+
+    s = Settings.model_construct(
+        secret_key="x" * 64,
+        admin_usernames=" alice, bob , ",
+    )
+    assert s.admin_username_set == {"alice", "bob"}
+    empty = Settings.model_construct(secret_key="x" * 64, admin_usernames="")
+    assert empty.admin_username_set == set()

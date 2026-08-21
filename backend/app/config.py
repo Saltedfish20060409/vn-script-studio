@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     # Kill switch: set ALLOW_REGISTRATION=false to stop new sign-ups.
     allow_registration: bool = True
 
+    # Comma-separated usernames that may call /api/v1/admin/* (ban/unban).
+    # Empty = no HTTP admin surface; use `python -m app ban` on the host instead.
+    admin_usernames: str = ""
+
     # Optional Redis URL (redis://host:6379/0). When set and reachable, the
     # collab SSE event bus bridges workers via Redis pub/sub so multi-worker
     # deployments see live lock/member/comment events. Leave empty for
@@ -88,6 +92,10 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> List[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def admin_username_set(self) -> set[str]:
+        return {u.strip() for u in self.admin_usernames.split(",") if u.strip()}
 
 
 _DEFAULT_SECRET = "change-me-to-a-long-random-string"
