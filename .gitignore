@@ -41,3 +41,6 @@ frontend/blob-report/
 backend/.cache_agent*
 backend/.cache_*
 **/.cache_agent*
+
+deploy/artifacts/
+deploy/node_modules/
