@@ -74,9 +74,7 @@ import { QPet } from "./QPet";
 import { WorldPanel } from "./WorldPanel";
 import { WriteToolbar, type WriteMode } from "./WriteToolbar";
 import { HelpSheet } from "./HelpSheet";
-import { AdminPanel } from "./AdminPanel";
 import { StudioErrorBoundary } from "./StudioErrorBoundary";
-import { fetchAdminOverview } from "../api/admin";
 import { SaveConflictDialog, type SaveConflictChoice } from "./SaveConflictDialog";
 import { ScriptPlayer } from "./ScriptPlayer";
 import {
@@ -192,10 +190,6 @@ export function StudioApp() {
   writeModeRef.current = writeMode;
   const [generatingRpy, setGeneratingRpy] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [adminOpen, setAdminOpen] = useState(false);
-  const [adminAlert, setAdminAlert] = useState(false);
-  /** 以 overview 探测为准：避免旧会话 /me 缺 is_admin 时顶栏不显示「管理」 */
-  const [adminCapable, setAdminCapable] = useState(false);
   const [selection, setSelection] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -262,35 +256,6 @@ export function StudioApp() {
     if (settings) applySettingsToDom(settings);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (!user?.id) {
-      setAdminCapable(false);
-      setAdminAlert(false);
-      return;
-    }
-    let cancelled = false;
-    const tick = () => {
-      void fetchAdminOverview()
-        .then((ov) => {
-          if (cancelled) return;
-          setAdminCapable(true);
-          setAdminAlert(ov.danger_count > 0);
-        })
-        .catch(() => {
-          if (cancelled) return;
-          // 403/401：非管理员；若 /me 已标 is_admin 仍保留入口（配置短暂不一致时）
-          setAdminCapable(Boolean(user.is_admin));
-          if (!user.is_admin) setAdminAlert(false);
-        });
-    };
-    tick();
-    const id = window.setInterval(tick, 120_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [user?.id, user?.is_admin]);
 
   // Chapter revise preview chip (survives refresh via localStorage)
   useEffect(() => {
@@ -1713,9 +1678,6 @@ export function StudioApp() {
           onExport={() => void exportCurrentView()}
           exportLabel={writeMode === "rpy" ? "导出 .rpy" : "导出 .docx"}
           onOpenHelp={() => setHelpOpen(true)}
-          onOpenAdmin={() => setAdminOpen(true)}
-          showAdmin={Boolean(user?.is_admin || adminCapable)}
-          adminAlert={adminAlert}
           onOpenCollab={() => {
             setTab("project");
             setProjectSub("members");
@@ -2137,7 +2099,6 @@ export function StudioApp() {
           />
         )}
         <HelpSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
-        <AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} />
         {mapExtractReview ? (
           <MapExtractReview
             proposal={mapExtractReview.proposal}

@@ -18,9 +18,6 @@ type Props = {
   exportLabel: string;
   onOpenHelp: () => void;
   onOpenCollab: () => void;
-  onOpenAdmin?: () => void;
-  showAdmin?: boolean;
-  adminAlert?: boolean;
   onLogout: () => void;
 };
 
@@ -44,9 +41,6 @@ export function StudioTopBar({
   exportLabel,
   onOpenHelp,
   onOpenCollab,
-  onOpenAdmin,
-  showAdmin = false,
-  adminAlert = false,
   onLogout,
 }: Props) {
   return (
@@ -103,11 +97,6 @@ export function StudioTopBar({
             <button type="button" role="menuitem" onClick={onOpenHelp}>
               帮助 / FAQ
             </button>
-            {showAdmin && onOpenAdmin ? (
-              <button type="button" role="menuitem" onClick={onOpenAdmin}>
-                管理后台{adminAlert ? " · 有异常" : ""}
-              </button>
-            ) : null}
             <button
               type="button"
               role="menuitem"
@@ -139,15 +128,6 @@ export function StudioTopBar({
         >
           帮助
         </button>
-        {showAdmin && onOpenAdmin ? (
-          <button
-            type="button"
-            className={`${styles.adminBtn} ${adminAlert ? styles.adminAlert : ""}`}
-            onClick={onOpenAdmin}
-          >
-            管理
-          </button>
-        ) : null}
         <button
           type="button"
           className={`${styles.ghost} ${styles.topOnly}`}
