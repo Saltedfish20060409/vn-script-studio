@@ -1338,11 +1338,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .busyPulse {
-    animation: none !important;
-  }
-}
+
 
 .variantGrid {
   display: grid;

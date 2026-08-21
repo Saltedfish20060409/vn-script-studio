@@ -459,13 +459,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .backdrop,
-  .modal {
-    animation: none;
-  }
-
   .navBtn:hover {
     transform: none;
   }
-}
+

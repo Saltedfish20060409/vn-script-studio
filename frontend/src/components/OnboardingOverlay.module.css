@@ -132,8 +132,4 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .card {
-    animation: none;
-  }
-}
+

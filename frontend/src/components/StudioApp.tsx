@@ -127,6 +127,21 @@ import styles from "./StudioApp.module.css";
 /** 顶栏只保留 5 组，细项用二级切换 */
 type Tab = StudioTab;
 
+/** tab 序号（与 StudioTabs 顺序一致）：用于切换滑动方向 */
+const TAB_ORDER: StudioTab[] = [
+  "write",
+  "world",
+  "voice",
+  "map",
+  "system",
+  "project",
+];
+
+function tabIndex(tab: StudioTab): number {
+  const i = TAB_ORDER.indexOf(tab);
+  return i < 0 ? 0 : i;
+}
+
 function downloadText(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime });
   downloadBlob(filename, blob);
@@ -227,6 +242,8 @@ export function StudioApp() {
   const [focusSetupOpen, setFocusSetupOpen] = useState(false);
   const [focusPrefs, setFocusPrefs] = useState<FocusTimerPrefs | null>(null);
   const shellRef = useRef<HTMLDivElement>(null);
+  /** 页面切换滑动方向：记录上一个 tab 序号，新 tab 靠右→从右滑入，靠左→从左滑入 */
+  const prevTabIndexRef = useRef(0);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -1686,11 +1703,19 @@ export function StudioApp() {
         />
 
         <div className={styles.layout}>
-          <main className={`${styles.main} vnss-rise-in`} key={tab}>
+          <main
+            className={`${styles.main} ${
+              tabIndex(tab) > prevTabIndexRef.current
+                ? styles.tabSlideR
+                : styles.tabSlideL
+            }`}
+            key={tab}
+          >
             <StudioTabs
               tab={tab}
               onSelect={(id) => {
                 if (id !== "write" || writeSub !== "script") commitEditor();
+                prevTabIndexRef.current = tabIndex(tab);
                 setTab(id);
               }}
             />

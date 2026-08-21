@@ -319,8 +319,4 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .wrap {
-    animation: none;
-  }
-}
+

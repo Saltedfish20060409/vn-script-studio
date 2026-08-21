@@ -143,9 +143,4 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .toast,
-  .busyPulse {
-    animation: none !important;
-  }
-}
+

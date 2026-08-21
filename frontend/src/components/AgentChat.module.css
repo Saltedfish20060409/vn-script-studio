@@ -1724,33 +1724,6 @@ html[data-panel-glass="ink"] .stageOverlay {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .paneIn,
-  .modeToast,
-  .user,
-  .bot,
-  .emptyStage,
-  .partySeat,
-  .partySeat:not(.partySeatEmpty)::after,
-  .stageOverlay {
-    animation: none !important;
-  }
-
-  .user:hover,
-  .bot:hover {
-    transform: none;
-  }
-
-  .modeBtn,
-  .modeBtnActive,
-  .quickBtn,
-  .quickBtnPrimary,
-  .quickBtnMuted,
-  .sendBtn {
-    transition: none !important;
-  }
-}
-
 @media (max-width: 520px) {
   .sidebar {
     width: min(86vw, 300px) !important;

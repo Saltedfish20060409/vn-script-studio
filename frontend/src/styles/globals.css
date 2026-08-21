@@ -291,18 +291,6 @@
   animation-delay: calc(var(--stagger) * 7);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  /* 产品默认要活泼反馈；系统「减少动态效果」只略缩短，不整站掐死 */
-  :root {
-    --dur-fast: 90ms;
-    --dur: 140ms;
-    --dur-slow: 200ms;
-    --dur-enter: 220ms;
-    --stagger: 30ms;
-    --parallax-y: 8px;
-  }
-}
-
 :root[data-theme="night"] {
   /* Persona night: black + crimson (medium) */
   --ink: #ffe8ec;
@@ -648,11 +636,4 @@ button:active:not(:disabled) {
 
 a {
   color: inherit;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  /* 不禁用按钮反馈，只略减幅度 */
-  button:hover:not(:disabled) {
-    transform: translateY(-1px);
-  }
 }

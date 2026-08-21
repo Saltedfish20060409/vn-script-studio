@@ -302,12 +302,4 @@
   min-height: 0;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .tab,
-  .panel,
-  .panelCorner,
-  .panelLarge {
-    transition: none;
-    animation: none !important;
-  }
-}
+

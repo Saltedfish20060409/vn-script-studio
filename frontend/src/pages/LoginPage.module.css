@@ -21,42 +21,6 @@
   border-right: 2px solid var(--line);
 }
 
-/* 文库风插画光斑 */
-.hero::before,
-.hero::after {
-  content: "";
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-  filter: blur(6px);
-}
-
-.hero::before {
-  width: min(46vw, 340px);
-  height: min(46vw, 340px);
-  top: -8%;
-  right: -4%;
-  background: radial-gradient(
-    circle at 35% 35%,
-    color-mix(in srgb, var(--accent) 22%, transparent),
-    transparent 70%
-  );
-  animation: vnssGlowPulse 6s ease-in-out infinite;
-}
-
-.hero::after {
-  width: min(30vw, 220px);
-  height: min(30vw, 220px);
-  bottom: 12%;
-  left: 30%;
-  background: radial-gradient(
-    circle at 40% 40%,
-    color-mix(in srgb, var(--accent-hot) 28%, transparent),
-    transparent 70%
-  );
-  animation: vnssGlowPulse 7s ease-in-out infinite reverse;
-}
-
 .slash {
   position: absolute;
   inset: -10% -20% auto auto;
@@ -472,14 +436,3 @@ html[data-theme="night"] .slash {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  /* 与全局策略一致：只缩短，不整卡掐死（卡片弹跳/看板娘浮动保留但加速） */
-  .heroInner,
-  .card {
-    animation-duration: 240ms;
-  }
-
-  .portraitSlot {
-    animation-duration: 360ms;
-  }
-}
