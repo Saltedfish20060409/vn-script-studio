@@ -533,6 +533,12 @@ export function StudioApp() {
       let scoped: { chapterIds?: string[]; sections?: string[] } = {};
       if (!opts?.force) {
         const diff = diffProjectAgainst(lastSavedRef.current, p);
+        if (!diff.hasChanges && lastSavedRef.current) {
+          // 没有任何实际内容变化：不发保存请求。
+          // 服务器 updatedAt 可能已被其他会话/自动保存推进，无变化也 PUT
+          // 会触发 409 冲突弹窗（"没改也提示"）。跳过既省请求也消除误报。
+          return true;
+        }
         if (diff.chapterIds.length > 0 || diff.sections.length > 0) {
           scoped = { chapterIds: diff.chapterIds, sections: diff.sections };
         }
