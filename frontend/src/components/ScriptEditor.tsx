@@ -101,7 +101,7 @@ export function ScriptEditor({
         {...rest}
         ref={setRefs}
         data-testid="script-editor"
-        className={`${styles.input} ${className}`.trim()}
+        className={`${styles.input} vnss-editor-caret ${className}`.trim()}
         value={value}
         spellCheck={false}
         onChange={(e) => {

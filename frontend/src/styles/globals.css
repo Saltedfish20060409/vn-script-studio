@@ -789,3 +789,81 @@ textarea:focus {
       scale(0.3);
   }
 }
+
+/* ---------- 赛璐璐滚动条：细圆角 + 主题色渐变拇指 ---------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 55%, var(--line))
+    color-mix(in srgb, var(--line) 18%, transparent);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--line) 8%, transparent);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--anime-grad-soft, linear-gradient(135deg, #4f7dff, #ff6fae));
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  min-height: 36px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  filter: brightness(1.08);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ---------- 文本选中：赛璐璐紫半透明高亮 ---------- */
+::selection {
+  background: color-mix(in srgb, #7c3aed 30%, transparent);
+  color: var(--ink);
+}
+
+/* ---------- 编辑器光标：主题色（方块光标依赖 caret-shape，支持有限，
+   先给主题色保证兼容；等浏览器支持 caret-shape:block 后自动升级） ---------- */
+textarea,
+input[type="text"],
+input[type="search"],
+input[type="url"],
+input:not([type]),
+[contenteditable="true"] {
+  caret-color: var(--accent);
+}
+
+@supports (caret-shape: block) {
+  .vnss-editor-caret {
+    caret-shape: block;
+  }
+}
+
+/* ---------- 链接下划线滑动动画 ---------- */
+a:not(.no-underline-anim) {
+  text-decoration: none;
+  background-image: linear-gradient(
+    to right,
+    var(--accent),
+    var(--accent)
+  );
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0% 2px;
+  transition: background-size 260ms var(--ease-out, ease);
+}
+
+a:not(.no-underline-anim):hover {
+  background-size: 100% 2px;
+}
+
+a:not(.no-underline-anim):focus-visible {
+  background-size: 100% 2px;
+}
