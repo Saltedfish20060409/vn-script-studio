@@ -1,10 +1,10 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import JWTError
 from pydantic import EmailStr, TypeAdapter
 from sqlalchemy import or_, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
 
 from app.config import Settings, get_settings
 from app.core.rate_limit import check_rate
@@ -40,7 +40,6 @@ from app.services.auth_email import (
     send_verify_email,
 )
 from app.services.settings import DEFAULT_BG
-from datetime import datetime, timezone
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

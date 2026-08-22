@@ -48,6 +48,12 @@ class Settings(BaseSettings):
         "+https://github.com/Saltedfish20060409/vn-script-studio)"
     )
 
+    # Music player (choice B): optional self-hosted NeteaseCloudMusicApi. When
+    # set, share links resolve through it with the cookie below for reliable
+    # playback; otherwise we fall back to public free-song endpoints.
+    netease_api_url: str = ""
+    netease_cookie: str = ""
+
     # LLM usage accounting / quota. 0 = unlimited.
     # Applies to users bringing their own Key (BYOK). We do not bill for that.
     llm_daily_token_cap: int = 0

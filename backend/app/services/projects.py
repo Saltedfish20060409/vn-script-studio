@@ -8,7 +8,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
-from app.llm_models import DEFAULT_LLM_MODEL
 from app.core import (
     create_demo_project,
     empty_project,
@@ -19,6 +18,7 @@ from app.core import (
 from app.core.chapter_digest import refresh_chapter_index
 from app.core.voice_reports import mark_voice_reports_stale
 from app.domain.types import VnProject
+from app.llm_models import DEFAULT_LLM_MODEL
 from app.models import Project, User
 
 

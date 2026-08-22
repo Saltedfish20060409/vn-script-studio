@@ -38,10 +38,11 @@ async def _register(client, username: str, email: str, password: str = "secret12
 
 async def _verify_latest(client, email: str):
     """Mark the user verified directly via DB for login tests."""
+    from datetime import datetime, timezone
+
     from sqlalchemy import select
 
     from app.models import User
-    from datetime import datetime, timezone
 
     async with db_gate.SessionLocal() as session:
         result = await session.execute(select(User).where(User.email == email))

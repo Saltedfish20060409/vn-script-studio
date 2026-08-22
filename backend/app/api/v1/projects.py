@@ -455,8 +455,8 @@ async def generate_rpy_from_prose_api(
     settings: Settings = Depends(get_settings),
 ):
     """Turn a chapter's natural-language manuscript into Ren'Py blocks."""
-    from app.core.rate_limit import require_rate
     from app.core.prose_rpy import generate_rpy_from_prose, prose_fingerprint
+    from app.core.rate_limit import require_rate
     from app.core.usage import ensure_under_quota
 
     require_rate(
@@ -1418,6 +1418,7 @@ async def agent_chapter_revise(
     if body.async_mode:
         from types import SimpleNamespace
 
+        from app.core.chapter_revise import run_chapter_revise
         from app.core.jobs import create_job
         from app.db import AsyncSessionLocal
 

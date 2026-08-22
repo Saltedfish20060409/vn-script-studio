@@ -74,6 +74,7 @@ import { QPet } from "./QPet";
 import { MascotFeedback, type PetFeedback } from "./MascotFeedback";
 import { WorldPanel } from "./WorldPanel";
 import { WriteToolbar, type WriteMode } from "./WriteToolbar";
+import { MusicPlayerBar } from "./MusicPlayerBar";
 import { HelpSheet } from "./HelpSheet";
 import { StudioErrorBoundary } from "./StudioErrorBoundary";
 import { SaveConflictDialog, type SaveConflictChoice } from "./SaveConflictDialog";
@@ -2008,6 +2009,7 @@ export function StudioApp() {
                     />
                   </section>
                 )}
+                <MusicPlayerBar contextLabel={chapter?.title ?? ""} />
               </>
             )}
 
