@@ -18,7 +18,9 @@
   --shadow: 0 6px 18px -6px rgba(0, 47, 167, 0.18), 0 2px 6px rgba(10, 14, 26, 0.08);
   --shadow-lg: 0 18px 40px -12px rgba(0, 47, 167, 0.28), 0 8px 16px -8px rgba(10, 14, 26, 0.16);
   --shadow-hard: 4px 4px 0 rgba(0, 47, 167, 0.12);
-  --font-display: "Oswald", "Noto Sans SC", "PingFang SC", sans-serif;
+  /* 圆体优先的标题字体链：Baloo2/M PLUS Rounded 是圆润无衬线（如系统已装即生效），
+     中文回退到系统圆润款；后续网络可用时再自托管中文圆体 woff2 */
+  --font-display: "Baloo 2", "M PLUS Rounded 1c", "MiSans Rounded", "Noto Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
   --font-ui: "Noto Sans SC", "PingFang SC", "Public Sans", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --radius-sm: 6px;
@@ -721,4 +723,14 @@ button:active:not(:disabled) {
 
 a {
   color: inherit;
+}
+
+/* 赛璐璐统一聚焦描边（组件自带 !important 的以组件为准，其余统一生效） */
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: color-mix(in srgb, #7c3aed 55%, var(--line)) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #7c3aed 16%, transparent),
+    0 6px 16px -8px rgba(124, 58, 237, 0.4) !important;
+  outline: none;
 }

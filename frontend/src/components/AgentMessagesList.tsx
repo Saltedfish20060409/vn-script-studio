@@ -4,6 +4,7 @@ import { getChapterReviseDraft } from "../lib/chapterReviseDraft";
 import { describeActions } from "../lib/agentFormat";
 import type { AgentChatMessage, AgentTraceEvent } from "../types/vn";
 import { AgentMessageBody } from "./AgentMarkdown";
+import { MascotFigure } from "./MascotFigure";
 import { WriterPortrait } from "./WriterPortrait";
 import styles from "./AgentChat.module.css";
 
@@ -233,7 +234,19 @@ export function AgentMessagesList({
             </div>
           );
         })}
-        {busy && <p className={styles.thinking}>{thinking}</p>}
+        {busy && (
+          <div className={styles.thinkingRow}>
+            <MascotFigure size="sm" mood="think" line={null} quiet />
+            <p className={styles.thinking}>
+              {thinking}
+              <span className={styles.typingDots} aria-hidden>
+                <i />
+                <i />
+                <i />
+              </span>
+            </p>
+          </div>
+        )}
         {busy &&
           liveStream &&
           (liveStream.events.length > 0 || liveStream.text) && (

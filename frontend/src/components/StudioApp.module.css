@@ -927,8 +927,24 @@
 }
 
 .panel {
+  position: relative;
   padding: 1.1rem 1.25rem 6rem;
   animation: panelIn var(--dur-slow, 360ms) var(--ease-spring, var(--ease-out));
+}
+
+/* 赛璐璐：面板左上角高光点（动漫感，不影响布局） */
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 6% 0%,
+    rgba(255, 255, 255, 0.28) 0%,
+    rgba(255, 255, 255, 0.06) 38%,
+    transparent 58%
+  );
 }
 
 .bootEmpty {

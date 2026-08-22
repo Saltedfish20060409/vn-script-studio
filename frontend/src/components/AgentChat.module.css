@@ -1407,6 +1407,13 @@ html[data-panel-glass="ink"] .stageOverlay {
   display: inline;
 }
 
+.thinkingRow {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.35rem;
+}
+
 .thinking {
   margin: 0;
   display: flex;
@@ -1418,6 +1425,42 @@ html[data-panel-glass="ink"] .stageOverlay {
   clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
   color: var(--ink);
   font-size: 0.88rem;
+}
+
+/* 打字机三点：依次跳动 */
+.typingDots {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 0.1rem;
+}
+
+.typingDots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.35;
+  animation: typingBounce 1.2s var(--ease-out) infinite;
+}
+
+.typingDots i:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.typingDots i:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes typingBounce {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
 }
 
 .thinking::before {
