@@ -87,6 +87,18 @@ def test_kugou_album_id_captured():
     assert parsed.extra.get("album_id") == "456"
 
 
+def test_normalize_netease_cookie():
+    """用户只粘贴 MUSIC_U 的值（无前缀）→ 自动补成 MUSIC_U=值。"""
+    assert svc.normalize_netease_cookie("abcdef123456") == "MUSIC_U=abcdef123456"
+    assert svc.normalize_netease_cookie(" MUSIC_U=xyz ") == "MUSIC_U=xyz"
+    assert (
+        svc.normalize_netease_cookie("MUSIC_U=a; os=pc")
+        == "MUSIC_U=a; os=pc"
+    )
+    assert svc.normalize_netease_cookie("") == ""
+    assert svc.normalize_netease_cookie("   ") == ""
+
+
 # ------------------------------------------------------------ host allowlist ---
 
 @pytest.mark.parametrize(

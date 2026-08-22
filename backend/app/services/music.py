@@ -134,6 +134,20 @@ def stream_headers(host: str) -> dict:
     return headers
 
 
+def normalize_netease_cookie(raw: str) -> str:
+    """容忍用户只粘贴 MUSIC_U 的值（不带前缀）。
+
+    - 完整 Cookie 串（含 = 或 ;）→ 原样返回
+    - 单个值 → 补成 MUSIC_U=值
+    """
+    value = (raw or "").strip()
+    if not value:
+        return ""
+    if "=" in value or ";" in value:
+        return value
+    return f"MUSIC_U={value}"
+
+
 def _client(transport: Optional[httpx.AsyncBaseTransport] = None) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         timeout=_TIMEOUT,
@@ -161,6 +175,7 @@ async def _resolve_netease(
     fallback_artist: Optional[str] = None,
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> ResolvedTrack:
+    cookie = normalize_netease_cookie(cookie)
     async with _client(transport) as client:
         # --- metadata ---
         headers = {"Referer": "https://music.163.com/"}
@@ -748,68 +763,3 @@ async def _search_kugou(
 def proxy_url_for(real_url: str, api_prefix: str = "/api/v1") -> str:
     """Same-origin proxy URL the browser actually plays (keeps Referer correct)."""
     return f"{api_prefix}/music/stream?url={quote(real_url, safe='')}"
-
-
-# ------------------------------------------------------- 网易云扫码登录 ----
-
-class NeteaseQrState:
-    """一次扫码会话：unikey + 二维码 base64 + 登录 URL。"""
-
-    def __init__(self, unikey: str, qrimg: str, qrurl: str):
-        self.unikey = unikey
-        self.qrimg = qrimg
-        self.qrurl = qrurl
-
-
-async def netease_qr_create(
-    api_url: str,
-    transport: Optional[httpx.AsyncBaseTransport] = None,
-) -> NeteaseQrState:
-    """向反代容器申请一个扫码会话（unikey + 二维码）。"""
-    if not api_url.strip():
-        raise ResolveError("网易云反代未配置（NETEASE_API_URL），无法扫码登录")
-    async with _client(transport) as client:
-        try:
-            key_resp = await client.get(f"{api_url}/login/qr/key")
-            key_data = (key_resp.json().get("data") or {})
-            unikey = str(key_data.get("unikey") or "")
-        except (httpx.HTTPError, ValueError) as exc:
-            raise ResolveError("扫码登录：无法连接网易云反代服务") from exc
-        if not unikey:
-            raise ResolveError("扫码登录：未获取到 unikey（反代可能被风控）")
-        try:
-            qr_resp = await client.get(
-                f"{api_url}/login/qr/create",
-                params={"key": unikey, "qrimg": True},
-            )
-            qr_data = qr_resp.json().get("data") or {}
-            qrimg = str(qr_data.get("qrimg") or "")
-            qrurl = str(qr_data.get("qrurl") or "")
-        except (httpx.HTTPError, ValueError) as exc:
-            raise ResolveError("扫码登录：生成二维码失败") from exc
-        if not qrimg:
-            raise ResolveError("扫码登录：未拿到二维码图片")
-        return NeteaseQrState(unikey=unikey, qrimg=qrimg, qrurl=qrurl)
-
-
-async def netease_qr_check(
-    api_url: str,
-    unikey: str,
-    transport: Optional[httpx.AsyncBaseTransport] = None,
-) -> dict:
-    """轮询扫码状态。
-
-    返回 {"code": 800|801|802|803, "message": "...", "cookie": "..."}
-    - 800 未扫码 / 801 等待确认 / 802 已确认 / 803 登录成功（带 cookie）
-    """
-    if not api_url.strip():
-        raise ResolveError("网易云反代未配置（NETEASE_API_URL）")
-    async with _client(transport) as client:
-        try:
-            resp = await client.get(
-                f"{api_url}/login/qr/check",
-                params={"key": unikey},
-            )
-            return resp.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise ResolveError("扫码登录：轮询失败") from exc

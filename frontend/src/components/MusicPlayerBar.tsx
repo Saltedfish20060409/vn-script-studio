@@ -97,6 +97,17 @@ function cookieHeaders(cookie: string): Record<string, string> {
   return cookie.trim() ? { "X-Netease-Cookie": cookie.trim() } : {};
 }
 
+/** 从 track id（如 bili-BV1xx… / netease-123 / kugou-hash）反推平台+源 id。 */
+function parseTrackSource(id: string): { platform: string; songId: string } | null {
+  const idx = id.indexOf("-");
+  if (idx <= 0) return null;
+  const platform = id.slice(0, idx);
+  const songId = id.slice(idx + 1);
+  if (!platform || !songId) return null;
+  if (!["netease", "kugou", "bili"].includes(platform)) return null;
+  return { platform, songId };
+}
+
 type Panel = "list" | "lrc" | "search" | null;
 
 /** 全局底部播放条：播放模式 / 列表弹出 / 歌词居中滚动 / 搜索添加。 */
@@ -118,15 +129,6 @@ export function MusicPlayerBar({ contextLabel }: Props) {
   const [searchMsg, setSearchMsg] = useState("");
   const [addingId, setAddingId] = useState<string | null>(null);
   const [cookieText, setCookieText] = useState(loadCookie);
-  const [qrLoading, setQrLoading] = useState(false);
-  const [qrState, setQrState] = useState<{
-    unikey: string;
-    qrimg: string;
-    qrurl: string;
-  } | null>(null);
-  const [qrMsg, setQrMsg] = useState("");
-  const [qrExpiredAt, setQrExpiredAt] = useState<number | null>(null);
-  const qrTimer = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const lrcScrollRef = useRef<HTMLDivElement | null>(null);
@@ -172,6 +174,42 @@ export function MusicPlayerBar({ contextLabel }: Props) {
     if (playing) void a.play().catch(() => setPlaying(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.id]);
+
+  /** 播放失败（URL 过期）→ 重新解析一次刷新地址。B站等平台 URL 有时效。 */
+  const refreshAttempts = useRef<Record<string, number>>({});
+  const handleAudioError = useCallback(async () => {
+    const t = track;
+    if (!t) {
+      setPlaying(false);
+      return;
+    }
+    const src = parseTrackSource(t.id);
+    if (!src) {
+      setPlaying(false);
+      return;
+    }
+    const attempts = refreshAttempts.current[t.id] ?? 0;
+    if (attempts >= 1) {
+      setPlaying(false);
+      return;
+    }
+    refreshAttempts.current[t.id] = attempts + 1;
+    try {
+      const fresh = await apiFetch<MusicTrack>("/music/resolve", {
+        method: "POST",
+        body: JSON.stringify({
+          platform: src.platform,
+          songId: src.songId,
+          title: t.title,
+          artist: t.artist,
+        }),
+        headers: cookieHeaders(cookieText),
+      });
+      setList((prev) => prev.map((x) => (x.id === t.id ? { ...x, audioUrl: fresh.audioUrl } : x)));
+    } catch {
+      setPlaying(false);
+    }
+  }, [track, cookieText]);
 
   const toggle = useCallback(() => {
     const a = audioRef.current;
@@ -322,53 +360,6 @@ export function MusicPlayerBar({ contextLabel }: Props) {
     }
   };
 
-  /** 开始扫码登录：申请二维码 → 每 2s 轮询，803 成功即保存 Cookie。 */
-  const startQrLogin = async () => {
-    if (qrLoading) return;
-    setQrLoading(true);
-    setQrMsg("");
-    if (qrTimer.current) window.clearInterval(qrTimer.current);
-    try {
-      const state = await apiFetch<{ unikey: string; qrimg: string; qrurl: string }>(
-        "/music/netease-login/create",
-        { method: "POST", body: JSON.stringify({}) }
-      );
-      setQrState(state);
-      setQrExpiredAt(Date.now() + 5 * 60 * 1000);
-      qrTimer.current = window.setInterval(() => {
-        void (async () => {
-          try {
-            const res = await apiFetch<{ code: number; message: string; cookie: string }>(
-              "/music/netease-login/check",
-              { method: "POST", body: JSON.stringify({ unikey: state.unikey }) }
-            );
-            if (res.code === 803 && res.cookie) {
-              if (qrTimer.current) window.clearInterval(qrTimer.current);
-              saveCookie(res.cookie);
-              setQrMsg("✅ 登录成功！Cookie 已保存，可以开始听歌了。");
-              setQrState(null);
-              return;
-            }
-            const tips: Record<number, string> = {
-              800: "请打开手机网易云 App 扫码…",
-              // 反代容器语义：801=等待扫码，802=已扫码待确认
-              801: "等待扫码…（请用手机网易云 App 扫描）",
-              802: "已扫码，请在手机上确认登录…",
-            };
-            // 优先用后端中文消息（避免语义错位）
-            setQrMsg(res.message ? `${res.message}…` : (tips[res.code] ?? "等待扫码…"));
-          } catch {
-            setQrMsg("轮询失败，点「刷新」重试");
-          }
-        })();
-      }, 2000);
-    } catch (e) {
-      setQrMsg(e instanceof Error ? e.message : "扫码登录失败");
-    } finally {
-      setQrLoading(false);
-    }
-  };
-
   const applyLrc = () => {
     if (!track || !lrcInput.trim()) return;
     setList((prev) =>
@@ -389,14 +380,6 @@ export function MusicPlayerBar({ contextLabel }: Props) {
     el.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
   }, [activeIdx, panel]);
 
-  // 卸载时清理扫码轮询
-  useEffect(
-    () => () => {
-      if (qrTimer.current) window.clearInterval(qrTimer.current);
-    },
-    []
-  );
-
   return (
     <div className={styles.bar} data-testid="music-bar">
       <audio
@@ -406,7 +389,7 @@ export function MusicPlayerBar({ contextLabel }: Props) {
         onTimeUpdate={(e) => setCur(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDur(e.currentTarget.duration || 0)}
         onEnded={advance}
-        onError={() => setPlaying(false)}
+        onError={() => void handleAudioError()}
       />
       {/* 迷你条 */}
       <div className={styles.mini}>
@@ -650,76 +633,24 @@ export function MusicPlayerBar({ contextLabel }: Props) {
               <details className={styles.cookieBox} open={!cookieText.trim()}>
                 <summary>🔑 网易云登录（听大部分歌需要）</summary>
 
-                {/* 扫码登录：反代容器生成二维码，App 扫一下自动拿 Cookie */}
-                {!qrState && (
-                  <>
-                    <button
-                      type="button"
-                      className={styles.addBtn}
-                      style={{ marginTop: "0.4rem" }}
-                      disabled={qrLoading}
-                      onClick={() => void startQrLogin()}
-                    >
-                      {qrLoading ? "生成二维码中…" : "📱 扫码登录（试试）"}
-                    </button>
-                    <p className={styles.cookieHint}>
-                      扫码最省事，但服务器在云机房，网易云可能拦截登录（提示
-                      "设备环境异常"）；如果拦截，请改用下方粘贴 Cookie（100% 可用）。
-                    </p>
-                    {qrMsg && <p className={styles.qrMsg}>{qrMsg}</p>}
-                  </>
-                )}
-                {qrState && (
-                  <div className={styles.qrBox}>
-                    <img src={qrState.qrimg} alt="网易云登录二维码" />
-                    <p className={styles.cookieHint}>
-                      打开手机「网易云音乐」App → 扫一扫 → 确认登录。二维码
-                      {qrExpiredAt ? ` ${Math.max(0, Math.round((qrExpiredAt - Date.now()) / 1000))}s 后过期` : ""}
-                      ，过期点「刷新」。
-                    </p>
-                    <p className={styles.qrMsg}>
-                      {qrMsg || "等待扫码…"}
-                    </p>
-                    {qrMsg.includes("设备环境异常") && (
-                      <p className={styles.cookieHint}>
-                        被网易云拦截了——这是云机房 IP 的限制，扫码无法绕过。
-                        请直接滚动到下方粘贴 Cookie 登录。
-                      </p>
-                    )}
-                    <div className={styles.qrActions}>
-                      <button
-                        type="button"
-                        className={styles.addBtn}
-                        onClick={() => void startQrLogin()}
-                      >
-                        刷新
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.keyBtn}
-                        onClick={() => {
-                          setQrState(null);
-                          setQrMsg("");
-                          if (qrTimer.current) window.clearInterval(qrTimer.current);
-                        }}
-                      >
-                        取消，改用粘贴
-                      </button>
-                    </div>
-                  </div>
-                )}
-
                 <p className={styles.cookieHint}>
-                  💡 粘贴 Cookie（可靠）：登录 music.163.com 后按 F12 → Network →
-                  任意请求的请求头里复制 Cookie 整段（含 MUSIC_U=…）粘贴到下面。
-                  仅存本浏览器、随请求发送给本站、不落服务器库。
+                  💡 获取方法（1 分钟）：电脑浏览器登录{" "}
+                  <a href="https://music.163.com" target="_blank" rel="noreferrer">
+                    music.163.com
+                  </a>{" "}
+                  → 按 <b>F12</b> → 点顶部「<b>应用程序 / Application</b>」→ 左侧「{" "}
+                  <b>Cookie</b>」→ 选择 https://music.163.com → 找到名为{" "}
+                  <b>MUSIC_U</b> 的一行 → 复制它的「<b>值 / Value</b>」→ 粘贴到下面。
                 </p>
                 <input
                   value={cookieText}
                   onChange={(e) => saveCookie(e.target.value)}
-                  placeholder="粘贴 Cookie 整段（含 MUSIC_U=…）"
+                  placeholder="只粘贴 MUSIC_U 的值（不用带 MUSIC_U= 前缀）"
                   className={styles.cookieInput}
                 />
+                <p className={styles.cookieHint}>
+                  只存本浏览器、随请求发送给本站、不落服务器库，可随时清空。
+                </p>
               </details>
             </div>
           )}
