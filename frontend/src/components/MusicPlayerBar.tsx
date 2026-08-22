@@ -14,12 +14,35 @@ export interface MusicTrack {
   lrc?: string;
 }
 
+export interface SearchItem {
+  id: string;
+  title: string;
+  artist: string;
+  album?: string;
+  cover?: string | null;
+}
+
 type Props = {
   /** 可选：当前写作章节标题，显示在迷你条 */
   contextLabel?: string;
 };
 
 const STORE_KEY = "vnss-music-v1";
+const COOKIE_KEY = "vnss-music-netease-cookie";
+type Platform = "netease" | "qq" | "kugou";
+const PLATFORM_LABEL: Record<Platform, string> = {
+  netease: "网易云",
+  qq: "QQ音乐",
+  kugou: "酷狗",
+};
+
+function loadCookie(): string {
+  try {
+    return localStorage.getItem(COOKIE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
 
 interface StoredState {
   list: MusicTrack[];
@@ -47,6 +70,11 @@ function fmt(t: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** 可选的网易云 Cookie：只在请求时带上，不落服务器库。 */
+function cookieHeaders(cookie: string): Record<string, string> {
+  return cookie.trim() ? { "X-Netease-Cookie": cookie.trim() } : {};
+}
+
 /** 写作页底部迷你播放条：播放/上下首/进度/音量 + 歌词面板 + 播放列表。 */
 export function MusicPlayerBar({ contextLabel }: Props) {
   const initial = useRef(loadState());
@@ -61,6 +89,13 @@ export function MusicPlayerBar({ contextLabel }: Props) {
   const [addText, setAddText] = useState("");
   const [resolving, setResolving] = useState(false);
   const [lrcInput, setLrcInput] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const [searchPlatform, setSearchPlatform] = useState<Platform>("netease");
+  const [searching, setSearching] = useState(false);
+  const [searchHits, setSearchHits] = useState<SearchItem[]>([]);
+  const [searchMsg, setSearchMsg] = useState("");
+  const [addingId, setAddingId] = useState<string | null>(null);
+  const [cookieText, setCookieText] = useState(loadCookie);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const track = list[index] ?? null;
@@ -166,6 +201,7 @@ export function MusicPlayerBar({ contextLabel }: Props) {
       const data = await apiFetch<MusicTrack>("/music/resolve", {
         method: "POST",
         body: JSON.stringify({ url: text }),
+        headers: cookieHeaders(cookieText),
       });
       addTrack(data);
       setAddText("");
@@ -174,6 +210,54 @@ export function MusicPlayerBar({ contextLabel }: Props) {
       setAddText(msg.startsWith("解析失败") ? msg : `解析失败：${msg}`);
     } finally {
       setResolving(false);
+    }
+  };
+
+  const runSearch = async () => {
+    const q = searchText.trim();
+    if (!q || searching) return;
+    setSearching(true);
+    setSearchMsg("");
+    setSearchHits([]);
+    try {
+      const hits = await apiFetch<SearchItem[]>("/music/search", {
+        method: "POST",
+        body: JSON.stringify({ q, platform: searchPlatform }),
+        headers: cookieHeaders(cookieText),
+      });
+      setSearchHits(hits);
+      if (hits.length === 0) setSearchMsg("没有搜到，换个关键词试试");
+    } catch (e) {
+      setSearchMsg(e instanceof Error ? e.message : "搜索失败");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const addSearchHit = async (hit: SearchItem) => {
+    if (addingId) return;
+    setAddingId(hit.id);
+    try {
+      const data = await apiFetch<MusicTrack>("/music/resolve", {
+        method: "POST",
+        body: JSON.stringify({ platform: searchPlatform, songId: hit.id }),
+        headers: cookieHeaders(cookieText),
+      });
+      addTrack(data);
+    } catch (e) {
+      setSearchMsg(e instanceof Error ? e.message : "添加失败");
+    } finally {
+      setAddingId(null);
+    }
+  };
+
+  const saveCookie = (v: string) => {
+    setCookieText(v);
+    try {
+      if (v.trim()) localStorage.setItem(COOKIE_KEY, v.trim());
+      else localStorage.removeItem(COOKIE_KEY);
+    } catch {
+      /* ignore */
     }
   };
 
@@ -283,9 +367,78 @@ export function MusicPlayerBar({ contextLabel }: Props) {
         </button>
       </div>
 
-      {/* 展开面板：添加 + 列表 + 歌词 */}
+      {/* 展开面板：搜索 + 添加 + 列表 + 歌词 */}
       {(listOpen || lrcOpen) && (
         <div className={styles.panel}>
+          {/* 搜索：三平台公开接口，无需登录 */}
+          <div className={styles.searchBlock}>
+            <div className={styles.searchRow}>
+              <input
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void runSearch();
+                }}
+                placeholder="搜索歌名 / 歌手，回车搜索"
+                aria-label="搜索歌曲"
+              />
+              <button
+                type="button"
+                className={styles.addBtn}
+                disabled={searching || !searchText.trim()}
+                onClick={() => void runSearch()}
+              >
+                {searching ? "搜索中…" : "搜索"}
+              </button>
+            </div>
+            <div className={styles.platRow}>
+              {(Object.keys(PLATFORM_LABEL) as Platform[]).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className={p === searchPlatform ? styles.platOn : styles.plat}
+                  onClick={() => {
+                    setSearchPlatform(p);
+                    setSearchHits([]);
+                    setSearchMsg("");
+                  }}
+                >
+                  {PLATFORM_LABEL[p]}
+                </button>
+              ))}
+            </div>
+            {searchHits.length > 0 && (
+              <ul className={styles.list}>
+                {searchHits.map((hit) => (
+                  <li
+                    key={hit.id}
+                    className={styles.listItem}
+                    onClick={() => void addSearchHit(hit)}
+                    title={`${hit.album ? `${hit.album} · ` : ""}点击添加到播放列表`}
+                  >
+                    <span className={styles.listNum}>
+                      {addingId === hit.id ? "…" : "+"}
+                    </span>
+                    <span className={styles.listTitle}>{hit.title}</span>
+                    <span className={styles.listArtist}>{hit.artist}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {searchMsg && <p className={styles.searchMsg}>{searchMsg}</p>}
+            <details className={styles.cookieBox}>
+              <summary>网易云 Cookie（可选 · 提升 VIP 曲目播放质量）</summary>
+              <input
+                value={cookieText}
+                onChange={(e) => saveCookie(e.target.value)}
+                placeholder="粘贴 Cookie 中的 MUSIC_U=… 整段"
+                className={styles.cookieInput}
+              />
+              <p className={styles.cookieHint}>
+                仅存于本浏览器，搜索/解析时随请求发送给本站、不落服务器库；不放心可随时清空。
+              </p>
+            </details>
+          </div>
           <div className={styles.addRow}>
             <input
               value={addText}
@@ -293,7 +446,7 @@ export function MusicPlayerBar({ contextLabel }: Props) {
               onKeyDown={(e) => {
                 if (e.key === "Enter") void resolveAndAdd();
               }}
-              placeholder="粘贴网易云 / QQ音乐 / 酷狗分享链接，回车添加"
+              placeholder="或粘贴网易云 / QQ音乐 / 酷狗分享链接，回车添加"
             />
             <button
               type="button"

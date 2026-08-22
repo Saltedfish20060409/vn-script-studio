@@ -1,10 +1,11 @@
-"""Music endpoints: resolve share links to playable tracks + hotlink-safe proxy.
+"""Music endpoints: search + resolve + hotlink-safe proxy.
 
-POST /api/v1/music/resolve — parse a NetEase / QQ / Kugou share link and return
-    a MusicTrack (id/title/artist/audioUrl/cover/lrc). The audioUrl always
-    points at our own /music/stream proxy so the browser never hits the vendor
-    CDN directly (Referer/UA set server-side, bypassing hotlink protection).
-
+POST /api/v1/music/search — search songs on NetEase / QQ / Kugou via their
+    public web endpoints (no login needed). Returns light hits for display.
+POST /api/v1/music/resolve — resolve a share link OR a (platform, songId)
+    search hit to a playable MusicTrack. Optional browser-held NetEase cookie
+    (X-Netease-Cookie header) upgrades playback quality for VIP songs; it is
+    used per-request and never stored.
 GET /api/v1/music/stream?url=... — range-aware streaming proxy restricted to a
     whitelist of music CDN hosts (never an open proxy). Rate-limited per IP.
 """
@@ -27,9 +28,26 @@ router = APIRouter(prefix="/music", tags=["music"])
 
 _STREAM_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0)
 
+_PLATFORMS = {"netease", "qq", "kugou"}
+
+
+class SearchIn(BaseModel):
+    q: str = Field(min_length=1, max_length=128)
+    platform: str = Field(pattern="^(netease|qq|kugou)$")
+
+
+class SearchItemOut(BaseModel):
+    id: str
+    title: str
+    artist: str
+    album: str = ""
+    cover: str | None = None
+
 
 class ResolveIn(BaseModel):
-    url: str = Field(min_length=1, max_length=2048)
+    url: str = Field(default="", max_length=2048)
+    platform: str = Field(default="", pattern="^(netease|qq|kugou|)$")
+    songId: str = Field(default="", max_length=128)
 
 
 class MusicTrackOut(BaseModel):
@@ -52,6 +70,36 @@ def _to_out(t: music_svc.ResolvedTrack) -> MusicTrackOut:
     )
 
 
+def _net_cookie(request: Request, settings: Settings) -> str:
+    """Per-request browser cookie wins over the server-configured one."""
+    return request.headers.get("x-netease-cookie") or settings.netease_cookie
+
+
+@router.post("/search", response_model=list[SearchItemOut])
+async def search_songs(
+    body: SearchIn,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    _user=Depends(get_current_user),
+):
+    require_rate(
+        request.client.host if request.client else None,
+        "music_search",
+        limit=30,
+        enabled=settings.rate_limit_enabled,
+        detail="搜索过于频繁，请稍后再试",
+    )
+    try:
+        hits = await music_svc.search_tracks(
+            body.q,
+            body.platform,
+            netease_cookie=_net_cookie(request, settings),
+        )
+    except ResolveError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return [SearchItemOut(**h.__dict__) for h in hits]
+
+
 @router.post("/resolve", response_model=MusicTrackOut)
 async def resolve_link(
     body: ResolveIn,
@@ -62,15 +110,21 @@ async def resolve_link(
     require_rate(
         request.client.host if request.client else None,
         "music_resolve",
-        limit=30,
+        limit=60,
         enabled=settings.rate_limit_enabled,
         detail="解析过于频繁，请稍后再试",
     )
+    if not body.url and not (body.platform and body.songId):
+        raise HTTPException(status_code=422, detail="请提供分享链接或搜索结果")
+    if body.platform and body.platform not in _PLATFORMS:
+        raise HTTPException(status_code=422, detail="未知平台")
     try:
         track = await music_svc.resolve_music_track(
             body.url,
+            platform=body.platform,
+            song_id=body.songId,
             netease_api_url=settings.netease_api_url,
-            netease_cookie=settings.netease_cookie,
+            netease_cookie=_net_cookie(request, settings),
         )
     except ResolveError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

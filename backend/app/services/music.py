@@ -349,21 +349,38 @@ async def _resolve_kugou(
     )
 
 
+@dataclass
+class SearchResult:
+    """One search hit — enough to display + resolve by platform/id."""
+
+    id: str  # platform-native id (netease numeric / qq songmid / kugou hash)
+    title: str
+    artist: str
+    album: str = ""
+    cover: Optional[str] = None
+
+
 async def resolve_music_track(
     raw_url: str,
     *,
+    platform: str = "",
+    song_id: str = "",
     netease_api_url: str = "",
     netease_cookie: str = "",
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> ResolvedTrack:
-    """Resolve a share link to a playable track (audio_url is the real CDN URL).
+    """Resolve a share link — or a direct (platform, song_id) pair — to a
+    playable track (audio_url is the real CDN URL).
 
     Raises ResolveError with a user-facing Chinese message when unparseable or
     unplayable. ``transport`` is test-only injection.
     """
-    parsed = parse_share_url(raw_url)
-    if parsed is None:
-        raise ResolveError("无法识别的链接：请粘贴网易云 / QQ音乐 / 酷狗的歌曲分享链接")
+    if platform and song_id:
+        parsed = ParsedShare(platform=platform, id=song_id)
+    else:
+        parsed = parse_share_url(raw_url)
+        if parsed is None:
+            raise ResolveError("无法识别的链接：请粘贴网易云 / QQ音乐 / 酷狗的歌曲分享链接")
     if parsed.platform == "netease":
         return await _resolve_netease(
             parsed.id, netease_api_url.strip(), netease_cookie.strip(), transport
@@ -371,6 +388,137 @@ async def resolve_music_track(
     if parsed.platform == "qq":
         return await _resolve_qq(parsed.id, transport)
     return await _resolve_kugou(parsed.id, parsed.extra, transport)
+
+
+async def search_tracks(
+    query: str,
+    platform: str,
+    *,
+    netease_cookie: str = "",
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> list[SearchResult]:
+    """Search songs on one platform via its public web endpoint.
+
+    Returns up to ~10 hits with native ids ready for resolve_music_track.
+    Raises ResolveError for unknown platforms or empty results.
+    """
+    q = (query or "").strip()
+    if not q:
+        raise ResolveError("请输入要搜索的歌名或歌手")
+    if platform == "netease":
+        return await _search_netease(q, netease_cookie.strip(), transport)
+    if platform == "qq":
+        return await _search_qq(q, transport)
+    if platform == "kugou":
+        return await _search_kugou(q, transport)
+    raise ResolveError("未知平台")
+
+
+async def _search_netease(
+    q: str,
+    cookie: str,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> list[SearchResult]:
+    async with _client(transport) as client:
+        headers = {"Referer": "https://music.163.com/"}
+        if cookie:
+            headers["Cookie"] = cookie
+        try:
+            resp = await client.get(
+                f"{_NETEASE_API}/api/search/pc",
+                params={"s": q, "type": 1, "limit": 10, "offset": 0},
+                headers=headers,
+            )
+            body = resp.json() if resp.status_code == 200 else {}
+        except (httpx.HTTPError, ValueError):
+            return []
+        songs = ((body.get("result") or {}).get("songs")) or []
+        out: list[SearchResult] = []
+        for s in songs:
+            artists = s.get("artists") or s.get("ar") or []
+            album = s.get("album") or s.get("al") or {}
+            out.append(
+                SearchResult(
+                    id=str(s.get("id") or ""),
+                    title=s.get("name") or "",
+                    artist=" / ".join(a.get("name", "") for a in artists if a.get("name")),
+                    album=album.get("name") or "",
+                    cover=album.get("picUrl") or album.get("pic") or None,
+                )
+            )
+        if not out:
+            raise ResolveError("网易云没搜到相关歌曲")
+        return out
+
+
+async def _search_qq(
+    q: str,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> list[SearchResult]:
+    async with _client(transport) as client:
+        body = {
+            "req_0": {
+                "module": "music.search.SearchCgiService",
+                "method": "DoSearchForQQMusicDesktop",
+                "param": {"query": q, "num_per_page": 10, "page_num": 1, "search_type": 0},
+            }
+        }
+        try:
+            resp = await client.post(_QQ_API, json=body)
+            data = ((resp.json().get("req_0") or {}).get("data") or {}).get("body") or {}
+        except (httpx.HTTPError, ValueError):
+            return []
+        songs = ((data.get("song") or {}).get("list")) or []
+        out: list[SearchResult] = []
+        for s in songs:
+            singers = s.get("singer") or []
+            album = s.get("album") or {}
+            pmid = album.get("pmid") or album.get("mid") or ""
+            out.append(
+                SearchResult(
+                    id=str(s.get("songmid") or ""),
+                    title=s.get("songname") or s.get("name") or "",
+                    artist=" / ".join(x.get("name", "") for x in singers if x.get("name")),
+                    album=album.get("name") or "",
+                    cover=f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{pmid}.jpg"
+                    if pmid
+                    else None,
+                )
+            )
+        if not out:
+            raise ResolveError("QQ音乐没搜到相关歌曲")
+        return out
+
+
+async def _search_kugou(
+    q: str,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> list[SearchResult]:
+    async with _client(transport) as client:
+        try:
+            resp = await client.get(
+                "https://songsearch.kugou.com/song_search_v2",
+                params={"keyword": q, "page": 1, "pagesize": 10},
+                headers={"Referer": "https://www.kugou.com/"},
+            )
+            body = resp.json() if resp.status_code == 200 else {}
+        except (httpx.HTTPError, ValueError):
+            return []
+        songs = ((body.get("data") or {}).get("lists")) or []
+        out: list[SearchResult] = []
+        for s in songs:
+            out.append(
+                SearchResult(
+                    id=str(s.get("FileHash") or s.get("hash") or ""),
+                    title=s.get("SongName") or s.get("songname") or "",
+                    artist=s.get("SingerName") or s.get("singername") or "",
+                    album=s.get("AlbumName") or s.get("album_name") or "",
+                    cover=s.get("ImgUrl") or s.get("img") or None,
+                )
+            )
+        if not out:
+            raise ResolveError("酷狗没搜到相关歌曲")
+        return out
 
 
 def proxy_url_for(real_url: str, api_prefix: str = "/api/v1") -> str:

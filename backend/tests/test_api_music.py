@@ -49,6 +49,44 @@ def test_resolve_unknown_link_422():
     _run(_scenario())
 
 
+def test_resolve_requires_url_or_song():
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "music_user2")
+            r = await client.post(
+                "/api/v1/music/resolve", json={}, headers=headers
+            )
+            assert r.status_code == 422, r.text
+
+    _run(_scenario())
+
+
+def test_search_requires_auth():
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            r = await client.post(
+                "/api/v1/music/search",
+                json={"q": "夜曲", "platform": "netease"},
+            )
+            assert r.status_code in (401, 403)
+
+    _run(_scenario())
+
+
+def test_search_bad_platform_422():
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "music_user3")
+            r = await client.post(
+                "/api/v1/music/search",
+                json={"q": "x", "platform": "spotify"},
+                headers=headers,
+            )
+            assert r.status_code == 422, r.text
+
+    _run(_scenario())
+
+
 def test_stream_rejects_non_whitelisted_host():
     async def _scenario():
         async with db_gate.make_client(APP) as client:

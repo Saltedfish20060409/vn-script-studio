@@ -360,3 +360,173 @@ def test_proxy_url_for():
     assert url.startswith("/api/v1/music/stream?url=")
     assert "a%20b" in url
     assert "music.126.net" in url
+
+
+# --------------------------------------------------------------- search ------
+
+def test_resolve_by_platform_and_id_direct():
+    """Search hits carry (platform, songId) — resolve must accept them directly."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/song/detail"):
+            return httpx.Response(
+                200,
+                json={"songs": [{"name": "直解", "artists": [{"name": "歌手"}], "album": {}}]},
+            )
+        if path.endswith("/song/url/v1"):
+            return httpx.Response(
+                200, json={"data": [{"url": "https://m701.music.126.net/direct.mp3"}]}
+            )
+        return httpx.Response(404)
+
+    import asyncio
+
+    async def run():
+        return await svc.resolve_music_track(
+            "",
+            platform="netease",
+            song_id="123456",
+            netease_api_url="https://api.example",
+            transport=_transport(handler),
+        )
+
+    track = asyncio.run(run())
+    assert track.id == "netease-123456"
+    assert track.audio_url == "https://m701.music.126.net/direct.mp3"
+
+
+def test_search_netease():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/api/search/pc")
+        assert request.url.params.get("s") == "夜曲"
+        return httpx.Response(
+            200,
+            json={
+                "result": {
+                    "songs": [
+                        {
+                            "id": 1856244885,
+                            "name": "夜曲",
+                            "artists": [{"name": "周杰伦"}],
+                            "album": {"name": "十一月的萧邦", "picUrl": "https://p1.music.126.net/c.jpg"},
+                        }
+                    ]
+                }
+            },
+        )
+
+    import asyncio
+
+    async def run():
+        return await svc.search_tracks("夜曲", "netease", transport=_transport(handler))
+
+    hits = asyncio.run(run())
+    assert len(hits) == 1
+    assert hits[0].id == "1856244885"
+    assert hits[0].title == "夜曲"
+    assert hits[0].artist == "周杰伦"
+    assert hits[0].cover == "https://p1.music.126.net/c.jpg"
+
+
+def test_search_netease_empty_raises():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"result": {"songs": []}})
+
+    import asyncio
+
+    async def run():
+        return await svc.search_tracks("不存在歌", "netease", transport=_transport(handler))
+
+    with pytest.raises(ResolveError):
+        asyncio.run(run())
+
+
+def test_search_qq():
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.read().decode("utf-8", "replace")
+        assert "SearchCgiService" in body
+        return httpx.Response(
+            200,
+            json={
+                "req_0": {
+                    "data": {
+                        "body": {
+                            "song": {
+                                "list": [
+                                    {
+                                        "songmid": "003a4Y8G0mQX6s",
+                                        "songname": "晴天",
+                                        "singer": [{"name": "周杰伦"}],
+                                        "album": {"name": "叶惠美", "pmid": "003RMaRI4iK2Tj"},
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            },
+        )
+
+    import asyncio
+
+    async def run():
+        return await svc.search_tracks("晴天", "qq", transport=_transport(handler))
+
+    hits = asyncio.run(run())
+    assert len(hits) == 1
+    assert hits[0].id == "003a4Y8G0mQX6s"
+    assert hits[0].title == "晴天"
+    assert "gtimg.cn" in (hits[0].cover or "")
+
+
+def test_search_kugou():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/song_search_v2")
+        assert request.url.params.get("keyword") == "泡沫"
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "lists": [
+                        {
+                            "FileHash": "B7A1F2C3D4E5F6A7B8C9D0E1F2A3B4C5",
+                            "SongName": "泡沫",
+                            "SingerName": "邓紫棋",
+                            "AlbumName": "Xposed",
+                            "ImgUrl": "https://imge.kugou.com/x.jpg",
+                        }
+                    ]
+                }
+            },
+        )
+
+    import asyncio
+
+    async def run():
+        return await svc.search_tracks("泡沫", "kugou", transport=_transport(handler))
+
+    hits = asyncio.run(run())
+    assert len(hits) == 1
+    assert hits[0].id == "B7A1F2C3D4E5F6A7B8C9D0E1F2A3B4C5"
+    assert hits[0].artist == "邓紫棋"
+
+
+def test_search_unknown_platform_raises():
+    import asyncio
+
+    async def run():
+        return await svc.search_tracks("x", "spotify", transport=_transport(lambda r: httpx.Response(404)))
+
+    with pytest.raises(ResolveError):
+        asyncio.run(run())
+
+
+def test_search_empty_query_raises():
+    import asyncio
+
+    async def run():
+        return await svc.search_tracks("   ", "netease", transport=_transport(lambda r: httpx.Response(404)))
+
+    with pytest.raises(ResolveError):
+        asyncio.run(run())

@@ -106,6 +106,102 @@
   gap: 0.6rem;
 }
 
+.searchBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.searchRow {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.searchRow input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.platRow {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.plat,
+.platOn {
+  padding: 0.2rem 0.65rem;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition:
+    background 140ms var(--ease-out),
+    color 140ms var(--ease-out);
+}
+
+.plat:hover {
+  color: var(--ink);
+}
+
+.platOn {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.searchMsg {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--danger);
+}
+
+.cookieBox {
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.55rem;
+}
+
+.cookieBox summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  user-select: none;
+}
+
+.cookieBox summary:hover {
+  color: var(--ink);
+}
+
+.cookieInput {
+  margin-top: 0.4rem;
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.cookieHint {
+  margin: 0.3rem 0 0;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
 .addRow {
   display: flex;
   gap: 0.45rem;
