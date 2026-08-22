@@ -15,21 +15,46 @@
   animation: var(--slash-in);
 }
 
+/* 动漫贴纸感：左上高光 + 彩色渐变晕 */
+.stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      circle at 88% -10%,
+      color-mix(in srgb, #7c3aed 14%, transparent),
+      transparent 55%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.5) 0%,
+      rgba(255, 255, 255, 0) 55%
+    );
+  pointer-events: none;
+}
+
 .compact {
   min-height: 8rem;
   padding: 0.85rem 1rem;
 }
 
 .stamp {
+  align-self: flex-start;
   font-family: var(--font-display);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.18em;
-  color: var(--accent);
-  opacity: 0.9;
+  color: #fff;
+  background: var(--anime-grad-soft, linear-gradient(135deg, #4f7dff, #ff6fae));
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 0.1rem 0.6rem;
+  box-shadow: 0 2px 6px -2px rgba(124, 58, 237, 0.5);
 }
 
 .body {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.85rem;
@@ -48,7 +73,7 @@
   margin: 0;
   font-family: var(--font-display);
   font-size: 1.1rem;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.04em;
   color: var(--ink);
 }

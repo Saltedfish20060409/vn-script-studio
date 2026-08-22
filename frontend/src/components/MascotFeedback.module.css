@@ -1,0 +1,81 @@
+.wrap {
+  position: fixed;
+  right: 1.1rem;
+  bottom: 1.1rem;
+  z-index: 390;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  pointer-events: none;
+  animation: feedbackIn 420ms var(--ease-spring) both;
+}
+
+.leaving {
+  animation: feedbackOut 260ms var(--ease-in) both;
+}
+
+.bubble {
+  max-width: 230px;
+  padding: 0.6rem 0.8rem;
+  border: 2px solid var(--line);
+  border-radius: 14px 14px 14px 4px;
+  background: var(--anime-bubble, #fdf3ff);
+  color: var(--anime-ink, #2b1a4d);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  box-shadow: 0 8px 20px -8px rgba(124, 58, 237, 0.4);
+  position: relative;
+}
+
+.bubble::after {
+  content: "";
+  position: absolute;
+  right: -7px;
+  bottom: 14px;
+  width: 12px;
+  height: 12px;
+  background: var(--anime-bubble, #fdf3ff);
+  border-right: 2px solid var(--line);
+  border-bottom: 2px solid var(--line);
+  transform: rotate(-45deg);
+}
+
+.face {
+  width: 58px;
+  height: auto;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.25);
+  animation: faceBounce 420ms var(--ease-spring);
+}
+
+@keyframes feedbackIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes feedbackOut {
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
+  }
+}
+
+@keyframes faceBounce {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  45% {
+    transform: translateY(-10px) scale(1.06);
+  }
+  100% {
+    transform: none;
+  }
+}

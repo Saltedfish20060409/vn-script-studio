@@ -317,6 +317,14 @@ html[data-theme="night"] .slash {
   transform: translateX(-140%);
 }
 
+.submit::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--anime-highlight);
+  pointer-events: none;
+}
+
 .submit:hover:not(:disabled) {
   transform: translateY(-2px);
   filter: brightness(1.06);

@@ -71,6 +71,7 @@ import { TemplatePicker } from "./TemplatePicker";
 import { OnboardingOverlay } from "./OnboardingOverlay";
 import { hasSeenTour } from "../lib/onboarding";
 import { QPet } from "./QPet";
+import { MascotFeedback, type PetFeedback } from "./MascotFeedback";
 import { WorldPanel } from "./WorldPanel";
 import { WriteToolbar, type WriteMode } from "./WriteToolbar";
 import { HelpSheet } from "./HelpSheet";
@@ -189,6 +190,7 @@ export function StudioApp() {
   const [playOpen, setPlayOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(() => !hasSeenTour());
   const [petCheer, setPetCheer] = useState(0);
+  const [petFeedback, setPetFeedback] = useState<PetFeedback | null>(null);
   const [chapterId, setChapterId] = useState(cachedWs.chapterId || "");
   const otherLock = activeLocks.find(
     (l) => l.chapterId === chapterId && l.userId !== myUserId
@@ -551,6 +553,10 @@ export function StudioApp() {
       skipNextProjectSave.current = true;
       setProject(saved);
       setPetCheer((v) => v + 1);
+      setPetFeedback({
+        mood: "cheer",
+        text: "保存好啦~ 继续写！",
+      });
       clearConflictDraft(saved.id);
       setSaveConflict(null);
       setProjectsList((prev) =>
@@ -599,6 +605,10 @@ export function StudioApp() {
         return false;
       }
       setError(e instanceof Error ? e.message : "保存失败");
+      setPetFeedback({
+        mood: "fluster",
+        text: "啊……保存出问题了，别急我看看。",
+      });
       return false;
     }
   }
@@ -1634,6 +1644,7 @@ export function StudioApp() {
         <OnboardingOverlay onDone={() => setTourOpen(false)} />
       )}
       <QPet editorRef={editorTaRef} cheerSignal={petCheer} />
+      <MascotFeedback feedback={petFeedback} />
       {playOpen && project && chapter && (
         <ScriptPlayer
           chapter={chapter}

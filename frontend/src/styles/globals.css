@@ -29,6 +29,13 @@
   --grad-accent-hot: linear-gradient(135deg, #b91c48 0%, #e11d48 55%, #f2496d 100%);
   --grad-title: linear-gradient(120deg, #0a0e1a 0%, #002fa7 55%, #0f6ad6 100%);
   --grad-sheen: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.55) 50%, transparent 80%);
+  /* ---- 明快赛璐璐动漫层 ---- */
+  --anime-grad: linear-gradient(135deg, #2f6bff 0%, #7c3aed 58%, #ec4899 130%);
+  --anime-grad-soft: linear-gradient(135deg, #4f7dff 0%, #9d5cff 60%, #ff6fae 140%);
+  --anime-highlight: linear-gradient(180deg, rgba(255, 255, 255, 0.62) 0%, rgba(255, 255, 255, 0.1) 52%, transparent 60%);
+  --anime-stroke: 2px solid var(--line);
+  --anime-bubble: #fdf3ff;
+  --anime-ink: #2b1a4d;
   --space-xs: 0.25rem;
   --space-sm: 0.5rem;
   --space-md: 1rem;
@@ -283,6 +290,78 @@
 
 .vnss-btn-grad:hover::after {
   animation: vnssShimmer 1100ms var(--ease-out);
+}
+
+/* ---- 赛璐璐按钮：渐变 + 描边 + 左上高光 + 上浮/按压 ---- */
+.vnss-btn-anime {
+  background: var(--anime-grad);
+  color: #fff;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 6px 16px -6px rgba(124, 58, 237, 0.55);
+  transition:
+    transform 160ms var(--ease-spring),
+    box-shadow 160ms var(--ease-out),
+    filter 160ms var(--ease-out);
+}
+
+.vnss-btn-anime::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--anime-highlight);
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.vnss-btn-anime:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.05);
+  box-shadow: 0 10px 22px -8px rgba(124, 58, 237, 0.65);
+}
+
+.vnss-btn-anime:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+
+/* ---- 彩色徽章（贴纸感标签） ---- */
+.vnss-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.12rem 0.55rem;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--anime-grad-soft);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  box-shadow: 0 2px 6px -2px rgba(124, 58, 237, 0.5);
+}
+
+/* ---- 贴纸卡片：大圆角 + 描边 + 左上高光 ---- */
+.vnss-card-anime {
+  position: relative;
+  border: var(--anime-stroke);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--paper) 96%, #f0f4ff),
+    var(--paper-deep)
+  );
+  overflow: hidden;
+}
+
+.vnss-card-anime::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--anime-highlight);
+  pointer-events: none;
 }
 .vnss-stagger > *:nth-child(7) {
   animation-delay: calc(var(--stagger) * 6);
