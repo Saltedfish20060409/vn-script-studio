@@ -1,7 +1,9 @@
 .gear {
   position: fixed;
   left: 1rem;
-  bottom: 1rem;
+  /* 音乐条固定底栏之上：避免齿轮与播放键重叠（z 低于音乐条，
+     音乐条展开面板时会自然盖住它，收起即恢复可点） */
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   z-index: 55;
   width: 48px;
   height: 48px;
@@ -28,7 +30,7 @@
 
 @media (max-width: 820px) {
   .gear {
-    bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
     left: 0.65rem;
     width: 44px;
     height: 44px;

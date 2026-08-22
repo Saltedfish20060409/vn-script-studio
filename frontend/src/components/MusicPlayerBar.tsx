@@ -97,6 +97,7 @@ export function MusicPlayerBar({ contextLabel }: Props) {
   const [addingId, setAddingId] = useState<string | null>(null);
   const [cookieText, setCookieText] = useState(loadCookie);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const track = list[index] ?? null;
   const lrc = useMemo(
@@ -314,7 +315,10 @@ export function MusicPlayerBar({ contextLabel }: Props) {
         <div className={styles.info}>
           <span className={styles.title}>{track?.title ?? "未选择歌曲"}</span>
           <span className={styles.artist}>
-            {track?.artist ?? (contextLabel ? `写作中 · ${contextLabel}` : "粘贴分享链接添加歌曲")}
+            {track?.artist ??
+              (contextLabel
+                ? `写作中 · ${contextLabel}`
+                : "点「＋ 添加」搜索网易云 / QQ / 酷狗歌曲")}
           </span>
         </div>
         <input
@@ -365,6 +369,17 @@ export function MusicPlayerBar({ contextLabel }: Props) {
         >
           🎵
         </button>
+        <button
+          type="button"
+          className={styles.addSong}
+          onClick={() => {
+            setListOpen(true);
+            requestAnimationFrame(() => searchInputRef.current?.focus());
+          }}
+          title="搜索并添加歌曲"
+        >
+          ＋ 添加
+        </button>
       </div>
 
       {/* 展开面板：搜索 + 添加 + 列表 + 歌词 */}
@@ -374,6 +389,7 @@ export function MusicPlayerBar({ contextLabel }: Props) {
           <div className={styles.searchBlock}>
             <div className={styles.searchRow}>
               <input
+                ref={searchInputRef}
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
                 onKeyDown={(e) => {

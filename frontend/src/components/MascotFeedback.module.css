@@ -1,7 +1,8 @@
 .wrap {
   position: fixed;
   right: 1.1rem;
-  bottom: 1.1rem;
+  /* 底部音乐条之上：气泡不遮播放条按钮 */
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   z-index: 390;
   display: flex;
   align-items: flex-end;

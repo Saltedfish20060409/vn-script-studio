@@ -1,11 +1,16 @@
 .bar {
-  position: sticky;
+  position: fixed;
+  left: 0;
+  right: 0;
   bottom: 0;
+  /* 低 z：始终在页面内容之上、弹窗(100+)之下；按钮可点不受遮挡
+     （桌宠已被 BAR_RESERVE 抬到音乐条之上，不会盖住播放键） */
   z-index: 60;
   border-top: 2px solid var(--line);
   background: color-mix(in srgb, var(--panel-bg) 92%, var(--accent));
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.12);
 }
 
 .mini {
@@ -13,6 +18,24 @@
   align-items: center;
   gap: 0.45rem;
   padding: 0.45rem 0.9rem;
+}
+
+/* 窄屏：收窄信息区与进度条，保证右侧按钮不换行溢出 */
+@media (max-width: 720px) {
+  .mini {
+    gap: 0.3rem;
+    padding: 0.4rem 0.55rem;
+  }
+  .seek {
+    min-width: 44px;
+    flex: 0 0 44px;
+  }
+  .vol {
+    display: none;
+  }
+  .time {
+    font-size: 0.68rem;
+  }
 }
 
 .keyBtn {
@@ -104,6 +127,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  max-height: min(46vh, 420px);
+  overflow-y: auto;
 }
 
 .searchBlock {
@@ -235,6 +260,27 @@
 .addBtn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.addSong {
+  flex-shrink: 0;
+  padding: 0.35rem 0.75rem;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 140ms var(--ease-out),
+    transform 140ms var(--ease-out);
+}
+
+.addSong:hover {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  transform: translateY(-1px);
 }
 
 .columns {

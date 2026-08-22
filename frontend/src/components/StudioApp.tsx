@@ -71,6 +71,8 @@ import { TemplatePicker } from "./TemplatePicker";
 import { OnboardingOverlay } from "./OnboardingOverlay";
 import { hasSeenTour } from "../lib/onboarding";
 import { QPet } from "./QPet";
+import { AdminPanel } from "./AdminPanel";
+import { fetchAdminOverview } from "../api/admin";
 import { MascotFeedback, type PetFeedback } from "./MascotFeedback";
 import { WorldPanel } from "./WorldPanel";
 import { WriteToolbar, type WriteMode } from "./WriteToolbar";
@@ -208,6 +210,10 @@ export function StudioApp() {
   writeModeRef.current = writeMode;
   const [generatingRpy, setGeneratingRpy] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [adminAlert, setAdminAlert] = useState(false);
+  /** 以 overview 探测为准：避免旧会话 /me 缺 is_admin 时顶栏不显示「管理」 */
+  const [adminCapable, setAdminCapable] = useState(false);
   const [selection, setSelection] = useState("");
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -276,6 +282,36 @@ export function StudioApp() {
     if (settings) applySettingsToDom(settings);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 管理后台入口探测：管理员显示「管理」，有新增异常报告时标红
+  useEffect(() => {
+    if (!user?.id) {
+      setAdminCapable(false);
+      setAdminAlert(false);
+      return;
+    }
+    let cancelled = false;
+    const tick = () => {
+      void fetchAdminOverview()
+        .then((ov) => {
+          if (cancelled) return;
+          setAdminCapable(true);
+          setAdminAlert(ov.danger_count > 0);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          // 403/401：非管理员；若 /me 已标 is_admin 仍保留入口（配置短暂不一致时）
+          setAdminCapable(Boolean(user.is_admin));
+          if (!user.is_admin) setAdminAlert(false);
+        });
+    };
+    tick();
+    const id = window.setInterval(tick, 120_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [user?.id, user?.is_admin]);
 
   // Chapter revise preview chip (survives refresh via localStorage)
   useEffect(() => {
@@ -1646,6 +1682,8 @@ export function StudioApp() {
       )}
       <QPet editorRef={editorTaRef} cheerSignal={petCheer} />
       <MascotFeedback feedback={petFeedback} />
+      {/* 全局底部音乐条：所有页面常驻；专注模式被 FocusChrome(90) 遮住但音乐继续 */}
+      <MusicPlayerBar contextLabel={chapter?.title ?? ""} />
       {playOpen && project && chapter && (
         <ScriptPlayer
           chapter={chapter}
@@ -1713,6 +1751,9 @@ export function StudioApp() {
           onExport={() => void exportCurrentView()}
           exportLabel={writeMode === "rpy" ? "导出 .rpy" : "导出 .docx"}
           onOpenHelp={() => setHelpOpen(true)}
+          onOpenAdmin={() => setAdminOpen(true)}
+          showAdmin={Boolean(user?.is_admin || adminCapable)}
+          adminAlert={adminAlert}
           onOpenCollab={() => {
             setTab("project");
             setProjectSub("members");
@@ -2009,7 +2050,6 @@ export function StudioApp() {
                     />
                   </section>
                 )}
-                <MusicPlayerBar contextLabel={chapter?.title ?? ""} />
               </>
             )}
 
@@ -2143,6 +2183,7 @@ export function StudioApp() {
           />
         )}
         <HelpSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
+        <AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} />
         {mapExtractReview ? (
           <MapExtractReview
             proposal={mapExtractReview.proposal}

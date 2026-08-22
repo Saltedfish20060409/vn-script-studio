@@ -21,6 +21,8 @@ type PetMode = "dock" | "corner" | "free" | "edge-left" | "edge-right";
 const PET_W = 120;
 const PET_H = 168;
 const DOCK_GAP = 10;
+/** 底部固定音乐条的高度预留：桌宠角落/游走不上遮挡区 */
+const BAR_RESERVE = 64;
 /** 无交互多久触发打瞌睡（至少 3 分钟） */
 const SLEEP_AFTER_MS = 3 * 60 * 1000;
 
@@ -62,7 +64,7 @@ function clampX(x: number, w = PET_W): number {
   return Math.max(0, Math.min(x, window.innerWidth - w - 8));
 }
 function clampY(y: number, h = PET_H): number {
-  return Math.max(0, Math.min(y, window.innerHeight - h - 8));
+  return Math.max(0, Math.min(y, window.innerHeight - h - BAR_RESERVE));
 }
 
 function dockFromEditorRect(rect: DOMRect): { x: number; y: number } {
