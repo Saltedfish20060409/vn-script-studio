@@ -650,15 +650,18 @@ export function MusicPlayerBar({ contextLabel }: Props) {
 
                 {/* 扫码登录：反代容器生成二维码，App 扫一下自动拿 Cookie */}
                 {!qrState && (
-                  <button
-                    type="button"
-                    className={styles.addBtn}
-                    style={{ marginTop: "0.4rem" }}
-                    disabled={qrLoading}
-                    onClick={() => void startQrLogin()}
-                  >
-                    {qrLoading ? "生成二维码中…" : "📱 扫码登录（推荐）"}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className={styles.addBtn}
+                      style={{ marginTop: "0.4rem" }}
+                      disabled={qrLoading}
+                      onClick={() => void startQrLogin()}
+                    >
+                      {qrLoading ? "生成二维码中…" : "📱 扫码登录（推荐）"}
+                    </button>
+                    {qrMsg && <p className={styles.qrMsg}>{qrMsg}</p>}
+                  </>
                 )}
                 {qrState && (
                   <div className={styles.qrBox}>
