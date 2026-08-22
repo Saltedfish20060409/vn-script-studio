@@ -30,11 +30,10 @@ type Props = {
 const STORE_KEY = "vnss-music-v1";
 const MODE_KEY = "vnss-music-mode-v1";
 const COOKIE_KEY = "vnss-music-netease-cookie";
-type Platform = "netease" | "qq" | "kugou" | "bili";
+type Platform = "netease" | "kugou" | "bili";
 type PlayMode = "order" | "shuffle" | "loop-one";
 const PLATFORM_LABEL: Record<Platform, string> = {
   netease: "网易云",
-  qq: "QQ音乐",
   kugou: "酷狗",
   bili: "B站",
 };
@@ -388,7 +387,7 @@ export function MusicPlayerBar({ contextLabel }: Props) {
             {track?.artist ??
               (contextLabel
                 ? `写作中 · ${contextLabel}`
-                : "点「＋ 添加」搜索网易云 / QQ / 酷狗 / B站歌曲")}
+                : "点「＋ 添加」搜索网易云 / 酷狗 / B站歌曲")}
           </span>
         </div>
         <input
@@ -584,20 +583,19 @@ export function MusicPlayerBar({ contextLabel }: Props) {
                 </ul>
               )}
               {searchMsg && <p className={styles.searchMsg}>{searchMsg}</p>}
-              <details className={styles.cookieBox}>
-                <summary>
-                  网易云 Cookie（可选 · 服务器 IP 上播放必需）
-                </summary>
+              <details className={styles.cookieBox} open={!cookieText.trim()}>
+                <summary>🔑 网易云登录（听大部分歌需要）</summary>
+                <p className={styles.cookieHint}>
+                  服务器 IP 上不登录基本只能搜不能播。填入你的网易云登录 Cookie
+                  即可听 VIP / 大部分歌曲——仅存于本浏览器、随请求发送给本站、
+                  不落服务器库，可随时清空。
+                </p>
                 <input
                   value={cookieText}
                   onChange={(e) => saveCookie(e.target.value)}
-                  placeholder="粘贴 Cookie 中的 MUSIC_U=… 整段"
+                  placeholder="登录 music.163.com 后，从开发者工具复制 Cookie 整段（含 MUSIC_U=…）"
                   className={styles.cookieInput}
                 />
-                <p className={styles.cookieHint}>
-                  仅存于本浏览器，搜索/解析时随请求发送给本站、不落服务器库；
-                  网易云在服务器 IP 上不填 Cookie 无法播放，填了才能听。
-                </p>
               </details>
             </div>
           )}
