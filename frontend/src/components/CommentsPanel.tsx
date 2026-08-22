@@ -7,7 +7,6 @@ import {
   updateProjectComment,
   type ProjectComment,
 } from "../api/collab";
-import { MascotFigure } from "./MascotFigure";
 import styles from "./CommentsPanel.module.css";
 
 type Props = {
@@ -297,7 +296,6 @@ export function CommentsPanel({
           </div>
           {comments.length === 0 ? (
             <div className={styles.empty}>
-              <MascotFigure mood="idle" size="sm" />
               <p>还没有批注。选中文字，或直接在这里留下意见。</p>
             </div>
           ) : (

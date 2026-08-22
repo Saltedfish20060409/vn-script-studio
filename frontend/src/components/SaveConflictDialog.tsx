@@ -1,4 +1,3 @@
-import { MascotFigure } from "./MascotFigure";
 import { mascotLine } from "../lib/mascotCopy";
 import styles from "./SaveConflictDialog.module.css";
 
@@ -30,9 +29,6 @@ export function SaveConflictDialog({
         aria-modal="true"
         aria-label="工程保存冲突"
       >
-        <div className={styles.mascotCol}>
-          <MascotFigure mood="puzzled" size="md" />
-        </div>
         <div className={styles.body}>
           <p className={styles.idx}>CONFLICT</p>
           <h3 className={styles.title}>工程版本冲突</h3>

@@ -76,24 +76,6 @@
   -webkit-backdrop-filter: blur(18px) saturate(1.2);
 }
 
-.mascotDock {
-  position: absolute;
-  left: 0.65rem;
-  bottom: 0.55rem;
-  z-index: 2;
-  max-width: calc(100% - 1.3rem);
-  pointer-events: none;
-}
-
-.mascotFigure {
-  align-items: flex-start;
-  max-width: 100%;
-}
-
-.mascotDockQuiet {
-  opacity: 0.35;
-}
-
 @keyframes rise {
   from {
     opacity: 0;

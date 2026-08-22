@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { MascotFigure } from "./MascotFigure";
 import styles from "./EmptyStage.module.css";
 
 type Props = {
@@ -12,7 +11,7 @@ type Props = {
   compact?: boolean;
 };
 
-/** Persona empty board: mascot whisper only (no illustration). */
+/** Empty board: stamp + copy (no mascot illustration). */
 export function EmptyStage({
   title,
   line,
@@ -32,7 +31,6 @@ export function EmptyStage({
         </span>
       ) : null}
       <div className={styles.body}>
-        <MascotFigure size={compact ? "md" : "lg"} mood="think" line={null} />
         <div className={styles.copy}>
           <p className={styles.title}>{title}</p>
           {line ? <p className={styles.whisper}>{line}</p> : null}

@@ -7,7 +7,6 @@ import {
   type FocusTimerMode,
   type FocusTimerPrefs,
 } from "../lib/focusMode";
-import { MascotFigure } from "./MascotFigure";
 import styles from "./FocusChrome.module.css";
 
 type Props = {
@@ -138,9 +137,6 @@ export function FocusChrome({
             aria-labelledby={titleId}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className={styles.setupMascot} aria-hidden>
-              <MascotFigure size="md" mood="focus" quiet line={null} />
-            </div>
             <div className={styles.setupMain}>
               <p className={styles.setupIdx} aria-hidden>
                 FO

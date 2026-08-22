@@ -30,8 +30,6 @@ import {
   setClickFx,
   subscribeClickFx,
 } from "../lib/clickFx";
-import { MascotFigure } from "./MascotFigure";
-import { mascotLine } from "../lib/mascotCopy";
 import styles from "./SettingsModal.module.css";
 
 type Props = {
@@ -449,16 +447,9 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
     loadClickFx
   );
   const fileRef = useRef<HTMLInputElement>(null);
-  const idleLineRef = useRef(mascotLine("settings"));
-  const panLineRef = useRef(mascotLine("settingsPan"));
-  const [holdingBg, setHoldingBg] = useState(false);
 
   useEffect(() => {
-    if (!open) {
-      setHoldingBg(false);
-      return;
-    }
-    idleLineRef.current = mascotLine("settings");
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -466,14 +457,8 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const onBgHold = useCallback((holding: boolean) => {
-    setHoldingBg((prev) => {
-      if (holding && !prev) {
-        panLineRef.current = mascotLine("settingsPan");
-      }
-      return holding;
-    });
-  }, []);
+  // 取景拖拽时的占位回调（立绘已移除，保留接口）
+  const onBgHold = useCallback((_holding: boolean) => {}, []);
 
   if (!open) return null;
 
@@ -504,8 +489,6 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
     };
     reader.readAsDataURL(file);
   }
-
-  const mascotText = holdingBg ? panLineRef.current : idleLineRef.current;
 
   return (
     <div className={styles.backdrop} onClick={onClose} role="presentation">
@@ -775,16 +758,6 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
             {pane === "usage" && <UsagePane />}
             {pane === "llm" && <LlmPane />}
           </div>
-        </div>
-        <div className={styles.mascotDock} aria-hidden>
-          {(pane === "theme" || pane === "bg") && (
-            <MascotFigure
-              className={styles.mascotFigure}
-              size="sm"
-              mood={holdingBg ? "cheer" : "idle"}
-              line={mascotText}
-            />
-          )}
         </div>
       </div>
     </div>

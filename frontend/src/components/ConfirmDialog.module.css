@@ -66,6 +66,14 @@
   align-self: end;
 }
 
+.speech {
+  margin: 0 0 0.3rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  max-width: 16rem;
+}
+
 .body {
   min-width: 0;
   display: flex;

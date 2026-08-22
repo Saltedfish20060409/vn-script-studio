@@ -4,7 +4,6 @@ import {
   type ProjectStats,
   type WritingActivityDay,
 } from "../api/projects";
-import { MascotFigure } from "./MascotFigure";
 import styles from "./WritingStatsPanel.module.css";
 
 type Props = {
@@ -106,7 +105,6 @@ export function WritingStatsPanel({ projectId }: Props) {
         <h3 className={styles.sectionTitle}>章节字数</h3>
         {chapters.length === 0 ? (
           <div className={styles.empty}>
-            <MascotFigure mood="idle" size="sm" />
             <p>还没有章节。去写第一章吧。</p>
           </div>
         ) : (

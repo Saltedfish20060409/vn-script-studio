@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
-import { MascotFigure } from "./MascotFigure";
 import { HELP_DISCLAIMER, HELP_FAQ, HELP_QUICK } from "../lib/helpContent";
 import styles from "./HelpSheet.module.css";
 
@@ -29,9 +28,6 @@ export function HelpSheet({ open, onClose }: Props) {
       onClick={onClose}
     >
       <div className={styles.sheet} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.mascot} aria-hidden>
-          <MascotFigure size="md" mood="cheer" line="先写人话，再生成能上演的稿。" />
-        </div>
         <div className={styles.body}>
           <p className={styles.idx}>HOW TO</p>
           <h2 id="help-sheet-title" className={styles.title}>

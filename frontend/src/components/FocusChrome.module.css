@@ -24,11 +24,6 @@
   animation: focusRise 280ms var(--ease-out, ease);
 }
 
-.setupMascot {
-  grid-row: 1 / span 8;
-  align-self: end;
-}
-
 .setupMain {
   min-width: 0;
 }

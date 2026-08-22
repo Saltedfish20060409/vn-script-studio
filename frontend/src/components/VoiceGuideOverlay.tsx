@@ -1,4 +1,3 @@
-import { MascotFigure } from "./MascotFigure";
 import styles from "./CharacterWorkshop.module.css";
 
 type Props = {
@@ -17,9 +16,6 @@ export function VoiceGuideOverlay({
   return (
     <div className={styles.guideOverlay} role="dialog" aria-modal="true">
       <div className={styles.guideCard}>
-        <div className={styles.guideMascot} aria-hidden>
-          <MascotFigure size="lg" mood="cheer" line="三步走完，声音就立住了。" />
-        </div>
         <div className={styles.guideMain}>
           <h3>角色工坊怎么用</h3>
           <p className={styles.guideLead}>

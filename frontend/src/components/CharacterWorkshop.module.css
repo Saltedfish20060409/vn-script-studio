@@ -954,10 +954,6 @@
   color: var(--ink);
 }
 
-.guideMascot {
-  align-self: end;
-}
-
 .guideMain {
   min-width: 0;
   display: flex;
@@ -1036,10 +1032,6 @@
     max-height: calc(100dvh - 2.5rem);
     overflow-y: auto;
     padding: 1rem;
-  }
-
-  .guideMascot {
-    display: none;
   }
 
   .guideActions button {

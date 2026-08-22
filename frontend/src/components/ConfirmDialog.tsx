@@ -7,7 +7,6 @@ import {
   type ReactNode,
 } from "react";
 import { mascotLine } from "../lib/mascotCopy";
-import { MascotFigure } from "./MascotFigure";
 import styles from "./ConfirmDialog.module.css";
 import {
   ConfirmCtx,
@@ -122,11 +121,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               onClick={(e) => e.stopPropagation()}
             >
               <div className={styles.mascotCol}>
-                <MascotFigure
-                  size="lg"
-                  mood={confirmPending.danger ? "angry" : "think"}
-                  line={confirmLine}
-                />
+                {confirmLine ? <p className={styles.speech}>{confirmLine}</p> : null}
               </div>
               <div className={styles.body}>
                 <p className={styles.idx} aria-hidden>
@@ -177,7 +172,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               onClick={(e) => e.stopPropagation()}
             >
               <div className={styles.mascotCol}>
-                <MascotFigure size="lg" mood="think" line={promptLine} />
+                {promptLine ? <p className={styles.speech}>{promptLine}</p> : null}
               </div>
               <div className={styles.body}>
                 <p className={styles.idx} aria-hidden>
