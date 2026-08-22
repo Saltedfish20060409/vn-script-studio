@@ -118,6 +118,15 @@ export function MusicPlayerBar({ contextLabel }: Props) {
   const [searchMsg, setSearchMsg] = useState("");
   const [addingId, setAddingId] = useState<string | null>(null);
   const [cookieText, setCookieText] = useState(loadCookie);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrState, setQrState] = useState<{
+    unikey: string;
+    qrimg: string;
+    qrurl: string;
+  } | null>(null);
+  const [qrMsg, setQrMsg] = useState("");
+  const [qrExpiredAt, setQrExpiredAt] = useState<number | null>(null);
+  const qrTimer = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const lrcScrollRef = useRef<HTMLDivElement | null>(null);
@@ -313,6 +322,51 @@ export function MusicPlayerBar({ contextLabel }: Props) {
     }
   };
 
+  /** 开始扫码登录：申请二维码 → 每 2s 轮询，803 成功即保存 Cookie。 */
+  const startQrLogin = async () => {
+    if (qrLoading) return;
+    setQrLoading(true);
+    setQrMsg("");
+    if (qrTimer.current) window.clearInterval(qrTimer.current);
+    try {
+      const state = await apiFetch<{ unikey: string; qrimg: string; qrurl: string }>(
+        "/music/netease-login/create",
+        { method: "POST", body: JSON.stringify({}) }
+      );
+      setQrState(state);
+      setQrExpiredAt(Date.now() + 5 * 60 * 1000);
+      qrTimer.current = window.setInterval(() => {
+        void (async () => {
+          try {
+            const res = await apiFetch<{ code: number; message: string; cookie: string }>(
+              "/music/netease-login/check",
+              { method: "POST", body: JSON.stringify({ unikey: state.unikey }) }
+            );
+            if (res.code === 803 && res.cookie) {
+              if (qrTimer.current) window.clearInterval(qrTimer.current);
+              saveCookie(res.cookie);
+              setQrMsg("✅ 登录成功！Cookie 已保存，可以开始听歌了。");
+              setQrState(null);
+              return;
+            }
+            const tips: Record<number, string> = {
+              800: "请打开手机网易云 App 扫码…",
+              801: "已扫码，请在手机上确认登录…",
+              802: "确认中…",
+            };
+            setQrMsg(tips[res.code] ?? (res.message || "等待扫码…"));
+          } catch {
+            setQrMsg("轮询失败，点「刷新」重试");
+          }
+        })();
+      }, 2000);
+    } catch (e) {
+      setQrMsg(e instanceof Error ? e.message : "扫码登录失败");
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
   const applyLrc = () => {
     if (!track || !lrcInput.trim()) return;
     setList((prev) =>
@@ -332,6 +386,14 @@ export function MusicPlayerBar({ contextLabel }: Props) {
     const target = line.offsetTop - el.clientHeight / 2 + line.clientHeight / 2;
     el.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
   }, [activeIdx, panel]);
+
+  // 卸载时清理扫码轮询
+  useEffect(
+    () => () => {
+      if (qrTimer.current) window.clearInterval(qrTimer.current);
+    },
+    []
+  );
 
   return (
     <div className={styles.bar} data-testid="music-bar">
@@ -585,10 +647,56 @@ export function MusicPlayerBar({ contextLabel }: Props) {
               {searchMsg && <p className={styles.searchMsg}>{searchMsg}</p>}
               <details className={styles.cookieBox} open={!cookieText.trim()}>
                 <summary>🔑 网易云登录（听大部分歌需要）</summary>
+
+                {/* 扫码登录：反代容器生成二维码，App 扫一下自动拿 Cookie */}
+                {!qrState && (
+                  <button
+                    type="button"
+                    className={styles.addBtn}
+                    style={{ marginTop: "0.4rem" }}
+                    disabled={qrLoading}
+                    onClick={() => void startQrLogin()}
+                  >
+                    {qrLoading ? "生成二维码中…" : "📱 扫码登录（推荐）"}
+                  </button>
+                )}
+                {qrState && (
+                  <div className={styles.qrBox}>
+                    <img src={qrState.qrimg} alt="网易云登录二维码" />
+                    <p className={styles.cookieHint}>
+                      打开手机「网易云音乐」App → 扫一扫 → 确认登录。二维码
+                      {qrExpiredAt ? ` ${Math.max(0, Math.round((qrExpiredAt - Date.now()) / 1000))}s 后过期` : ""}
+                      ，过期点「刷新」。
+                    </p>
+                    <p className={styles.qrMsg}>
+                      {qrMsg || "等待扫码…"}
+                    </p>
+                    <div className={styles.qrActions}>
+                      <button
+                        type="button"
+                        className={styles.addBtn}
+                        onClick={() => void startQrLogin()}
+                      >
+                        刷新
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.keyBtn}
+                        onClick={() => {
+                          setQrState(null);
+                          setQrMsg("");
+                          if (qrTimer.current) window.clearInterval(qrTimer.current);
+                        }}
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <p className={styles.cookieHint}>
-                  服务器 IP 上不登录基本只能搜不能播。填入你的网易云登录 Cookie
-                  即可听 VIP / 大部分歌曲——仅存于本浏览器、随请求发送给本站、
-                  不落服务器库，可随时清空。
+                  没有网易云 App？也可以粘贴 Cookie——仅存于本浏览器、随请求发送给
+                  本站、不落服务器库，可随时清空。
                 </p>
                 <input
                   value={cookieText}

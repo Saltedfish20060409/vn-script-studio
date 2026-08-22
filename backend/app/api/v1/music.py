@@ -136,6 +136,66 @@ async def resolve_link(
     return _to_out(track)
 
 
+@router.post("/netease-login/create")
+async def netease_login_create(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    _user=Depends(get_current_user),
+):
+    """申请网易云扫码会话：返回二维码 base64 + 登录 URL + unikey。"""
+    require_rate(
+        request.client.host if request.client else None,
+        "netease_login",
+        limit=20,
+        enabled=settings.rate_limit_enabled,
+        detail="扫码登录请求过于频繁，请稍后再试",
+    )
+    try:
+        state = await music_svc.netease_qr_create(settings.netease_api_url)
+    except ResolveError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "unikey": state.unikey,
+        "qrimg": state.qrimg,
+        "qrurl": state.qrurl,
+    }
+
+
+class NeteaseCheckIn(BaseModel):
+    unikey: str = Field(min_length=8, max_length=128)
+
+
+@router.post("/netease-login/check")
+async def netease_login_check(
+    body: NeteaseCheckIn,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    _user=Depends(get_current_user),
+):
+    """轮询扫码状态；803 时返回可用于播放的网易云 Cookie。"""
+    require_rate(
+        request.client.host if request.client else None,
+        "netease_login",
+        limit=60,
+        enabled=settings.rate_limit_enabled,
+        detail="轮询过于频繁，请稍后再试",
+    )
+    try:
+        result = await music_svc.netease_qr_check(settings.netease_api_url, body.unikey)
+    except ResolveError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    code = int(result.get("code") or -1)
+    cookie = ""
+    if code == 803:
+        # 反代容器把登录 cookie 放在 body.cookie 字段（或响应头）
+        cookie = str(result.get("cookie") or "")
+    return {
+        "code": code,
+        "message": str(result.get("message") or ""),
+        "cookie": cookie,
+    }
+
+
 @router.get("/stream")
 async def stream_audio(
     url: str,
