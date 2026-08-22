@@ -12,6 +12,8 @@ export interface MusicTrack {
   cover?: string;
   /** LRC 原文（可选） */
   lrc?: string;
+  /** 手动歌词偏移（秒）：音源与歌词不同步时的微调 */
+  lrcOffset?: number;
 }
 
 export interface SearchItem {
@@ -368,7 +370,20 @@ export function MusicPlayerBar({ contextLabel }: Props) {
     setLrcInput("");
   };
 
-  const activeIdx = activeLrcIndex(lrc.lines, cur);
+  /** 手动歌词偏移（秒）：音源与歌词不同步时 ±0.5s 微调 */
+  const nudgeLrc = (delta: number) => {
+    if (!track) return;
+    setList((prev) =>
+      prev.map((t, i) =>
+        i === index
+          ? { ...t, lrcOffset: Math.max(-10, Math.min(10, (t.lrcOffset ?? 0) + delta)) }
+          : t
+      )
+    );
+  };
+
+  // 歌词偏移应用：当前播放时间加上偏移后再找行
+  const activeIdx = activeLrcIndex(lrc.lines, cur + (track?.lrcOffset ?? 0));
 
   // 歌词居中滚动：直接跳到当前行居中（不用 smooth——歌词切换快时
   // 平滑动画追不上，造成"变色跟上、滚动跟不上"；逐行对齐即时定位）
@@ -552,23 +567,57 @@ export function MusicPlayerBar({ contextLabel }: Props) {
                   </button>
                 </div>
               ) : (
-                <div className={styles.lrcViewport}>
-                  <div className={styles.lrcScroll} ref={lrcScrollRef}>
-                    {lrc.lines.map((ln, i) => (
-                      <p
-                        key={`${ln.time}-${i}`}
-                        className={
-                          i === activeIdx ? styles.lrcOn : styles.lrcLine
-                        }
-                      >
-                        {ln.text || "♪"}
-                      </p>
-                    ))}
+                <>
+                  <div className={styles.lrcViewport}>
+                    <div className={styles.lrcScroll} ref={lrcScrollRef}>
+                      {lrc.lines.map((ln, i) => (
+                        <p
+                          key={`${ln.time}-${i}`}
+                          className={
+                            i === activeIdx ? styles.lrcOn : styles.lrcLine
+                          }
+                        >
+                          {ln.text || "♪"}
+                        </p>
+                      ))}
+                    </div>
+                    {/* 上下渐变遮罩：聚焦当前行 */}
+                    <div className={styles.lrcShadeTop} aria-hidden />
+                    <div className={styles.lrcShadeBottom} aria-hidden />
                   </div>
-                  {/* 上下渐变遮罩：聚焦当前行 */}
-                  <div className={styles.lrcShadeTop} aria-hidden />
-                  <div className={styles.lrcShadeBottom} aria-hidden />
-                </div>
+                  {/* 歌词偏移微调：音源与歌词不同步时 ±0.5s 调整 */}
+                  <div className={styles.lrcOffsetRow}>
+                    <button
+                      type="button"
+                      className={styles.keyBtn}
+                      onClick={() => nudgeLrc(-0.5)}
+                      title="歌词提前 0.5s"
+                    >
+                      −0.5
+                    </button>
+                    <span className={styles.lrcOffsetVal}>
+                      {track?.lrcOffset ? `偏移 ${track.lrcOffset > 0 ? "+" : ""}${track.lrcOffset}s` : "歌词同步"}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.keyBtn}
+                      onClick={() => nudgeLrc(0.5)}
+                      title="歌词延后 0.5s"
+                    >
+                      +0.5
+                    </button>
+                    {track?.lrcOffset ? (
+                      <button
+                        type="button"
+                        className={styles.delBtn}
+                        onClick={() => nudgeLrc(-track.lrcOffset!)}
+                        title="重置偏移"
+                      >
+                        重置
+                      </button>
+                    ) : null}
+                  </div>
+                </>
               )}
             </div>
           )}

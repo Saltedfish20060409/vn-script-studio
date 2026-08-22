@@ -1,7 +1,8 @@
 /**
- * LRC 歌词解析 — 极简实现。
- * 支持 `[mm:ss.xx]` / `[mm:ss]` 时间戳行、元标签（[ti:] [ar:] [al:]）、
+ * LRC 歌词解析。
+ * 支持 `[mm:ss.xx]` / `[mm:ss]` 时间戳行、元标签（[ti:] [ar:] [al:] [offset:]）、
  * 以及多时间戳一行（`[00:12.00][00:45.00]歌词`）。
+ * `[offset:±ms]` 会把整份歌词的时间轴平移（网易云歌词常见）。
  */
 
 export interface LrcLine {
@@ -14,6 +15,8 @@ export interface LrcMeta {
   title?: string;
   artist?: string;
   album?: string;
+  /** 原始偏移（毫秒，负=歌词提前）；已并入 lines.time */
+  offsetMs?: number;
 }
 
 export interface LrcResult {
@@ -46,6 +49,10 @@ export function parseLrc(raw: string): LrcResult {
       if (key === "ti") meta.title = val;
       else if (key === "ar") meta.artist = val;
       else if (key === "al") meta.album = val;
+      else if (key === "offset") {
+        const ms = parseInt(val, 10);
+        if (Number.isFinite(ms)) meta.offsetMs = ms;
+      }
       continue;
     }
     const stamps: number[] = [];
@@ -62,6 +69,11 @@ export function parseLrc(raw: string): LrcResult {
     for (const t of stamps) {
       lines.push({ time: t, text });
     }
+  }
+  // 应用 [offset:]：负值=歌词整体提前（时间减），正值=延后
+  const shift = (meta.offsetMs ?? 0) / 1000;
+  if (shift !== 0) {
+    for (const ln of lines) ln.time = Math.max(0, ln.time + shift);
   }
   lines.sort((a, b) => a.time - b.time);
   return { lines, meta };

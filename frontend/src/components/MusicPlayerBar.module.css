@@ -492,3 +492,17 @@
     color-mix(in srgb, var(--panel-bg) 55%, transparent)
   );
 }
+
+.lrcOffsetRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.lrcOffsetVal {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  min-width: 6.5rem;
+  text-align: center;
+}

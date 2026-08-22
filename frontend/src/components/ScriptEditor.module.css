@@ -100,11 +100,13 @@
 }
 
 .input::selection {
-  background: color-mix(in srgb, #7c3aed 45%, #ec4899 10%);
-  color: var(--ink);
+  /* textarea 文字透明(镜像显示字形)，这里只画选中背景；
+     背景画在顶层 textarea 上即可见，文字保持透明避免与镜像双显 */
+  background: color-mix(in srgb, #7c3aed 55%, #ec4899 12%) !important;
+  color: transparent;
 }
 
 .input::-moz-selection {
-  background: color-mix(in srgb, #7c3aed 45%, #ec4899 10%);
-  color: var(--ink);
+  background: color-mix(in srgb, #7c3aed 55%, #ec4899 12%) !important;
+  color: transparent;
 }

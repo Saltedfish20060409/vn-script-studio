@@ -36,6 +36,17 @@ describe("parseLrc", () => {
     const r = parseLrc("");
     expect(r.lines).toEqual([]);
   });
+
+  it("applies [offset:] meta shift to all lines", () => {
+    // 负偏移 = 歌词提前 500ms
+    const r = parseLrc("[offset:-500]\n[00:02.00]提前的歌词\n[00:10.00]后一句");
+    expect(r.meta.offsetMs).toBe(-500);
+    expect(r.lines[0].time).toBeCloseTo(1.5, 3);
+    expect(r.lines[1].time).toBeCloseTo(9.5, 3);
+    // 正偏移 = 延后
+    const r2 = parseLrc("[offset:1000]\n[00:02.00]延后的歌词");
+    expect(r2.lines[0].time).toBeCloseTo(3, 3);
+  });
 });
 
 describe("activeLrcIndex", () => {
