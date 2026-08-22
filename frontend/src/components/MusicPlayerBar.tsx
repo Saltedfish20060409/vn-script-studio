@@ -351,10 +351,12 @@ export function MusicPlayerBar({ contextLabel }: Props) {
             }
             const tips: Record<number, string> = {
               800: "请打开手机网易云 App 扫码…",
-              801: "已扫码，请在手机上确认登录…",
-              802: "确认中…",
+              // 反代容器语义：801=等待扫码，802=已扫码待确认
+              801: "等待扫码…（请用手机网易云 App 扫描）",
+              802: "已扫码，请在手机上确认登录…",
             };
-            setQrMsg(tips[res.code] ?? (res.message || "等待扫码…"));
+            // 优先用后端中文消息（避免语义错位）
+            setQrMsg(res.message ? `${res.message}…` : (tips[res.code] ?? "等待扫码…"));
           } catch {
             setQrMsg("轮询失败，点「刷新」重试");
           }
@@ -658,8 +660,12 @@ export function MusicPlayerBar({ contextLabel }: Props) {
                       disabled={qrLoading}
                       onClick={() => void startQrLogin()}
                     >
-                      {qrLoading ? "生成二维码中…" : "📱 扫码登录（推荐）"}
+                      {qrLoading ? "生成二维码中…" : "📱 扫码登录（试试）"}
                     </button>
+                    <p className={styles.cookieHint}>
+                      扫码最省事，但服务器在云机房，网易云可能拦截登录（提示
+                      "设备环境异常"）；如果拦截，请改用下方粘贴 Cookie（100% 可用）。
+                    </p>
                     {qrMsg && <p className={styles.qrMsg}>{qrMsg}</p>}
                   </>
                 )}
@@ -674,6 +680,12 @@ export function MusicPlayerBar({ contextLabel }: Props) {
                     <p className={styles.qrMsg}>
                       {qrMsg || "等待扫码…"}
                     </p>
+                    {qrMsg.includes("设备环境异常") && (
+                      <p className={styles.cookieHint}>
+                        被网易云拦截了——这是云机房 IP 的限制，扫码无法绕过。
+                        请直接滚动到下方粘贴 Cookie 登录。
+                      </p>
+                    )}
                     <div className={styles.qrActions}>
                       <button
                         type="button"
@@ -691,20 +703,21 @@ export function MusicPlayerBar({ contextLabel }: Props) {
                           if (qrTimer.current) window.clearInterval(qrTimer.current);
                         }}
                       >
-                        取消
+                        取消，改用粘贴
                       </button>
                     </div>
                   </div>
                 )}
 
                 <p className={styles.cookieHint}>
-                  没有网易云 App？也可以粘贴 Cookie——仅存于本浏览器、随请求发送给
-                  本站、不落服务器库，可随时清空。
+                  💡 粘贴 Cookie（可靠）：登录 music.163.com 后按 F12 → Network →
+                  任意请求的请求头里复制 Cookie 整段（含 MUSIC_U=…）粘贴到下面。
+                  仅存本浏览器、随请求发送给本站、不落服务器库。
                 </p>
                 <input
                   value={cookieText}
                   onChange={(e) => saveCookie(e.target.value)}
-                  placeholder="登录 music.163.com 后，从开发者工具复制 Cookie 整段（含 MUSIC_U=…）"
+                  placeholder="粘贴 Cookie 整段（含 MUSIC_U=…）"
                   className={styles.cookieInput}
                 />
               </details>
