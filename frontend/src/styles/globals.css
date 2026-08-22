@@ -32,7 +32,13 @@
   /* ---- 明快赛璐璐动漫层 ---- */
   --anime-grad: linear-gradient(135deg, #2f6bff 0%, #7c3aed 58%, #ec4899 130%);
   --anime-grad-soft: linear-gradient(135deg, #4f7dff 0%, #9d5cff 60%, #ff6fae 140%);
-  --anime-highlight: linear-gradient(180deg, rgba(255, 255, 255, 0.62) 0%, rgba(255, 255, 255, 0.1) 52%, transparent 60%);
+  /* 高光只打左上角一小块（动漫高光点），不铺满顶部 */
+  --anime-highlight: radial-gradient(
+    circle at 14% 0%,
+    rgba(255, 255, 255, 0.34) 0%,
+    rgba(255, 255, 255, 0.08) 42%,
+    transparent 62%
+  );
   --anime-stroke: 2px solid var(--line);
   --anime-bubble: #fdf3ff;
   --anime-ink: #2b1a4d;

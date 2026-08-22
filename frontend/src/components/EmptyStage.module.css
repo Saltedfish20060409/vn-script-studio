@@ -15,7 +15,7 @@
   animation: var(--slash-in);
 }
 
-/* 动漫贴纸感：左上高光 + 彩色渐变晕 */
+/* 动漫贴纸感：左上高光点 + 彩色渐变晕 */
 .stage::before {
   content: "";
   position: absolute;
@@ -26,10 +26,11 @@
       color-mix(in srgb, #7c3aed 14%, transparent),
       transparent 55%
     ),
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.5) 0%,
-      rgba(255, 255, 255, 0) 55%
+    radial-gradient(
+      circle at 12% 0%,
+      rgba(255, 255, 255, 0.32) 0%,
+      rgba(255, 255, 255, 0.06) 40%,
+      transparent 60%
     );
   pointer-events: none;
 }
