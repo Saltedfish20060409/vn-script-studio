@@ -139,10 +139,17 @@ async def register(
     try:
         await send_verify_email(settings, user, token)
         await db.commit()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         await db.rollback()
+        msg = str(exc)
+        # Resend 会拒绝 example.com 等保留域名（测试保护）——用户常误用假邮箱
+        if "Invalid `to` field" in msg or "example.com" in msg.lower():
+            raise HTTPException(
+                status_code=422,
+                detail="该邮箱地址无法接收验证邮件（示例域名不受支持），请使用真实邮箱",
+            ) from exc
         raise HTTPException(
-            status_code=502, detail=f"验证邮件发送失败：{exc}"
+            status_code=502, detail="验证邮件发送失败，请稍后重试或联系管理员"
         ) from exc
 
     return RegisterOut(

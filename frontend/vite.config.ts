@@ -2,6 +2,13 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+// 每次构建自动生成 cacheId（yyyyMMddHHmm）：bump 不再手动，
+// 浏览器 SW 每次部署后都会拿到新缓存前缀并清理旧资源。
+const CACHE_ID = `vnss-${new Date()
+  .toISOString()
+  .replace(/[-:TZ]/g, "")
+  .slice(0, 12)}`;
+
 export default defineConfig({
   plugins: [
     react(),
@@ -22,8 +29,8 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Bump to drop leftover hashed chunks from previous deploys.
-        cacheId: "vnss-20260822c",
+        // 自动生成：每次构建都是新前缀，旧 hashed chunks 自动清理
+        cacheId: CACHE_ID,
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,
