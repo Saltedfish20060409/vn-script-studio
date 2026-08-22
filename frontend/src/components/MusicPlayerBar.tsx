@@ -28,12 +28,25 @@ type Props = {
 };
 
 const STORE_KEY = "vnss-music-v1";
+const MODE_KEY = "vnss-music-mode-v1";
 const COOKIE_KEY = "vnss-music-netease-cookie";
-type Platform = "netease" | "qq" | "kugou";
+type Platform = "netease" | "qq" | "kugou" | "bili";
+type PlayMode = "order" | "shuffle" | "loop-one";
 const PLATFORM_LABEL: Record<Platform, string> = {
   netease: "网易云",
   qq: "QQ音乐",
   kugou: "酷狗",
+  bili: "B站",
+};
+const MODE_ICON: Record<PlayMode, string> = {
+  order: "🔁",
+  shuffle: "🔀",
+  "loop-one": "🔂",
+};
+const MODE_LABEL: Record<PlayMode, string> = {
+  order: "顺序播放",
+  shuffle: "随机播放",
+  "loop-one": "单曲循环",
 };
 
 function loadCookie(): string {
@@ -63,6 +76,16 @@ function loadState(): StoredState {
   }
 }
 
+function loadMode(): PlayMode {
+  try {
+    const m = localStorage.getItem(MODE_KEY);
+    if (m === "shuffle" || m === "loop-one") return m;
+  } catch {
+    /* ignore */
+  }
+  return "order";
+}
+
 function fmt(t: number): string {
   if (!Number.isFinite(t) || t < 0) return "0:00";
   const m = Math.floor(t / 60);
@@ -75,7 +98,9 @@ function cookieHeaders(cookie: string): Record<string, string> {
   return cookie.trim() ? { "X-Netease-Cookie": cookie.trim() } : {};
 }
 
-/** 写作页底部迷你播放条：播放/上下首/进度/音量 + 歌词面板 + 播放列表。 */
+type Panel = "list" | "lrc" | "search" | null;
+
+/** 全局底部播放条：播放模式 / 列表弹出 / 歌词居中滚动 / 搜索添加。 */
 export function MusicPlayerBar({ contextLabel }: Props) {
   const initial = useRef(loadState());
   const [list, setList] = useState<MusicTrack[]>(initial.current.list);
@@ -84,10 +109,8 @@ export function MusicPlayerBar({ contextLabel }: Props) {
   const [cur, setCur] = useState(0);
   const [dur, setDur] = useState(0);
   const [volume, setVolume] = useState(0.7);
-  const [lrcOpen, setLrcOpen] = useState(false);
-  const [listOpen, setListOpen] = useState(false);
-  const [addText, setAddText] = useState("");
-  const [resolving, setResolving] = useState(false);
+  const [mode, setMode] = useState<PlayMode>(loadMode);
+  const [panel, setPanel] = useState<Panel>(null);
   const [lrcInput, setLrcInput] = useState("");
   const [searchText, setSearchText] = useState("");
   const [searchPlatform, setSearchPlatform] = useState<Platform>("netease");
@@ -98,6 +121,7 @@ export function MusicPlayerBar({ contextLabel }: Props) {
   const [cookieText, setCookieText] = useState(loadCookie);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const lrcScrollRef = useRef<HTMLDivElement | null>(null);
 
   const track = list[index] ?? null;
   const lrc = useMemo(
@@ -113,6 +137,14 @@ export function MusicPlayerBar({ contextLabel }: Props) {
       /* ignore quota */
     }
   }, [list, index]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(MODE_KEY, mode);
+    } catch {
+      /* ignore */
+    }
+  }, [mode]);
 
   // 换歌：重设 audio
   useEffect(() => {
@@ -151,6 +183,29 @@ export function MusicPlayerBar({ contextLabel }: Props) {
     },
     [list.length]
   );
+
+  /** 按播放模式推进：order 下一首 / shuffle 随机 / loop-one 重播当前 */
+  const advance = useCallback(() => {
+    if (list.length === 0) return;
+    if (mode === "loop-one") {
+      const a = audioRef.current;
+      if (a) {
+        a.currentTime = 0;
+        void a.play().catch(() => setPlaying(false));
+      }
+      return;
+    }
+    if (mode === "shuffle" && list.length > 1) {
+      const next = index;
+      let pick = Math.floor(Math.random() * list.length);
+      while (pick === next) pick = Math.floor(Math.random() * list.length);
+      setIndex(pick);
+      setPlaying(true);
+      return;
+    }
+    setIndex((prev) => (prev + 1) % list.length);
+    setPlaying(true);
+  }, [list.length, mode, index]);
 
   const next = useCallback(() => {
     if (list.length === 0) return;
@@ -194,23 +249,14 @@ export function MusicPlayerBar({ contextLabel }: Props) {
     []
   );
 
-  const resolveAndAdd = async () => {
-    const text = addText.trim();
-    if (!text || resolving) return;
-    setResolving(true);
-    try {
-      const data = await apiFetch<MusicTrack>("/music/resolve", {
-        method: "POST",
-        body: JSON.stringify({ url: text }),
-        headers: cookieHeaders(cookieText),
-      });
-      addTrack(data);
-      setAddText("");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "解析失败";
-      setAddText(msg.startsWith("解析失败") ? msg : `解析失败：${msg}`);
-    } finally {
-      setResolving(false);
+  const cycleMode = () => {
+    setMode((m) => (m === "order" ? "shuffle" : m === "shuffle" ? "loop-one" : "order"));
+  };
+
+  const openPanel = (p: Panel) => {
+    setPanel((cur) => (cur === p ? null : p));
+    if (p === "search") {
+      requestAnimationFrame(() => searchInputRef.current?.focus());
     }
   };
 
@@ -278,6 +324,16 @@ export function MusicPlayerBar({ contextLabel }: Props) {
 
   const activeIdx = activeLrcIndex(lrc.lines, cur);
 
+  // 歌词居中滚动：当前行滚到可视区中央（仿主流音乐软件）
+  useEffect(() => {
+    const el = lrcScrollRef.current;
+    if (!el || activeIdx < 0) return;
+    const line = el.children[activeIdx] as HTMLElement | undefined;
+    if (!line) return;
+    const target = line.offsetTop - el.clientHeight / 2 + line.clientHeight / 2;
+    el.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+  }, [activeIdx, panel]);
+
   return (
     <div className={styles.bar} data-testid="music-bar">
       <audio
@@ -286,11 +342,19 @@ export function MusicPlayerBar({ contextLabel }: Props) {
         onPause={() => setPlaying(false)}
         onTimeUpdate={(e) => setCur(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDur(e.currentTarget.duration || 0)}
-        onEnded={next}
+        onEnded={advance}
         onError={() => setPlaying(false)}
       />
       {/* 迷你条 */}
       <div className={styles.mini}>
+        <button
+          type="button"
+          className={`${styles.keyBtn} ${styles.modeBtn}`}
+          onClick={cycleMode}
+          title={`播放模式：${MODE_LABEL[mode]}`}
+        >
+          {MODE_ICON[mode]}
+        </button>
         <button
           type="button"
           className={styles.keyBtn}
@@ -324,7 +388,7 @@ export function MusicPlayerBar({ contextLabel }: Props) {
             {track?.artist ??
               (contextLabel
                 ? `写作中 · ${contextLabel}`
-                : "点「＋ 添加」搜索网易云 / QQ / 酷狗歌曲")}
+                : "点「＋ 添加」搜索网易云 / QQ / 酷狗 / B站歌曲")}
           </span>
         </div>
         <input
@@ -361,16 +425,16 @@ export function MusicPlayerBar({ contextLabel }: Props) {
         />
         <button
           type="button"
-          className={`${styles.keyBtn} ${lrcOpen ? styles.on : ""}`}
-          onClick={() => setLrcOpen((v) => !v)}
+          className={`${styles.keyBtn} ${panel === "lrc" ? styles.on : ""}`}
+          onClick={() => openPanel("lrc")}
           title="歌词"
         >
           📃
         </button>
         <button
           type="button"
-          className={`${styles.keyBtn} ${listOpen ? styles.on : ""}`}
-          onClick={() => setListOpen((v) => !v)}
+          className={`${styles.keyBtn} ${panel === "list" ? styles.on : ""}`}
+          onClick={() => openPanel("list")}
           title="播放列表"
         >
           🎵
@@ -378,170 +442,165 @@ export function MusicPlayerBar({ contextLabel }: Props) {
         <button
           type="button"
           className={styles.addSong}
-          onClick={() => {
-            setListOpen(true);
-            requestAnimationFrame(() => searchInputRef.current?.focus());
-          }}
+          onClick={() => openPanel("search")}
           title="搜索并添加歌曲"
         >
           ＋ 添加
         </button>
       </div>
 
-      {/* 展开面板：搜索 + 添加 + 列表 + 歌词 */}
-      {(listOpen || lrcOpen) && (
-        <div className={styles.panel}>
-          {/* 搜索：三平台公开接口，无需登录 */}
-          <div className={styles.searchBlock}>
-            <div className={styles.searchRow}>
-              <input
-                ref={searchInputRef}
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void runSearch();
-                }}
-                placeholder="搜索歌名 / 歌手，回车搜索"
-                aria-label="搜索歌曲"
-              />
-              <button
-                type="button"
-                className={styles.addBtn}
-                disabled={searching || !searchText.trim()}
-                onClick={() => void runSearch()}
-              >
-                {searching ? "搜索中…" : "搜索"}
-              </button>
-            </div>
-            <div className={styles.platRow}>
-              {(Object.keys(PLATFORM_LABEL) as Platform[]).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  className={p === searchPlatform ? styles.platOn : styles.plat}
-                  onClick={() => {
-                    setSearchPlatform(p);
-                    setSearchHits([]);
-                    setSearchMsg("");
-                  }}
+      {/* 弹出面板：向上展开 —— 列表 / 歌词 / 搜索 三选一 */}
+      {panel && (
+        <div className={styles.panel} data-panel={panel}>
+          {/* 播放列表：向上长方形列出歌曲 */}
+          {panel === "list" && (
+            <ul className={styles.list}>
+              {list.length === 0 && <li className={styles.empty}>列表为空</li>}
+              {list.map((t, i) => (
+                <li
+                  key={t.id}
+                  className={i === index ? styles.listItemOn : styles.listItem}
+                  onClick={() => playAt(i)}
                 >
-                  {PLATFORM_LABEL[p]}
-                </button>
+                  <span className={styles.listNum}>
+                    {i === index && playing ? "▶" : i + 1}
+                  </span>
+                  <span className={styles.listTitle}>{t.title}</span>
+                  <span className={styles.listArtist}>{t.artist}</span>
+                  <button
+                    type="button"
+                    className={styles.delBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeAt(i);
+                    }}
+                    title="移除"
+                  >
+                    ✕
+                  </button>
+                </li>
               ))}
-            </div>
-            {searchHits.length > 0 && (
-              <ul className={styles.list}>
-                {searchHits.map((hit) => (
-                  <li
-                    key={hit.id}
-                    className={styles.listItem}
-                    onClick={() => void addSearchHit(hit)}
-                    title={`${hit.album ? `${hit.album} · ` : ""}点击添加到播放列表`}
+            </ul>
+          )}
+
+          {/* 歌词：居中滚动 */}
+          {panel === "lrc" && (
+            <div className={styles.lrcPane}>
+              {!track?.lrc ? (
+                <div className={styles.lrcEmpty}>
+                  <p>暂无歌词。粘贴 LRC 文本导入：</p>
+                  <textarea
+                    value={lrcInput}
+                    onChange={(e) => setLrcInput(e.target.value)}
+                    rows={4}
+                    placeholder={'[00:12.00]第一句歌词\n[00:20.00]第二句歌词'}
+                  />
+                  <button
+                    type="button"
+                    className={styles.addBtn}
+                    disabled={!lrcInput.trim()}
+                    onClick={applyLrc}
                   >
-                    <span className={styles.listNum}>
-                      {addingId === hit.id ? "…" : "+"}
-                    </span>
-                    <span className={styles.listTitle}>{hit.title}</span>
-                    <span className={styles.listArtist}>{hit.artist}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {searchMsg && <p className={styles.searchMsg}>{searchMsg}</p>}
-            <details className={styles.cookieBox}>
-              <summary>网易云 Cookie（可选 · 提升 VIP 曲目播放质量）</summary>
-              <input
-                value={cookieText}
-                onChange={(e) => saveCookie(e.target.value)}
-                placeholder="粘贴 Cookie 中的 MUSIC_U=… 整段"
-                className={styles.cookieInput}
-              />
-              <p className={styles.cookieHint}>
-                仅存于本浏览器，搜索/解析时随请求发送给本站、不落服务器库；不放心可随时清空。
-              </p>
-            </details>
-          </div>
-          <div className={styles.addRow}>
-            <input
-              value={addText}
-              onChange={(e) => setAddText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void resolveAndAdd();
-              }}
-              placeholder="或粘贴网易云 / QQ音乐 / 酷狗分享链接，回车添加"
-            />
-            <button
-              type="button"
-              className={styles.addBtn}
-              disabled={resolving || !addText.trim()}
-              onClick={() => void resolveAndAdd()}
-            >
-              {resolving ? "解析中…" : "添加"}
-            </button>
-          </div>
-          <div className={styles.columns}>
-            {listOpen && (
-              <ul className={styles.list}>
-                {list.length === 0 && <li className={styles.empty}>列表为空</li>}
-                {list.map((t, i) => (
-                  <li
-                    key={t.id}
-                    className={i === index ? styles.listItemOn : styles.listItem}
-                    onClick={() => playAt(i)}
-                  >
-                    <span className={styles.listNum}>{i + 1}</span>
-                    <span className={styles.listTitle}>{t.title}</span>
-                    <span className={styles.listArtist}>{t.artist}</span>
-                    <button
-                      type="button"
-                      className={styles.delBtn}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeAt(i);
-                      }}
-                      title="移除"
-                    >
-                      ✕
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {lrcOpen && (
-              <div className={styles.lrcPane}>
-                {!track?.lrc ? (
-                  <div className={styles.lrcEmpty}>
-                    <p>暂无歌词。粘贴 LRC 文本导入：</p>
-                    <textarea
-                      value={lrcInput}
-                      onChange={(e) => setLrcInput(e.target.value)}
-                      rows={4}
-                      placeholder={'[00:12.00]第一句歌词\n[00:20.00]第二句歌词'}
-                    />
-                    <button
-                      type="button"
-                      className={styles.addBtn}
-                      disabled={!lrcInput.trim()}
-                      onClick={applyLrc}
-                    >
-                      导入歌词
-                    </button>
-                  </div>
-                ) : (
-                  <div className={styles.lrcScroll}>
+                    导入歌词
+                  </button>
+                </div>
+              ) : (
+                <div className={styles.lrcViewport}>
+                  <div className={styles.lrcScroll} ref={lrcScrollRef}>
                     {lrc.lines.map((ln, i) => (
                       <p
                         key={`${ln.time}-${i}`}
-                        className={i === activeIdx ? styles.lrcOn : styles.lrcLine}
+                        className={
+                          i === activeIdx ? styles.lrcOn : styles.lrcLine
+                        }
                       >
                         {ln.text || "♪"}
                       </p>
                     ))}
                   </div>
-                )}
+                  {/* 上下渐变遮罩：聚焦当前行 */}
+                  <div className={styles.lrcShadeTop} aria-hidden />
+                  <div className={styles.lrcShadeBottom} aria-hidden />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 搜索添加：平台切换 + 结果 + Cookie */}
+          {panel === "search" && (
+            <div className={styles.searchBlock}>
+              <div className={styles.searchRow}>
+                <input
+                  ref={searchInputRef}
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void runSearch();
+                  }}
+                  placeholder="搜索歌名 / 歌手，回车搜索"
+                  aria-label="搜索歌曲"
+                />
+                <button
+                  type="button"
+                  className={styles.addBtn}
+                  disabled={searching || !searchText.trim()}
+                  onClick={() => void runSearch()}
+                >
+                  {searching ? "搜索中…" : "搜索"}
+                </button>
               </div>
-            )}
-          </div>
+              <div className={styles.platRow}>
+                {(Object.keys(PLATFORM_LABEL) as Platform[]).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    className={p === searchPlatform ? styles.platOn : styles.plat}
+                    onClick={() => {
+                      setSearchPlatform(p);
+                      setSearchHits([]);
+                      setSearchMsg("");
+                    }}
+                  >
+                    {PLATFORM_LABEL[p]}
+                  </button>
+                ))}
+              </div>
+              {searchHits.length > 0 && (
+                <ul className={styles.list}>
+                  {searchHits.map((hit) => (
+                    <li
+                      key={hit.id}
+                      className={styles.listItem}
+                      onClick={() => void addSearchHit(hit)}
+                      title={`${hit.album ? `${hit.album} · ` : ""}点击添加到播放列表`}
+                    >
+                      <span className={styles.listNum}>
+                        {addingId === hit.id ? "…" : "+"}
+                      </span>
+                      <span className={styles.listTitle}>{hit.title}</span>
+                      <span className={styles.listArtist}>{hit.artist}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {searchMsg && <p className={styles.searchMsg}>{searchMsg}</p>}
+              <details className={styles.cookieBox}>
+                <summary>
+                  网易云 Cookie（可选 · 服务器 IP 上播放必需）
+                </summary>
+                <input
+                  value={cookieText}
+                  onChange={(e) => saveCookie(e.target.value)}
+                  placeholder="粘贴 Cookie 中的 MUSIC_U=… 整段"
+                  className={styles.cookieInput}
+                />
+                <p className={styles.cookieHint}>
+                  仅存于本浏览器，搜索/解析时随请求发送给本站、不落服务器库；
+                  网易云在服务器 IP 上不填 Cookie 无法播放，填了才能听。
+                </p>
+              </details>
+            </div>
+          )}
         </div>
       )}
     </div>

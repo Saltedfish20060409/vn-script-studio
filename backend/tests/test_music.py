@@ -574,3 +574,111 @@ def test_search_empty_query_raises():
 
     with pytest.raises(ResolveError):
         asyncio.run(run())
+
+
+# ------------------------------------------------------------- bilibili -----
+
+def test_search_bili():
+    """WBI 签名搜索 → 清洗 <em> 高亮标签 → 返回 bvid 列表。"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/x/web-interface/nav"):
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "wbi_img": {
+                            "img_url": "https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png",
+                            "sub_url": "https://i0.hdslb.com/bfs/wbi/4932caff0ff746eab6f01bf08b1ac45e.png",
+                        }
+                    }
+                },
+            )
+        if path.endswith("/wbi/search/type"):
+            assert "wts" in request.url.params
+            assert "wtsign" in request.url.params
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "result": [
+                            {
+                                "bvid": "BV1xx411c7mD",
+                                "title": "《小孩》<em class=\"keyword\">歌曲</em> 翻唱",
+                                "author": "某UP主",
+                                "pic": "https://i0.hdslb.com/bfs/pic.jpg",
+                            }
+                        ]
+                    },
+                },
+            )
+        return httpx.Response(404)
+
+    import asyncio
+
+    async def run():
+        return await svc.search_tracks("《小孩》 歌曲", "bili", transport=_transport(handler))
+
+    hits = asyncio.run(run())
+    assert len(hits) == 1
+    assert hits[0].id == "BV1xx411c7mD"
+    assert "歌曲" in hits[0].title
+    assert "<em" not in hits[0].title
+    assert hits[0].artist == "某UP主"
+
+
+def test_resolve_bili():
+    """bvid → view(cid) → playurl(DASH 音频轨最高码率)。"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/x/web-interface/view"):
+            return httpx.Response(
+                200,
+                json={"code": 0, "data": {"cid": 62131, "title": "示例视频", "pic": "https://i0.hdslb.com/p.jpg"}},
+            )
+        if path.endswith("/x/player/playurl"):
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "dash": {
+                            "audio": [
+                                {"bandwidth": 100000, "baseUrl": "https://upos-hz.akamaized.net/low.m4s"},
+                                {"bandwidth": 300000, "baseUrl": "https://upos-hz.akamaized.net/high.m4s"},
+                            ]
+                        }
+                    },
+                },
+            )
+        return httpx.Response(404)
+
+    import asyncio
+
+    async def run():
+        return await svc.resolve_music_track("", platform="bili", song_id="BV1xx411c7mD",
+                                             transport=_transport(handler))
+
+    track = asyncio.run(run())
+    assert track.id == "bili-BV1xx411c7mD"
+    assert track.title == "示例视频"
+    assert track.audio_url == "https://upos-hz.akamaized.net/high.m4s"  # 最高码率
+
+
+def test_resolve_bili_missing_cid_raises():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/x/web-interface/view"):
+            return httpx.Response(200, json={"code": 0, "data": {}})
+        return httpx.Response(404)
+
+    import asyncio
+
+    async def run():
+        return await svc.resolve_music_track("", platform="bili", song_id="BV1xx411c7mD",
+                                             transport=_transport(handler))
+
+    with pytest.raises(ResolveError):
+        asyncio.run(run())

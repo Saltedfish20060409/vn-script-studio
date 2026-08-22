@@ -78,6 +78,10 @@
   border-color: var(--accent);
 }
 
+.modeBtn {
+  font-size: 0.9rem;
+}
+
 .info {
   flex: 1;
   min-width: 0;
@@ -129,6 +133,20 @@
   gap: 0.6rem;
   max-height: min(46vh, 420px);
   overflow-y: auto;
+  /* 向上弹出 */
+  animation: panelUp 260ms var(--ease-out) both;
+  transform-origin: bottom;
+}
+
+@keyframes panelUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .searchBlock {
@@ -227,41 +245,6 @@
   line-height: 1.4;
 }
 
-.addRow {
-  display: flex;
-  gap: 0.45rem;
-}
-
-.addRow input {
-  flex: 1;
-  min-width: 0;
-  padding: 0.45rem 0.6rem;
-  border: 2px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--input-bg);
-  color: var(--ink);
-  font: inherit;
-  font-size: 0.85rem;
-}
-
-.addBtn {
-  flex-shrink: 0;
-  padding: 0.45rem 0.9rem;
-  border: 2px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--anime-grad, var(--accent));
-  color: #fff;
-  font: inherit;
-  font-size: 0.85rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.addBtn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .addSong {
   flex-shrink: 0;
   padding: 0.35rem 0.75rem;
@@ -283,16 +266,22 @@
   transform: translateY(-1px);
 }
 
-.columns {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.8rem;
+.addBtn {
+  flex-shrink: 0;
+  padding: 0.45rem 0.9rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--anime-grad, var(--accent));
+  color: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
 }
 
-@media (max-width: 720px) {
-  .columns {
-    grid-template-columns: 1fr;
-  }
+.addBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .list {
@@ -399,26 +388,71 @@
   resize: vertical;
 }
 
+/* 歌词视口：固定高度、居中滚动、上下渐变遮罩（仿主流音乐软件） */
+.lrcViewport {
+  position: relative;
+  height: min(34vh, 300px);
+  overflow: hidden;
+}
+
 .lrcScroll {
-  max-height: 220px;
+  height: 100%;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.2rem 0.4rem;
+  justify-content: flex-start;
+  padding: 42% 0.4rem 42%;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.lrcScroll::-webkit-scrollbar {
+  display: none;
 }
 
 .lrcLine,
 .lrcOn {
   margin: 0;
-  font-size: 0.85rem;
-  line-height: 1.5;
+  text-align: center;
+  font-size: 0.9rem;
+  line-height: 2.1;
   color: var(--ink-soft);
-  transition: color 180ms var(--ease-out), transform 180ms var(--ease-out);
+  transition:
+    color 200ms var(--ease-out),
+    font-size 200ms var(--ease-out),
+    opacity 200ms var(--ease-out);
 }
 
 .lrcOn {
   color: var(--accent);
-  font-weight: 700;
-  transform: translateX(4px);
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+
+/* 上下渐变遮罩：上下歌词淡出，聚焦当前行 */
+.lrcShadeTop,
+.lrcShadeBottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 42%;
+  pointer-events: none;
+}
+
+.lrcShadeTop {
+  top: 0;
+  background: linear-gradient(
+    to bottom,
+    var(--panel-bg),
+    color-mix(in srgb, var(--panel-bg) 55%, transparent)
+  );
+}
+
+.lrcShadeBottom {
+  bottom: 0;
+  background: linear-gradient(
+    to top,
+    var(--panel-bg),
+    color-mix(in srgb, var(--panel-bg) 55%, transparent)
+  );
 }

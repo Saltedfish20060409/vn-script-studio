@@ -28,12 +28,12 @@ router = APIRouter(prefix="/music", tags=["music"])
 
 _STREAM_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0)
 
-_PLATFORMS = {"netease", "qq", "kugou"}
+_PLATFORMS = {"netease", "qq", "kugou", "bili"}
 
 
 class SearchIn(BaseModel):
     q: str = Field(min_length=1, max_length=128)
-    platform: str = Field(pattern="^(netease|qq|kugou)$")
+    platform: str = Field(pattern="^(netease|qq|kugou|bili)$")
 
 
 class SearchItemOut(BaseModel):
@@ -46,7 +46,7 @@ class SearchItemOut(BaseModel):
 
 class ResolveIn(BaseModel):
     url: str = Field(default="", max_length=2048)
-    platform: str = Field(default="", pattern="^(netease|qq|kugou|)$")
+    platform: str = Field(default="", pattern="^(netease|qq|kugou|bili|)$")
     songId: str = Field(default="", max_length=128)
     # 搜索结果点添加时回传的展示信息：数据中心 IP 上元数据接口可能不可用
     title: str = Field(default="", max_length=200)

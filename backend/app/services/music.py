@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import quote
@@ -24,6 +25,14 @@ _UA = (
 )
 _TIMEOUT = httpx.Timeout(connect=10.0, read=20.0, write=10.0, pool=10.0)
 
+# Public API origins the resolvers talk to (kept together for auditability).
+_NETEASE_API = "https://music.163.com"
+_QQ_API = "https://u.y.qq.com/cgi-bin/musicu.fcg"
+_BILI_API = "https://api.bilibili.com"
+
+# B 站音频 CDN 域名（DASH 音频流）；需加入 stream 白名单
+_BILI_CDN_SUFFIXES = ("bilivideo.com", "akamaized.net")
+
 # Hosts the /music/stream proxy may fetch (audio CDNs + share-link origins).
 _STREAM_HOST_SUFFIXES = (
     "music.163.com",
@@ -31,11 +40,15 @@ _STREAM_HOST_SUFFIXES = (
     "qqmusic.qq.com",
     "y.qq.com",
     "kugou.com",
-)
+) + _BILI_CDN_SUFFIXES
 
-# Public API origins the resolvers talk to (kept together for auditability).
-_NETEASE_API = "https://music.163.com"
-_QQ_API = "https://u.y.qq.com/cgi-bin/musicu.fcg"
+# Bilibili WBI 签名用的字符置换表（公开算法，非密钥）
+_BILI_MIXIN = [
+    46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5,
+    49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55,
+    40, 61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57,
+    62, 11, 36, 20, 34, 44, 52,
+]
 
 
 class ResolveError(Exception):
@@ -420,6 +433,8 @@ async def resolve_music_track(
         )
     if parsed.platform == "qq":
         return await _resolve_qq(parsed.id, fallback_title, fallback_artist, transport)
+    if parsed.platform == "bili":
+        return await _resolve_bili(parsed.id, transport)
     return await _resolve_kugou(parsed.id, parsed.extra, transport)
 
 
@@ -444,6 +459,8 @@ async def search_tracks(
         return await _search_qq(q, transport)
     if platform == "kugou":
         return await _search_kugou(q, transport)
+    if platform == "bili":
+        return await _search_bili(q, transport)
     raise ResolveError("未知平台")
 
 
@@ -521,6 +538,141 @@ async def _search_qq(
         if not out:
             raise ResolveError("QQ音乐没搜到相关歌曲")
         return out
+
+
+def _bili_mixin_key(orig: str) -> str:
+    return "".join(orig[i] for i in _BILI_MIXIN)[:32]
+
+
+def _bili_sign(params: dict, img_key: str, sub_key: str) -> dict:
+    """B 站 WBI 签名（公开算法）：加 wts 时间戳 → 排序 → md5 拼接签名。"""
+    import hashlib
+    from urllib.parse import urlencode
+
+    signed = dict(params)
+    signed["wts"] = int(time.time())
+    ordered = dict(sorted(signed.items()))
+    mixin = _bili_mixin_key(img_key + sub_key)
+    signed["wtsign"] = hashlib.md5((urlencode(ordered) + mixin).encode()).hexdigest()
+    return signed
+
+
+async def _bili_wbi_keys(
+    client: httpx.AsyncClient,
+) -> tuple[str, str]:
+    """从 /nav 拿 wbi_img 的 img_key/sub_key（失败返回空串，搜索仍可试）。"""
+    try:
+        resp = await client.get(
+            f"{_BILI_API}/x/web-interface/nav",
+            headers={"Referer": "https://www.bilibili.com/"},
+        )
+        wbi = ((resp.json().get("data") or {}).get("wbi_img")) or {}
+        img_key = (wbi.get("img_url") or "").rsplit("/", 1)[-1].split(".")[0]
+        sub_key = (wbi.get("sub_url") or "").rsplit("/", 1)[-1].split(".")[0]
+        return img_key, sub_key
+    except (httpx.HTTPError, ValueError):
+        return "", ""
+
+
+async def _search_bili(
+    q: str,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> list[SearchResult]:
+    """B 站搜索含歌名的视频（后台听视频）：WBI 签名后查视频，返回 bvid。"""
+    async with _client(transport) as client:
+        img_key, sub_key = await _bili_wbi_keys(client)
+        params = _bili_sign(
+            {"search_type": "video", "keyword": q, "page": 1},
+            img_key,
+            sub_key,
+        )
+        try:
+            resp = await client.get(
+                f"{_BILI_API}/x/web-interface/wbi/search/type",
+                params=params,
+                headers={"Referer": "https://www.bilibili.com/"},
+            )
+            body = resp.json() if resp.status_code == 200 else {}
+        except (httpx.HTTPError, ValueError):
+            return []
+        if body.get("code") != 0:
+            return []
+        vlist = ((body.get("data") or {}).get("result")) or []
+        import re as _re
+
+        tag = _re.compile(r"</?em[^>]*>")
+        out: list[SearchResult] = []
+        for v in vlist[:10]:
+            bvid = str(v.get("bvid") or "")
+            title = tag.sub("", str(v.get("title") or ""))
+            if not bvid or not title:
+                continue
+            out.append(
+                SearchResult(
+                    id=bvid,
+                    title=title,
+                    artist=str(v.get("author") or "B站UP主"),
+                    album="",
+                    cover=(v.get("pic") or "").startswith("http")
+                    and v.get("pic")
+                    or None,
+                )
+            )
+        if not out:
+            raise ResolveError("B站没搜到相关视频")
+        return out
+
+
+async def _resolve_bili(
+    bvid: str,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> ResolvedTrack:
+    """B 站后台听视频：bvid → cid → DASH 音频流（只取音频轨，不播画面）。"""
+    async with _client(transport) as client:
+        headers = {"Referer": "https://www.bilibili.com/"}
+        try:
+            resp = await client.get(
+                f"{_BILI_API}/x/web-interface/view",
+                params={"bvid": bvid},
+                headers=headers,
+            )
+            view = resp.json() if resp.status_code == 200 else {}
+        except (httpx.HTTPError, ValueError):
+            view = {}
+        data = view.get("data") or {}
+        cid = data.get("cid")
+        title = data.get("title") or f"B站视频 {bvid}"
+        cover = (data.get("pic") or "").startswith("http") and data.get("pic") or None
+        if not cid:
+            raise ResolveError("B站：该视频不存在或已删除")
+        try:
+            resp = await client.get(
+                f"{_BILI_API}/x/player/playurl",
+                params={"bvid": bvid, "cid": cid, "fnval": 16, "fnver": 0, "fourk": 0},
+                headers=headers,
+            )
+            play = resp.json() if resp.status_code == 200 else {}
+        except (httpx.HTTPError, ValueError):
+            play = {}
+        audio = ((play.get("data") or {}).get("dash") or {}).get("audio") or []
+        # 选最高码率（bandwidth 最大）的音频轨
+        audio_url = ""
+        for item in sorted(audio, key=lambda a: a.get("bandwidth") or 0, reverse=True):
+            base = item.get("baseUrl") or item.get("base_url") or ""
+            if base:
+                audio_url = base
+                break
+        if not audio_url:
+            raise ResolveError("B站：该视频未提供可听的音频流")
+
+    return ResolvedTrack(
+        id=f"bili-{bvid}",
+        title=title,
+        artist="B站",
+        audio_url=audio_url,
+        cover=cover,
+        lrc=None,
+    )
 
 
 # 版本/翻唱标记：搜索结果里这类条目排后面（优先原版）
