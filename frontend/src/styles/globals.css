@@ -734,3 +734,58 @@ textarea:focus {
     0 6px 16px -8px rgba(124, 58, 237, 0.4) !important;
   outline: none;
 }
+
+/* ---------- 点击特效（ClickFx，赛璐璐风：圆环扩散 + 小粒子） ---------- */
+.vnss-clickfx-host {
+  position: fixed;
+  z-index: 9999;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.vnss-clickfx-ring {
+  position: absolute;
+  left: -14px;
+  top: -14px;
+  width: 28px;
+  height: 28px;
+  border: 2.5px solid color-mix(in srgb, var(--accent) 90%, #fff);
+  border-radius: 50%;
+  animation: clickfxRing 460ms var(--ease-out) forwards;
+}
+
+@keyframes clickfxRing {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+.vnss-clickfx-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  opacity: 0.95;
+  animation: clickfxDot 520ms var(--ease-out) forwards;
+}
+
+@keyframes clickfxDot {
+  0% {
+    opacity: 0.95;
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(
+        calc(cos(var(--fx-angle, 0rad)) * 26px),
+        calc(sin(var(--fx-angle, 0rad)) * 26px)
+      )
+      scale(0.3);
+  }
+}

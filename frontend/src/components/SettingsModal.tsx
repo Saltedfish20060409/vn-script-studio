@@ -24,6 +24,12 @@ import {
   setDeskPetEnabled,
   subscribeDeskPet,
 } from "../lib/deskPet";
+import {
+  loadClickFx,
+  notifyClickFx,
+  setClickFx,
+  subscribeClickFx,
+} from "../lib/clickFx";
 import { MascotFigure } from "./MascotFigure";
 import { mascotLine } from "../lib/mascotCopy";
 import styles from "./SettingsModal.module.css";
@@ -437,6 +443,11 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
     () => getDeskPetState().enabled,
     () => getDeskPetState().enabled
   );
+  const clickFxOn = useSyncExternalStore(
+    subscribeClickFx,
+    loadClickFx,
+    loadClickFx
+  );
   const fileRef = useRef<HTMLInputElement>(null);
   const idleLineRef = useRef(mascotLine("settings"));
   const panLineRef = useRef(mascotLine("settingsPan"));
@@ -601,6 +612,23 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                   </select>
                   <span className={styles.note}>
                     桌面小助手：点击换心情冒泡，右键有菜单；位置自动记住。
+                  </span>
+                </label>
+                <label>
+                  点击特效
+                  <select
+                    value={clickFxOn ? "1" : "0"}
+                    onChange={(e) => {
+                      setClickFx(e.target.value === "1");
+                      notifyClickFx();
+                    }}
+                    data-testid="click-fx-toggle"
+                  >
+                    <option value="1">开启（赛璐璐圆环 + 粒子）</option>
+                    <option value="0">关闭</option>
+                  </select>
+                  <span className={styles.note}>
+                    点击处的轻量装饰动画；纯视觉、不拦截点击，输入框内不触发。
                   </span>
                 </label>
                 <p className={styles.note}>

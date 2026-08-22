@@ -370,14 +370,15 @@ export function MusicPlayerBar({ contextLabel }: Props) {
 
   const activeIdx = activeLrcIndex(lrc.lines, cur);
 
-  // 歌词居中滚动：当前行滚到可视区中央（仿主流音乐软件）
+  // 歌词居中滚动：直接跳到当前行居中（不用 smooth——歌词切换快时
+  // 平滑动画追不上，造成"变色跟上、滚动跟不上"；逐行对齐即时定位）
   useEffect(() => {
     const el = lrcScrollRef.current;
     if (!el || activeIdx < 0) return;
     const line = el.children[activeIdx] as HTMLElement | undefined;
     if (!line) return;
     const target = line.offsetTop - el.clientHeight / 2 + line.clientHeight / 2;
-    el.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+    el.scrollTop = Math.max(0, target);
   }, [activeIdx, panel]);
 
   return (
@@ -650,6 +651,10 @@ export function MusicPlayerBar({ contextLabel }: Props) {
                 />
                 <p className={styles.cookieHint}>
                   只存本浏览器、随请求发送给本站、不落服务器库，可随时清空。
+                </p>
+                <p className={styles.cookieExpire}>
+                  ⏳ Cookie 可能过期：网易云登录态通常几天到几周有效，过期后
+                  播放会失败，重新按上面步骤复制一次最新值即可。
                 </p>
               </details>
             </div>

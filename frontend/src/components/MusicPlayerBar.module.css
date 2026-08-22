@@ -245,6 +245,13 @@
   line-height: 1.4;
 }
 
+.cookieExpire {
+  margin: 0.3rem 0 0;
+  font-size: 0.72rem;
+  color: color-mix(in srgb, var(--warn, #b58900) 80%, var(--ink-soft));
+  line-height: 1.4;
+}
+
 .qrBox {
   display: flex;
   flex-direction: column;

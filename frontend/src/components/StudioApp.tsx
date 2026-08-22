@@ -74,6 +74,7 @@ import { QPet } from "./QPet";
 import { AdminPanel } from "./AdminPanel";
 import { fetchAdminOverview } from "../api/admin";
 import { MascotFeedback, type PetFeedback } from "./MascotFeedback";
+import { ClickFx } from "./ClickFx";
 import { WorldPanel } from "./WorldPanel";
 import { WriteToolbar, type WriteMode } from "./WriteToolbar";
 import { MusicPlayerBar } from "./MusicPlayerBar";
@@ -1682,6 +1683,7 @@ export function StudioApp() {
       )}
       <QPet editorRef={editorTaRef} cheerSignal={petCheer} />
       <MascotFeedback feedback={petFeedback} />
+      <ClickFx />
       {/* 全局底部音乐条：所有页面常驻；专注模式被 FocusChrome(90) 遮住但音乐继续 */}
       <MusicPlayerBar contextLabel={chapter?.title ?? ""} />
       {playOpen && project && chapter && (
