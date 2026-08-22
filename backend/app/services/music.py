@@ -36,7 +36,6 @@ _STREAM_HOST_SUFFIXES = (
 # Public API origins the resolvers talk to (kept together for auditability).
 _NETEASE_API = "https://music.163.com"
 _QQ_API = "https://u.y.qq.com/cgi-bin/musicu.fcg"
-_KUGOU_API = "https://wwwapi.kugou.com/yy/index.php"
 
 
 class ResolveError(Exception):
@@ -314,27 +313,23 @@ async def _resolve_kugou(
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> ResolvedTrack:
     async with _client(transport) as client:
-        params = {
-            "r": "play/getdata",
-            "hash": song_hash,
-            "album_id": extra.get("album_id", ""),
-            "dfid": "",
-            "mid": "",
-            "plat": "0",
-        }
+        # Desktop play/getdata now demands SSA tokens (err 30020); the mobile
+        # getSongInfo endpoint still serves a direct playable url.
         try:
-            resp = await client.get(_KUGOU_API, params=params, headers={"Referer": "https://www.kugou.com/"})
-            data = {}
-            if resp.status_code == 200:
-                data = (resp.json().get("data") or {}) or {}
+            resp = await client.get(
+                "https://m.kugou.com/app/i/getSongInfo.php",
+                params={"cmd": "playInfo", "hash": song_hash},
+                headers={"Referer": "https://m.kugou.com/"},
+            )
+            data = resp.json() if resp.status_code == 200 else {}
         except (httpx.HTTPError, ValueError):
             data = {}
-        play_url = data.get("play_url") or data.get("url") or ""
+        play_url = data.get("url") or data.get("backup_url") or ""
         if not play_url:
             raise ResolveError("酷狗：这首歌需要会员或已下架，暂时无法获取播放地址")
-        title = data.get("song_name") or f"酷狗 {song_hash}"
-        artist = data.get("author_name") or "未知歌手"
-        cover = data.get("img") or data.get("image") or None
+        title = data.get("songName") or data.get("fileName") or f"酷狗 {song_hash}"
+        artist = data.get("author_name") or data.get("singerName") or "未知歌手"
+        cover = data.get("imgUrl") or data.get("album_img") or None
         lrc = data.get("lyrics") or None
         if lrc and not lrc.strip():
             lrc = None
@@ -424,9 +419,11 @@ async def _search_netease(
         if cookie:
             headers["Cookie"] = cookie
         try:
+            # cloudsearch/pc: the plain /api/search/pc now returns code -462
+            # (verification wall) for anonymous clients; cloudsearch stays open.
             resp = await client.get(
-                f"{_NETEASE_API}/api/search/pc",
-                params={"s": q, "type": 1, "limit": 10, "offset": 0},
+                f"{_NETEASE_API}/api/cloudsearch/pc",
+                params={"s": q, "type": 1, "limit": 10, "offset": 0, "total": "true"},
                 headers=headers,
             )
             body = resp.json() if resp.status_code == 200 else {}
@@ -476,8 +473,9 @@ async def _search_qq(
             pmid = album.get("pmid") or album.get("mid") or ""
             out.append(
                 SearchResult(
-                    id=str(s.get("songmid") or ""),
-                    title=s.get("songname") or s.get("name") or "",
+                    # Search returns the song mid under `mid` (songmid is None).
+                    id=str(s.get("mid") or s.get("songmid") or s.get("id") or ""),
+                    title=s.get("name") or s.get("songname") or "",
                     artist=" / ".join(x.get("name", "") for x in singers if x.get("name")),
                     album=album.get("name") or "",
                     cover=f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{pmid}.jpg"

@@ -312,18 +312,15 @@ def test_resolve_qq_vip_unplayable_raises():
 
 def test_resolve_kugou():
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path.endswith("/yy/index.php")
-        assert request.url.params.get("r") == "play/getdata"
+        assert request.url.path.endswith("/app/i/getSongInfo.php")
+        assert request.url.params.get("cmd") == "playInfo"
         return httpx.Response(
             200,
             json={
-                "data": {
-                    "song_name": "酷狗曲",
-                    "author_name": "酷狗歌手",
-                    "play_url": "https://trackercdn.kugou.com/song.mp3",
-                    "img": "https://imge.kugou.com/cov.jpg",
-                    "lyrics": "[00:10.00]酷狗第一句\n",
-                }
+                "songName": "酷狗曲",
+                "author_name": "酷狗歌手",
+                "url": "https://sharefs.kugou.com/song.mp3",
+                "imgUrl": "https://imge.kugou.com/cov.jpg",
             },
         )
 
@@ -339,8 +336,7 @@ def test_resolve_kugou():
     assert track.id == "kugou-b7a1f2c3d4e5f6a7b8c9d0e1f2a3b4c5"
     assert track.title == "酷狗曲"
     assert track.artist == "酷狗歌手"
-    assert track.audio_url == "https://trackercdn.kugou.com/song.mp3"
-    assert "[00:10.00]" in (track.lrc or "")
+    assert track.audio_url == "https://sharefs.kugou.com/song.mp3"
 
 
 def test_resolve_unknown_link_raises():
@@ -398,7 +394,7 @@ def test_resolve_by_platform_and_id_direct():
 
 def test_search_netease():
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path.endswith("/api/search/pc")
+        assert request.url.path.endswith("/api/cloudsearch/pc")
         assert request.url.params.get("s") == "夜曲"
         return httpx.Response(
             200,
@@ -455,8 +451,8 @@ def test_search_qq():
                             "song": {
                                 "list": [
                                     {
-                                        "songmid": "003a4Y8G0mQX6s",
-                                        "songname": "晴天",
+                                        "mid": "003a4Y8G0mQX6s",
+                                        "name": "晴天",
                                         "singer": [{"name": "周杰伦"}],
                                         "album": {"name": "叶惠美", "pmid": "003RMaRI4iK2Tj"},
                                     }
