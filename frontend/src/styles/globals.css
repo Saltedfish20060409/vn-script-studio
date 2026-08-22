@@ -823,9 +823,16 @@ textarea:focus {
   background: transparent;
 }
 
-/* ---------- 文本选中：赛璐璐紫半透明高亮 ---------- */
+/* ---------- 文本选中：赛璐璐紫粉渐变高亮（加深到 45% 保证可见） ---------- */
 ::selection {
-  background: color-mix(in srgb, #7c3aed 30%, transparent);
+  background: color-mix(in srgb, #7c3aed 45%, #ec4899 10%);
+  color: var(--ink);
+}
+
+textarea::selection,
+input::selection,
+[contenteditable="true"]::selection {
+  background: color-mix(in srgb, #7c3aed 45%, #ec4899 10%);
   color: var(--ink);
 }
 
@@ -846,24 +853,24 @@ input:not([type]),
   }
 }
 
-/* ---------- 链接下划线滑动动画 ---------- */
+/* ---------- 链接下划线滑动动画（紫粉渐变，悬停滑出） ---------- */
 a:not(.no-underline-anim) {
+  color: var(--accent);
   text-decoration: none;
-  background-image: linear-gradient(
-    to right,
-    var(--accent),
-    var(--accent)
-  );
+  background-image: linear-gradient(90deg, #7c3aed, #ec4899);
   background-repeat: no-repeat;
   background-position: 0 100%;
-  background-size: 0% 2px;
-  transition: background-size 260ms var(--ease-out, ease);
+  background-size: 0% 2.5px;
+  transition:
+    background-size 300ms var(--ease-out, ease),
+    color 300ms var(--ease-out, ease);
 }
 
 a:not(.no-underline-anim):hover {
-  background-size: 100% 2px;
+  background-size: 100% 2.5px;
+  color: #7c3aed;
 }
 
 a:not(.no-underline-anim):focus-visible {
-  background-size: 100% 2px;
+  background-size: 100% 2.5px;
 }

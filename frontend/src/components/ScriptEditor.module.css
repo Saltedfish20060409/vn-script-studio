@@ -100,11 +100,11 @@
 }
 
 .input::selection {
-  background: color-mix(in srgb, var(--accent) 28%, transparent);
-  color: transparent;
+  background: color-mix(in srgb, #7c3aed 45%, #ec4899 10%);
+  color: var(--ink);
 }
 
 .input::-moz-selection {
-  background: color-mix(in srgb, var(--accent) 28%, transparent);
-  color: transparent;
+  background: color-mix(in srgb, #7c3aed 45%, #ec4899 10%);
+  color: var(--ink);
 }
