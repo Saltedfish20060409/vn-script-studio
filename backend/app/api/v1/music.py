@@ -48,6 +48,9 @@ class ResolveIn(BaseModel):
     url: str = Field(default="", max_length=2048)
     platform: str = Field(default="", pattern="^(netease|qq|kugou|)$")
     songId: str = Field(default="", max_length=128)
+    # 搜索结果点添加时回传的展示信息：数据中心 IP 上元数据接口可能不可用
+    title: str = Field(default="", max_length=200)
+    artist: str = Field(default="", max_length=200)
 
 
 class MusicTrackOut(BaseModel):
@@ -123,6 +126,8 @@ async def resolve_link(
             body.url,
             platform=body.platform,
             song_id=body.songId,
+            fallback_title=body.title.strip() or None,
+            fallback_artist=body.artist.strip() or None,
             netease_api_url=settings.netease_api_url,
             netease_cookie=_net_cookie(request, settings),
         )

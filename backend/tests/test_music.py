@@ -170,7 +170,10 @@ def test_resolve_netease_with_api_url():
     assert "[00:01.00]" in (track.lrc or "")
 
 
-def test_resolve_netease_no_api_url_falls_back_to_outer():
+def test_resolve_netease_no_url_raises_with_cookie_hint():
+    """无 api_url 且 enhance 返回 null：不再悄悄 fallback 到必失效的外链，
+    而是明确提示需要登录/Cookie（数据中心 IP 上外链会被风控）。"""
+
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if path.endswith("/api/song/detail/"):
@@ -191,9 +194,40 @@ def test_resolve_netease_no_api_url_falls_back_to_outer():
             "https://music.163.com/song?id=1856244885", transport=_transport(handler)
         )
 
+    with pytest.raises(ResolveError) as excinfo:
+        asyncio.run(run())
+    assert "Cookie" in str(excinfo.value)
+
+
+def test_resolve_netease_uses_fallback_title_from_search():
+    """数据中心 IP 上 detail 返回空 → 用搜索结果回传的标题/歌手兜底。"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/api/song/detail/"):
+            return httpx.Response(200, json={"songs": []})
+        if path.endswith("/api/song/enhance/player/url"):
+            return httpx.Response(
+                200, json={"data": [{"url": "https://m701.music.126.net/ok.mp3"}]}
+            )
+        return httpx.Response(404)
+
+    import asyncio
+
+    async def run():
+        return await svc.resolve_music_track(
+            "",
+            platform="netease",
+            song_id="123456",
+            fallback_title="晴天",
+            fallback_artist="周杰伦",
+            transport=_transport(handler),
+        )
+
     track = asyncio.run(run())
-    assert track.audio_url == "https://music.163.com/song/media/outer/url?id=1856244885.mp3"
-    assert track.lrc is None
+    assert track.title == "晴天"
+    assert track.artist == "周杰伦"
+    assert track.audio_url == "https://m701.music.126.net/ok.mp3"
 
 
 def test_resolve_netease_unplayable_raises():
@@ -440,25 +474,22 @@ def test_search_netease_empty_raises():
 
 def test_search_qq():
     def handler(request: httpx.Request) -> httpx.Response:
-        body = request.read().decode("utf-8", "replace")
-        assert "SearchCgiService" in body
+        assert request.url.path.endswith("/soso/fcgi-bin/client_search_cp")
+        assert request.url.params.get("w") == "晴天"
         return httpx.Response(
             200,
             json={
-                "req_0": {
-                    "data": {
-                        "body": {
-                            "song": {
-                                "list": [
-                                    {
-                                        "mid": "003a4Y8G0mQX6s",
-                                        "name": "晴天",
-                                        "singer": [{"name": "周杰伦"}],
-                                        "album": {"name": "叶惠美", "pmid": "003RMaRI4iK2Tj"},
-                                    }
-                                ]
+                "data": {
+                    "song": {
+                        "list": [
+                            {
+                                "songmid": "003a4Y8G0mQX6s",
+                                "songname": "晴天",
+                                "singer": [{"name": "周杰伦"}],
+                                "albumname": "叶惠美",
+                                "albummid": "003RMaRI4iK2Tj",
                             }
-                        }
+                        ]
                     }
                 }
             },
@@ -473,25 +504,41 @@ def test_search_qq():
     assert len(hits) == 1
     assert hits[0].id == "003a4Y8G0mQX6s"
     assert hits[0].title == "晴天"
+    assert hits[0].artist == "周杰伦"
     assert "gtimg.cn" in (hits[0].cover or "")
 
 
-def test_search_kugou():
+def test_search_kugou_multi_word_splits_and_ranks_original():
+    """『歌手 歌名』被酷狗当作整串返回空 → 拆词重搜，原版(无版本标记)优先。"""
+
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path.endswith("/song_search_v2")
-        assert request.url.params.get("keyword") == "泡沫"
+        keyword = request.url.params.get("keyword")
+        if keyword == "周杰伦 晴天":
+            return httpx.Response(200, json={"data": {"lists": []}})
+        # 搜『晴天』：混入翻唱/DJ，原版排后面
         return httpx.Response(
             200,
             json={
                 "data": {
                     "lists": [
                         {
-                            "FileHash": "B7A1F2C3D4E5F6A7B8C9D0E1F2A3B4C5",
-                            "SongName": "泡沫",
-                            "SingerName": "邓紫棋",
-                            "AlbumName": "Xposed",
-                            "ImgUrl": "https://imge.kugou.com/x.jpg",
-                        }
+                            "FileHash": "A1",
+                            "SongName": "晴天 (DJ版)",
+                            "SingerName": "DJ小明",
+                            "AlbumName": "",
+                        },
+                        {
+                            "FileHash": "B2",
+                            "SongName": "晴天",
+                            "SingerName": "周杰伦",
+                            "AlbumName": "叶惠美",
+                        },
+                        {
+                            "FileHash": "C3",
+                            "SongName": "晴天 (Live)",
+                            "SingerName": "周杰伦",
+                            "AlbumName": "",
+                        },
                     ]
                 }
             },
@@ -500,12 +547,13 @@ def test_search_kugou():
     import asyncio
 
     async def run():
-        return await svc.search_tracks("泡沫", "kugou", transport=_transport(handler))
+        return await svc.search_tracks("周杰伦 晴天", "kugou", transport=_transport(handler))
 
     hits = asyncio.run(run())
-    assert len(hits) == 1
-    assert hits[0].id == "B7A1F2C3D4E5F6A7B8C9D0E1F2A3B4C5"
-    assert hits[0].artist == "邓紫棋"
+    # 原版（无标记 + 歌手匹配）应排第一
+    assert len(hits) == 3
+    assert hits[0].id == "B2"
+    assert hits[0].artist == "周杰伦"
 
 
 def test_search_unknown_platform_raises():

@@ -139,10 +139,18 @@ async def _json(client: httpx.AsyncClient, url: str, **kw) -> Optional[dict]:
 
 
 async def _resolve_netease(
-    song_id: str, api_url: str, cookie: str, transport: Optional[httpx.AsyncBaseTransport] = None
+    song_id: str,
+    api_url: str,
+    cookie: str,
+    fallback_title: Optional[str] = None,
+    fallback_artist: Optional[str] = None,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> ResolvedTrack:
     async with _client(transport) as client:
         # --- metadata ---
+        headers = {"Referer": "https://music.163.com/"}
+        if cookie:
+            headers["Cookie"] = cookie
         if api_url:
             detail = await _json(client, f"{api_url}/song/detail", params={"ids": song_id})
         else:
@@ -150,14 +158,21 @@ async def _resolve_netease(
                 client,
                 f"{_NETEASE_API}/api/song/detail/",
                 params={"id": song_id, "ids": f"[{song_id}]"},
+                headers=headers,
             )
         song = None
         if detail:
             songs = detail.get("songs") or []
             song = songs[0] if songs else None
-        title = (song or {}).get("name") or f"网易云歌曲 {song_id}"
+        song = song or {}
+        # 数据中心 IP 上 detail 常返回空：用搜索结果回传的信息兜底
+        title = song.get("name") or fallback_title or f"网易云歌曲 {song_id}"
         artists = song.get("artists") or song.get("ar") or []
-        artist = " / ".join(a.get("name", "") for a in artists if a.get("name")) or "未知歌手"
+        artist = (
+            " / ".join(a.get("name", "") for a in artists if a.get("name"))
+            or fallback_artist
+            or "未知歌手"
+        )
         album = song.get("album") or song.get("al") or {}
         cover = album.get("picUrl") or album.get("pic") or None
 
@@ -175,21 +190,30 @@ async def _resolve_netease(
                         audio_url = item["url"]
                         break
         else:
-            # Public enhance/player/url (free songs only), then outer-link trick.
+            # Public enhance/player/url. From datacenter IPs it returns
+            # url:null for everything unless the request carries a logged-in
+            # cookie (server-side NETEASE_API_URL or per-request X-Netease-Cookie).
+            headers = {"Referer": "https://music.163.com/"}
+            if cookie:
+                headers["Cookie"] = cookie
             data = await _json(
                 client,
                 f"{_NETEASE_API}/api/song/enhance/player/url",
                 params={"ids": f"[{song_id}]", "br": 3200000},
+                headers=headers,
             )
             items = (data or {}).get("data") or []
             for item in items:
                 if item.get("url"):
                     audio_url = item["url"]
                     break
-            if not audio_url:
-                audio_url = f"{_NETEASE_API}/song/media/outer/url?id={song_id}.mp3"
         if not audio_url:
-            raise ResolveError("网易云：这首歌需要会员或已下架，换一首试试")
+            # No playable URL: be honest about the blocker instead of falling
+            # back to a link that will 403/HTML from a datacenter IP.
+            raise ResolveError(
+                "网易云：需要登录才能播放这首歌（数据中心 IP 上免费直链不可用）。"
+                "请在播放器面板填写网易云 Cookie，或让管理员配置 NETEASE_API_URL。"
+            )
 
         # --- lyrics (best effort) ---
         lrc: Optional[str] = None
@@ -217,7 +241,10 @@ async def _resolve_netease(
 
 
 async def _resolve_qq(
-    mid: str, transport: Optional[httpx.AsyncBaseTransport] = None
+    mid: str,
+    fallback_title: Optional[str] = None,
+    fallback_artist: Optional[str] = None,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> ResolvedTrack:
     async with _client(transport) as client:
         def payload(module: str, method: str, param: dict) -> dict:
@@ -237,9 +264,13 @@ async def _resolve_qq(
                 info = data.get("track_info") or {}
         except (httpx.HTTPError, ValueError):
             info = {}
-        title = info.get("name") or f"QQ音乐 {mid}"
+        title = info.get("name") or fallback_title or f"QQ音乐 {mid}"
         singers = info.get("singer") or []
-        artist = " / ".join(s.get("name", "") for s in singers if s.get("name")) or "未知歌手"
+        artist = (
+            " / ".join(s.get("name", "") for s in singers if s.get("name"))
+            or fallback_artist
+            or "未知歌手"
+        )
         pmid = (info.get("album") or {}).get("pmid") or ""
         cover = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{pmid}.jpg" if pmid else None
 
@@ -360,6 +391,8 @@ async def resolve_music_track(
     *,
     platform: str = "",
     song_id: str = "",
+    fallback_title: Optional[str] = None,
+    fallback_artist: Optional[str] = None,
     netease_api_url: str = "",
     netease_cookie: str = "",
     transport: Optional[httpx.AsyncBaseTransport] = None,
@@ -378,10 +411,15 @@ async def resolve_music_track(
             raise ResolveError("无法识别的链接：请粘贴网易云 / QQ音乐 / 酷狗的歌曲分享链接")
     if parsed.platform == "netease":
         return await _resolve_netease(
-            parsed.id, netease_api_url.strip(), netease_cookie.strip(), transport
+            parsed.id,
+            netease_api_url.strip(),
+            netease_cookie.strip(),
+            fallback_title,
+            fallback_artist,
+            transport,
         )
     if parsed.platform == "qq":
-        return await _resolve_qq(parsed.id, transport)
+        return await _resolve_qq(parsed.id, fallback_title, fallback_artist, transport)
     return await _resolve_kugou(parsed.id, parsed.extra, transport)
 
 
@@ -452,34 +490,31 @@ async def _search_qq(
     q: str,
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> list[SearchResult]:
+    # client_search_cp（老接口）：musicu.fcg 的 SearchCgiService 在数据中心
+    # IP（如腾讯云）会被风控返回空列表；client_search_cp 实测仍可用。
     async with _client(transport) as client:
-        body = {
-            "req_0": {
-                "module": "music.search.SearchCgiService",
-                "method": "DoSearchForQQMusicDesktop",
-                "param": {"query": q, "num_per_page": 10, "page_num": 1, "search_type": 0},
-            }
-        }
         try:
-            resp = await client.post(_QQ_API, json=body)
-            data = ((resp.json().get("req_0") or {}).get("data") or {}).get("body") or {}
+            resp = await client.get(
+                "https://c.y.qq.com/soso/fcgi-bin/client_search_cp",
+                params={"p": 1, "n": 10, "w": q, "format": "json", "cr": 1, "g_tk": 5381},
+                headers={"Referer": "https://y.qq.com/"},
+            )
+            body = resp.json() if resp.status_code == 200 else {}
         except (httpx.HTTPError, ValueError):
             return []
-        songs = ((data.get("song") or {}).get("list")) or []
+        songs = ((body.get("data") or {}).get("song") or {}).get("list") or []
         out: list[SearchResult] = []
         for s in songs:
             singers = s.get("singer") or []
-            album = s.get("album") or {}
-            pmid = album.get("pmid") or album.get("mid") or ""
+            album_mid = s.get("albummid") or s.get("album_mid") or ""
             out.append(
                 SearchResult(
-                    # Search returns the song mid under `mid` (songmid is None).
-                    id=str(s.get("mid") or s.get("songmid") or s.get("id") or ""),
-                    title=s.get("name") or s.get("songname") or "",
+                    id=str(s.get("songmid") or s.get("mid") or ""),
+                    title=s.get("songname") or s.get("name") or "",
                     artist=" / ".join(x.get("name", "") for x in singers if x.get("name")),
-                    album=album.get("name") or "",
-                    cover=f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{pmid}.jpg"
-                    if pmid
+                    album=s.get("albumname") or "",
+                    cover=f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+                    if album_mid
                     else None,
                 )
             )
@@ -488,32 +523,69 @@ async def _search_qq(
         return out
 
 
+# 版本/翻唱标记：搜索结果里这类条目排后面（优先原版）
+_VERSION_MARKS = (
+    "DJ", "dj", "Live", "live", "现场", "伴奏", "伴奏版", "翻唱", "翻唱版",
+    "remix", "Remix", "remake", "女声版", "男声版", "合唱", "钢琴版", "吉他版",
+    "片段", "纯音乐", "热歌", "慢摇", "说唱", "完整版",
+)
+
+
+def _title_version_penalty(title: str) -> int:
+    """版本标记数：0 = 原版；越大越靠后。"""
+    return sum(1 for m in _VERSION_MARKS if m in title)
+
+
 async def _search_kugou(
     q: str,
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> list[SearchResult]:
+    # 酷狗 song_search_v2 对含空格的多词查询（"歌手 歌名"）直接返回空，
+    # 且单关键词结果混入 DJ/Live/翻唱。策略：拆词分别搜 → 合并去重 →
+    # 按「版本标记少 + 标题/歌手匹配度高」重排，优先原版原唱。
     async with _client(transport) as client:
-        try:
-            resp = await client.get(
-                "https://songsearch.kugou.com/song_search_v2",
-                params={"keyword": q, "page": 1, "pagesize": 10},
-                headers={"Referer": "https://www.kugou.com/"},
-            )
-            body = resp.json() if resp.status_code == 200 else {}
-        except (httpx.HTTPError, ValueError):
-            return []
-        songs = ((body.get("data") or {}).get("lists")) or []
-        out: list[SearchResult] = []
-        for s in songs:
-            out.append(
-                SearchResult(
-                    id=str(s.get("FileHash") or s.get("hash") or ""),
-                    title=s.get("SongName") or s.get("songname") or "",
-                    artist=s.get("SingerName") or s.get("singername") or "",
-                    album=s.get("AlbumName") or s.get("album_name") or "",
-                    cover=s.get("ImgUrl") or s.get("img") or None,
+        words = [w for w in q.split() if w.strip()]
+        queries = [q] if q in words else [q]
+        if len(words) > 1:
+            queries = [q] + words  # 完整串 + 每个词单独搜
+
+        merged: dict[str, SearchResult] = {}
+        for query in queries:
+            try:
+                resp = await client.get(
+                    "https://songsearch.kugou.com/song_search_v2",
+                    params={"keyword": query, "page": 1, "pagesize": 20},
+                    headers={"Referer": "https://www.kugou.com/"},
                 )
-            )
+                body = resp.json() if resp.status_code == 200 else {}
+            except (httpx.HTTPError, ValueError):
+                continue
+            songs = ((body.get("data") or {}).get("lists")) or []
+            for s in songs:
+                song_hash = str(s.get("FileHash") or s.get("hash") or "")
+                title = s.get("SongName") or s.get("songname") or ""
+                artist = s.get("SingerName") or s.get("singername") or ""
+                if not song_hash or not title:
+                    continue
+                merged.setdefault(
+                    song_hash,
+                    SearchResult(
+                        id=song_hash,
+                        title=title,
+                        artist=artist,
+                        album=s.get("AlbumName") or s.get("album_name") or "",
+                        cover=s.get("ImgUrl") or s.get("img") or None,
+                    ),
+                )
+
+        def rank(item: SearchResult) -> tuple:
+            title_pen = _title_version_penalty(item.title)
+            # 歌手名包含查询词 → 匹配加分（负分排前）
+            artist_match = -2 if any(w in item.artist for w in words if len(w) >= 2) else 0
+            title_exact = -1 if any(w == item.title for w in words) else 0
+            return (title_pen + artist_match + title_exact, item.title)
+
+        out = sorted(merged.values(), key=rank)[:10]
         if not out:
             raise ResolveError("酷狗没搜到相关歌曲")
         return out

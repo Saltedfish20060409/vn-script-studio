@@ -241,7 +241,13 @@ export function MusicPlayerBar({ contextLabel }: Props) {
     try {
       const data = await apiFetch<MusicTrack>("/music/resolve", {
         method: "POST",
-        body: JSON.stringify({ platform: searchPlatform, songId: hit.id }),
+        body: JSON.stringify({
+          platform: searchPlatform,
+          songId: hit.id,
+          // 数据中心 IP 上网易云元数据接口可能不可用：回传展示信息兜底
+          title: hit.title,
+          artist: hit.artist,
+        }),
         headers: cookieHeaders(cookieText),
       });
       addTrack(data);
