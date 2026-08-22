@@ -117,6 +117,7 @@ def test_stream_headers_referer():
     assert "music.163.com" in svc.stream_headers("m701.music.126.net")["Referer"]
     assert "y.qq.com" in svc.stream_headers("isure.stream.qqmusic.qq.com")["Referer"]
     assert "www.kugou.com" in svc.stream_headers("trackercdn.kugou.com")["Referer"]
+    assert "bilibili.com" in svc.stream_headers("upos-hz-mirrorakam.akamaized.net")["Referer"]
     assert "User-Agent" in svc.stream_headers("y.qq.com")
 
 

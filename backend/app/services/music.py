@@ -129,6 +129,8 @@ def stream_headers(host: str) -> dict:
         headers["Referer"] = "https://y.qq.com/"
     elif host.endswith("kugou.com"):
         headers["Referer"] = "https://www.kugou.com/"
+    elif host.endswith("bilivideo.com") or host.endswith("akamaized.net"):
+        headers["Referer"] = "https://www.bilibili.com/"
     return headers
 
 
