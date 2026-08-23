@@ -18,3 +18,10 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
+
+[tool.pytest.ini_options]
+# 显式把 backend 加入 sys.path：不同 pytest 版本的 rootdir/conftest
+# 隐式插入行为不一致（CI 曾报 No module named 'app'）
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
