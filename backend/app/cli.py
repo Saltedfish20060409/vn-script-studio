@@ -108,10 +108,25 @@ def eval(
         ctx_parts.append(f"角色 {ch.displayName}（{ch.defineName}）：{ch.voice or ''}")
     ctx = "\n".join(ctx_parts)
 
+    # 评测任务集（《深入理解 AI Agent》第7/9章"边界集+保留集"）：
+    # - 正常任务（保留集）：必须持续写好的基线，防止深化改进"修一个毛病毁掉原有优点"
+    # - 边界任务（边界集）：已知问题类型，验证审稿是否真的抓住这些毛病
     TASKS = [
+        # —— 保留集：正常写作任务，任何改动都不应让它们退化 ——
         ("continue", "续写下一小段：雨夜站台，末班车广播后，两人沉默。Ren'Py 风格。"),
         ("scene", "写一小场戏：学校走廊相遇，一方回避。有对白与旁白，3~6 句。"),
         ("rewrite", "改写：把「他很惊讶，内心OS：怎么会这样。」改成可上演写法，不要内心OS标签。"),
+        # —— 边界集：已知问题类型，检验审稿抓问题的能力 ——
+        # 指令要求"如实写出问题写法"（不要规避），让评测真正测出审稿盲区
+        ("trap-dump", "写一段两人对话：一个刚认识的人连续 4 句向主角讲解完整世界观、"
+         "组织架构、人物履历（照写，不要含蓄、不要用动作替代）。"
+         "（测试：审稿应抓住「设定宣讲」，判定不合格）"),
+        ("trap-pingpong", "写一段对话：A 连续追问 B 同一件事 3 次，B 每次只机械作答（照写，"
+         "不要加入新信息、不要转移话题）。"
+         "（测试：审稿应抓住「问答乒乓/重复追问」，判定不合格）"),
+        ("trap-halluc", "写一段对话：主角提到一个角色在第1章从未出现过的'妹妹'，"
+         "并详细描述她的过去。上下文中没有这个人物。"
+         "（测试：审稿应抓住「编造不存在信息/设定矛盾」，一票否决）"),
     ]
 
     async def _one(task: str, instruction: str) -> dict:
@@ -173,9 +188,14 @@ def eval(
             scores = parsed.get("scores")
             if not isinstance(scores, dict):
                 return {"error": "judge_scores_missing"}
+            # 兼容 {"social": 2} 与 {"social": {"score": 2, "evidence": "…"}}
             for dim, v in list(scores.items()):
-                if not isinstance(v, (int, float)):
-                    scores[dim] = None
+                if isinstance(v, dict) and "score" in v:
+                    scores[dim] = v
+                elif isinstance(v, (int, float)):
+                    scores[dim] = {"score": v, "evidence": ""}
+                else:
+                    scores[dim] = {"score": None, "evidence": ""}
             return {
                 "scores": scores,
                 "evidence": parsed.get("evidence") or {},
@@ -209,6 +229,7 @@ def eval(
             judge = await _judge_rubric(cfg, ctx, task, r["text"])
             case = {
                 "task": task,
+                "kind": "retention" if not task.startswith("trap-") else "boundary",
                 "chars": len(r["text"]),
                 "passed": passed,
                 "errorCount": audit.get("errorCount", 0),
@@ -228,10 +249,42 @@ def eval(
             report["summary"]["warnCount"] += int(audit.get("warnCount", 0))
             typer.echo(f"[{task}] {'PASS' if passed else 'FAIL'} · error {audit.get('errorCount', 0)} / warn {audit.get('warnCount', 0)}")
             if judge:
-                avg = sum(s.get("score", 0) for s in judge.get("scores", {}).values()) / max(
-                    1, len(judge.get("scores", {}))
-                )
-                typer.echo(f"       Rubric avg {avg:.1f}/4 · veto {judge.get('veto')}")
+                s = judge.get("scores") or {}
+                nums = []
+                for v in s.values():
+                    if isinstance(v, dict) and isinstance(v.get("score"), (int, float)):
+                        nums.append(v["score"])
+                    elif isinstance(v, (int, float)):
+                        nums.append(v)
+                if nums:
+                    avg = sum(nums) / len(nums)
+                    typer.echo(f"       Rubric avg {avg:.1f}/4 · veto {judge.get('veto')}")
+
+        # 汇总：保留集 vs 边界集 分开报（书中"边界集改善 + 保留集不退化"）
+        retention = [c for c in report["cases"] if c.get("kind") == "retention" and "error" not in c]
+        boundary = [c for c in report["cases"] if c.get("kind") == "boundary" and "error" not in c]
+        for name, group in (("retention 保留集", retention), ("boundary 边界集", boundary)):
+            if not group:
+                continue
+            ok_n = sum(1 for c in group if c["passed"])
+            avgs = []
+            vetos = 0
+            for c in group:
+                s = (c.get("judge") or {}).get("scores") or {}
+                nums = []
+                for v in s.values():
+                    if isinstance(v, dict) and isinstance(v.get("score"), (int, float)):
+                        nums.append(v["score"])
+                    elif isinstance(v, (int, float)):
+                        nums.append(v)
+                if nums:
+                    avgs.append(sum(nums) / len(nums))
+                if (c.get("judge") or {}).get("veto"):
+                    vetos += 1
+            line = f"  {name}: {ok_n}/{len(group)} lint通过 · Rubric均分 {sum(avgs)/len(avgs):.2f}/4" if avgs else f"  {name}: {ok_n}/{len(group)} lint通过"
+            if boundary:
+                line += f" · 边界集veto {vetos}"
+            typer.echo(line)
         return report
 
     report = asyncio.run(_run_all())
