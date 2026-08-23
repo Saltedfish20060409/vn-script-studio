@@ -13,6 +13,7 @@ from app.api.v1 import (
     memory,
     mentors,
     music,
+    notice,
     pipeline,
     projects,
     settings,
@@ -39,4 +40,5 @@ api_router.include_router(collab.router)
 api_router.include_router(consistency.router)
 api_router.include_router(style_memory.router)
 api_router.include_router(music.router)
+api_router.include_router(notice.router)
 api_router.include_router(errors.router)
