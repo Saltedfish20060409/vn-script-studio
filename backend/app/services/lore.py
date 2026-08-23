@@ -17,6 +17,7 @@ from app.core.lore import (
     distill_from_extract,
     fetch_extract,
     format_cards_for_agent,
+    match_cards_in_text,
     match_seeds_in_text,
     search_titles,
     seed_by_term,
@@ -263,21 +264,38 @@ async def resolve_lore_block(
     user_message: str = "",
     limit: int = 4,
 ) -> Dict[str, Any]:
-    """Assemble agent injection block from seeds + saved project cards."""
+    """Assemble agent injection block from seeds + saved project cards.
+
+    Retrieval matches BOTH seed cards and user-saved cards against the project's
+    inspire text (character bio/voice + story outline + world + user message),
+    so a card triggers not only when the user types its exact term but also
+    when that term appears in the character sheets / outline (e.g. a 病娇 card
+    fires because a character bio mentions 病娇).
+    """
     hay = project_inspire_text(project, user_message)
-    matched = match_seeds_in_text(hay, limit=limit)
+
+    # Match saved (user-curated) cards against inspire text first — they're the
+    # user's own references and should win over generic seeds.
     saved = await list_project_cards(db, project_id)
+    matched_saved = match_cards_in_text(saved, hay, limit=limit)
+    # Seed cards as a fallback pool (kept for offline/common tropes).
+    matched_seeds = match_seeds_in_text(hay, limit=limit)
 
     by_term: Dict[str, Dict[str, Any]] = {}
-    for c in matched:
+    for c in matched_saved:
         by_term[(c.get("term") or "").lower()] = c
-    for c in saved[:8]:
+    for c in matched_seeds:
         key = (c.get("term") or "").lower()
-        if key and key not in by_term:
+        if key not in by_term:
             by_term[key] = c
-        elif key in by_term:
-            # Prefer saved (user-curated) when same term
-            by_term[key] = c
+
+    # If nothing matched the inspire text, still surface a few user-saved cards
+    # so curated references aren't totally ignored when the term never appears.
+    if not by_term and saved:
+        for c in saved[:limit]:
+            key = (c.get("term") or "").lower()
+            if key and key not in by_term:
+                by_term[key] = c
 
     cards = list(by_term.values())[:limit]
     block = format_cards_for_agent(cards, max_chars=2400)

@@ -5,6 +5,7 @@ from app.core.lore.craft_distill import (
     checklist_inspire,
     distill_from_extract,
     format_cards_for_agent,
+    match_cards_in_text,
     match_seeds_in_text,
     seed_by_term,
 )
@@ -17,6 +18,7 @@ __all__ = [
     "checklist_inspire",
     "distill_from_extract",
     "format_cards_for_agent",
+    "match_cards_in_text",
     "match_seeds_in_text",
     "seed_by_term",
     "fetch_extract",

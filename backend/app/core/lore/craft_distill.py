@@ -275,6 +275,35 @@ def match_seeds_in_text(text: str, limit: int = 5) -> List[Dict[str, Any]]:
     return found
 
 
+def match_cards_in_text(
+    cards: List[Dict[str, Any]],
+    text: str,
+    *,
+    limit: int = 6,
+) -> List[Dict[str, Any]]:
+    """Match ANY cards (seeds or user-saved) by term/aliases appearing in text.
+
+    Unlike match_seeds_in_text (seeded only, substring), this works on the
+    caller's full card list — e.g. project-saved cards — so a card is picked
+    when its term shows up in the character bio / story outline / user message,
+    not only when the user happens to type the exact word.
+    """
+    t = text or ""
+    found: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for card in cards:
+        names = [card.get("term") or "", *(card.get("aliases") or [])]
+        if any(n and n in t for n in names):
+            k = _norm(card.get("term") or "")
+            if not k or k in seen:
+                continue
+            seen.add(k)
+            found.append(card)
+            if len(found) >= limit:
+                break
+    return found
+
+
 def distill_from_extract(
     term: str,
     extract: str,
