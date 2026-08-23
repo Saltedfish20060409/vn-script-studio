@@ -7,13 +7,15 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
+from app.core.lore.seed_cards import EXTRA_CARDS
+
 ATTRIBUTION = (
     "参考萌娘百科条目（通常 CC BY-NC-SA 3.0）：仅作术语/套路启发，"
     "禁止把百科正文粘进剧本；写表现勿念标签。"
 )
 
 # Curated offline seeds — do/dont tuned for visual novel & light novel
-SEED_CARDS: List[Dict[str, Any]] = [
+_SEED_CARDS_BASE: List[Dict[str, Any]] = [
     {
         "term": "傲娇",
         "aliases": ["tsundere", "ツンデレ"],
@@ -246,6 +248,23 @@ SEED_CARDS: List[Dict[str, Any]] = [
     },
 ]
 
+# 扩充池：轻小说/视觉小说常用设定（萌属性 / 题材 / 套路 / 关系），
+# 每张带 keywords 近义表达，供离线语义匹配使用。
+# 合并去重：EXTRA（带 keywords）优先于 base。
+def _merge_seed_cards() -> List[Dict[str, Any]]:
+    by_term: Dict[str, Dict[str, Any]] = {}
+    for c in [*_SEED_CARDS_BASE, *EXTRA_CARDS]:
+        term = (c.get("term") or "").strip()
+        if not term:
+            continue
+        key = term.lower()
+        # EXTRA 排后面，覆盖同名 base（EXTRA 带 keywords）
+        by_term[key] = c
+    return list(by_term.values())
+
+
+SEED_CARDS: List[Dict[str, Any]] = _merge_seed_cards()
+
 
 def seed_by_term(term: str) -> Optional[Dict[str, Any]]:
     key = _norm(term)
@@ -263,7 +282,7 @@ def match_seeds_in_text(text: str, limit: int = 5) -> List[Dict[str, Any]]:
     found: List[Dict[str, Any]] = []
     seen: set[str] = set()
     for card in SEED_CARDS:
-        names = [card["term"], *(card.get("aliases") or [])]
+        names = [card["term"], *(card.get("aliases") or []), *(card.get("keywords") or [])]
         if any(n and n in t for n in names):
             k = _norm(card["term"])
             if k in seen:
@@ -281,18 +300,25 @@ def match_cards_in_text(
     *,
     limit: int = 6,
 ) -> List[Dict[str, Any]]:
-    """Match ANY cards (seeds or user-saved) by term/aliases appearing in text.
+    """Match ANY cards (seeds or user-saved) by term/aliases/keywords appearing in text.
 
-    Unlike match_seeds_in_text (seeded only, substring), this works on the
-    caller's full card list — e.g. project-saved cards — so a card is picked
-    when its term shows up in the character bio / story outline / user message,
-    not only when the user happens to type the exact word.
+    - ``term``: exact card name
+    - ``aliases``: alternate spellings / languages (tsundere, ツンデレ)
+    - ``keywords``: semantic near-expressions — e.g. 病娇's card carries
+      [占有欲, 跟踪, 黑化, 扭曲的爱, 囚禁] so a bio that says "跟踪狂女友"
+      still fires the 病娇 card even though the exact term never appears.
+
+    This is a lightweight offline semantic layer (no embedding endpoint needed).
     """
     t = text or ""
     found: List[Dict[str, Any]] = []
     seen: set[str] = set()
     for card in cards:
-        names = [card.get("term") or "", *(card.get("aliases") or [])]
+        names = [
+            card.get("term") or "",
+            *(card.get("aliases") or []),
+            *(card.get("keywords") or []),
+        ]
         if any(n and n in t for n in names):
             k = _norm(card.get("term") or "")
             if not k or k in seen:
