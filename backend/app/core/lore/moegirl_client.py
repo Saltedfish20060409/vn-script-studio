@@ -5,7 +5,6 @@ we store distilled craft cards + attribution, not wholesale page dumps for gener
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
@@ -39,30 +38,29 @@ async def search_titles(
     q = (query or "").strip()
     if not q:
         return []
+    # 萌百禁用了 list=search（action-notallowed），但 opensearch 仍可用。
+    # opensearch 返回 [query, [title1, title2, ...]]：精确词条常在前，模糊词条在后。
     params = {
-        "action": "query",
-        "list": "search",
-        "srsearch": q,
-        "srlimit": max(1, min(limit, 20)),
-        "srnamespace": 0,
+        "action": "opensearch",
+        "search": q,
+        "limit": max(1, min(limit, 20)),
         "format": "json",
-        "formatversion": 2,
     }
     async with httpx.AsyncClient(timeout=25, headers={"User-Agent": user_agent}) as client:
         res = await client.get(api_base, params=params)
         res.raise_for_status()
         data = res.json()
-    hits = ((data.get("query") or {}).get("search")) or []
+    titles = data[1] if isinstance(data, list) and len(data) > 1 and isinstance(data[1], list) else []
     out = []
-    for h in hits:
-        title = h.get("title") or ""
+    for title in titles:
+        title = (title or "").strip()
         if not title:
             continue
         out.append(
             {
                 "title": title,
-                "snippet": _strip_html(h.get("snippet") or ""),
-                "pageid": h.get("pageid"),
+                "snippet": "",
+                "pageid": None,
                 "url": page_url(title),
             }
         )
@@ -112,8 +110,3 @@ async def fetch_extract(
         url=url,
         missing=missing or not extract,
     )
-
-
-def _strip_html(s: str) -> str:
-    t = re.sub(r"<[^>]+>", "", s)
-    return re.sub(r"\s+", " ", t).strip()
