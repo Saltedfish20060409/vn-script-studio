@@ -21,11 +21,15 @@ async function dismissTour(page: Page) {
   }
 }
 
-/** 公告弹窗（登录页首次可见）——关闭以免遮挡注册表单 */
+/** 公告弹窗（登录页首次可见）——等待出现再关闭，避免异步拉取的竞态 */
 async function dismissNotice(page: Page) {
   const close = page.getByRole("button", { name: "关闭公告" });
-  if (await close.isVisible().catch(() => false)) {
+  try {
+    // 给公告拉取留时间；出现则关闭，没出现（已读/失败）直接继续
+    await close.waitFor({ state: "visible", timeout: 4_000 });
     await close.click();
+  } catch {
+    /* 公告未出现：继续 */
   }
 }
 
