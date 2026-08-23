@@ -26,9 +26,8 @@ logger = logging.getLogger(__name__)
 
 
 def _alembic_upgrade_sync() -> None:
-    from alembic.config import Config
-
     from alembic import command
+    from alembic.config import Config
 
     root = Path(__file__).resolve().parents[1]
     cfg = Config(str(root / "alembic.ini"))

@@ -90,6 +90,36 @@ _OTAKU_FALSE_FRIENDS = [
     (re.compile(r"好感度(?:上升|增加|拉满)"), "系统好感度出戏"),
 ]
 
+# AI 高频「猜测腔」：不确定性模糊化——仿佛/似乎/好像/莫名/不知为何
+# 单段 ≥2 处即告警（1 处可能是正常表达，2 处以上基本是 AI 回避下判断）
+_GUESS_WORDS = [
+    "仿佛", "似乎", "好像", "莫名", "不知为何", "说不清",
+    "有种说不出的", "也说不上来", "隐隐觉得",
+]
+
+# AI 高频副词堆砌：缓缓/轻轻/微微/静静/默默/淡淡
+# 单段 ≥2 处即告警（AI 爱用这些软副词制造"文艺感"）
+_ADVERB_PILE = [
+    "缓缓", "轻轻", "微微", "静静", "默默", "淡淡", "悄悄",
+]
+
+# 「说」标签副词：冷冷地说 / 温柔地说 / 低声说……
+# 单段 ≥2 处即告警（AI 爱用"副词+说/道"给对白贴情绪标签，真人很少这样写）
+_SAID_TAG_RE = re.compile(
+    r"(?:冷冷|温柔|轻轻|低声|淡然|平静|坚定|无奈|苦笑|哽咽|沙哑|平静地|淡淡地)"
+    r"(?:地)?(?:说|道|开口|问|答)"
+)
+
+# 情绪陈词：AI 概括情绪的套话（几乎必然 AI 味，1 处即告警）
+_EMOTION_CLICHE = [
+    "心中一动", "一股暖流", "眼眶微热", "心里一紧", "说不清道不明",
+    "某种情绪", "异样的感觉", "无法言说的",
+]
+
+
+def _count_in(text: str, words: list[str]) -> int:
+    return sum(text.count(w) for w in words)
+
 
 def _unique_hits(regexes: List[re.Pattern[str]], text: str, max_len: int = 60) -> List[str]:
     hits: List[str] = []
@@ -194,6 +224,53 @@ def lint_ai_flavor(draft: str) -> List[HarnessIssue]:
                 f"极短段堆叠偏多（{len(short)}/{len(paras)}），易成空心节奏腔",
             )
         )
+
+    # 按自然段统计软词密度（避免整篇计数误伤单段正常用法）
+    for para in paras:
+        guess = _count_in(para, _GUESS_WORDS)
+        if guess >= 2:
+            issues.append(
+                HarnessIssue(
+                    "warn",
+                    "ai_guess_hedge",
+                    f"猜测腔过密（{guess} 处：仿佛/似乎/莫名…）：AI 爱用不确定性词回避下判断，"
+                    f"宜改成确定动作/感官。例段：{para[:40]}…",
+                )
+            )
+            break  # 每段一次，避免刷屏
+        adverb = _count_in(para, _ADVERB_PILE)
+        if adverb >= 2:
+            issues.append(
+                HarnessIssue(
+                    "warn",
+                    "ai_adverb_pile",
+                    f"软副词堆砌（{adverb} 处：缓缓/轻轻/微微…）：宜删到每段≤1，"
+                    f"换成具体动作或干脆不加。例段：{para[:40]}…",
+                )
+            )
+            break
+        said = len(_SAID_TAG_RE.findall(para))
+        if said >= 2:
+            issues.append(
+                HarnessIssue(
+                    "warn",
+                    "ai_said_tag",
+                    f"「副词+说/道」标签过密（{said} 处：冷冷地说…）：真人很少给对白贴情绪标签，"
+                    f"宜用动作或直接写对白。例段：{para[:40]}…",
+                )
+            )
+            break
+        emot = _count_in(para, _EMOTION_CLICHE)
+        if emot >= 1:
+            issues.append(
+                HarnessIssue(
+                    "warn",
+                    "ai_emotion_cliche",
+                    f"情绪陈词「{next((w for w in _EMOTION_CLICHE if w in para), '')}」："
+                    f"概括情绪不如写具体反应。例段：{para[:40]}…",
+                )
+            )
+            break
 
     return issues
 

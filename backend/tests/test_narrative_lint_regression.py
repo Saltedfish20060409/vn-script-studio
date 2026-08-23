@@ -139,3 +139,52 @@ def test_fragment_stack_warns():
     )
     codes = _flavor_codes(text)
     assert "ai_fragment_stack" in codes
+
+
+def test_guess_hedge_warns():
+    """猜测腔（仿佛/似乎/莫名）单段≥2 → ai_guess_hedge warn。"""
+    text = (
+        "她仿佛在等什么人，又似乎并不着急。"
+        "那种莫名的紧张，好像连她自己也说不上来为什么。"
+    )
+    codes = _flavor_codes(text)
+    assert "ai_guess_hedge" in codes
+
+
+def test_adverb_pile_warns():
+    """软副词堆砌（缓缓/轻轻/微微）单段≥2 → ai_adverb_pile warn。"""
+    text = (
+        "他缓缓抬起头，轻轻放下伞，微微点了点头，"
+        "静静地看着雨幕，默默收起了所有想说的话。"
+    )
+    codes = _flavor_codes(text)
+    assert "ai_adverb_pile" in codes
+
+
+def test_said_tag_warns():
+    """「副词+说/道」标签单段≥2 → ai_said_tag warn。"""
+    text = (
+        "他冷冷地说：「你在等谁？」\n"
+        "林夏低声说：「不关你事。」\n"
+        "周屿苦笑说：「那我还是等吧。」"
+    )
+    codes = _flavor_codes(text)
+    assert "ai_said_tag" in codes
+
+
+def test_emotion_cliche_warns():
+    """情绪陈词 → ai_emotion_cliche warn。"""
+    text = "他心中一动，一股暖流涌了上来，有种说不清道不明的感觉。"
+    codes = _flavor_codes(text)
+    assert "ai_emotion_cliche" in codes
+
+
+def test_single_hedge_or_adverb_not_flagged():
+    """单处猜测词/软副词（正常表达）不误报。"""
+    text = (
+        "雨还在下，她轻轻抖了抖伞上的水。"
+        "那个人好像真的走了。"
+    )
+    codes = _flavor_codes(text)
+    assert "ai_guess_hedge" not in codes
+    assert "ai_adverb_pile" not in codes
