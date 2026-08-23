@@ -133,7 +133,6 @@ export function MusicPlayerBar({ contextLabel }: Props) {
   const [cookieText, setCookieText] = useState(loadCookie);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const lrcScrollRef = useRef<HTMLDivElement | null>(null);
 
   const track = list[index] ?? null;
   const lrc = useMemo(
@@ -385,21 +384,6 @@ export function MusicPlayerBar({ contextLabel }: Props) {
   // 歌词偏移应用：当前播放时间加上偏移后再找行
   const activeIdx = activeLrcIndex(lrc.lines, cur + (track?.lrcOffset ?? 0));
 
-  // 歌词居中滚动：把当前变色行放在视口正中间（不用 smooth——歌词切换快时
-  // 平滑动画追不上）。用「padding-top + 索引×固定行高」显式计算，
-  // 不依赖 offsetTop/offsetParent（布局变化或作词行混入时也能准确定位）。
-  useEffect(() => {
-    const el = lrcScrollRef.current;
-    if (!el || activeIdx < 0) return;
-    // 固定行高（CSS .lrcLine line-height: 1.9rem；rem 相对根字号）
-    const rootFs = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-    const lineH = 1.9 * rootFs;
-    const padTop = parseFloat(getComputedStyle(el).paddingTop) || 0;
-    // 第 activeIdx 行的内容顶 = padTop + activeIdx*lineH
-    const target = padTop + activeIdx * lineH - el.clientHeight / 2 + lineH / 2;
-    el.scrollTop = Math.max(0, target);
-  }, [activeIdx, panel, lrc.lines.length]);
-
   return (
     <div className={styles.bar} data-testid="music-bar">
       <audio
@@ -572,22 +556,24 @@ export function MusicPlayerBar({ contextLabel }: Props) {
                 </div>
               ) : (
                 <>
-                  <div className={styles.lrcViewport}>
-                    <div className={styles.lrcScroll} ref={lrcScrollRef}>
-                      {lrc.lines.map((ln, i) => (
-                        <p
-                          key={`${ln.time}-${i}`}
-                          className={
-                            i === activeIdx ? styles.lrcOn : styles.lrcLine
-                          }
-                        >
-                          {ln.text || "♪"}
+                  {/* 歌词：只显示当前行 + 下一行（主流音乐软件歌词模式，无滚动错位） */}
+                  <div className={styles.lrcNowView}>
+                    {activeIdx >= 0 ? (
+                      <>
+                        <p key={`now-${activeIdx}`} className={styles.lrcNow}>
+                          {lrc.lines[activeIdx].text || "♪"}
                         </p>
-                      ))}
-                    </div>
-                    {/* 上下渐变遮罩：聚焦当前行 */}
-                    <div className={styles.lrcShadeTop} aria-hidden />
-                    <div className={styles.lrcShadeBottom} aria-hidden />
+                        {activeIdx + 1 < lrc.lines.length ? (
+                          <p key={`next-${activeIdx + 1}`} className={styles.lrcNext}>
+                            {lrc.lines[activeIdx + 1].text || "♪"}
+                          </p>
+                        ) : (
+                          <p className={styles.lrcEnd}>— 全曲完 —</p>
+                        )}
+                      </>
+                    ) : (
+                      <p className={styles.lrcReady}>♪ 即将开始…</p>
+                    )}
                   </div>
                   {/* 歌词偏移微调：音源与歌词不同步时 ±0.5s 调整 */}
                   <div className={styles.lrcOffsetRow}>

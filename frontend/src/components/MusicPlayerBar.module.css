@@ -399,7 +399,7 @@
 }
 
 .lrcPane {
-  min-height: 120px;
+  min-height: 140px;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -424,74 +424,52 @@
   resize: vertical;
 }
 
-/* 歌词视口：固定高度、居中滚动、上下渐变遮罩（仿主流音乐软件） */
-.lrcViewport {
-  position: relative;
-  height: min(34vh, 300px);
-  overflow: hidden;
-}
-
-.lrcScroll {
-  height: 100%;
-  overflow-y: auto;
+/* 歌词：只显示当前行 + 下一行（仿主流音乐软件，无滚动错位问题） */
+.lrcNowView {
+  min-height: 96px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
-  padding: 42% 0.4rem 42%;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.lrcScroll::-webkit-scrollbar {
-  display: none;
-}
-
-.lrcLine,
-.lrcOn {
-  margin: 0;
+  justify-content: center;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.6rem 0.4rem;
   text-align: center;
-  font-size: 0.9rem;
-  /* 固定行高（不是字号倍数）：高亮行放大字号时不扰动布局，居中滚动精确 */
-  line-height: 1.9rem;
-  color: var(--ink-soft);
-  transition:
-    color 200ms var(--ease-out),
-    font-size 200ms var(--ease-out),
-    opacity 200ms var(--ease-out);
 }
 
-.lrcOn {
-  color: var(--accent);
+.lrcNow {
+  margin: 0;
+  font-size: 1.15rem;
   font-weight: 800;
-  font-size: 1.05rem;
+  line-height: 1.5;
+  color: var(--accent);
+  animation: lrcSlideUp 260ms var(--ease-emphasized);
 }
 
-/* 上下渐变遮罩：上下歌词淡出，聚焦当前行 */
-.lrcShadeTop,
-.lrcShadeBottom {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 42%;
-  pointer-events: none;
+.lrcNext {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  animation: lrcSlideUp 260ms var(--ease-emphasized);
 }
 
-.lrcShadeTop {
-  top: 0;
-  background: linear-gradient(
-    to bottom,
-    var(--panel-bg),
-    color-mix(in srgb, var(--panel-bg) 55%, transparent)
-  );
+.lrcEnd,
+.lrcReady {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  opacity: 0.75;
 }
 
-.lrcShadeBottom {
-  bottom: 0;
-  background: linear-gradient(
-    to top,
-    var(--panel-bg),
-    color-mix(in srgb, var(--panel-bg) 55%, transparent)
-  );
+@keyframes lrcSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .lrcOffsetRow {
