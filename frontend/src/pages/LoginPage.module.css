@@ -96,7 +96,9 @@ html[data-theme="night"] .slash {
 
 .heroInner {
   position: relative;
-  z-index: 4;
+  /* 品牌文字永远在看板娘立绘之上（portraitSlot z-index:5）；
+     pointer-events:none 保证点击仍穿透到看板娘按钮 */
+  z-index: 6;
   max-width: 28rem;
   /* keep title clear of the standee column */
   padding-right: min(28vw, 200px);

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { apiFetch } from "../api/http";
 import { activeLrcIndex, parseLrc } from "../lib/lrc";
+import { loadMusicBar, subscribeMusicBar } from "../lib/musicBar";
 import styles from "./MusicPlayerBar.module.css";
 
 export interface MusicTrack {
@@ -133,6 +134,8 @@ export function MusicPlayerBar({ contextLabel }: Props) {
   const [cookieText, setCookieText] = useState(loadCookie);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  // 播放条开关（设置页可关）：关闭时暂停并整体隐藏
+  const barOn = useSyncExternalStore(subscribeMusicBar, loadMusicBar, loadMusicBar);
 
   const track = list[index] ?? null;
   const lrc = useMemo(
@@ -383,6 +386,16 @@ export function MusicPlayerBar({ contextLabel }: Props) {
 
   // 歌词偏移应用：当前播放时间加上偏移后再找行
   const activeIdx = activeLrcIndex(lrc.lines, cur + (track?.lrcOffset ?? 0));
+
+  // 播放条关闭：暂停音频
+  useEffect(() => {
+    if (!barOn) {
+      audioRef.current?.pause();
+      setPlaying(false);
+    }
+  }, [barOn]);
+
+  if (!barOn) return null;
 
   return (
     <div className={styles.bar} data-testid="music-bar">

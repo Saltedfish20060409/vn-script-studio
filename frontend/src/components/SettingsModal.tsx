@@ -30,6 +30,12 @@ import {
   setClickFx,
   subscribeClickFx,
 } from "../lib/clickFx";
+import {
+  loadMusicBar,
+  notifyMusicBar,
+  setMusicBar,
+  subscribeMusicBar,
+} from "../lib/musicBar";
 import styles from "./SettingsModal.module.css";
 
 type Props = {
@@ -446,6 +452,11 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
     loadClickFx,
     loadClickFx
   );
+  const musicBarOn = useSyncExternalStore(
+    subscribeMusicBar,
+    loadMusicBar,
+    loadMusicBar
+  );
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -595,6 +606,23 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                   </select>
                   <span className={styles.note}>
                     桌面小助手：点击换心情冒泡，右键有菜单；位置自动记住。
+                  </span>
+                </label>
+                <label>
+                  音乐播放条
+                  <select
+                    value={musicBarOn ? "1" : "0"}
+                    onChange={(e) => {
+                      setMusicBar(e.target.value === "1");
+                      notifyMusicBar();
+                    }}
+                    data-testid="music-bar-toggle"
+                  >
+                    <option value="1">开启（固定在页面底部）</option>
+                    <option value="0">关闭</option>
+                  </select>
+                  <span className={styles.note}>
+                    底部听歌：搜索/列表/歌词；关闭后立即停止播放并隐藏。
                   </span>
                 </label>
                 <label>
