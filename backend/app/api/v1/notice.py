@@ -11,7 +11,7 @@ from fastapi import APIRouter
 router = APIRouter(tags=["notice"])
 
 NOTICE = {
-    "version": 2,
+    "version": 3,
     "title": "欢迎使用 VN Script Studio 🎬",
     "updatedAt": "2026-08-23",
     "sections": [
@@ -44,7 +44,7 @@ NOTICE = {
         {
             "heading": "💬 一起让它更好",
             "body": (
-                "遇到问题、有功能想法，欢迎加入 QQ 交流群反馈（登录页「帮助与 FAQ」可查看群号），"
+                "遇到问题、有功能想法，欢迎加作者 QQ：464313944（备注「VNSS 反馈」），"
                 "或到 GitHub 仓库提交 Issue / Pull Request。你的每一条建议都在让这个工具变得更好。"
             ),
         },

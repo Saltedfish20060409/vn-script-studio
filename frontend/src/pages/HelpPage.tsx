@@ -3,9 +3,9 @@ import { HELP_DISCLAIMER, HELP_FAQ, HELP_QUICK } from "../lib/helpContent";
 import styles from "./HelpPage.module.css";
 
 /** 反馈渠道（集中维护，改这里即可全站生效） */
-const QQ_GROUP = "待公布（即将开放）";
+const QQ_CONTACT = "464313944";
 const GITHUB_URL = "https://github.com/Saltedfish20060409/vn-script-studio";
-const FEEDBACK_EMAIL = "vnss.feedback@gmail.com";
+const FEEDBACK_EMAIL = "464313944@qq.com";
 
 export default function HelpPage() {
   return (
@@ -45,11 +45,11 @@ export default function HelpPage() {
       <section className={styles.block}>
         <h2>联系我们 / 反馈</h2>
         <article>
-          <h3>QQ 交流群</h3>
+          <h3>QQ</h3>
           <p>
-            使用中遇到问题、想提功能建议，欢迎加入 QQ 交流群：
-            <strong> {QQ_GROUP} </strong>
-            （群内 @管理员 反馈更快）。
+            使用中遇到问题、想提功能建议，欢迎直接加作者 QQ：
+            <strong> {QQ_CONTACT} </strong>
+            （加好友时备注「VNSS 反馈」）。
           </p>
         </article>
         <article>

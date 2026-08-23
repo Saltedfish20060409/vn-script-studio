@@ -29,7 +29,7 @@ async function dismissTour(page: Page) {
 function seedLocalStorage(page: Page) {
   page.addInitScript(() => {
     try {
-      localStorage.setItem("vnss-notice-read-v2", "1");
+      localStorage.setItem("vnss-notice-read-v3", "1");
       localStorage.setItem("vnss-tour-v1", "1");
       localStorage.setItem(
         "vnss-agent-float-v6",

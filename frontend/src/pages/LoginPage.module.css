@@ -41,6 +41,9 @@
 
 .hero {
   position: relative;
+  /* isolate：hero 内部所有 z-index 只在本层比较，
+     heroInner z-index:100 必然盖过 slash/arc/shard/portraitSlot */
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -129,9 +132,9 @@ html[data-theme="night"] .slash {
 
 .heroInner {
   position: relative;
-  /* 品牌文字永远在看板娘立绘之上（portraitSlot z-index:5）；
-     pointer-events:none 保证点击仍穿透到看板娘按钮 */
-  z-index: 6;
+  /* 品牌文字放在真正顶层：高于一切装饰（slash/arc/shard z-index:1）
+     与看板娘（portraitSlot z-index:5）；pointer-events:none 让点击穿透 */
+  z-index: 100;
   max-width: 28rem;
   /* keep title clear of the standee column */
   padding-right: min(28vw, 200px);
@@ -186,22 +189,16 @@ html[data-theme="night"] .slash {
   font-family: var(--font-display);
   font-size: clamp(2.8rem, 7vw, 4.2rem);
   font-weight: 700;
-  /* line-height ≥1：background-clip:text 的渐变只覆盖元素盒，
-     行高过小会让字形（如 o 的右下部）溢出盒外而"消失"露出背景 */
   line-height: 1.1;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+  /* 纯色 + text-shadow：不用 background-clip:text 渐变——
+     渐变裁剪在 overflow:hidden 容器+层级组合下会把字形边缘裁掉，
+     用户反馈的「o/STUDIO 被挡」即此渲染问题。text-shadow 不裁剪字形 */
   color: var(--ink);
-  /* 文库风渐变标题。注意：不要用 filter:drop-shadow——
-     filter 与 background-clip:text 组合在 Chromium 有渲染 bug，
-     会把圆形字母（o）的右缘裁掉/渲染异常 */
-  background: var(--grad-title);
-  background-size: 140% 140%;
-  background-position: 0 35%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  padding: 0.08em 0.12em;
+  text-shadow:
+    0 2px 0 color-mix(in srgb, var(--accent) 55%, transparent),
+    0 6px 18px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .sub {
