@@ -22,7 +22,7 @@ type Mode = "login" | "register" | "forgot" | "checkEmail";
 const LOGIN_MOOD_CYCLE: MascotMood[] = MASCOT_MOODS.filter((m) => m !== "focus");
 
 const MOOD_LINE: Partial<Record<MascotMood, string>> = {
-  idle: "点我换表情，先模拟看板娘站桩。",
+  idle: "准备好你的第一行了吗？",
   think: "在想你的下一章怎么写…",
   cheer: "写得不错的话，我会这样笑。",
   angel: "小天使模式——夸你两句也可以。",

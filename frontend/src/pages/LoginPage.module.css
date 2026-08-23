@@ -10,7 +10,7 @@
   background: transparent;
 }
 
-/* 右上角「公告」复看按钮 */
+/* 右上角「公告」复看按钮：轻量 ghost，不抢标题视觉 */
 .reviewBtn {
   position: absolute;
   top: 0.9rem;
@@ -19,24 +19,28 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.42rem 0.85rem;
-  border: 2px solid var(--rail-border-soft);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--panel-bg) 82%, transparent);
+  padding: 0.36rem 0.8rem;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--panel-bg) 70%, transparent);
   backdrop-filter: var(--rail-blur);
   -webkit-backdrop-filter: var(--rail-blur);
-  color: var(--ink);
+  color: var(--ink-soft);
   font-family: var(--font-display);
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   cursor: pointer;
-  transition: border-color 160ms var(--ease-out), color 160ms var(--ease-out);
+  transition:
+    border-color 160ms var(--ease-out),
+    color 160ms var(--ease-out),
+    background 160ms var(--ease-out);
 }
 
 .reviewBtn:hover {
   border-color: var(--accent);
   color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .hero {

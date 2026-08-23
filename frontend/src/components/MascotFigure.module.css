@@ -111,14 +111,19 @@
   width: max-content;
   max-width: min(14rem, 100%);
   margin: 0;
-  padding: 0.4rem 0.65rem;
-  font-size: 0.78rem;
-  line-height: 1.4;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
   color: var(--ink);
-  background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
-  border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  /* 赛璐璐泡泡：柔和渐变底 + 一点描边，比纯 panel-bg 更有卡通感 */
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--anime-bubble) 96%, transparent),
+    color-mix(in srgb, var(--panel-bg) 88%, transparent)
+  );
+  border: 1.5px solid color-mix(in srgb, var(--accent) 22%, var(--line));
   box-shadow: var(--shadow-sm);
-  border-radius: 2px 10px 10px 10px;
+  border-radius: 12px 12px 12px 4px;
   overflow-wrap: anywhere;
   word-break: break-word;
   backdrop-filter: blur(8px);

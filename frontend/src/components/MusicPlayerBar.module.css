@@ -111,6 +111,35 @@
   flex: 1;
   min-width: 90px;
   accent-color: var(--accent);
+  /* 进度条用赛璐璐紫粉渐变(自定义 webkit 轨道)更出彩 */
+  background: linear-gradient(
+    90deg,
+    var(--accent),
+    color-mix(in srgb, var(--accent) 40%, #ec4899)
+  );
+  height: 4px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.seek::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  cursor: pointer;
+}
+
+.seek::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--accent);
+  cursor: pointer;
 }
 
 .vol {
