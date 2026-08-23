@@ -21,8 +21,17 @@ async function dismissTour(page: Page) {
   }
 }
 
+/** 公告弹窗（登录页首次可见）——关闭以免遮挡注册表单 */
+async function dismissNotice(page: Page) {
+  const close = page.getByRole("button", { name: "关闭公告" });
+  if (await close.isVisible().catch(() => false)) {
+    await close.click();
+  }
+}
+
 async function register(page: Page, username: string) {
   await page.goto("/login");
+  await dismissNotice(page);
   await page.getByRole("tab", { name: "注册" }).click();
   await page.fill("#vnss-username", username);
   await page.fill("#vnss-email", `${username}@e2e.test`);

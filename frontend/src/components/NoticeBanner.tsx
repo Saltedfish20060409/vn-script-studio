@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { apiFetch } from "../api/http";
 import styles from "./NoticeBanner.module.css";
 
@@ -33,10 +34,11 @@ function markRead(version: number): void {
 }
 
 /**
- * 公告横幅：登录页与主界面通用。
- * 拉取 /notice，若版本未读过则显示；关闭后本版本不再弹出（后续更新公告只需 bump version）。
+ * 公告横幅：登录页自动弹出（新用户可见欢迎+起步指导），
+ * 登录后不再全屏打扰（避免挡住编辑器操作）；后续更新公告只需 bump version。
  */
 export function NoticeBanner() {
+  const location = useLocation();
   const [notice, setNotice] = useState<Notice | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -61,7 +63,9 @@ export function NoticeBanner() {
     setOpen(false);
   }, [notice]);
 
-  if (!open || !notice) return null;
+  // 只在登录页弹出：登录后的工作区不被全屏公告遮挡
+  const isLogin = location.pathname === "/login";
+  if (!isLogin || !open || !notice) return null;
 
   return (
     <div className={styles.overlay} role="dialog" aria-modal="true" aria-label={notice.title}>
