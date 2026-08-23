@@ -63,11 +63,11 @@ def test_keyword_semantic_tsundere():
 
 
 def test_seed_pool_expanded():
-    """种子池已扩充到 40+ 条常用二次元设定。"""
+    """种子池已扩充到 100+ 条常用二次元设定。"""
     from app.core.lore import SEED_CARDS
 
-    assert len(SEED_CARDS) >= 40
+    assert len(SEED_CARDS) >= 100
     # 常见题材/套路都在
     terms = {c["term"] for c in SEED_CARDS}
-    for expected in ("修罗场", "时间循环", "末世", "转生反派", "学园", "病娇", "傲娇"):
+    for expected in ("修罗场", "时间循环", "末世", "转生反派", "学园", "病娇", "傲娇", "妹抖", "魔王", "吸血鬼"):
         assert expected in terms, f"缺少种子卡: {expected}"

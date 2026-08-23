@@ -873,8 +873,15 @@ export function AgentChat({
         Array.isArray(meta?.lensIds) && meta.lensIds.length
           ? `视角×${meta.lensIds.length}`
           : "";
+      // 透明性：本次注入了哪些上下文（设定卡/设定bible/角色等）
+      const refs = Array.isArray(meta?.included)
+        ? meta.included.filter((x) =>
+            /工艺卡|bible|角色|地点|摘录|长程|对话记忆|上传|文风/.test(x)
+          )
+        : [];
+      const refShort = refs.length ? `参考 ${refs.join("·")}` : "";
       setLastContext(
-        [taskName, resultBit, craftShort, reviewShort, lensShort]
+        [taskName, resultBit, craftShort, reviewShort, lensShort, refShort]
           .filter(Boolean)
           .join(" · ")
       );
