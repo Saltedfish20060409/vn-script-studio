@@ -72,6 +72,38 @@ def test_talk_heavy_warns_on_long_stranger_beat():
     assert not lint_has_blockers(lint_narrative_draft(text))
 
 
+def test_long_monologue_is_error():
+    """短句人设连续 3 句长独白（OOC）→ error。"""
+    text = (
+        "林夏：「我忽然想，也许有些事情不是计划好就能避开的，"
+        "就像有些人你明明以为不会遇见，却偏偏在末班车延误的雨夜站台上重逢，"
+        "这大概就是命运最不讲道理的地方。」\n"
+        "周屿：「嗯。」\n"
+        "林夏：「我们是不是总在错过之后才明白，原来当初那些细小的选择，"
+        "早就把人生推向了完全不同的方向，而我们都来不及回头，"
+        "只能站在原地目送自己走远。」\n"
+        "周屿：「……」\n"
+        "林夏：「如果那天我没有走那条路，没有在便利店门口多等那五分钟，"
+        "没有抬头看你一眼，是不是一切都会不一样，"
+        "我们是不是就不会像现在这样站在雨里互相试探。」"
+    )
+    codes = _codes(text)
+    assert "long_monologue" in codes
+    assert lint_has_blockers(lint_narrative_draft(text))
+
+
+def test_short_dialogue_not_long_monologue():
+    """正常短句对话不误报长台词。"""
+    text = (
+        "林夏：「你也在等末班车？」\n"
+        "周屿：「嗯，车晚点了。」\n"
+        "林夏：「那你还站这么远？」\n"
+        "周屿：「习惯。」"
+    )
+    codes = _codes(text)
+    assert "long_monologue" not in codes
+
+
 def test_clean_dialogue_passes():
     """正常短对话：无 error 无 warn。"""
     text = (

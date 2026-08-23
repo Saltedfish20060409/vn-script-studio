@@ -27,6 +27,17 @@ export interface LrcResult {
 const TIME_RE = /\[(\d{1,2}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g;
 const META_RE = /^\[(ti|ar|al|by|offset):(.*)\]$/i;
 
+/** 作词/作曲/编曲等「制作信息行」：很多 LRC 会给它们也打上时间戳
+ *  （[00:00.00]作词：林夕），它们不是歌词，混入会让歌词行数比实际唱句
+ *  多、滚动定位对不上正在唱的那句。整行很短且以制作角色开头 → 跳过。 */
+const CREDIT_RE =
+  /^(作词|作曲|编曲|混音|录音|制作人|制作|和声|监制|出品|发行|演唱|原唱|翻唱|词|曲)[:：]/;
+
+function isCreditLine(text: string): boolean {
+  const t = text.trim();
+  return t.length <= 30 && CREDIT_RE.test(t);
+}
+
 function toSeconds(m: string, s: string, frac?: string): number {
   const sec = parseInt(m, 10) * 60 + parseInt(s, 10);
   if (!frac) return sec;
@@ -65,7 +76,7 @@ export function parseLrc(raw: string): LrcResult {
     }
     if (!stamps.length) continue;
     const text = line.slice(last).trim();
-    if (!text) continue;
+    if (!text || isCreditLine(text)) continue;
     for (const t of stamps) {
       lines.push({ time: t, text });
     }

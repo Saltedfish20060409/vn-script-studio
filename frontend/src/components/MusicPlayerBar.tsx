@@ -385,14 +385,16 @@ export function MusicPlayerBar({ contextLabel }: Props) {
   // 歌词偏移应用：当前播放时间加上偏移后再找行
   const activeIdx = activeLrcIndex(lrc.lines, cur + (track?.lrcOffset ?? 0));
 
-  // 歌词居中滚动：直接跳到当前行居中（不用 smooth——歌词切换快时
-  // 平滑动画追不上，造成"变色跟上、滚动跟不上"；逐行对齐即时定位）
+  // 歌词居中滚动：把当前变色行放在视口正中间（不用 smooth——歌词切换快时
+  // 平滑动画追不上；用固定行高计算，避免高亮行字号变化扰动 offsetTop）
   useEffect(() => {
     const el = lrcScrollRef.current;
     if (!el || activeIdx < 0) return;
     const line = el.children[activeIdx] as HTMLElement | undefined;
     if (!line) return;
-    const target = line.offsetTop - el.clientHeight / 2 + line.clientHeight / 2;
+    // 固定行高（与 CSS 的 line-height 一致），计算目标滚动位置
+    const lineH = parseFloat(getComputedStyle(line).lineHeight) || line.clientHeight;
+    const target = line.offsetTop - el.clientHeight / 2 + lineH / 2;
     el.scrollTop = Math.max(0, target);
   }, [activeIdx, panel]);
 

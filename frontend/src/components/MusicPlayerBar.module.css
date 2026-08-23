@@ -451,7 +451,8 @@
   margin: 0;
   text-align: center;
   font-size: 0.9rem;
-  line-height: 2.1;
+  /* 固定行高（不是字号倍数）：高亮行放大字号时不扰动布局，居中滚动精确 */
+  line-height: 1.9rem;
   color: var(--ink-soft);
   transition:
     color 200ms var(--ease-out),

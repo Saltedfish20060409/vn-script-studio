@@ -32,6 +32,25 @@ describe("parseLrc", () => {
     expect(r.meta.artist).toBe("某人");
   });
 
+  it("skips credit lines with timestamps (作词/作曲/编曲…)", () => {
+    const r = parseLrc(
+      "[00:00.00]作词：林夕\n" +
+        "[00:00.00]作曲：泽野弘之\n" +
+        "[00:00.00]编曲：泽野弘之\n" +
+        "[00:05.00]第一句真正的歌词\n" +
+        "[00:10.00]演唱：某人\n" +
+        "[00:15.00]第二句真正的歌词"
+    );
+    expect(r.lines).toHaveLength(2);
+    expect(r.lines[0].text).toBe("第一句真正的歌词");
+    expect(r.lines[1].text).toBe("第二句真正的歌词");
+  });
+
+  it("keeps lyric lines that merely mention 词/曲 inside", () => {
+    const r = parseLrc("[00:05.00]这首歌的歌词写得真好\n[00:10.00]作曲的人不懂我");
+    expect(r.lines).toHaveLength(2);
+  });
+
   it("empty input returns empty", () => {
     const r = parseLrc("");
     expect(r.lines).toEqual([]);

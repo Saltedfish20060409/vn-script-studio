@@ -119,7 +119,33 @@ def lint_narrative_draft(draft: str) -> List[NarrativeLintIssue]:
             break
         i += 1
 
-    # 3) Too many dialogue lines for a short "stranger beat"
+    # 3) 超长台词堆叠：AI 爱让角色一口气说大段独白（人设克制时尤其出戏）。
+    #    同角色 ≥3 句长台词 → error；≥2 句且合计很长 → warn。
+    long_by_speaker: dict[str, list[int]] = {}
+    for d in dialogues:
+        if len(d.text) >= 60:
+            long_by_speaker.setdefault(d.speaker, []).append(len(d.text))
+    for speaker, lens in long_by_speaker.items():
+        if len(lens) >= 3:
+            issues.append(
+                NarrativeLintIssue(
+                    severity="error",
+                    code="long_monologue",
+                    message=f"「{speaker}」连续长台词 {len(lens)} 句（单句≥60字，最长 {max(lens)} 字）："
+                    f"像念稿/独白腔，真人对话不会这样；拆短或穿插动作/对方回应",
+                )
+            )
+        elif len(lens) >= 2 and sum(lens) >= 150:
+            issues.append(
+                NarrativeLintIssue(
+                    severity="warn",
+                    code="long_monologue",
+                    message=f"「{speaker}」长台词偏多（{len(lens)} 句共 {sum(lens)} 字）："
+                    f"易成独白腔，宜拆短或穿插反应",
+                )
+            )
+
+    # 4) Too many dialogue lines for a short "stranger beat"
     if len(dialogues) >= 8:
         issues.append(
             NarrativeLintIssue(
