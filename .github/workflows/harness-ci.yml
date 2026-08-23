@@ -101,7 +101,8 @@ jobs:
           --health-retries 10
     env:
       E2E_DATABASE_URL: postgresql+asyncpg://vnss:vnss@localhost:54102/vnss_e2e
-      DEEPSEEK_API_KEY: e2e-placeholder-key
+      # 空 key → e2e 走 rules 转换（不调外部 LLM）：确定性、无网络依赖
+      DEEPSEEK_API_KEY: ""
       SECRET_KEY: e2e-test-secret-key-0123456789abcdef0123456789abcdef
     steps:
       - uses: actions/checkout@v5
