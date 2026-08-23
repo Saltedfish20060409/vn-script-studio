@@ -55,7 +55,7 @@ export default function App() {
       <ConfirmProvider>
         <StudioErrorBoundary label="应用根">
           <Suspense fallback={<RouteFallback />}>
-            {/* 公告横幅：任意页面（含登录页）拉取 /notice，未读版本才弹出 */}
+            {/* 公告模态：任意页面拉取 /notice，未读版本自动弹出一次 */}
             <NoticeBanner />
             <Routes>
               <Route path="/login" element={<LoginPage />} />

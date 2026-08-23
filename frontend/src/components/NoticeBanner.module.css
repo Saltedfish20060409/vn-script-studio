@@ -1,79 +1,43 @@
-/* 登录页顶部公告横幅：非模态（不拦截点击），滑入 + 可关闭 */
-.banner {
+/* 公告模态：居中卡片 + 黑色半透明遮罩 */
+.overlay {
   position: fixed;
-  top: 0.6rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1500;
-  width: min(640px, calc(100vw - 1.6rem));
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 1.2rem;
+  background: rgba(8, 10, 18, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: vnssFadeIn 180ms var(--ease-out);
+}
+
+.card {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: min(78vh, 640px);
   display: flex;
-  gap: 0.5rem;
-  align-items: flex-start;
-  padding: 0.8rem 1rem 0.9rem 1.1rem;
+  flex-direction: column;
+  padding: 1.6rem 1.6rem 1.4rem;
   border: 2px solid var(--rail-border);
   border-radius: var(--radius-lg);
   background: var(--rail-grad);
   box-shadow: var(--shadow-lg);
+  overflow: hidden;
   animation: vnssPop 320ms var(--ease-spring) both;
-  pointer-events: auto;
-}
-
-.content {
-  flex: 1;
-  min-width: 0;
-}
-
-.kicker {
-  margin: 0 0 0.2rem;
-  font-family: var(--font-display);
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  color: var(--accent);
-}
-
-.banner h2 {
-  margin: 0 0 0.5rem;
-  font-family: var(--font-display);
-  font-size: 1.15rem;
-  color: var(--ink);
-}
-
-.body {
-  max-height: 34vh;
-  overflow-y: auto;
-  padding-right: 0.3rem;
-  scrollbar-width: thin;
-}
-
-.sec {
-  margin: 0 0 0.6rem;
-}
-
-.sec h3 {
-  margin: 0 0 0.15rem;
-  font-size: 0.95rem;
-  color: var(--ink);
-}
-
-.sec p {
-  margin: 0;
-  font-size: 0.84rem;
-  line-height: 1.7;
-  white-space: pre-line;
-  color: var(--ink-soft);
 }
 
 .closeBtn {
-  flex: none;
-  width: 28px;
-  height: 28px;
-  margin-top: 0.1rem;
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  width: 30px;
+  height: 30px;
   border: none;
   border-radius: 50%;
   background: transparent;
   color: var(--ink-soft);
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   cursor: pointer;
   transition: background 160ms var(--ease-out), color 160ms var(--ease-out);
 }
@@ -81,4 +45,77 @@
 .closeBtn:hover {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--accent);
+}
+
+.kicker {
+  margin: 0 0 0.3rem;
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  color: var(--accent);
+}
+
+.card h2 {
+  margin: 0 0 0.9rem;
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  color: var(--ink);
+}
+
+.body {
+  overflow-y: auto;
+  padding-right: 0.3rem;
+  scrollbar-width: thin;
+}
+
+.sec {
+  margin: 0 0 1rem;
+}
+
+.sec h3 {
+  margin: 0 0 0.3rem;
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+.sec p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.75;
+  white-space: pre-line;
+  color: var(--ink-soft);
+}
+
+.gotIt {
+  margin-top: 1.1rem;
+  padding: 0.7rem 1.1rem;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--grad-accent);
+  color: var(--on-accent);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 160ms var(--ease-out), transform 120ms var(--ease-out);
+}
+
+.gotIt:hover {
+  filter: brightness(1.08);
+}
+
+.gotIt:active {
+  transform: translateY(1px);
+}
+
+/* 登录页右上角「公告」复看按钮样式定义在 LoginPage.module.css（同源布局） */
+
+@keyframes vnssFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }

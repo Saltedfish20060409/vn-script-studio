@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
 import { apiFetch } from "../api/http";
 import styles from "./NoticeBanner.module.css";
 
@@ -34,11 +33,10 @@ function markRead(version: number): void {
 }
 
 /**
- * 公告横幅：登录页顶部滑入（非模态，不拦截表单点击）。
- * 未读版本才显示；关闭后本版本不再出现。后续更新公告只需 bump version。
+ * 公告弹窗：居中卡片 + 黑色半透明遮罩（模态）。
+ * 未读版本自动弹出一次；登录页右上角「公告」按钮可随时复看。
  */
-export function NoticeBanner() {
-  const location = useLocation();
+export function NoticeBanner({ forceOpen, onClose }: { forceOpen?: boolean; onClose?: () => void }) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -48,29 +46,37 @@ export function NoticeBanner() {
       .then((n) => {
         if (!alive || !n?.version) return;
         setNotice(n);
-        if (!isRead(n.version)) setOpen(true);
+        if (forceOpen || !isRead(n.version)) setOpen(true);
       })
       .catch(() => {
-        /* 拉取失败静默：不打扰使用 */
+        /* 拉取失败静默 */
       });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [forceOpen]);
 
   const close = useCallback(() => {
     if (notice) markRead(notice.version);
     setOpen(false);
-  }, [notice]);
+    onClose?.();
+  }, [notice, onClose]);
 
-  // 只在登录页显示；非模态横幅不遮挡表单
-  const isLogin = location.pathname === "/login";
-  if (!isLogin || !open || !notice) return null;
+  if (!open || !notice) return null;
 
   return (
-    <div className={styles.banner} role="region" aria-label={notice.title}>
-      <div className={styles.content}>
-        <p className={styles.kicker}>公告 · {notice.updatedAt}</p>
+    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label={notice.title}>
+      <div className={styles.card}>
+        <button
+          type="button"
+          className={styles.closeBtn}
+          onClick={close}
+          aria-label="关闭公告"
+          title="关闭"
+        >
+          ✕
+        </button>
+        <p className={styles.kicker}>公告 · 更新于 {notice.updatedAt}</p>
         <h2>{notice.title}</h2>
         <div className={styles.body}>
           {notice.sections.map((s, i) => (
@@ -80,16 +86,10 @@ export function NoticeBanner() {
             </section>
           ))}
         </div>
+        <button type="button" className={styles.gotIt} onClick={close}>
+          我知道了，开始使用 →
+        </button>
       </div>
-      <button
-        type="button"
-        className={styles.closeBtn}
-        onClick={close}
-        aria-label="关闭公告"
-        title="关闭"
-      >
-        ✕
-      </button>
     </div>
   );
 }

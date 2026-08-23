@@ -14,6 +14,7 @@ import {
 import { MascotFigure } from "../components/MascotFigure";
 import { MASCOT_MOODS, type MascotMood } from "../lib/mascotArt";
 import { mascotLine } from "../lib/mascotCopy";
+import { NoticeBanner } from "../components/NoticeBanner";
 import styles from "./LoginPage.module.css";
 
 type Mode = "login" | "register" | "forgot" | "checkEmail";
@@ -45,6 +46,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [pendingEmail, setPendingEmail] = useState("");
+  const [showNotice, setShowNotice] = useState(false);
   const [hasWallpaper, setHasWallpaper] = useState(false);
   const [mascotMood, setMascotMood] = useState<MascotMood>("idle");
   const [mascotSpeech, setMascotSpeech] = useState(
@@ -148,6 +150,16 @@ export default function LoginPage() {
 
   return (
     <div className={`vnss-app ${styles.wrap}`}>
+      {/* 公告复看：右上角按钮 → 强制打开公告弹窗（已读也能看） */}
+      <button
+        type="button"
+        className={styles.reviewBtn}
+        onClick={() => setShowNotice(true)}
+        title="查看公告与起步指导"
+      >
+        📢 公告
+      </button>
+      {showNotice && <NoticeBanner forceOpen onClose={() => setShowNotice(false)} />}
       {hasWallpaper ? (
         <>
           <div className="vnss-wallpaper" aria-hidden />
