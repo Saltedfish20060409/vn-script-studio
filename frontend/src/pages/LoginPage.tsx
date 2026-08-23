@@ -390,6 +390,10 @@ export default function LoginPage() {
           <p className={styles.finePrint}>
             <Link to="/help">帮助与 FAQ →</Link>
             <span aria-hidden> · </span>
+            <Link to="/legal?doc=privacy">隐私政策</Link>
+            <span aria-hidden> · </span>
+            <Link to="/legal?doc=terms">服务条款</Link>
+            <br />
             AI 生成内容请自行审稿后再用于发行。
           </p>
         </div>
