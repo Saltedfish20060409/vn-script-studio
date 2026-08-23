@@ -4,6 +4,7 @@ import { AuthProvider } from "./auth/AuthContext";
 import { useAuth } from "./lib/authContext";
 import { ConfirmProvider } from "./components/ConfirmDialog";
 import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
+import { NoticeBanner } from "./components/NoticeBanner";
 
 // Route-level code splitting — the heavy workspace loads on demand.
 const LoginPage = lazy(() =>
@@ -54,6 +55,8 @@ export default function App() {
       <ConfirmProvider>
         <StudioErrorBoundary label="应用根">
           <Suspense fallback={<RouteFallback />}>
+            {/* 公告横幅：任意页面（含登录页）拉取 /notice，未读版本才弹出 */}
+            <NoticeBanner />
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />

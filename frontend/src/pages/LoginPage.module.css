@@ -30,6 +30,8 @@
   transform: skewX(-12deg);
   border-left: 2px solid var(--line);
   pointer-events: none;
+  /* 装饰层永远在品牌文字之下（heroInner z-index:6） */
+  z-index: 1;
 }
 
 html[data-theme="night"] .slash {
@@ -48,6 +50,7 @@ html[data-theme="night"] .slash {
   place-items: center;
   pointer-events: none;
   opacity: 0.9;
+  z-index: 1;
 }
 
 .arc span {
@@ -67,6 +70,7 @@ html[data-theme="night"] .slash {
   clip-path: polygon(40% 0, 100% 15%, 70% 100%, 0 80%);
   pointer-events: none;
   opacity: 0.85;
+  z-index: 1;
 }
 
 .shardA {
@@ -153,15 +157,20 @@ html[data-theme="night"] .slash {
   font-family: var(--font-display);
   font-size: clamp(2.8rem, 7vw, 4.2rem);
   font-weight: 700;
-  line-height: 0.95;
+  /* line-height ≥1：background-clip:text 的渐变只覆盖元素盒，
+     行高过小会让字形（如 o 的右下部）溢出盒外而"消失"露出背景 */
+  line-height: 1.05;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--ink);
   /* 文库风渐变标题 + 光效 */
   background: var(--grad-title);
+  background-size: 120% 120%;
+  background-position: 0 30%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  padding: 0.06em 0.1em;
   filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--accent) 22%, transparent));
 }
 
