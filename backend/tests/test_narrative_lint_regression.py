@@ -188,3 +188,59 @@ def test_single_hedge_or_adverb_not_flagged():
     codes = _flavor_codes(text)
     assert "ai_guess_hedge" not in codes
     assert "ai_adverb_pile" not in codes
+
+
+def test_terse_telegram_without_zhu_is_error():
+    """无「主」字的电报短句（你查雨。我查人。…）≥6 → ai_telegram_dialogue error。"""
+    text = (
+        "林夏：你查雨。我查人。\n"
+        "周屿：你问灯。我问影。\n"
+        "林夏：你记名。我记脸。\n"
+        "周屿：你锁门。我开窗。"
+    )
+    codes = _flavor_codes(text)
+    assert "ai_telegram_dialogue" in codes
+    err = [i for i in lint_ai_flavor(text) if i.severity == "error"]
+    assert any(i.code == "ai_telegram_dialogue" for i in err)
+
+
+def test_short_terse_dialogue_not_flagged():
+    """少量短句对话（你说吧。我听着。）不误报为电报腔。"""
+    text = "林夏：「你说吧。」周屿：「我听着。」林夏：「那你可别笑。」"
+    codes = _flavor_codes(text)
+    assert "ai_telegram_dialogue" not in codes
+
+
+def test_adverb_spread_across_paragraphs_is_error():
+    """软副词分散在各段、整篇 ≥6 处 → ai_adverb_pile error。"""
+    text = (
+        "伞骨轻轻磕在她肩上。\n\n"
+        "林夏微微侧过头，没有回答。\n\n"
+        "她缓缓从外套口袋里摸出一张照片。\n\n"
+        "周屿的呼吸轻轻滞了一瞬。\n\n"
+        "他沉默了一会儿，才缓缓开口。\n\n"
+        "两个人静静站在同一把伞下。"
+    )
+    codes = _flavor_codes(text)
+    assert "ai_adverb_pile" in codes
+    err = [i for i in lint_ai_flavor(text) if i.severity == "error"]
+    assert any(i.code == "ai_adverb_pile" for i in err)
+
+
+def test_omniscient_spoil_is_error():
+    """旁白标签直接揭示隐藏信息（凶手/尸体/计划）→ ai_omniscient_spoil error。"""
+    text = (
+        "旁白：周屿知道末班车永远不会来了。他口袋里揣着一份计划，"
+        "那是他瞒着林夏的真相——他见过那具尸体，凶手是谁他早就知道。"
+    )
+    codes = _flavor_codes(text)
+    assert "ai_omniscient_spoil" in codes
+    err = [i for i in lint_ai_flavor(text) if i.severity == "error"]
+    assert any(i.code == "ai_omniscient_spoil" for i in err)
+
+
+def test_omniscient_marker_without_label_not_flagged():
+    """无旁白/内心OS 标签时，即使出现秘密词也不误报（可能是角色已知信息）。"""
+    text = "周屿把那份计划放回口袋，没有告诉任何人他昨晚见过谁。"
+    codes = _flavor_codes(text)
+    assert "ai_omniscient_spoil" not in codes

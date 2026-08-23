@@ -64,6 +64,10 @@ _ROLE_TELEGRAM = re.compile(
     r"(?:[你我他她它]|[\u4e00-\u9fff]{1,4})"
     r"主?[\u4e00-\u9fff]{1,2}[。！？]"
 )
+# 分工电报腔的另一种形态：不带「主」，短句连续「你X。我Y。」式指令对
+# （如 trap-telegram 的「你查雨。我查人。你问灯。我问影。」），旧正则会因
+# 缺少「主」字被过滤，这里按整篇短句数量兜底。
+_TELEGRAM_UNIT = re.compile(r"(?:你|我)[\u4e00-\u9fff]{1,2}[。！？]")
 _DASH_GLOSS = re.compile(
     r"——\s*(?:不是|不像|而是|像|要|要的是|说明|等于|其实|分明)"
 )
@@ -114,6 +118,16 @@ _SAID_TAG_RE = re.compile(
 _EMOTION_CLICHE = [
     "心中一动", "一股暖流", "眼眶微热", "心里一紧", "说不清道不明",
     "某种情绪", "异样的感觉", "无法言说的",
+]
+
+# 全知剧透揭示词：旁白/内心OS 里出现这些词，说明叙述越过了角色视角
+# 强词：几乎必然剧透（凶手/尸体/真相…），1 处即 error
+_OMNISCIENT_STRONG = [
+    "凶手", "尸体", "真相", "瞒着", "没人知道", "不为人知",
+]
+# 弱词：单独出现可能是正常表述（计划/秘密…），需 ≥2 处或 1 强+1 弱才 error
+_OMNISCIENT_WEAK = [
+    "秘密", "计划", "阴谋", "早就知道", "从未告诉",
 ]
 
 
@@ -181,6 +195,19 @@ def lint_ai_flavor(draft: str) -> List[HarnessIssue]:
                 f"分工电报腔对白，须写完整口语。例：{'；'.join(role_hits[:2])}",
             )
         )
+    else:
+        # 兜底：整篇「你X。我Y。」短句 ≥6 处才算分工电报腔（不一定带「主」）
+        # ≥4 是正常短句对话（你说吧。我听着。），不误伤
+        terse = _TELEGRAM_UNIT.findall(text)
+        if len(terse) >= 6 and len(set(terse)) >= 3:
+            issues.append(
+                HarnessIssue(
+                    "error",
+                    "ai_telegram_dialogue",
+                    f"电报式短句指令对过密（{len(terse)} 处，如「你查雨。我查人。」）："
+                    f"须写完整口语。例：{'；'.join(terse[:4])}",
+                )
+            )
 
     gloss = [re.sub(r"\s+", "", m.group(0))[:40] for m in _DASH_GLOSS.finditer(text)]
     dash_n = len(re.findall(r"——", text))
@@ -271,6 +298,42 @@ def lint_ai_flavor(draft: str) -> List[HarnessIssue]:
                 )
             )
             break
+
+    # 整篇软副词累积：单段各 1 处、但整篇 ≥5 处同样是 AI 味（如 trap-adverb 的分散堆砌）
+    adverb_total = _count_in(text, _ADVERB_PILE)
+    if adverb_total >= 5 and not any(i.code == "ai_adverb_pile" for i in issues):
+        issues.append(
+            HarnessIssue(
+                "error" if adverb_total >= 6 else "warn",
+                "ai_adverb_pile",
+                f"软副词整篇累积 {adverb_total} 处（缓缓/轻轻/微微…）：单段不密但全篇发腻，"
+                f"宜整体删减到 ≤2 处，换具体动作。",
+            )
+        )
+
+    # 全知剧透：带「旁白/内心OS」标签却直接揭示隐藏信息（凶手/真相/尸体/计划…）
+    omni_label = bool(re.search(r"(?:旁白|内心OS)\s*[:：]", text))
+    if omni_label:
+        strong_n = sum(text.count(w) for w in _OMNISCIENT_STRONG)
+        weak_n = sum(text.count(w) for w in _OMNISCIENT_WEAK)
+        omni_n = strong_n + weak_n
+        if strong_n >= 1 or omni_n >= 2:
+            issues.append(
+                HarnessIssue(
+                    "error",
+                    "ai_omniscient_spoil",
+                    f"旁白/内心OS 全知剧透（强揭示词 {strong_n} + 弱揭示词 {weak_n}）："
+                    f"叙述知道了角色不该知道的隐藏信息，须改为可上演的动作/对白线索。",
+                )
+            )
+        elif omni_n == 1:
+            issues.append(
+                HarnessIssue(
+                    "warn",
+                    "ai_omniscient_spoil",
+                    "旁白出现隐藏信息揭示词，检查是否越过了角色视角。",
+                )
+            )
 
     return issues
 

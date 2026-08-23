@@ -147,7 +147,7 @@ def eval(
          "（照写，不要改成具体动作）。"
          "（测试：审稿应抓住「软副词堆砌 ai_adverb_pile」，判定不合格）"),
         ("trap-saidtag", "写一段对白：连续 3 句用「冷冷地说/温柔地说/低声说」标签"
-         "（照写）。"
+         "（照写，不准省略、不准改用动作描写代替）。"
          "（测试：审稿应抓住「副词+说标签 ai_said_tag」，判定不合格）"),
     ]
 
@@ -184,13 +184,14 @@ def eval(
 - 编造不存在的信息（幻觉）/ 设定前后矛盾
 - 同一角色本拍主动追问≥2次 / 问答乒乓
 - 陌生人过熟倾诉 / 设定履历宣讲
+- 旁白/内心OS 揭示角色不可能知道的隐藏信息（全知剧透：凶手、秘密、计划、尸体…）
 
 输出唯一 JSON：
 {"scores":{"social":2,"dialogue":3,"setting":4,"stageable":3,"consistency":2},
  "evidence":{"social":"引用原文","dialogue":"…"},"veto":false,
  "note":"一句话总评"}"""
 
-    async def _judge_rubric(cfg, ctx: str, task: str, draft: str) -> dict:
+    async def _judge_rubric(cfg, ctx: str, task: str, draft: str, instruction: str = "") -> dict:
         try:
             res = await chat_completions(
                 cfg,
@@ -198,7 +199,11 @@ def eval(
                     {"role": "system", "content": JUDGE_SYSTEM},
                     {
                         "role": "user",
-                        "content": f"{ctx}\n\n【任务：{task}】草稿：\n{draft[:2500]}",
+                        "content": (
+                            f"{ctx}\n\n【任务：{task}】\n"
+                            f"任务约束（草稿不得违反，如「上下文无此人」）：{instruction[:300]}\n\n"
+                            f"草稿：\n{draft[:2500]}"
+                        ),
                     },
                 ],
                 temperature=0.2,
@@ -248,7 +253,7 @@ def eval(
             passed = bool(audit.get("pass"))
             # LLM-as-a-Judge（第7章）：确定性 lint 之外，用同模型按 Rubric 逐维打分，
             # 引用证据；与 lint 互补，避免"只看规则、不看质量"。
-            judge = await _judge_rubric(cfg, ctx, task, r["text"])
+            judge = await _judge_rubric(cfg, ctx, task, r["text"], instruction)
             case = {
                 "task": task,
                 "kind": "retention" if not task.startswith("trap-") else "boundary",
@@ -269,7 +274,16 @@ def eval(
                 report["summary"]["passed"] += 1
             report["summary"]["errorCount"] += int(audit.get("errorCount", 0))
             report["summary"]["warnCount"] += int(audit.get("warnCount", 0))
-            typer.echo(f"[{task}] {'PASS' if passed else 'FAIL'} · error {audit.get('errorCount', 0)} / warn {audit.get('warnCount', 0)}")
+            is_boundary = task.startswith("trap-")
+            caught = (audit.get("errorCount", 0) + audit.get("warnCount", 0)) > 0 or bool(
+                (judge or {}).get("veto")
+            )
+            tag = "检出" if caught else "漏检"
+            verdict = tag if is_boundary else ("PASS" if passed else "FAIL")
+            typer.echo(
+                f"[{task}] {verdict} · error {audit.get('errorCount', 0)} / warn {audit.get('warnCount', 0)}"
+            )
+            case["caught"] = caught
             if judge:
                 s = judge.get("scores") or {}
                 nums = []
@@ -288,7 +302,15 @@ def eval(
         for name, group in (("retention 保留集", retention), ("boundary 边界集", boundary)):
             if not group:
                 continue
-            ok_n = sum(1 for c in group if c["passed"])
+            # 保留集看「lint 通过率」（正常写作不退化）；
+            # 边界集看「检出率」（lint 命中或 judge veto，抓到问题才算审稿有效）
+            is_b = name.startswith("boundary")
+            if is_b:
+                ok_n = sum(1 for c in group if c.get("caught"))
+                metric = "检出"
+            else:
+                ok_n = sum(1 for c in group if c["passed"])
+                metric = "通过"
             avgs = []
             vetos = 0
             for c in group:
@@ -303,9 +325,9 @@ def eval(
                     avgs.append(sum(nums) / len(nums))
                 if (c.get("judge") or {}).get("veto"):
                     vetos += 1
-            line = f"  {name}: {ok_n}/{len(group)} lint通过 · Rubric均分 {sum(avgs)/len(avgs):.2f}/4" if avgs else f"  {name}: {ok_n}/{len(group)} lint通过"
-            if boundary:
-                line += f" · 边界集veto {vetos}"
+            line = f"  {name}: {ok_n}/{len(group)} {metric} · Rubric均分 {sum(avgs)/len(avgs):.2f}/4" if avgs else f"  {name}: {ok_n}/{len(group)} {metric}"
+            if boundary and is_b:
+                line += f" · veto {vetos}"
             typer.echo(line)
         return report
 
