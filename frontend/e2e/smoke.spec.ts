@@ -21,16 +21,15 @@ async function dismissTour(page: Page) {
   }
 }
 
-/** 公告弹窗（登录页首次可见）——等待出现再关闭，避免异步拉取的竞态 */
+/** 公告横幅（登录页非模态）——预置已读标记让公告不显示，避免干扰快照/断言 */
 async function dismissNotice(page: Page) {
-  const close = page.getByRole("button", { name: "关闭公告" });
-  try {
-    // 给公告拉取留时间；出现则关闭，没出现（已读/失败）直接继续
-    await close.waitFor({ state: "visible", timeout: 4_000 });
-    await close.click();
-  } catch {
-    /* 公告未出现：继续 */
-  }
+  await page.evaluate(() => {
+    try {
+      localStorage.setItem("vnss-notice-read-1", "1");
+    } catch {
+      /* ignore */
+    }
+  });
 }
 
 async function register(page: Page, username: string) {

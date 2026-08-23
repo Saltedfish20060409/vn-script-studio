@@ -34,8 +34,8 @@ function markRead(version: number): void {
 }
 
 /**
- * 公告横幅：登录页自动弹出（新用户可见欢迎+起步指导），
- * 登录后不再全屏打扰（避免挡住编辑器操作）；后续更新公告只需 bump version。
+ * 公告横幅：登录页顶部滑入（非模态，不拦截表单点击）。
+ * 未读版本才显示；关闭后本版本不再出现。后续更新公告只需 bump version。
  */
 export function NoticeBanner() {
   const location = useLocation();
@@ -63,23 +63,14 @@ export function NoticeBanner() {
     setOpen(false);
   }, [notice]);
 
-  // 只在登录页弹出：登录后的工作区不被全屏公告遮挡
+  // 只在登录页显示；非模态横幅不遮挡表单
   const isLogin = location.pathname === "/login";
   if (!isLogin || !open || !notice) return null;
 
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label={notice.title}>
-      <div className={styles.card}>
-        <button
-          type="button"
-          className={styles.closeBtn}
-          onClick={close}
-          aria-label="关闭公告"
-          title="关闭"
-        >
-          ✕
-        </button>
-        <p className={styles.kicker}>公告 · 更新于 {notice.updatedAt}</p>
+    <div className={styles.banner} role="region" aria-label={notice.title}>
+      <div className={styles.content}>
+        <p className={styles.kicker}>公告 · {notice.updatedAt}</p>
         <h2>{notice.title}</h2>
         <div className={styles.body}>
           {notice.sections.map((s, i) => (
@@ -89,10 +80,16 @@ export function NoticeBanner() {
             </section>
           ))}
         </div>
-        <button type="button" className={styles.gotIt} onClick={close}>
-          我知道了，开始使用 →
-        </button>
       </div>
+      <button
+        type="button"
+        className={styles.closeBtn}
+        onClick={close}
+        aria-label="关闭公告"
+        title="关闭"
+      >
+        ✕
+      </button>
     </div>
   );
 }
