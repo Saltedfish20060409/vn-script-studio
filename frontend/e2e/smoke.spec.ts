@@ -35,18 +35,9 @@ async function dismissNotice(page: Page) {
 async function register(page: Page, username: string) {
   await page.goto("/login");
   await dismissNotice(page);
-  // 诊断：捕获注册请求响应，便于定位 CI 里注册失败的真正原因
-  page.on("response", (res) => {
-    if (res.url().includes("/auth/register")) {
-      void res
-        .text()
-        .then((t) => console.log(`[diag] register ${res.status()} body=${t.slice(0, 200)}`))
-        .catch(() => console.log(`[diag] register ${res.status()} (no body)`));
-    }
-  });
   await page.getByRole("tab", { name: "注册" }).click();
   await page.fill("#vnss-username", username);
-  await page.fill("#vnss-email", `${username}@e2e.test`);
+  await page.fill("#vnss-email", `${username}@e2email.example.net`);
   await page.fill("#vnss-password", PASSWORD);
   await page.fill("#vnss-confirm", PASSWORD);
   await page.getByRole("button", { name: "注册并发送验证邮件" }).click();
