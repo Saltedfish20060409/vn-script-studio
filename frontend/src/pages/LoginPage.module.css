@@ -62,8 +62,8 @@
   transform: skewX(-12deg);
   border-left: 2px solid var(--line);
   pointer-events: none;
-  /* 装饰层永远在品牌文字之下（heroInner z-index:6） */
-  z-index: 1;
+  /* 装饰层压在最低：标题(heroInner z-index:100)之上还有足够余量 */
+  z-index: 0;
 }
 
 html[data-theme="night"] .slash {
@@ -82,7 +82,7 @@ html[data-theme="night"] .slash {
   place-items: center;
   pointer-events: none;
   opacity: 0.9;
-  z-index: 1;
+  z-index: 0;
 }
 
 .arc span {
@@ -102,7 +102,7 @@ html[data-theme="night"] .slash {
   clip-path: polygon(40% 0, 100% 15%, 70% 100%, 0 80%);
   pointer-events: none;
   opacity: 0.85;
-  z-index: 1;
+  z-index: 0;
 }
 
 .shardA {
@@ -189,16 +189,23 @@ html[data-theme="night"] .slash {
   font-family: var(--font-display);
   font-size: clamp(2.8rem, 7vw, 4.2rem);
   font-weight: 700;
-  line-height: 1.1;
+  /* 关键：line-height ≥1.1，字形完整落在元素盒内，
+     渐变(background-clip:text)才能覆盖每一个字母，不会被"切掉" */
+  line-height: 1.15;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  /* 纯色 + text-shadow：不用 background-clip:text 渐变——
-     渐变裁剪在 overflow:hidden 容器+层级组合下会把字形边缘裁掉，
-     用户反馈的「o/STUDIO 被挡」即此渲染问题。text-shadow 不裁剪字形 */
-  color: var(--ink);
-  text-shadow:
-    0 2px 0 color-mix(in srgb, var(--accent) 55%, transparent),
-    0 6px 18px color-mix(in srgb, var(--accent) 30%, transparent);
+  /* 文库风渐变标题。规范要点（三者缺一会出问题）：
+     1) 不加 filter（drop-shadow 与 background-clip:text 组合在
+        Chromium 有渲染 bug，会把圆字母边缘裁掉）
+     2) line-height ≥1.1（字形不溢出盒，渐变全覆盖）
+     3) 标题层在装饰层之上（heroInner z-index:100 + hero isolation） */
+  background: var(--grad-title);
+  background-size: 130% 130%;
+  background-position: 0 40%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  padding: 0.06em 0.12em;
 }
 
 .sub {
