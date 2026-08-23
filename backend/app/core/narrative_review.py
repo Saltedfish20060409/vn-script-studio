@@ -24,40 +24,44 @@ class NarrativeReviewResult:
     note: str = ""
     # rule-engine hits
     lintIssues: Optional[List[NarrativeLintIssue]] = None
+    # Rubric 逐维评分（第7章方法论）：{dim: (score 1-4, evidence)}
+    scores: Optional[dict] = None
 
 
 REVIEW_TASKS: List[str] = ["continue", "scene", "rewrite", "polish"]
 
 # Adversarial critic: assume draft is flawed; different role from writer
+# Rubric 化（对齐《深入理解 AI Agent》第7/9章评估方法论）：
+# 固定维度逐项打分 + 引用证据 + 一票否决项，而不是只给一个模糊总分。
 CRITIC_SYSTEM = """你是「挑错责编」，不是作者本人。默认假设草稿有社交/叙事问题，你的KPI是找出问题；只有确实干净才 ok=true。
 
 禁止：为作者辩护、把「推进剧情需要」当成连问盘人的借口、只夸氛围不查对白。
 
-硬性否决项（命中任一项 → ok 必须 false，并给 revised_text）：
-- 同一角色本拍主动追问≥2次
-- 问→答→再问的乒乓推进
+Rubric 评分（对每个维度给 1-4 分，并引用草稿原文作为证据；证据不足写 evidence:"未覆盖"）：
+1. 社交真实（social）：陌生人距离、问答乒乓、好感强行升温、无缘由倾诉
+2. 对白工艺（dialogue）：信息动机、打断/省略/别扭、惜话与沉默、对白密度
+3. 设定传达（setting）：设定是否溶于动作/态度，有无宣讲、内心OS标签
+4. VN可演性（stageable）：信息是否适合对白与画面、有无旁白全知剧透
+5. 一致性（consistency）：人设语气、已知信息、地点氛围、voice 是否违背
+
+一票否决项（命中任一项 → ok 必须 false，并给 revised_text）：
+- 编造不存在的信息（幻觉）
+- 同一角色本拍主动追问≥2次 / 问→答→再问乒乓
 - 陌生人/克制人设过熟倾诉或无偿讲解完整路线
 - 设定/履历宣讲
-
-审查清单：
-1. 社交温度与常理
-2. 盘问串 / 问答乒乓
-3. 信息动机（失言/恐惧/炫耀 vs 被审讯）
-4. 惜话与沉默是否被写满
-5. 是否违背 voice
-6. 能否用环境/动作替代多余对白
-
-若下方提供「规则引擎已检出」，那些项视为已坐实，必须改写，不得 ok=true 无视。
+- 规则引擎已检出的 error 级问题（视为已坐实，必须改写）
 
 输出唯一 JSON：
 {
   "ok": false,
-  "issues": ["..."],
+  "scores": {"social": 2, "dialogue": 1, "setting": 2, "stageable": 3, "consistency": 4},
+  "issues": ["维度+证据+问题一句话"],
   "revised_text": "改写后的完整片段（与草稿同风格）",
   "note": "一句话"
 }
 
-ok=true 时 issues 应为空且可省略 revised_text。改写保留钩子与推进意图，对白更少更尖。"""
+ok=true 时 issues 应为空且可省略 revised_text。改写保留钩子与推进意图，对白更少更尖。
+scores 每维必须给 1-4 整数，缺失维度在 issues 里说明；note 用中文。"""
 
 
 def should_self_review(task: str, preference: str = "auto") -> bool:
@@ -110,17 +114,28 @@ def _parse_review_json(raw: str) -> NarrativeReviewResult:
         note = note_raw.strip() if isinstance(note_raw, str) and note_raw.strip() else ""
 
         fail = parsed.get("ok") is False or (len(issues) > 0 and len(revised) > 0)
+        scores_raw = parsed.get("scores")
+        scores: Optional[dict] = None
+        if isinstance(scores_raw, dict):
+            scores = {}
+            for dim, v in scores_raw.items():
+                if isinstance(v, dict) and "score" in v:
+                    scores[dim] = v
+                elif isinstance(v, (int, float)):
+                    scores[dim] = {"score": v, "evidence": ""}
         if fail and revised:
             return NarrativeReviewResult(
                 ok=False,
                 issues=issues,
                 revisedText=revised,
                 note=note or f"自检未通过（{'；'.join(issues[:2]) or '需改写'}）",
+                scores=scores,
             )
         return NarrativeReviewResult(
             ok=True,
             issues=issues,
             note=note or (f"自检通过（备注：{issues[0]}）" if issues else "自检通过"),
+            scores=scores,
         )
     except (json.JSONDecodeError, AttributeError, TypeError):
         return NarrativeReviewResult(

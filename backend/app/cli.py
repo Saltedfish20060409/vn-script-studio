@@ -131,6 +131,60 @@ def eval(
         content, used_model = content_from_response(res)
         return {"text": content.strip(), "model": used_model}
 
+    # LLM-as-a-Judge（《深入理解 AI Agent》第7/9章）：Rubric 逐维打分+引用证据
+    # +一票否决。与确定性 lint 互补：lint 查规则，Judge 查质量。
+    JUDGE_SYSTEM = """你是视觉小说 / 轻小说审稿评委。对草稿按 Rubric 逐维打分（1-4），
+每维必须引用草稿原文作为证据；证据不足写 evidence:"未覆盖"。
+
+维度：
+- social 社交真实：人物距离感、问答乒乓、无缘由倾诉
+- dialogue 对白工艺：信息动机、打断省略、惜话与沉默
+- setting 设定传达：设定是否溶于动作，有无宣讲/内心OS标签
+- stageable VN可演性：信息是否适合对白与画面，有无全知剧透
+- consistency 一致性：人设语气、已知信息、地点氛围
+
+一票否决项（命中任一 → veto=true）：
+- 编造不存在的信息（幻觉）/ 设定前后矛盾
+- 同一角色本拍主动追问≥2次 / 问答乒乓
+- 陌生人过熟倾诉 / 设定履历宣讲
+
+输出唯一 JSON：
+{"scores":{"social":2,"dialogue":3,"setting":4,"stageable":3,"consistency":2},
+ "evidence":{"social":"引用原文","dialogue":"…"},"veto":false,
+ "note":"一句话总评"}"""
+
+    async def _judge_rubric(cfg, ctx: str, task: str, draft: str) -> dict:
+        try:
+            res = await chat_completions(
+                cfg,
+                messages=[
+                    {"role": "system", "content": JUDGE_SYSTEM},
+                    {
+                        "role": "user",
+                        "content": f"{ctx}\n\n【任务：{task}】草稿：\n{draft[:2500]}",
+                    },
+                ],
+                temperature=0.2,
+                response_format={"type": "json_object"},
+                timeout=90,
+            )
+            content, _used = content_from_response(res)
+            parsed = json.loads(content.strip() or "{}")
+            scores = parsed.get("scores")
+            if not isinstance(scores, dict):
+                return {"error": "judge_scores_missing"}
+            for dim, v in list(scores.items()):
+                if not isinstance(v, (int, float)):
+                    scores[dim] = None
+            return {
+                "scores": scores,
+                "evidence": parsed.get("evidence") or {},
+                "veto": bool(parsed.get("veto")),
+                "note": str(parsed.get("note") or "")[:200],
+            }
+        except Exception as exc:  # noqa: BLE001
+            return {"error": f"judge_failed:{type(exc).__name__}:{str(exc)[:120]}"}
+
     async def _run_all():
         report = {
             "model": cfg.model,
@@ -150,26 +204,34 @@ def eval(
                 continue
             audit = full_audit_draft(r["text"])
             passed = bool(audit.get("pass"))
-            report["cases"].append(
-                {
-                    "task": task,
-                    "chars": len(r["text"]),
-                    "passed": passed,
-                    "errorCount": audit.get("errorCount", 0),
-                    "warnCount": audit.get("warnCount", 0),
-                    "issues": [
-                        {"severity": i.get("severity"), "code": i.get("code")}
-                        for i in (audit.get("issues") or [])[:6]
-                    ],
-                    "text": r["text"][:400],
-                }
-            )
+            # LLM-as-a-Judge（第7章）：确定性 lint 之外，用同模型按 Rubric 逐维打分，
+            # 引用证据；与 lint 互补，避免"只看规则、不看质量"。
+            judge = await _judge_rubric(cfg, ctx, task, r["text"])
+            case = {
+                "task": task,
+                "chars": len(r["text"]),
+                "passed": passed,
+                "errorCount": audit.get("errorCount", 0),
+                "warnCount": audit.get("warnCount", 0),
+                "issues": [
+                    {"severity": i.get("severity"), "code": i.get("code")}
+                    for i in (audit.get("issues") or [])[:6]
+                ],
+                "judge": judge,
+                "text": r["text"][:400],
+            }
+            report["cases"].append(case)
             report["summary"]["total"] += 1
             if passed:
                 report["summary"]["passed"] += 1
             report["summary"]["errorCount"] += int(audit.get("errorCount", 0))
             report["summary"]["warnCount"] += int(audit.get("warnCount", 0))
             typer.echo(f"[{task}] {'PASS' if passed else 'FAIL'} · error {audit.get('errorCount', 0)} / warn {audit.get('warnCount', 0)}")
+            if judge:
+                avg = sum(s.get("score", 0) for s in judge.get("scores", {}).values()) / max(
+                    1, len(judge.get("scores", {}))
+                )
+                typer.echo(f"       Rubric avg {avg:.1f}/4 · veto {judge.get('veto')}")
         return report
 
     report = asyncio.run(_run_all())

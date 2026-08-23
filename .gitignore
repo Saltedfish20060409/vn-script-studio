@@ -44,3 +44,7 @@ backend/.cache_*
 
 deploy/artifacts/
 deploy/node_modules/
+
+# AI Agent 书籍抓取原始文本（保留提炼文档）
+agent-book-fetch/*.txt
+agent-book-fetch/*.meta.txt
