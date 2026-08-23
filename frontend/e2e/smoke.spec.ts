@@ -16,16 +16,20 @@ function randomName(prefix: string): string {
 
 async function dismissTour(page: Page) {
   const overlay = page.getByTestId("onboarding-overlay");
-  if (await overlay.isVisible().catch(() => false)) {
+  try {
+    await overlay.waitFor({ state: "visible", timeout: 2_000 });
     await page.getByRole("button", { name: "跳过" }).click();
+  } catch {
+    /* 引导未出现：继续 */
   }
 }
 
-/** 公告横幅（登录页非模态）——预置已读标记让公告不显示，避免干扰快照/断言 */
-async function dismissNotice(page: Page) {
-  await page.evaluate(() => {
+/** 公告横幅 + 新手引导：页面加载前注入已读/已看标记，让两者完全不显示 */
+function seedLocalStorage(page: Page) {
+  page.addInitScript(() => {
     try {
       localStorage.setItem("vnss-notice-read-1", "1");
+      localStorage.setItem("vnss-tour-v1", "1");
     } catch {
       /* ignore */
     }
@@ -33,8 +37,8 @@ async function dismissNotice(page: Page) {
 }
 
 async function register(page: Page, username: string) {
+  seedLocalStorage(page);
   await page.goto("/login");
-  await dismissNotice(page);
   await page.getByRole("tab", { name: "注册" }).click();
   await page.fill("#vnss-username", username);
   await page.fill("#vnss-email", `${username}@e2email.example.net`);
