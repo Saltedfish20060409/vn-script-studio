@@ -74,14 +74,16 @@ def lint_narrative_draft(draft: str) -> List[NarrativeLintIssue]:
 
     dialogues = _parse_dialogue_lines(t)
 
-    # 1) Same speaker asks 2+ questions in one beat (not necessarily consecutive)
+    # 1) Same speaker asks questions in one beat.
+    #    ≥3 次才是盘问串（error）；2 次是正常对话常见（warn 提示即可，
+    #    否则「你躲什么？→回答→昨晚在雨里等谁？」这种信息推进会被误杀）
     q_count: dict[str, int] = {}
     for d in dialogues:
         if not d.isQuestion:
             continue
         q_count[d.speaker] = q_count.get(d.speaker, 0) + 1
     for speaker, n in q_count.items():
-        if n >= 2:
+        if n >= 3:
             issues.append(
                 NarrativeLintIssue(
                     severity="error",
@@ -89,8 +91,18 @@ def lint_narrative_draft(draft: str) -> List[NarrativeLintIssue]:
                     message=f"「{speaker}」本拍主动追问 {n} 次（盘问串），宜≤1 次",
                 )
             )
+        elif n == 2:
+            issues.append(
+                NarrativeLintIssue(
+                    severity="warn",
+                    code="multi_question",
+                    message=f"「{speaker}」本拍追问 2 次：若是同一件事的连问串会显盘问，检查是否有信息推进",
+                )
+            )
 
-    # 2) Q-A-Q ping-pong: A?, B answers, A? again within 6 turns
+    # 2) Q-A-Q ping-pong: A?, B answers (tersely, no new info), A? again.
+    #    中间回答必须很短（≤6 字，机械作答）才判定乒乓；
+    #    回答有实质内容（如「没躲，赶着去图书馆」）→ 正常信息推进，不误杀。
     i = 0
     n_dialogues = len(dialogues)
     while i < n_dialogues - 2:
@@ -103,6 +115,8 @@ def lint_narrative_draft(draft: str) -> List[NarrativeLintIssue]:
             mid = dialogues[j]
             if mid.speaker == a.speaker:
                 continue
+            if len(mid.text) > 6:
+                break  # 回答有实质内容 → 乒乓链中断，从下一句重新判定
             k_end = min(j + 5, n_dialogues)
             for k in range(j + 1, k_end):
                 again = dialogues[k]
@@ -111,7 +125,7 @@ def lint_narrative_draft(draft: str) -> List[NarrativeLintIssue]:
                         NarrativeLintIssue(
                             severity="error",
                             code="qa_pingpong",
-                            message=f"问答乒乓：{a.speaker} 提问后再次追问（夹着 {mid.speaker} 的回答）",
+                            message=f"问答乒乓：{a.speaker} 提问后再次追问（夹着 {mid.speaker} 的机械短答「{mid.text}」）",
                         )
                     )
                     i = k
