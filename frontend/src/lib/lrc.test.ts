@@ -46,6 +46,21 @@ describe("parseLrc", () => {
     expect(r.lines[1].text).toBe("第二句真正的歌词");
   });
 
+  it("skips credit variants: spaced colon / no colon / instrumental", () => {
+    const r = parseLrc(
+      "[00:00.00]作词 : 林夕\n" +
+        "[00:00.00]作曲:泽野弘之\n" +
+        "[00:00.00]编曲 泽野弘之\n" +
+        "[00:00.00]演唱：某人\n" +
+        "[00:00.00]（前奏）\n" +
+        "[00:03.00]终于开始唱了\n" +
+        "[00:06.00]OP\n" +
+        "[00:09.00]间奏\n" +
+        "[00:12.00]还在唱\n"
+    );
+    expect(r.lines.map((l) => l.text)).toEqual(["终于开始唱了", "还在唱"]);
+  });
+
   it("keeps lyric lines that merely mention 词/曲 inside", () => {
     const r = parseLrc("[00:05.00]这首歌的歌词写得真好\n[00:10.00]作曲的人不懂我");
     expect(r.lines).toHaveLength(2);

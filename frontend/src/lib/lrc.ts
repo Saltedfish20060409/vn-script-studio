@@ -29,13 +29,21 @@ const META_RE = /^\[(ti|ar|al|by|offset):(.*)\]$/i;
 
 /** 作词/作曲/编曲等「制作信息行」：很多 LRC 会给它们也打上时间戳
  *  （[00:00.00]作词：林夕），它们不是歌词，混入会让歌词行数比实际唱句
- *  多、滚动定位对不上正在唱的那句。整行很短且以制作角色开头 → 跳过。 */
+ *  多、滚动定位对不上正在唱的那句。整行很短且以制作角色开头 → 跳过。
+ *  兼容变体：作词：X / 作词 : X / 作词:X / 词 : X / 演唱: X /
+ *  纯音乐标注（前奏/间奏/尾奏/Music…）。 */
 const CREDIT_RE =
-  /^(作词|作曲|编曲|混音|录音|制作人|制作|和声|监制|出品|发行|演唱|原唱|翻唱|词|曲)[:：]/;
+  /^(作词|作曲|编曲|混音|录音|制作人|制作|和声|监制|出品|发行|演唱|原唱|翻唱|词|曲)\s*[:：]/;
+const INSTRUMENTAL_RE =
+  /^[（(]?(前奏|间奏|尾奏|纯音乐|music|instrumental|interlude|op|ed|歌词提供)[:：]?[）)]?[\s（(]?/i;
 
 function isCreditLine(text: string): boolean {
   const t = text.trim();
-  return t.length <= 30 && CREDIT_RE.test(t);
+  if (t.length > 30) return false;
+  if (CREDIT_RE.test(t)) return true;
+  // 「作词 林夕」「作曲 陈辉阳」——有些 LRC 连冒号都省了
+  if (/^(作词|作曲|编曲|演唱|原唱|翻唱)\s+\S{1,10}$/.test(t)) return true;
+  return INSTRUMENTAL_RE.test(t);
 }
 
 function toSeconds(m: string, s: string, frac?: string): number {
