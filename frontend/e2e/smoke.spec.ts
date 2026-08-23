@@ -24,12 +24,17 @@ async function dismissTour(page: Page) {
   }
 }
 
-/** 公告横幅 + 新手引导：页面加载前注入已读/已看标记，让两者完全不显示 */
+/** 公告横幅 + 新手引导 + Agent 面板：页面加载前注入标记，
+ *  让弹层/悬浮面板不干扰（Agent 预设为 docked 收起在右缘） */
 function seedLocalStorage(page: Page) {
   page.addInitScript(() => {
     try {
       localStorage.setItem("vnss-notice-read-1", "1");
       localStorage.setItem("vnss-tour-v1", "1");
+      localStorage.setItem(
+        "vnss-agent-float-v6",
+        JSON.stringify({ mode: "docked", edge: "right", along: 96, size: "mini" })
+      );
     } catch {
       /* ignore */
     }

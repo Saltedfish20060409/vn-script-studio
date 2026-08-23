@@ -993,6 +993,10 @@
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
   backdrop-filter: var(--rail-blur);
   -webkit-backdrop-filter: var(--rail-blur);
+  /* 工具栏按钮必须可点：Agent 悬浮面板(fixed z-60)在窄视口会盖到
+     换行到右侧的按钮，工具栏提升到其之上 */
+  position: relative;
+  z-index: 70;
 }
 
 .aiQuick {
