@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from app.core.harness.ai_flavor import lint_ai_flavor
 from app.core.narrative_lint import (
     lint_has_blockers,
     lint_narrative_draft,
@@ -14,6 +15,10 @@ from app.core.narrative_lint import (
 
 def _codes(text: str) -> list[str]:
     return [i.code for i in lint_narrative_draft(text)]
+
+
+def _flavor_codes(text: str) -> list[str]:
+    return [i.code for i in lint_ai_flavor(text)]
 
 
 def test_multi_question_is_error():
@@ -77,3 +82,60 @@ def test_clean_dialogue_passes():
     issues = lint_narrative_draft(text)
     assert not lint_has_blockers(issues)
     assert not [i for i in issues if i.severity == "warn"]
+
+
+def test_not_but_correction_is_error():
+    """纠偏句式「不是A，是B」×2 → ai_not_but error。"""
+    text = (
+        "她的眼眶不是红了，是下雨淋的。"
+        "他不是在生气，只是站得有点僵。"
+        "这不是犹豫，是还没想好怎么开口。"
+    )
+    codes = _flavor_codes(text)
+    assert "ai_not_but" in codes
+    # 纠偏句是 error 级（ai_flavor 单独判），narrative 无阻塞
+    err = [i for i in lint_ai_flavor(text) if i.severity == "error"]
+    assert any(i.code == "ai_not_but" for i in err)
+
+
+def test_telegram_dialogue_is_error():
+    """分工电报腔对白 → ai_telegram_dialogue error。"""
+    text = (
+        "林夏：你主查。我主护。你探路。我断后。你开门。我望风。"
+    )
+    codes = _flavor_codes(text)
+    assert "ai_telegram_dialogue" in codes
+    err = [i for i in lint_ai_flavor(text) if i.severity == "error"]
+    assert any(i.code == "ai_telegram_dialogue" for i in err)
+
+
+def test_ai_cliche_warns():
+    """同一套话重复 → ai_cliche warn。"""
+    text = (
+        "她微微一笑，雨停了。\n"
+        "他微微一笑，递过伞。\n"
+        "林夏微微一笑，什么都没说。"
+    )
+    codes = _flavor_codes(text)
+    assert "ai_cliche" in codes
+
+
+def test_otaku_shell_warns():
+    """伪二次元标签入文 → otaku_shell warn。"""
+    text = "她是个傲娇属性，好感度正在上升。"
+    codes = _flavor_codes(text)
+    assert "otaku_shell" in codes
+
+
+def test_fragment_stack_warns():
+    """极短段堆叠 → ai_fragment_stack warn。"""
+    text = (
+        "风。\n\n"
+        "雨。\n\n"
+        "灯。\n\n"
+        "伞。\n\n"
+        "影。\n\n"
+        "然后他开口了。"
+    )
+    codes = _flavor_codes(text)
+    assert "ai_fragment_stack" in codes
