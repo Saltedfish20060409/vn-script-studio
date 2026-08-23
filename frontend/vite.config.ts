@@ -60,6 +60,16 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    port: 4173,
+    // e2e smoke tests 跑 vite preview：没有这个 proxy，/api 请求会 404
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     emptyOutDir: true,
     rollupOptions: {
