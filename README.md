@@ -58,7 +58,31 @@ vn-script-studio/
 
 ### 快速开始
 
-**前置**：需要 [Docker Desktop](https://www.docker.com/products/docker-desktop/)（Windows/macOS）或 Docker Engine（Linux）来跑 PostgreSQL / Redis；Docker 未启动时数据库起不来，先启动 Docker Desktop 再执行下面的命令。Node.js 20+ 与 Python 3.12+ 也需先装好。
+#### 方式 A：Docker 一键试用（推荐，无需装 Node/Python）
+
+只要装了 [Docker Desktop](https://www.docker.com/products/docker-desktop/)（Windows/macOS）或 Docker Engine（Linux），clone 后直接起全栈：
+
+```bash
+git clone <本仓库>
+cd vn-script-studio
+docker compose up -d        # 构建 api/web + 起 postgres/redis
+```
+
+打开 **http://localhost:8080**，注册账号即可使用（试用模式**注册后免邮箱验证**，直接登录）。
+
+| 组件 | 地址 |
+|------|------|
+| Web 界面 | http://localhost:8080 |
+| API 文档 | http://localhost:8000/docs |
+| PostgreSQL | localhost:54102（vnss/vnss） |
+
+- AI 功能：登录后在「设置 → 模型」按账号填你的 LLM Key（如 DeepSeek），或启动时注入服务端 Key：`DEEPSEEK_API_KEY=sk-xxx docker compose up -d`
+- 停止：`docker compose down`（数据保留在卷里；`docker compose down -v` 会清空）
+- 需要固定密钥 / 真实邮箱验证时，见下方环境变量节
+
+#### 方式 B：源码开发模式（改代码用）
+
+**前置**：Docker Desktop（跑 PostgreSQL / Redis）+ Node.js 20+ + Python 3.12+。
 
 日常开发可一键启动：
 

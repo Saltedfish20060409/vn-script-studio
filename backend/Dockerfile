@@ -1,9 +1,8 @@
 FROM python:3.12-slim
 
 WORKDIR /app
-# 固定版本构建（可复现）：requirements-lock.txt 是 pip freeze 全量锁定。
-# requirements.txt（>= 浮动）仅供 CI/dev 解析顶层依赖。
-COPY requirements-lock.txt ./requirements.txt
+# 精确锁定依赖（可复现构建）：requirements.txt 为精确版本。
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY alembic ./alembic

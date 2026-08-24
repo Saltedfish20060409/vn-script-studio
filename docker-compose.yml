@@ -1,7 +1,11 @@
+# VN Script Studio — 本地 Docker 试用（一键全栈）。
+# 用法：docker compose up -d  →  打开 http://localhost:8080
+# 试用默认 AUTH_AUTO_VERIFY=true：注册后无需收邮件验证，直接登录。
+# 如需用真实邮箱验证 / 服务端 LLM Key，把 backend/.env 里的值通过环境变量注入，
+# 例如：VNSS_SECRET_KEY=... DEEPSEEK_API_KEY=... docker compose up -d
+
 services:
   postgres:
-    # For pgvector semantic search, use:  image: pgvector/pgvector:pg16
-    # (then run `CREATE EXTENSION vector;` — the app detects it at runtime).
     image: postgres:16-alpine
     container_name: vnss-postgres
     environment:
@@ -19,9 +23,7 @@ services:
       retries: 10
     logging:
       driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "3"
+      options: { max-size: "20m", max-file: "3" }
 
   redis:
     image: redis:7-alpine
@@ -35,9 +37,52 @@ services:
       retries: 10
     logging:
       driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "3"
+      options: { max-size: "20m", max-file: "3" }
+
+  api:
+    build: ./backend
+    container_name: vnss-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # 容器内用服务名连接（宿主机端口 54102 仅供本地 psql 调试）
+      DATABASE_URL: postgresql+asyncpg://vnss:vnss@postgres:5432/vnss
+      REDIS_URL: redis://redis:6379/0
+      CORS_ORIGINS: http://localhost:8080
+      SECRET_KEY: ${VNSS_SECRET_KEY:-vnss-local-dev-secret-please-change-0123456789abcdef}
+      # 本地试用默认开放注册并跳过邮箱验证（改 false 即要求真实验证）
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      AUTH_AUTO_VERIFY: ${AUTH_AUTO_VERIFY:-true}
+      # 用户可在「设置 → 模型」按账号填自己的 LLM Key；服务端 Key 也可在此给
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
+      MOEGIRL_ENABLED: ${MOEGIRL_ENABLED:-true}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "3" }
+
+  web:
+    build: ./frontend
+    container_name: vnss-web
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "3" }
 
 volumes:
   vnss_pg_data:
