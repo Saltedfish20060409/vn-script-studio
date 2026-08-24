@@ -59,7 +59,18 @@ export function choose(
 ): { state: PlayState; ended: boolean } {
   if (choice.jump) {
     const target = labelIndex.get(choice.jump);
-    if (target !== undefined) return { state: { index: target, stack: [], resume: [] }, ended: false };
+    if (target !== undefined) {
+      // 跳到 label 后，继续定位到该 label 之后第一个「可见」块：
+      // 否则 current 落在 label 上 → 试玩 stage 空白（点击无法进入下一页）。
+      const vi = nextVisible(blocks, target);
+      return {
+        state:
+          vi !== null
+            ? { index: vi, stack: [], resume: [] }
+            : { index: target, stack: [], resume: [] },
+        ended: vi === null,
+      };
+    }
     const scope = scopeOf(state, blocks);
     const ni = nextVisible(scope, state.index + 1);
     return {

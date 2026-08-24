@@ -30,7 +30,7 @@ describe("playState", () => {
     expect(ended).toBe(true);
   });
 
-  it("choose with jump seeks to the label", () => {
+  it("choose with jump seeks to the first visible after the label", () => {
     const blocks: ScriptBlock[] = [
       label("start"),
       narr("A"),
@@ -45,8 +45,32 @@ describe("playState", () => {
       { jump: "end" },
       new Map([["end", 2]])
     );
-    expect(state.index).toBe(2);
+    // label(2) 之后第一个可见块是 narr("B")(3)
+    expect(state.index).toBe(3);
     expect(state.stack).toHaveLength(0);
+  });
+
+  it("choose with jump lands on the next VISIBLE block after the label", () => {
+    // 真实场景：jump 目标是 label，UI 必须落在 label 之后第一个可见块，
+    // 否则停在 label 上 → stage 空白页（用户反馈的 bug）。
+    const blocks: ScriptBlock[] = [
+      label("start"),
+      narr("A"),
+      { type: "menu", id: "m", choices: [{ text: "x", jump: "after" }] },
+      label("after"), // label 本身不可见
+      dialog("B"),    // 应落在这里
+    ];
+    const menuIdx = 2;
+    const labelMap = new Map<string, number>([["after", 3]]);
+    const { state, ended } = choose(
+      { ...PLAY_START, index: menuIdx },
+      blocks,
+      { jump: "after" },
+      labelMap
+    );
+    expect(ended).toBe(false);
+    // 不能停在 label(3) 上 → 应自动跳到下一个可见块(4)
+    expect(state.index).toBe(4);
   });
 
   it("choose with inline blocks enters them and resumes after the menu", () => {

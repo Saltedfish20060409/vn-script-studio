@@ -492,8 +492,17 @@ html[data-theme="night"] .slash {
   }
 
   .arc {
-    width: 140px;
-    height: 140px;
+    /* 移动端 hero 只有 42vh：大圆环会压到标题，缩小并贴到右上角 */
+    width: 84px;
+    height: 84px;
+    top: 6%;
+    left: auto;
+    right: 6%;
+  }
+
+  .arc span {
+    font-size: 0.85rem;
+    letter-spacing: 0.1em;
   }
 }
 

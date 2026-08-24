@@ -65,7 +65,13 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
       const target = labelIndex.get(current.target);
       if (target !== undefined) {
         setHistory((h) => [...h.slice(-300), cursor]);
-        setCursor({ index: target, stack: [], resume: [] });
+        // 落在 label 之后第一个可见块，避免停在 label 上显示空白页
+        const vi = nextVisible(chapter.blocks ?? [], target);
+        setCursor({
+          index: vi !== null ? vi : target,
+          stack: [],
+          resume: [],
+        });
       }
     } else if (current.type === "return") {
       setPhase("ended");
@@ -101,7 +107,6 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
     const { state, ended } = choose(cursor, chapter.blocks ?? [], c, labelIndex);
     move(state, ended);
   };
-
   // Skip scene/show/hide cues in one go (keyboard "skip").
   const skipCues = useCallback(() => {
     setHistory((h) => [...h.slice(-300), cursor]);
@@ -221,7 +226,17 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
         </button>
       </div>
 
-      <div className={styles.stage}>
+      <div
+        className={styles.stage}
+        onClick={(e) => {
+          // 仅当点的是舞台空白处（非对白/旁白/菜单/按钮）才前进，
+          // 避免与子元素 onClick 冒泡造成一步变两步
+          const b = current;
+          if (b?.type === "menu") return;
+          if (e.target !== e.currentTarget) return;
+          advanceStep();
+        }}
+      >
         {block?.type === "scene" && (
           <div className={styles.sceneCue}>
             <p>[ 场景：{block.image} ]</p>

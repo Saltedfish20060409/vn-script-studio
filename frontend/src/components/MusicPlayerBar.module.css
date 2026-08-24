@@ -11,6 +11,8 @@
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.12);
+  /* 面板以其为定位基准向上展开 */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .mini {
@@ -35,6 +37,10 @@
   }
   .time {
     font-size: 0.68rem;
+  }
+  /* 面板最高不超过视口可及范围，保证列表/搜索完整可见、可滚动 */
+  .panel {
+    max-height: min(42vh, 300px);
   }
 }
 
