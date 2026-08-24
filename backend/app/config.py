@@ -18,7 +18,10 @@ class Settings(BaseSettings):
     # Host port matches docker-compose.yml (54102:5432)
     database_url: str = "postgresql+asyncpg://vnss:vnss@localhost:54102/vnss"
     secret_key: str = "change-me-to-a-long-random-string"
-    access_token_expire_minutes: int = 60 * 24 * 7
+    # 60 min access token + refresh rotation: leaked JWT expires quickly,
+    # refresh token (30d) does the long-lived session. Frontend auto-refreshes
+    # on 401 (api/http.ts refreshOnce), so no UX change.
+    access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 30
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 

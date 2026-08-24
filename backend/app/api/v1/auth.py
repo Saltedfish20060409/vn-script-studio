@@ -287,10 +287,15 @@ async def reset_password(
 @router.post("/refresh", response_model=TokenOut)
 async def refresh(
     body: RefreshIn,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
     """Exchange a valid refresh token for a fresh access token (+ rotated refresh)."""
+    if not check_rate(
+        _client_ip(request), "refresh", limit=60, enabled=settings.rate_limit_enabled
+    ):
+        raise HTTPException(status_code=429, detail="刷新过于频繁，请稍后再试")
     try:
         payload = decode_token(body.refresh_token.strip(), settings)
     except JWTError as exc:

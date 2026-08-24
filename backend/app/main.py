@@ -5,7 +5,6 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 
 from app.api.v1 import api_router
 from app.config import get_settings
@@ -37,20 +36,14 @@ def _alembic_upgrade_sync() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    try:
-        await asyncio.to_thread(_alembic_upgrade_sync)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("alembic upgrade skipped/failed: %s", exc)
+    # Fail fast on schema migration errors — a swallowed alembic failure
+    # silently drifts the schema. 0001 is an idempotent baseline, so a fresh
+    # DB also upgrades cleanly.
+    await asyncio.to_thread(_alembic_upgrade_sync)
+    # create_all stays as an idempotent backstop for tables created outside
+    # alembic (e.g. legacy); it never drops or alters existing columns.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        await conn.execute(
-            text(
-                """
-                ALTER TABLE IF EXISTS agent_sessions
-                  ADD COLUMN IF NOT EXISTS title VARCHAR(255) DEFAULT '新对话'
-                """
-            )
-        )
     # Cross-worker SSE bridge (no-op without REDIS_URL).
     from app.services import event_bus
 
