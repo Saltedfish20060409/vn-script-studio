@@ -22,28 +22,6 @@
   padding: 0.45rem 0.9rem;
 }
 
-/* 窄屏：收窄信息区与进度条，保证右侧按钮不换行溢出 */
-@media (max-width: 720px) {
-  .mini {
-    gap: 0.3rem;
-    padding: 0.4rem 0.55rem;
-  }
-  .seek {
-    min-width: 44px;
-    flex: 0 0 44px;
-  }
-  .vol {
-    display: none;
-  }
-  .time {
-    font-size: 0.68rem;
-  }
-  /* 面板最高不超过视口可及范围，保证列表/搜索完整可见、可滚动 */
-  .panel {
-    max-height: min(42vh, 300px);
-  }
-}
-
 .keyBtn {
   flex-shrink: 0;
   min-width: 38px;
@@ -519,4 +497,53 @@
   color: var(--ink-soft);
   min-width: 6.5rem;
   text-align: center;
+}
+
+/* 窄屏：两行 grid 布局。
+   一行塞不下 7 个按钮 + 标题 + 进度条 + 时间（固定宽约 470px，
+   超出 360~430px 手机宽度），行尾的歌词/列表/添加键会被推出屏幕。
+   方案（grid 显式区域，无 flex 换行歧义）：
+   第一行：上一首/播放/下一首 + 标题 + 歌词/列表/添加
+   第二行：模式键 + 进度条(占满) + 时间
+   注：keyBtn 是 content-box，min-width 28px + 2px 边框 = 32px 外宽；
+   未显式指定区域的前/后/歌词/列表按钮由 grid 自动放入第一行空位。
+   必须放在文件末尾：与桌面规则同特异性，级联顺序靠后才能覆盖
+   （之前放在 .keyBtn 前，min-width/height、flex、padding 全被桌面规则覆盖）。 */
+@media (max-width: 720px) {
+  .mini {
+    display: grid;
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto auto auto;
+    grid-template-areas:
+      "prev play next info lrc list add"
+      "mode seek seek seek seek seek time";
+    gap: 0.3rem;
+    padding: 0.4rem 0.55rem;
+  }
+  .info {
+    grid-area: info;
+  }
+  .modeBtn {
+    grid-area: mode;
+  }
+  .seek {
+    grid-area: seek;
+  }
+  .time {
+    grid-area: time;
+  }
+  .keyBtn {
+    min-width: 28px;
+    height: 28px;
+  }
+  .vol {
+    display: none;
+  }
+  .addSong {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+  }
+  /* 面板最高不超过视口可及范围，保证列表/搜索完整可见、可滚动 */
+  .panel {
+    max-height: min(42vh, 300px);
+  }
 }
