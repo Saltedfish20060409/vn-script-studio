@@ -236,7 +236,13 @@ async def run_agent_loop(
     accumulated: List[AgentAction] = []
     trace: List[Dict[str, Any]] = []
     final_message = ""
-    steps = max(1, min(12, int(max_steps or DEFAULT_MAX_STEPS)))
+    # 复杂检索类任务给更多步：一致性排查 / 大纲 / 改写需要多次查章-设定-角色。
+    # 用户显式传入 max_steps 时优先；否则按任务加权。
+    if max_steps is not None and max_steps != DEFAULT_MAX_STEPS:
+        steps = max(1, min(12, int(max_steps)))
+    else:
+        task_steps = {"consistency": 9, "outline": 8, "rewrite": 8, "voice": 8, "scene": 7}
+        steps = max(1, min(12, task_steps.get(task, DEFAULT_MAX_STEPS)))
 
     for step in range(steps):
         content = await _chat_json(

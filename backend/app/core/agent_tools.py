@@ -17,10 +17,12 @@ from app.domain.types import Character, VnProject
 TOOL_SPECS: List[Dict[str, Any]] = [
     {
         "name": "get_chapter",
-        "description": "读取一章正文（可截断）。不传 chapterRef 则用当前焦点章。",
+        "description": "读取一章或多章正文（可截断）。不传 chapterRef 则用当前焦点章；"
+        "传 chapterRefs（逗号分隔多个 id/标题）可一次读多章做跨章对照。",
         "parameters": {
             "chapterRef": "章节 id 或标题，可选",
-            "maxChars": "最大字符，默认 3500",
+            "chapterRefs": "多个章节 id/标题，逗号分隔，可选（与 chapterRef 二选一）",
+            "maxChars": "每章最大字符，默认 4000",
         },
     },
     {
@@ -153,11 +155,32 @@ def run_agent_tool(
     args = arguments if isinstance(arguments, dict) else {}
     try:
         if name == "get_chapter":
+            max_c = int(args.get("maxChars") or 4000)
+            refs = [
+                r.strip()
+                for r in str(args.get("chapterRefs") or "").split(",")
+                if r.strip()
+            ]
+            if refs:
+                # 多章模式：逐章读取，带标题分隔；缺省章容错。
+                parts = []
+                missing = []
+                for ref in refs:
+                    ch = _find_chapter(project, ref, chapter_id)
+                    if not ch:
+                        missing.append(ref)
+                        continue
+                    plain = _blocks_to_plain(ch.blocks or [], project.characters or [])
+                    parts.append(f"### {ch.title or ch.id}\n{_clip(plain, max_c)}")
+                if missing:
+                    parts.append(f"（未找到章节：{', '.join(missing)}）")
+                if not parts:
+                    return False, "未找到任何指定章节"
+                return True, "\n\n".join(parts)
             ch = _find_chapter(project, args.get("chapterRef"), chapter_id)
             if not ch:
                 return False, "未找到章节"
             plain = _blocks_to_plain(ch.blocks or [], project.characters or [])
-            max_c = int(args.get("maxChars") or 3500)
             return True, f"#{ch.title or ch.id}\n{_clip(plain, max_c)}"
 
         if name == "search_script":

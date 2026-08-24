@@ -60,6 +60,34 @@ def test_get_chapter_and_search():
     assert "伞" in hits
 
 
+def test_get_chapter_multi():
+    """get_chapter 支持 chapterRefs 一次读多章（跨章对照）。"""
+    p = _demo()
+    # demo 只有一章，复制一个第二章节做多章测试
+    import copy
+
+    ch2 = copy.deepcopy(p.chapters[0])
+    ch2.id = "ch2"
+    ch2.title = "第二章"
+    p.chapters.append(ch2)
+
+    ok, text = run_agent_tool(
+        "get_chapter", {"chapterRefs": "ch1, 第二章"}, project=p, chapter_id="ch1"
+    )
+    assert ok
+    assert "车站" in text  # 第一章标题
+    assert "第二章" in text
+    # 单章模式仍可用（不传 refs）
+    ok2, single = run_agent_tool("get_chapter", {}, project=p, chapter_id="ch1")
+    assert ok2 and "伞借你" in single or "雨" in single
+    # 缺省章容错
+    ok3, text3 = run_agent_tool(
+        "get_chapter", {"chapterRefs": "ch1, 不存在的章"}, project=p, chapter_id="ch1"
+    )
+    assert ok3
+    assert "未找到章节" in text3
+
+
 def test_get_character_and_bible():
     p = _demo()
     ok, text = run_agent_tool("get_character", {"ref": "霖夏"}, project=p)

@@ -83,7 +83,11 @@ TASK_HINTS: Dict[str, str] = {
     ),
     "outline": "本轮任务：场景大纲。规划 3～5 场（冲突/人物/钩子），用戏剧事件而非设定条目来写；先 message；同意后再 update_bible/add_chapter。",
     "voice": "本轮任务：人设语气审校。对照 voice/bio 找破功句；改写时仍禁止设定宣讲与过熟盘问。",
-    "consistency": "本轮任务：一致性排查。列矛盾与最小改法；报告里可以引用设定，但建议写入正文时仍遵守反倾倒。",
+    "consistency": (
+        "本轮任务：一致性排查。列矛盾与最小改法；报告里可以引用设定，但建议写入正文时仍遵守反倾倒。"
+        "优先用 get_chapter 一次读多章（chapterRefs）做跨章对照，再结合 get_character/get_bible 核对；"
+        "不要只凭片段猜。"
+    ),
     "scene": (
         "本轮任务：写完整一小场戏（进场→冲突→收束钩子）。设定溶于表演；对照社交温度与人设惜话程度，"
         "勿把冷角色写成访谈主持。append_script。"
