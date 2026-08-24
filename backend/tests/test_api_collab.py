@@ -496,7 +496,7 @@ def test_user_llm_credentials_resolution():
                 "/api/v1/settings",
                 json={
                     "api_key": "sk-user-own-abc123",
-                    "api_base_url": "https://user.example.com",
+                    "api_base_url": "https://api.deepseek.com",
                     "api_model": "user-model",
                 },
                 headers=u1,
@@ -517,7 +517,7 @@ def test_user_llm_credentials_resolution():
                 creds = await resolve_llm_credentials(session, row.id, db_gate.test_settings())
                 assert creds["api_key"] == "sk-user-own-abc123"
                 assert creds["source"] == "user"
-                assert creds["base_url"] == "https://user.example.com"
+                assert creds["base_url"] == "https://api.deepseek.com"
                 assert creds["model"] == "user-model"
 
                 # No key configured → falls back to server env (test key).
