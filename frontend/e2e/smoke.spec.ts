@@ -136,5 +136,6 @@ test("协作入口：成员页签可打开", async ({ page }) => {
 
   await page.getByRole("button", { name: "协作" }).click();
   await expect(page.getByText("成员", { exact: true })).toBeVisible();
-  await expect(page.getByText(username)).toBeVisible();
+  // 用户名在 owner 卡 + 成员卡等多处出现，取任一即可（避免 strict mode 冲突）
+  await expect(page.getByText(username).first()).toBeVisible();
 });
