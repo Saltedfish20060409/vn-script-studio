@@ -1,22 +1,25 @@
-fastapi>=0.115.0
-uvicorn[standard]>=0.32.0
-sqlalchemy[asyncio]>=2.0.36
-asyncpg>=0.30.0
-alembic>=1.14.0
-pydantic>=2.10.0
-pydantic-settings>=2.6.0
-typing-extensions>=4.12.0
-python-jose[cryptography]>=3.3.0
-passlib[bcrypt]>=1.7.4
-bcrypt>=4.0.1,<4.1
-httpx>=0.28.0
-python-multipart>=0.0.17
-python-docx>=1.1.2
-typer>=0.15.0
-cryptography>=43.0.0
-email-validator>=2.2.0
+# 运行时顶层依赖（精确锁定 → 可复现构建）。
+# 传递依赖由 pip 解析；如需完全冻结（含传递依赖），用 pip freeze > requirements-lock.txt
+# 并在 Dockerfile 里改 COPY requirements-lock.txt ./requirements.txt。
+fastapi==0.141.1
+uvicorn[standard]==0.52.3
+sqlalchemy[asyncio]==2.0.52
+asyncpg==0.31.0
+alembic==1.19.1
+pydantic==2.13.4
+pydantic-settings==2.15.0
+typing-extensions==4.16.0
+python-jose[cryptography]==3.5.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+httpx==0.28.1
+python-multipart==0.0.32
+python-docx==1.2.0
+typer==0.27.0
+cryptography==49.0.0
+email-validator==2.3.0
 # Optional: cross-worker SSE bridge when REDIS_URL is set (multi-worker deploys)
-redis>=5.0.0
+redis==8.1.0
 # scripts/eval_*.py load .env via python-dotenv (declared explicitly — it is
 # currently only a transitive dep of pydantic-settings)
-python-dotenv>=1.0.0
+python-dotenv==1.2.2

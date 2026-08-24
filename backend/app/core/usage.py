@@ -7,6 +7,7 @@ inherit the context via asyncio.create_task, so their LLM calls are counted too.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextvars import ContextVar
 from datetime import datetime, timezone
@@ -25,6 +26,73 @@ def set_usage_user(user_id: Optional[str]) -> None:
 
 def current_usage_user() -> Optional[str]:
     return _usage_user.get()
+
+
+# ---- 批量写入（写放大优化）----
+# 每次 LLM 完成不再单独 INSERT + 开新 session；改为追加到内存队列，
+# 由单个后台 flush 循环每 5 秒批量插入。quota 检查仍读 DB（准确优先）。
+_usage_queue: list[dict] = []
+_usage_flush_task: "asyncio.Task | None" = None
+_FLUSH_INTERVAL = 5.0
+_FLUSH_BATCH = 200
+
+
+def _ensure_flush_loop() -> None:
+    global _usage_flush_task
+    if _usage_flush_task is None or _usage_flush_task.done():
+        try:
+            _usage_flush_task = asyncio.get_running_loop().create_task(_flush_loop())
+        except RuntimeError:
+            # no running loop yet (e.g. sync startup) — queue stays until first loop
+            return
+
+
+async def _flush_loop() -> None:
+    while True:
+        try:
+            await asyncio.sleep(_FLUSH_INTERVAL)
+            await _flush_queue()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - flushing must never kill the loop
+            logger.warning("usage flush failed (ignored)", exc_info=True)
+
+
+async def _flush_queue() -> int:
+    """Batch-insert everything queued. Returns rows written."""
+    global _usage_queue
+    if not _usage_queue:
+        return 0
+    batch = _usage_queue[:_FLUSH_BATCH]
+    rest = _usage_queue[_FLUSH_BATCH:]
+    try:
+        from uuid import uuid4
+
+        from app.db import AsyncSessionLocal
+        from app.models.tables import LlmUsage
+
+        async with AsyncSessionLocal() as session:
+            for u in batch:
+                session.add(
+                    LlmUsage(
+                        id=str(uuid4()),
+                        user_id=u["user_id"],
+                        project_id=u.get("project_id"),
+                        kind=u.get("kind") or "llm",
+                        model=u.get("model") or "",
+                        prompt_tokens=max(0, int(u.get("prompt_tokens") or 0)),
+                        completion_tokens=max(0, int(u.get("completion_tokens") or 0)),
+                        total_tokens=max(0, int(u.get("total_tokens") or 0)),
+                        created_at=datetime.now(timezone.utc),
+                    )
+                )
+            await session.commit()
+        # only drop what actually committed
+        _usage_queue = rest
+        return len(batch)
+    except Exception:  # noqa: BLE001 - accounting is best-effort
+        logger.warning("usage batch write failed (kept in queue)", exc_info=True)
+        return 0
 
 
 async def record_usage(
@@ -71,26 +139,24 @@ def record_usage_later(
     usage: Optional[Dict[str, int]],
     project_id: Optional[str] = None,
 ) -> None:
-    """Fire-and-forget usage write from a sync call site."""
+    """Queue a usage write (batched flush). No per-call session/INSERT."""
     if not user_id or not usage:
         return
     total = int(usage.get("total") or 0)
     if total <= 0:
         return
-    from app.core.jobs import spawn_background_task
-
-    spawn_background_task(
-        record_usage(
-            user_id=user_id,
-            kind=kind,
-            model=model,
-            prompt_tokens=int(usage.get("prompt") or 0),
-            completion_tokens=int(usage.get("completion") or 0),
-            total_tokens=total,
-            project_id=project_id,
-        ),
-        name="usage-record",
+    _usage_queue.append(
+        {
+            "user_id": user_id,
+            "kind": kind,
+            "model": model or "",
+            "prompt_tokens": int(usage.get("prompt") or 0),
+            "completion_tokens": int(usage.get("completion") or 0),
+            "total_tokens": total,
+            "project_id": project_id,
+        }
     )
+    _ensure_flush_loop()
 
 
 async def user_usage_totals(
