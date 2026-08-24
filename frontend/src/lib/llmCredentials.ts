@@ -19,6 +19,26 @@ export const EMPTY_LLM_CREDENTIALS: LlmCredentials = {
 };
 
 export const LLM_CREDENTIALS_KEY = "vnss-llm-credentials-v1";
+/** "local" = browser localStorage (X-LLM headers); "account" = server-encrypted. */
+export const LLM_STORAGE_KEY = "vnss-llm-storage-mode";
+
+export type LlmStorageMode = "local" | "account";
+
+export function loadStorageMode(): LlmStorageMode {
+  try {
+    return localStorage.getItem(LLM_STORAGE_KEY) === "account" ? "account" : "local";
+  } catch {
+    return "local";
+  }
+}
+
+export function saveStorageMode(mode: LlmStorageMode): void {
+  try {
+    localStorage.setItem(LLM_STORAGE_KEY, mode);
+  } catch {
+    /* ignore */
+  }
+}
 
 export const LLM_HEADER = {
   apiKey: "X-LLM-Api-Key",
@@ -78,8 +98,11 @@ export function clearLlmCredentials(): void {
   }
 }
 
-/** Attach stored credentials so the backend can proxy the user's own model. */
+/** Attach stored credentials so the backend can proxy the user's own model.
+ *  In "account" mode the key lives server-side (encrypted), so no X-LLM key
+ *  headers are sent — the backend falls through to the user DB credentials. */
 export function applyLlmHeaders(headers: Headers): void {
+  if (loadStorageMode() === "account") return;
   const c = loadLlmCredentials();
   if (c.apiKey) headers.set(LLM_HEADER.apiKey, c.apiKey);
   if (c.baseUrl) headers.set(LLM_HEADER.baseUrl, c.baseUrl);

@@ -10,6 +10,7 @@ import {
   getModelCatalogue,
   getSettings,
   getUsage,
+  putSettings,
   testLlm,
   type ModelPreset,
   type UsageTotals,
@@ -17,7 +18,10 @@ import {
 import { t } from "../lib/i18n";
 import {
   loadLlmCredentials,
+  loadStorageMode,
   saveLlmCredentials,
+  saveStorageMode,
+  type LlmStorageMode,
 } from "../lib/llmCredentials";
 import {
   getDeskPetState,
@@ -115,6 +119,7 @@ function LlmPane() {
   const [criticKey, setCriticKey] = useState("");
   const [criticBaseUrl, setCriticBaseUrl] = useState("");
   const [criticModel, setCriticModel] = useState("");
+  const [storageMode, setStorageModeState] = useState<LlmStorageMode>(loadStorageMode);
   const [presets, setPresets] = useState<ModelPreset[]>([]);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
@@ -125,6 +130,7 @@ function LlmPane() {
   const load = useCallback(() => {
     setError("");
     setSavedNote("");
+    setStorageModeState(loadStorageMode());
     const local = loadLlmCredentials();
     setApiKey(local.apiKey);
     setBaseUrl(local.baseUrl);
@@ -133,7 +139,16 @@ function LlmPane() {
     setCriticBaseUrl(local.criticBaseUrl);
     setCriticModel(local.criticModel);
     getSettings()
-      .then(setServerFallback)
+      .then((s) => {
+        setServerFallback(s);
+        // account 模式：服务端只回显 masked key，不回明文
+        if (loadStorageMode() === "account" && s.has_api_key) {
+          setApiKey("");
+          setSavedNote(
+            `账号已保存 Key（${s.api_key_masked}）。留空保存表示沿用账号 Key。`
+          );
+        }
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "读取失败"));
     getModelCatalogue()
       .then(({ presets: p }) => setPresets(p))
@@ -153,7 +168,41 @@ function LlmPane() {
     criticKey: string;
     criticBaseUrl: string;
     criticModel: string;
-  }) => {
+  }, opts?: { clearAccountKey?: boolean }) => {
+    saveStorageMode(storageMode);
+    if (storageMode === "account") {
+      // 账号加密存储：key 上服务端(仅回显 masked)，并清掉本机 key 防止 header 覆盖
+      saveLlmCredentials({
+        apiKey: "",
+        baseUrl: "",
+        model: "",
+        criticApiKey: "",
+        criticBaseUrl: "",
+        criticModel: "",
+      });
+      void putSettings({
+        api_key: opts?.clearAccountKey ? "" : next.apiKey === "" ? undefined : next.apiKey,
+        base_url: next.baseUrl || undefined,
+        api_model: next.model || undefined,
+        critic_api_key: opts?.clearAccountKey ? "" : next.criticKey === "" ? undefined : next.criticKey,
+        critic_api_base_url: next.criticBaseUrl || undefined,
+        critic_api_model: next.criticModel || undefined,
+      })
+        .then((s) => {
+          setSavedNote(
+            opts?.clearAccountKey
+              ? "账号 Key 已清除"
+              : s.has_api_key
+                ? `已保存到账号（加密存储 · ${s.api_key_masked}）。下次登录自动生效。`
+                : "已保存到账号（未设置主 Key）"
+          );
+        })
+        .catch((e) =>
+          setError(e instanceof Error ? e.message : "保存到账号失败")
+        );
+      return;
+    }
+    // 本机存储：localStorage + X-LLM headers（现状）
     saveLlmCredentials({
       apiKey: next.apiKey,
       baseUrl: next.baseUrl,
@@ -174,7 +223,9 @@ function LlmPane() {
       criticBaseUrl,
       criticModel,
     });
-    setSavedNote(t("settings.savedLocal"));
+    if (storageMode !== "account") {
+      setSavedNote(t("settings.savedLocal"));
+    }
     setTestResult(null);
   };
 
@@ -259,12 +310,27 @@ function LlmPane() {
         </label>
       )}
       <label>
+        凭据存储方式
+        <select
+          value={storageMode}
+          onChange={(e) => setStorageModeState(e.target.value as LlmStorageMode)}
+        >
+          <option value="account">账号存储（推荐 · 服务端加密 · 跨设备）</option>
+          <option value="local">本机存储（仅当前浏览器）</option>
+        </select>
+        <span className={styles.note}>
+          {storageMode === "account"
+            ? "Key 加密保存在你的账号里，下次登录自动生效，且不暴露在浏览器本地（防 XSS 窃取）。"
+            : "Key 只存在本机 localStorage，随请求头发送；换设备/清缓存需重填。"}
+        </span>
+      </label>
+      <label>
         {t("settings.apiKey")}
         <input
           type="password"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
-          placeholder="sk-…"
+          placeholder={storageMode === "account" ? "留空 = 沿用账号已存 Key" : "sk-…"}
           autoComplete="off"
         />
       </label>
@@ -339,15 +405,18 @@ function LlmPane() {
           className={styles.ghost}
           onClick={() => {
             setApiKey("");
-            persist({
-              apiKey: "",
-              baseUrl,
-              model,
-              criticKey,
-              criticBaseUrl,
-              criticModel,
-            });
-            setSavedNote("");
+            persist(
+              {
+                apiKey: "",
+                baseUrl,
+                model,
+                criticKey,
+                criticBaseUrl,
+                criticModel,
+              },
+              { clearAccountKey: true }
+            );
+            if (storageMode !== "account") setSavedNote("");
             setTestResult(null);
           }}
         >
