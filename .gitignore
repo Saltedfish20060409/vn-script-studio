@@ -45,12 +45,10 @@ backend/.cache_*
 deploy/artifacts/
 deploy/node_modules/
 
-# AI Agent 书籍抓取原始文本（保留提炼文档）
-agent-book-fetch/*.txt
-agent-book-fetch/*.meta.txt
-
-# eval 评测报告产物（可复现：git 只留 TASKS 定义）
-backend/eval-*.json
-
 # AI Agent 书摘提炼(个人研究, 不入库)
 agent-book-fetch/
+# 私有运维部署脚本(不入库, 保留本地)
+deploy/
+# 个人工具/部署(不入库)
+scripts/pack_upload.py
+restore-ui.ps1

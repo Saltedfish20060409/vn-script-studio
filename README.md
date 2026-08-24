@@ -58,6 +58,8 @@ vn-script-studio/
 
 ### 快速开始
 
+**前置**：需要 [Docker Desktop](https://www.docker.com/products/docker-desktop/)（Windows/macOS）或 Docker Engine（Linux）来跑 PostgreSQL / Redis；Docker 未启动时数据库起不来，先启动 Docker Desktop 再执行下面的命令。Node.js 20+ 与 Python 3.12+ 也需先装好。
+
 日常开发可一键启动：
 
 ```powershell
@@ -127,7 +129,7 @@ cd frontend
 npm ci && npm run build
 ```
 
-生产部署一般用 `deploy/`（私有运维脚本）或自行用 Nginx 反代 `/api` 到后端 :8000、托管 `frontend/dist`。
+生产部署一般用 Nginx 反代 `/api` 到后端 :8000、托管 `frontend/dist`（或参考 `scripts/ops/` 的备份/监控脚本）。
 
 ### 主要 API（`/api/v1`）
 
