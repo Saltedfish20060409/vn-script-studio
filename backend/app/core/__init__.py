@@ -37,6 +37,7 @@ from .longform_memory import (
     compress_chat_history,
     parse_outline_beats,
     select_outline_beats,
+    summarize_chat_memory,
 )
 from .map_catalog import (
     DEFAULT_MAP_STYLE,
@@ -174,6 +175,7 @@ __all__ = [
     "refresh_chapter_index",
     "ChapterDigest",
     "compress_chat_history",
+    "summarize_chat_memory",
     "parse_outline_beats",
     "select_outline_beats",
     "ChatMemoryBundle",

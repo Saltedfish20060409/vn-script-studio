@@ -33,6 +33,7 @@ from app.core.lenses import (
 )
 from app.core.llm_http import content_from_response
 from app.core.llm_provider import LlmProvider, provider_from_config
+from app.core.longform_memory import summarize_chat_memory
 from app.core.mentors import build_mentor_prompt_for_project, resolve_project_mentors
 from app.core.narrative_lint import NarrativeLintIssue, lint_has_blockers
 from app.core.narrative_review import (
@@ -72,6 +73,13 @@ _LOOP_PROTOCOL = """
 """
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
+
+
+def _clip(text: str, n: int) -> str:
+    t = (text or "").strip()
+    if len(t) <= n:
+        return t
+    return t[:n].rstrip() + "…"
 
 
 def _parse_loop_json(raw: str) -> Dict[str, Any]:
@@ -204,6 +212,24 @@ async def run_agent_loop(
         p.id for p in resolve_project_lenses(request.project, override_ids=request.lensIds)
     ]
 
+    # 对话记忆：超过阈值时，早期轮次用 LLM 结构化摘要（防长对话失忆），
+    # 最近轮次保留原文。摘要失败自动回退抽取式，不阻塞。
+    _KEEP_RECENT = 16
+    _SUMMARIZE_AFTER = 22
+    all_msgs = [m for m in (request.messages or []) if m.role in ("user", "assistant")]
+    recent_msgs = all_msgs[-_KEEP_RECENT:] if len(all_msgs) > _KEEP_RECENT else all_msgs
+    chat_memory_block = ""
+    if len(all_msgs) > _SUMMARIZE_AFTER:
+        older = all_msgs[: len(all_msgs) - _KEEP_RECENT]
+        try:
+            chat_memory_block = await summarize_chat_memory(
+                provider, older, request.chatMemory
+            )
+            if chat_memory_block:
+                await emit({"type": "memory", "note": "已归档早期对话记忆"})
+        except Exception:  # noqa: BLE001 - memory summary must never break the loop
+            chat_memory_block = ""
+
     system_parts = [
         AGENT_SYSTEM,
         task_hint(task),
@@ -223,9 +249,13 @@ async def run_agent_loop(
         f"{system_content}\n\n"
         f"—— 作品上下文（检索拼装；人设/设定为内部参考）——\n{ctx.text}"
     )
+    if chat_memory_block:
+        system_content += (
+            f"\n\n## 对话记忆归档（更早轮次，非正式剧情）\n{_clip(chat_memory_block, 2800)}"
+        )
 
     history: List[Dict[str, str]] = [
-        {"role": m.role, "content": m.content} for m in (request.messages or [])[-20:]
+        {"role": m.role, "content": m.content} for m in recent_msgs
     ]
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": system_content},
@@ -411,6 +441,7 @@ async def run_agent_loop(
             mentorIds=mentor_ids or None,
             lensIds=lens_ids or None,
             selfReview=review_note or None,
+            chatMemorySummary=chat_memory_block or None,
         ),
         trace=trace,
     )

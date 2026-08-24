@@ -102,3 +102,77 @@ def compress_chat_history(
         recentMessages=recent,
         summarizedCount=len(older),
     )
+
+
+_MEMORY_SYSTEM = """你是对话记忆整理器。把用户与编辑 Agent 的早期对话压缩成结构化记忆，供后续轮次继续使用。
+只保留会影响后续工作的内容，输出纯文本（非 JSON）：
+【关键决定】—— 用户定下的方向、已接受的改写方案、剧情走向共识
+【设定共识】—— 本对话中确认的角色/世界观细节（区别于作品档案，是对话新增的）
+【待办/未竟】—— 用户要求但尚未完成的事、悬而未决的疑问
+【其他】—— 值得记但上述三类之外的（语气偏好、禁用词等）
+没有的类别省略。不要复述寒暄；控制在 400 字内。"""
+
+
+async def summarize_chat_memory(
+    provider,
+    older_messages: List[AgentChatMessage],
+    prior_memory: Optional[str] = None,
+    *,
+    max_chars: int = 3500,
+) -> str:
+    """LLM-structured rolling memory for long conversations.
+
+    Summarizes messages older than the recent window into concise memory
+    (decisions / setting consensus / todos / misc). Falls back to extractive
+    bullets when the LLM call fails, so long chats never lose prior turns
+    to a hard truncation.
+    """
+    if not older_messages:
+        return (prior_memory or "").strip()
+
+    transcript = "\n".join(
+        f"[{'用户' if m.role == 'user' else '编辑'}] {m.content}"[:300]
+        for m in older_messages
+        if m.role in ("user", "assistant")
+    )
+    if not transcript.strip():
+        return (prior_memory or "").strip()
+
+    try:
+        res = await provider.chat_completions(
+            messages=[
+                {"role": "system", "content": _MEMORY_SYSTEM},
+                {
+                    "role": "user",
+                    "content": (
+                        (f"既有记忆：\n{prior_memory}\n\n" if prior_memory and prior_memory.strip() else "")
+                        + f"待整理对话：\n{transcript[:6000]}"
+                    ),
+                },
+            ],
+            temperature=0.2,
+            timeout=90,
+            max_tokens=700,
+        )
+        from app.core.llm_http import content_from_response
+
+        content, _ = content_from_response(res)
+        summary = (content or "").strip()
+        if len(summary) >= 20:
+            return summary[:max_chars]
+    except Exception:  # noqa: BLE001 - degrade to extractive on any failure
+        pass
+
+    # Fallback: extractive bullets (existing behaviour) — or plain squeeze for
+    # very short histories where bullet extraction has nothing to extract.
+    if len(older_messages) <= 8:
+        lines = [
+            f"- [{'你' if m.role == 'user' else '编辑'}] {' '.join(m.content.split())[:120]}"
+            for m in older_messages
+            if m.role in ("user", "assistant")
+        ]
+        prior = (prior_memory or "").strip()
+        return "\n".join(p for p in [prior, *lines] if p)[:max_chars]
+    return compress_chat_history(
+        older_messages, keep_recent=0, prior_memory=prior_memory
+    ).memoryBlock[:max_chars]

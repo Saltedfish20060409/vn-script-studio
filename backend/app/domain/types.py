@@ -554,6 +554,8 @@ class AgentContextMeta(BaseModel):
     lensIds: Optional[List[str]] = None
     # Self-review outcome note
     selfReview: Optional[str] = None
+    # LLM chat-memory summary produced this run (persisted to the session)
+    chatMemorySummary: Optional[str] = None
 
 
 class AgentResponse(BaseModel):

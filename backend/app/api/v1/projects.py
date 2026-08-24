@@ -1704,13 +1704,23 @@ async def _build_agent_request(
 
     reference_docs = format_attachment_block(list(body.attachments or [])) or None
 
+    # 对话记忆：优先用会话表已归档的 LLM 摘要（前端通常传空），
+    # 长对话据此累积早期决定/设定共识，不丢上下文。
+    prior_memory = (body.chat_memory or "").strip()
+    if not prior_memory and body.conversation_id:
+        try:
+            sess = await _get_session(db, project_id, body.conversation_id)
+            prior_memory = (sess.chat_memory or "").strip()
+        except Exception:  # noqa: BLE001
+            prior_memory = ""
+
     req = AgentRequest(
         project=vn,
         messages=body.messages,  # type: ignore[arg-type]
         chapterId=body.chapter_id,
         selection=body.selection,
         task=body.task,  # type: ignore[arg-type]
-        chatMemory=body.chat_memory,
+        chatMemory=prior_memory or None,
         longChapterMemory=(
             (await get_latest_continuity(db, project_id) or {}).get("agentBlock")
         ),
@@ -1822,6 +1832,10 @@ async def _finalize_agent_run(
     sess.updated_at = datetime.now(timezone.utc)
     if (not sess.title or sess.title == "新对话") and body.messages:
         sess.title = _title_from_messages(body.messages)
+    # 持久化 LLM 对话记忆归档：下次请求作为 prior_memory 累积，
+    # 长对话不丢早期决定/设定共识。
+    if isinstance(context_meta, dict) and context_meta.get("chatMemorySummary"):
+        sess.chat_memory = context_meta["chatMemorySummary"]
     await db.commit()
     await db.refresh(row)
     await db.refresh(sess)

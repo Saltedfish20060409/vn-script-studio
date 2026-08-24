@@ -532,6 +532,7 @@ export type AgentStreamEvent =
   | { type: "tool_result"; id?: string; name?: string; ok?: boolean; preview?: string }
   | { type: "actions"; actions?: AgentAction[]; skipped?: string[] }
   | { type: "review"; note?: string }
+  | { type: "memory"; note?: string }
   | { type: "error"; message?: string }
   | { type: "done"; result?: AgentRunOut }
   | { type: "final"; result?: AgentRunOut };

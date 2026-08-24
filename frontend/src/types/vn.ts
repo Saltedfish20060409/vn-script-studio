@@ -489,7 +489,7 @@ export type AgentAction =
   | { op: "scan_facts"; chapterRef?: string; includePaste?: boolean };
 
 export interface AgentTraceEvent {
-  type: "thought" | "tool_call" | "tool_result" | "actions" | "done" | string;
+  type: "thought" | "tool_call" | "tool_result" | "actions" | "done" | "memory" | string;
   text?: string;
   id?: string;
   name?: string;
@@ -499,6 +499,7 @@ export interface AgentTraceEvent {
   actions?: AgentAction[];
   skipped?: string[];
   message?: string;
+  note?: string;
 }
 
 export interface AgentChatMessage {

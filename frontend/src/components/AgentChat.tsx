@@ -822,6 +822,17 @@ export function AgentChat({
             setLiveStream((p) => ({ events: p?.events ?? [], text: evt.text ?? "" }));
             return;
           }
+          if (evt.type === "memory") {
+            // 对话记忆归档提示：以工具结果样式进 trace 面板
+            streamEvents.push({
+              type: "tool_result",
+              name: "memory",
+              ok: true,
+              preview: evt.note ?? "已归档早期对话记忆",
+            } as AgentTraceEvent);
+            setLiveStream((p) => ({ events: [...streamEvents], text: p?.text ?? "" }));
+            return;
+          }
           if (
             evt.type === "task" ||
             evt.type === "tool_call" ||
