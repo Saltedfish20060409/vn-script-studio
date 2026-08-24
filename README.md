@@ -58,17 +58,22 @@ vn-script-studio/
 
 ### 快速开始
 
-日常开发（Windows）可一键启动：
+日常开发可一键启动：
 
 ```powershell
-# 在仓库根目录
+# Windows（仓库根目录）
 .\dev.ps1
 # 或双击 / 运行
 .\dev.bat
 ```
 
-会：必要时 `docker compose up -d` → 新开窗口跑后端 `:8000` → 新开窗口跑前端 `:5173` → 打开浏览器。  
-已在跑的端口会跳过。加 `-SkipDocker` 可跳过数据库；`-NoBrowser` 不自动开页。
+```bash
+# macOS / Linux
+./dev.sh
+```
+
+会：必要时 `docker compose up -d` → 起后端 `:8000` → 起前端 `:5173` → 打开浏览器。  
+已在跑的端口会跳过。加 `-SkipDocker`（dev.ps1）或 `--skip-docker`（dev.sh）可跳过数据库；`-NoBrowser` / `--no-browser` 不自动开页。
 
 首次仍需装好依赖（只需一次）：
 
@@ -78,10 +83,10 @@ docker compose up -d
 
 # 后端
 cd backend
-python -m venv .venv
-.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-copy .env.example .env          # 或 cp .env.example .env
+cp .env.example .env            # Windows: copy .env.example .env
 # 编辑 .env：DATABASE_URL 端口需与 docker-compose 一致（默认宿主机 54102）
 # 填入 DEEPSEEK_API_KEY 以启用 Agent
 # 填入 RESEND_API_KEY 以启用注册验证 / 找回密码邮件
@@ -106,7 +111,23 @@ npm run dev
 
 本地若未配 Resend，注册会返回 503。只跑前端 e2e 时后端会设 `AUTH_AUTO_VERIFY=true`，新账号直接已验证。
 
-Postgres 用 Docker 常驻即可，不必每次重建；每次写代码通常只需前后端两个进程（或跑一次 `dev.ps1`）。
+Postgres 用 Docker 常驻即可，不必每次重建；每次写代码通常只需前后端两个进程（或跑一次 `dev.ps1` / `dev.sh`）。
+
+### 生产构建（Docker）
+
+后端镜像依赖已锁定（`requirements.txt` 为精确版本；`requirements-lock.txt` 为全量冻结参考）：
+
+```bash
+# 后端镜像
+cd backend
+docker build -t vnss-api .
+
+# 前端产物（nginx / 任意静态服务器托管 frontend/dist）
+cd frontend
+npm ci && npm run build
+```
+
+生产部署一般用 `deploy/`（私有运维脚本）或自行用 Nginx 反代 `/api` 到后端 :8000、托管 `frontend/dist`。
 
 ### 主要 API（`/api/v1`）
 
