@@ -191,6 +191,8 @@ async def import_project(
         vn = normalize_project({**project_to_dict(vn), "id": uid("proj")})
     elif file is not None:
         content = await file.read()
+        if len(content) > 2 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="文件过大（限 2MB）")
         name = (file.filename or "").lower()
         if name.endswith(".json") or name.endswith(".vnss-share.json"):
             try:
@@ -202,7 +204,7 @@ async def import_project(
             vn = normalize_project(raw)
             vn = normalize_project({**project_to_dict(vn), "id": uid("proj")})
         elif name.endswith(".docx"):
-            doc = Document(io.BytesIO(content))
+            doc = await asyncio.to_thread(Document, io.BytesIO(content))
             plain = "\n".join(p.text for p in doc.paragraphs)
             vn = project_from_plain_text(title or name.rsplit(".", 1)[0], plain)
         else:
@@ -240,6 +242,9 @@ async def put_project(
     db: AsyncSession = Depends(get_db),
 ):
     row = await get_owned_project(db, user, project_id)
+    # 并发写保护：在当前事务内锁定项目行直到 commit，使
+    # 「锁断言 → 合并 → 保存」成为临界区（此前锁只断言不持有，存在 TOCTOU）。
+    await db.refresh(row, with_for_update=True)
 
     chapter_ids = body.chapter_ids or []
     sections = body.sections or []
@@ -306,6 +311,8 @@ async def patch_project(
     db: AsyncSession = Depends(get_db),
 ):
     row = await get_owned_project(db, user, project_id)
+    # 与 put_project 相同：事务内行锁，防并发 patch 丢更新
+    await db.refresh(row, with_for_update=True)
     vn = row_to_vn(row)
     if body.title is not None:
         vn.title = body.title
@@ -395,12 +402,12 @@ async def export_bundle(
             zf.writestr(name, content)
     buf.seek(0)
     safe = re.sub(r"[^\w\u4e00-\u9fff]+", "_", vn.title or "vn")[:40] or "vn"
+    from app.core.export_text import attachment_disposition
+
     return Response(
         content=buf.getvalue(),
         media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="{safe}-renpy.zip"'
-        },
+        headers={"Content-Disposition": attachment_disposition(f"{safe}-renpy.zip")},
     )
 
 
@@ -411,7 +418,11 @@ async def export_markdown(
     db: AsyncSession = Depends(get_db),
 ):
     """Submission export: whole project as readable Markdown."""
-    from app.core.export_text import project_to_markdown, safe_filename
+    from app.core.export_text import (
+        attachment_disposition,
+        project_to_markdown,
+        safe_filename,
+    )
 
     row = await get_project_readable(db, user, project_id)
     vn = row_to_vn(row)
@@ -420,7 +431,7 @@ async def export_markdown(
         content=text.encode("utf-8"),
         media_type="text/markdown; charset=utf-8",
         headers={
-            "Content-Disposition": f'attachment; filename="{safe_filename(vn.title, ".md")}"'
+            "Content-Disposition": attachment_disposition(safe_filename(vn.title, ".md"))
         },
     )
 
@@ -432,7 +443,11 @@ async def export_docx(
     db: AsyncSession = Depends(get_db),
 ):
     """Submission export: whole project as a styled Word document."""
-    from app.core.export_text import project_to_docx, safe_filename
+    from app.core.export_text import (
+        attachment_disposition,
+        project_to_docx,
+        safe_filename,
+    )
 
     row = await get_project_readable(db, user, project_id)
     vn = row_to_vn(row)
@@ -441,7 +456,9 @@ async def export_docx(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={
-            "Content-Disposition": f'attachment; filename="{safe_filename(vn.title, ".docx")}"'
+            "Content-Disposition": attachment_disposition(
+                safe_filename(vn.title, ".docx")
+            )
         },
     )
 

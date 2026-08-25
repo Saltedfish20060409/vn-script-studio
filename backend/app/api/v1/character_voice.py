@@ -524,12 +524,12 @@ async def export_character_voice_pack_md(
     vn = row_to_vn(row)
     _char_or_404(vn, character_id)
     pack = build_nuwa_export_markdown(vn, character_id=character_id)
+    from app.core.export_text import attachment_disposition
+
     return PlainTextResponse(
         pack["markdown"],
         media_type="text/markdown; charset=utf-8",
-        headers={
-            "Content-Disposition": f'attachment; filename="{pack["filename"]}"',
-        },
+        headers={"Content-Disposition": attachment_disposition(pack["filename"])},
     )
 
 

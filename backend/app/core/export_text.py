@@ -168,3 +168,22 @@ def _blocks_to_docx(
 def safe_filename(title: str, suffix: str) -> str:
     safe = re.sub(r"[^\w\u4e00-\u9fff]+", "_", title or "vn")[:40] or "vn"
     return f"{safe}{suffix}"
+
+
+def attachment_disposition(filename: str) -> str:
+    """Content-Disposition 值：ASCII 回退 + RFC 5987 UTF-8 扩展。
+
+    Starlette 以 latin-1 编码响应头，直接内嵌中文文件名会抛
+    UnicodeEncodeError（=500）。现代浏览器优先读 ``filename*``，
+    老客户端回退到纯 ASCII 近似名。
+    """
+    from urllib.parse import quote
+
+    ascii_fallback = (
+        filename.encode("ascii", "ignore").decode("ascii").strip("_ ").strip()
+        or "export"
+    )
+    return (
+        f"attachment; filename=\"{ascii_fallback}\"; "
+        f"filename*=UTF-8''{quote(filename)}"
+    )
