@@ -1,6 +1,7 @@
 .tab {
   position: fixed;
-  z-index: 60;
+  /* 高于音乐条(60)避免被盖住；低于顶栏(70)保证窄屏工具栏按钮可点 */
+  z-index: 65;
   border: 2px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--accent);
@@ -53,7 +54,8 @@
 }
 
 .tab_bottom {
-  bottom: 0;
+  /* 历史遗留的底部 dock 状态：标签放在音乐条(38px)之上，避免被盖住 */
+  bottom: calc(38px + env(safe-area-inset-bottom, 0px));
   writing-mode: horizontal-tb;
   border-bottom: none;
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
@@ -65,7 +67,8 @@
 .panelCorner,
 .panelLarge {
   position: fixed;
-  z-index: 60;
+  /* 高于音乐条(60)避免被盖住；低于顶栏(70)保证窄屏工具栏按钮可点 */
+  z-index: 65;
   display: flex;
   flex-direction: column;
   border: 2px solid var(--line);
