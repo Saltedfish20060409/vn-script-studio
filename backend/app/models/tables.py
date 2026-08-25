@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -76,6 +77,11 @@ class Project(Base):
     genre: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     logline: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     data: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    # 乐观锁基础：每次写路径自增（配合 put_project 的 FOR UPDATE 行锁，
+    # 为后续客户端 If-Match/rowVersion 条件保存铺路）
+    row_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("1"), default=1
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 

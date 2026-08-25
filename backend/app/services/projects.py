@@ -48,7 +48,10 @@ def sync_row_from_vn(row: Project, vn: VnProject) -> None:
     row.genre = touched.genre
     row.data = payload
     row.updated_at = datetime.now(timezone.utc)
+    # 乐观锁版本号：任何写路径都自增（见 Project.row_version 注释）
+    row.row_version = int(row.row_version or 0) + 1
     payload["updatedAt"] = row.updated_at.isoformat()
+    payload["rowVersion"] = row.row_version
     row.data = payload
 
 
