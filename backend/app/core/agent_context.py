@@ -506,7 +506,7 @@ def build_agent_context(
             else ""
         ),
         (
-            f"\n{_clip(referenceDocs.strip(), 8000)}"
+            f"\n{_clip(referenceDocs.strip(), 12000)}"
             if referenceDocs and referenceDocs.strip()
             else ""
         ),
