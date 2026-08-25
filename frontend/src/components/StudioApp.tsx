@@ -248,6 +248,13 @@ export function StudioApp() {
   const [focusMode, setFocusMode] = useState(false);
   const [focusSetupOpen, setFocusSetupOpen] = useState(false);
   const [focusPrefs, setFocusPrefs] = useState<FocusTimerPrefs | null>(null);
+  // 之前每次渲染都调 loadFocusTimerPrefs()（localStorage.getItem + JSON.parse），
+  // 编辑器每次按键都会触发整树重渲染。改为：仅当打开设置弹窗或保存了新 prefs
+  // （startFocusSession 会 setFocusPrefs）时才重读，其余渲染直接复用缓存对象。
+  const focusInitialPrefs = useMemo(
+    () => loadFocusTimerPrefs(),
+    [focusSetupOpen, focusPrefs]
+  );
   const shellRef = useRef<HTMLDivElement>(null);
   /** 页面切换滑动方向：记录上一个 tab 序号，新 tab 靠右→从右滑入，靠左→从左滑入 */
   const prevTabIndexRef = useRef(0);
@@ -1707,7 +1714,7 @@ export function StudioApp() {
       >
         <FocusChrome
           setupOpen={focusSetupOpen}
-          initialPrefs={loadFocusTimerPrefs()}
+          initialPrefs={focusInitialPrefs}
           onSetupCancel={() => setFocusSetupOpen(false)}
           onSetupConfirm={(prefs) => void startFocusSession(prefs)}
           active={Boolean(focusMode && tab === "write" && writeSub === "script")}

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   addTodayFocusSeconds,
   countFocusChars,
@@ -120,7 +120,13 @@ export function FocusChrome({
   const remain =
     prefs?.mode === "down" ? Math.max(0, prefs.minutes * 60 - elapsed) : elapsed;
   const clock = formatFocusClock(remain);
-  const sessionChars = Math.max(0, countFocusChars(draft) - baselineChars);
+  // draft 是全量编辑器文本：countFocusChars 每次都要整段 regex 扫描。
+  // 只在 draft/baselineChars 变化时重算，避免专注会话 250ms 定时器
+  // 触发的渲染（及父组件无关重渲染）反复做全量扫描。
+  const sessionChars = useMemo(
+    () => Math.max(0, countFocusChars(draft) - baselineChars),
+    [draft, baselineChars]
+  );
 
   return (
     <>

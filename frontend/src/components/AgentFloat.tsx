@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { VnProject } from "../types/vn";
-import { AgentChat } from "./AgentChat";
 import styles from "./AgentFloat.module.css";
+
+// AgentChat（约 64KB 源码 + 其依赖）静态挂载会拖慢首屏：
+// 改为 dynamic import，等用户展开审稿面板时才加载。
+// AgentChat 只有具名导出，这里在 import 处适配成 default。
+const AgentChat = lazy(() =>
+  import("./AgentChat").then((m) => ({ default: m.AgentChat }))
+);
 
 type SizeMode = "normal" | "large";
 type Edge = "left" | "right" | "top" | "bottom";
@@ -389,17 +395,20 @@ export function AgentFloat(props: Props) {
         </div>
         <div className={styles.body}>
           <div className={styles.chatFill}>
-            <AgentChat
-              project={props.project}
-              chapterId={props.chapterId}
-              selection={props.selection}
-              draft={props.draft}
-              prepareProject={props.prepareProject}
-              onProjectChange={props.onProjectChange}
-              onChapterFocus={props.onChapterFocus}
-              compact
-              hidden={docked}
-            />
+            {/* 面板有固定宽高（sizeStyle），fallback 用 null 不会引起布局跳动 */}
+            <Suspense fallback={null}>
+              <AgentChat
+                project={props.project}
+                chapterId={props.chapterId}
+                selection={props.selection}
+                draft={props.draft}
+                prepareProject={props.prepareProject}
+                onProjectChange={props.onProjectChange}
+                onChapterFocus={props.onChapterFocus}
+                compact
+                hidden={docked}
+              />
+            </Suspense>
           </div>
         </div>
         {!large && !docked ? (

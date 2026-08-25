@@ -38,9 +38,32 @@ export default defineConfig({
         // (collab events / saves must never be served stale).
         navigateFallback: "/index.html",
         globPatterns: ["**/*.{js,css,html,svg,png,ico}"],
+        // 大体量美术资源（9.1MB/33 张 PNG）不进 precache，首访只下载 PWA 必需项；
+        // 这些图片在页面用到时由下方同源 CacheFirst 规则按需缓存。
+        // 注意 pwa-192.png / pwa-512.png（manifest icons）在 public 根目录，不受影响。
+        globIgnores: [
+          "mascot/**",
+          "writers/**",
+          "ui/**",
+          "agent/**",
+          "workshop/**",
+          "email/**",
+        ],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.(png|jpg|jpeg|webp|gif)$/,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "images",
+              expiration: { maxEntries: 60, maxAgeSeconds: 30 * 24 * 3600 },
+            },
+          },
+          {
+            // 同源图片兜底：相对路径（如 /mascot/angel.png）会按页面 origin 解析成
+            // 绝对 URL，若部署在 http（dev/preview/LAN）上，上面 ^https:// 正则匹配
+            // 不到；这里按 sameOrigin 匹配，兜住被 globIgnores 排除后按需加载的同源图片。
+            urlPattern: ({ sameOrigin, url }) =>
+              sameOrigin && /\.(png|jpg|jpeg|webp|gif)$/.test(url.pathname),
             handler: "CacheFirst",
             options: {
               cacheName: "images",
@@ -74,10 +97,28 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          // Heavy vendor libs — split so app edits don't invalidate these caches
-          react: ["react", "react-dom", "react-router-dom"],
-          markdown: ["react-markdown", "remark-gfm"],
+        manualChunks(id) {
+          // 所有 jsx-runtime 变体（ESM/CJS/生产）都必须进 react chunk：
+          // react-markdown 依赖树里的 CJS 模块会 require('react/jsx-runtime')，
+          // @rollup/plugin-commonjs 会额外打包一份 jsx-runtime.cjs 进 markdown chunk，
+          // 全站 TSX 编译产物都从 markdown chunk 拿 jsx → markdown-*.js 被入口
+          // modulepreload（伪懒加载）。object 形式只列 'react/jsx-runtime' 捕获不到
+          // 这份 CJS 副本，所以用函数形式按 id 兜住全部变体。
+          if (
+            id.includes("jsx-runtime") ||
+            id.includes("node_modules/react/") ||
+            id.includes("node_modules/react-dom") ||
+            id.includes("node_modules/react-router")
+          ) {
+            return "react";
+          }
+          if (
+            id.includes("node_modules/react-markdown") ||
+            id.includes("node_modules/remark-gfm")
+          ) {
+            return "markdown";
+          }
+          return undefined;
         },
       },
     },
