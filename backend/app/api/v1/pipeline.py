@@ -184,6 +184,11 @@ async def pipeline_run(
 
         def _on_stage(stage: str, row: dict) -> None:
             _flush_tokens()
+            # 客户端断开后置了取消标志：在阶段边界提前中止流水线。
+            # CancelledError 是 BaseException，不会被 orchestrator 的
+            # `except Exception` 吞掉，会沿调用栈向上传到 _runner。
+            if getattr(job, "cancel_requested", False):
+                raise asyncio.CancelledError()
             if stage_queue is not None:
                 try:
                     stage_queue.put_nowait({"type": "stage", "stage": stage, **row})
@@ -199,6 +204,9 @@ async def pipeline_run(
 
         async def _runner(job):
             await job.touch(stage="pipeline", progress=0.1, message="流水线运行中…")
+            if getattr(job, "cancel_requested", False):
+                await job.touch(status="cancelled", message="已取消")
+                return
             try:
                 async with AsyncSessionLocal() as session:
                     row2 = await get_owned_project(session, owner, project_id)
@@ -235,6 +243,9 @@ async def pipeline_run(
                         progress=0.95,
                         message="流水线完成" if out.get("gate", {}).get("pass") else "流水线结束（门禁未过）",
                     )
+            except asyncio.CancelledError:
+                # _on_stage 发现取消标志后中止：把 job 标记为 cancelled。
+                await job.touch(status="cancelled", message="已取消")
             finally:
                 # The SSE event stream terminates on stage=done — without this
                 # push it would hang on keepalives forever and the final result
@@ -260,22 +271,35 @@ async def pipeline_run(
                 async def _sse(data: dict) -> str:
                     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
-                # Emit the queue events until the job settles, then the final result.
-                while True:
-                    try:
-                        evt = await asyncio.wait_for(stage_queue.get(), timeout=20)
-                    except asyncio.TimeoutError:
-                        yield ": keepalive\n\n"
-                        continue
-                    yield await _sse(evt)
-                    if evt.get("type") == "stage" and evt.get("stage") == "done":
-                        break
-                # Final: read the persisted result
-                from app.core.jobs import get_job
+                done_cleanly = False
+                try:
+                    # Emit the queue events until the job settles, then the final result.
+                    while True:
+                        try:
+                            evt = await asyncio.wait_for(stage_queue.get(), timeout=20)
+                        except asyncio.TimeoutError:
+                            yield ": keepalive\n\n"
+                            continue
+                        yield await _sse(evt)
+                        if evt.get("type") == "stage" and evt.get("stage") == "done":
+                            break
+                    done_cleanly = True
+                    # Final: read the persisted result
+                    from app.core.jobs import get_job
 
-                final = await get_job(db, job.id)
-                result = final.to_dict(include_result=True) if final else {"status": "missing"}
-                yield await _sse({"type": "final", "result": result})
+                    final = await get_job(db, job.id)
+                    result = final.to_dict(include_result=True) if final else {"status": "missing"}
+                    yield await _sse({"type": "final", "result": result})
+                finally:
+                    # 客户端断开（Starlette 关闭生成器 → GeneratorExit）或流提前
+                    # 结束：给 job 置取消标志，_runner 在下一个阶段边界自查并
+                    # 提前退出、标记 cancelled（不再后台空转烧 token）。
+                    if not done_cleanly and getattr(job, "status", "") not in (
+                        "done",
+                        "error",
+                        "cancelled",
+                    ):
+                        job.cancel_requested = True
 
             return StreamingResponse(
                 event_stream(),

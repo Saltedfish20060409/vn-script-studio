@@ -364,7 +364,6 @@ def _commercial_score(
         "hard": hard,
         "chars": len(text),
         "density_vs_source": round(dens_ratio, 3) if source_chars else None,
-        "too_dense": False,  # legacy field; no longer a fail condition
         "menu_miss": menu_miss,
         "pass": (not hard) and not menu_miss,
     }
@@ -819,19 +818,6 @@ COMPRESS_SYSTEM = f"""你是压缩责编。用户明确要求压短时才启用�
 - 若有 A/B/C，必须含「……我也说不清」类毛边项
 - 禁止回潮：为了达成…、为什么要分开、什么时候放、带你熟悉一下这里、当成任务来完成、内心OS
 输出完整正文。
-"""
-
-SURGICAL_SYSTEM = f"""你是手术刀式改稿编辑。只消灭残留硬伤，输出完整正文。
-
-{REVISE_PROTOCOL}
-
-本轮唯一任务：删除用户列出的残留硬反模式，其它好段落尽量原样保留。
-- process_faq / cooking_faq：删掉「为什么要分开 / 什么时候放 / 原理就是…」整段问答；过程用两三句旁白带过，只留入口感受。
-- apartment_tour：删导览说明书（含「熟悉一下这个空间 / 那边是吃饭的地方」）。
-- task_summary_ack：删「为了达成…要求/任务」，以及孤儿句「当成任务来完成 / 一本正经的总结」。
-- respect_lecture：删「私人空间=尊重」定义课。
-- inner_os：删内心OS标签。
-只输出完整正文。
 """
 
 

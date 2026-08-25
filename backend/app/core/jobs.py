@@ -204,7 +204,8 @@ async def _run(job: Job, runner: JobRunner) -> None:
     await job.touch(status="running", stage="start", progress=0.05, message="开始执行")
     try:
         await runner(job)
-        if job.status != "error":
+        # "cancelled" 是 runner 主动置的终态（客户端断开等），不要覆盖成 done。
+        if job.status not in ("error", "cancelled"):
             await job.touch(status="done", progress=1.0, message=job.message or "完成")
     except Exception as exc:  # noqa: BLE001
         job.error = str(exc)[:800]

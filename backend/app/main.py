@@ -1,5 +1,7 @@
 import asyncio
+import json
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -112,6 +114,32 @@ def create_app() -> FastAPI:
         finally:
             set_usage_user(None)
             set_client_llm_override(None)
+
+    @app.middleware("http")
+    async def access_log_middleware(request, call_next):
+        """结构化访问日志：每请求一行 JSON（method/path/status/耗时ms）。
+
+        user_id 从 request.state 尽力取，取不到就省略（现有中间件不写 state）。
+        """
+        access_logger = logging.getLogger("vnss.access")
+        t0 = time.perf_counter()
+        status = 500
+        try:
+            response = await call_next(request)
+            status = response.status_code
+            return response
+        finally:
+            elapsed_ms = int((time.perf_counter() - t0) * 1000)
+            record = {
+                "method": request.method,
+                "path": request.url.path,
+                "status": status,
+                "ms": elapsed_ms,
+            }
+            user_id = getattr(request.state, "user_id", None)
+            if user_id:
+                record["user_id"] = str(user_id)
+            access_logger.info(json.dumps(record, ensure_ascii=False))
 
     app.include_router(api_router)
 
