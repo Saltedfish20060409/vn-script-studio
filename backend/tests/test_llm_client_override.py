@@ -142,3 +142,43 @@ def test_merge_empty_model_uses_v4_flash_default():
     out = merge_llm_credentials(override=None, user_creds=None, server={})
     assert out["model"] == DEFAULT_LLM_MODEL
     assert out["critic_model"] == DEFAULT_LLM_MODEL
+
+
+def test_user_layer_critic_base_url_unsafe_ignored():
+    """用户层 critic_base_url 必须过 SSRF 守卫（此前漏校验）。"""
+    out = merge_llm_credentials(
+        override=None,
+        user_creds={
+            "api_key": "sk-u",
+            "base_url": "https://api.deepseek.com",
+            "critic_api_key": "sk-cu",
+            "critic_base_url": "http://169.254.169.254",
+        },
+        server=SERVER,
+    )
+    assert out["critic_base_url"] != "http://169.254.169.254"
+    assert out["critic_base_url"] == "https://api.deepseek.com"
+
+
+def test_user_layer_critic_base_url_safe_with_own_key_honored():
+    out = merge_llm_credentials(
+        override=None,
+        user_creds={
+            "api_key": "sk-u",
+            "base_url": "https://api.deepseek.com",
+            "critic_api_key": "sk-cu",
+            "critic_base_url": "https://api.moonshot.cn",
+        },
+        server=SERVER,
+    )
+    assert out["critic_base_url"] == "https://api.moonshot.cn"
+
+
+def test_user_layer_critic_base_url_without_keys_falls_through():
+    """安全 URL 但用户层没有任何自己的 key → 不采用，回退主 base_url。"""
+    out = merge_llm_credentials(
+        override=None,
+        user_creds={"critic_base_url": "https://api.moonshot.cn"},
+        server=SERVER,
+    )
+    assert out["critic_base_url"] == "https://api.deepseek.com"

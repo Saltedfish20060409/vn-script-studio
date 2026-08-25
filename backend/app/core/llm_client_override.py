@@ -172,8 +172,16 @@ def merge_llm_credentials(
         and (o.get("critic_api_key") or o.get("api_key"))
     ):
         critic_url = ""
-    critic_base_url = critic_url or _pick(
-        u.get("critic_base_url"), server.get("critic_base_url"), base_url
+    # 用户层 critic_base_url 同样过守卫 + 绑定本层 key（此前漏校验，
+    # 会把用户/服务器凭据发往任意未校验地址）。
+    user_critic_url = _pick(u.get("critic_base_url"))
+    if user_critic_url and not (
+        _is_safe_base_url(user_critic_url)
+        and (u.get("critic_api_key") or u.get("api_key"))
+    ):
+        user_critic_url = ""
+    critic_base_url = _pick(
+        critic_url or "", user_critic_url, server.get("critic_base_url"), base_url
     )
     critic_model = _pick(
         o.get("critic_model"), u.get("critic_model"), server.get("critic_model"), model
