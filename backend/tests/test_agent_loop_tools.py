@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from app.core.agent import _parse_agent_json
-from app.core.agent_loop import _normalize_tool_calls, _parse_loop_json
+from app.core.agent_loop import (
+    _is_echo_of_tool_result,
+    _normalize_tool_calls,
+    _parse_loop_json,
+)
 from app.core.agent_tools import run_agent_tool, tool_catalog_for_prompt
 from app.domain.types import VnProject
 
@@ -36,6 +40,22 @@ def test_parse_loop_json_prose_no_crash():
     parsed = _parse_loop_json("模型直接说了句话，没给 JSON。")
     assert isinstance(parsed.get("message"), str)
     assert parsed.get("actions") == []
+
+
+def test_echo_detection_catches_full_echo():
+    chapter = "#第一章\n[label start]\n（她静静地坐起身……）\n" * 20
+    reply = chapter[:1500]  # 模型把工具读到的正文开头当回复
+    assert _is_echo_of_tool_result(reply, chapter) is True
+
+
+def test_echo_detection_ignores_short_quotes_and_reviews():
+    chapter = "#第一章\n[label start]\n（她静静地坐起身……）\n" * 20
+    # 正常引用一小段 + 自己的意见 → 不误杀
+    review = "（她静静地坐起身）这段的镜头感不错，但男主反应可以更有层次。"
+    assert _is_echo_of_tool_result(review, chapter) is False
+    # 空/过短回复不误杀
+    assert _is_echo_of_tool_result("好的", chapter) is False
+    assert _is_echo_of_tool_result("", chapter) is False
 
 
 def _demo() -> VnProject:

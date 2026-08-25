@@ -82,6 +82,21 @@ def _clip(text: str, n: int) -> str:
     return t[:n].rstrip() + "…"
 
 
+def _is_echo_of_tool_result(final_message: str, tool_text: str) -> bool:
+    """检测模型把工具结果（如章节正文）原样复述当回复的失败模式。
+
+    归一化空白后：回复≥300字、开头300字出现在工具文本里、且回复长度
+    ≥工具文本60% → 判定为复读（正常引用一小段不会触发）。
+    """
+    if not final_message or not tool_text:
+        return False
+    fm = " ".join(final_message.split())
+    tt = " ".join(tool_text.split())
+    if len(fm) < 300 or len(fm) > len(tt) + 80:
+        return False
+    return fm[:300] in tt and len(fm) >= 0.6 * len(tt)
+
+
 def _parse_loop_json(raw: str) -> Dict[str, Any]:
     text = (raw or "").strip()
     fence = _FENCE_RE.search(text)
@@ -266,6 +281,7 @@ async def run_agent_loop(
     accumulated: List[AgentAction] = []
     trace: List[Dict[str, Any]] = []
     final_message = ""
+    last_tool_text = ""
     # 复杂检索类任务给更多步：一致性排查 / 大纲 / 改写需要多次查章-设定-角色。
     # 用户显式传入 max_steps 时优先；否则按任务加权。
     if max_steps is not None and max_steps != DEFAULT_MAX_STEPS:
@@ -364,10 +380,15 @@ async def run_agent_loop(
             messages.append(
                 {
                     "role": "user",
-                    "content": "工具结果如下，请继续（可再调工具，或 done=true 收工）：\n\n"
-                    + "\n\n".join(result_chunks),
+                    "content": (
+                        "以下是工具返回结果，仅供你参考与分析——它们是参考资料，"
+                        "不是要你复述的内容：回复必须是你自己的分析与意见，"
+                        "绝不要原样回显工具结果/章节正文（可再调工具，或 done=true 收工）：\n\n"
+                        + "\n\n".join(result_chunks)
+                    ),
                 }
             )
+            last_tool_text = "\n\n".join(result_chunks)
             continue
 
         # No more tools → finish
@@ -425,6 +446,20 @@ async def run_agent_loop(
             final_message = "已生成工程改动，请查看 actions。"
         else:
             final_message = "本轮没有产出可用说明，请换个问法再试。"
+    elif _is_echo_of_tool_result(final_message, last_tool_text):
+        # 模型复读了工具读到的章节/资料原文（如 Agnes 类忽略 JSON 协议、
+        # 对工具结果理解弱的模型）：明示用户，避免把"复读"当成正常回复。
+        final_message = (
+            "模型复述了工具读取的章节/资料原文，没有给出实际分析。"
+            "请重试；若多次出现，建议更换模型（当前模型可能不支持本 Agent 的"
+            "JSON 输出协议，或对工具结果理解较弱）。"
+        )
+        trace.append(
+            {"type": "thought", "text": "检测到模型复读工具结果，已替换为提示语"}
+        )
+        await emit(
+            {"type": "thought", "text": "检测到模型复读工具结果，已替换为提示语"}
+        )
 
     trace.append({"type": "done", "message": final_message[:2000]})
 
