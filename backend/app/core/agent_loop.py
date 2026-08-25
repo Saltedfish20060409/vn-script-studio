@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from app.core.agent import (
     AGENT_SYSTEM,
@@ -155,142 +155,28 @@ async def _chat_json(
     return (content or "{}").strip() or "{}"
 
 
-async def run_agent_loop(
-    config: DeepSeekConfig,
-    request: AgentRequest,
+async def _agent_steps(
+    provider: LlmProvider,
     *,
-    max_steps: int = DEFAULT_MAX_STEPS,
-    on_event=None,
-) -> AgentResponse:
-    if not config.apiKey or "your-key" in config.apiKey:
-        raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
-    model = config.model or DEFAULT_LLM_MODEL
-    provider = provider_from_config(config)
+    request: AgentRequest,
+    messages: List[Dict[str, str]],
+    working: VnProject,
+    accumulated: List[AgentAction],
+    trace: List[Dict[str, Any]],
+    final_message: str,
+    last_tool_text: str,
+    start_step: int,
+    steps: int,
+    temperature: float,
+    emit,
+    on_checkpoint=None,
+):
+    """多步工具循环主体（可从 start_step 续跑）。
 
-    async def emit(evt: Dict[str, Any]) -> None:
-        """Fire a stream event; a failing sink must never break the loop."""
-        if on_event is None:
-            return
-        try:
-            await on_event(evt)
-        except Exception:  # noqa: BLE001 - sink failure is not agent failure
-            pass
-
-    last_user = next(
-        (m.content for m in reversed(request.messages) if m.role == "user"), None
-    )
-    task = request.task if is_agent_task(request.task) else infer_agent_task(last_user or "")
-    craft = select_craft_mode(
-        task=task,
-        user_message=last_user,
-        project=request.project,
-        chapter_id=request.chapterId,
-        preference=request.craftMode,
-    )
-    await emit({"type": "task", "task": task, "craftMode": craft.mode})
-    ctx = build_agent_context(
-        request.project,
-        chapterId=request.chapterId,
-        selection=request.selection,
-        userMessage=last_user,
-        task=task,
-        maxChars=12000,
-        chatMemory=request.chatMemory,
-        longChapterMemory=request.longChapterMemory,
-        loreCraft=request.loreCraft,
-        referenceDocs=request.referenceDocs,
-    )
-
-    if craft.mode == "off":
-        temperature = 0.82
-    elif task in ("polish", "voice", "consistency"):
-        temperature = 0.55
-    elif task == "outline":
-        temperature = 0.7
-    elif craft.mode == "lite":
-        temperature = 0.72
-    else:
-        temperature = 0.78
-
-    craft_block = build_writing_craft_prompt(task, craft.mode)
-    mentor_block = build_mentor_prompt_for_project(
-        request.project, task=task, override_ids=request.mentorIds
-    )
-    mentor_ids = [
-        p.id for p in resolve_project_mentors(request.project, override_ids=request.mentorIds)
-    ]
-    lens_intent = infer_lens_intent(last_user or "")
-    lens_block = build_lens_prompt_for_project(
-        request.project, override_ids=request.lensIds, intent=lens_intent
-    )
-    lens_ids = [
-        p.id for p in resolve_project_lenses(request.project, override_ids=request.lensIds)
-    ]
-
-    # 对话记忆：超过阈值时，早期轮次用 LLM 结构化摘要（防长对话失忆），
-    # 最近轮次保留原文。摘要失败自动回退抽取式，不阻塞。
-    _KEEP_RECENT = 16
-    _SUMMARIZE_AFTER = 22
-    all_msgs = [m for m in (request.messages or []) if m.role in ("user", "assistant")]
-    recent_msgs = all_msgs[-_KEEP_RECENT:] if len(all_msgs) > _KEEP_RECENT else all_msgs
-    chat_memory_block = ""
-    if len(all_msgs) > _SUMMARIZE_AFTER:
-        older = all_msgs[: len(all_msgs) - _KEEP_RECENT]
-        try:
-            chat_memory_block = await summarize_chat_memory(
-                provider, older, request.chatMemory
-            )
-            if chat_memory_block:
-                await emit({"type": "memory", "note": "已归档早期对话记忆"})
-        except Exception:  # noqa: BLE001 - memory summary must never break the loop
-            chat_memory_block = ""
-
-    system_parts = [
-        AGENT_SYSTEM,
-        task_hint(task),
-        craft_block,
-        mentor_block,
-        lens_block,
-        _LOOP_PROTOCOL,
-        tool_catalog_for_prompt(),
-    ]
-    if request.referenceDocs and request.referenceDocs.strip():
-        system_parts.append(
-            "本轮含用户上传参考资料。若用户要求写入/更新设定页：请用 update_bible "
-            "以及必要时 update_meta、add_character/update_character；不要只口头复述。"
-        )
-    system_content = "\n\n".join(p for p in system_parts if p and str(p).strip())
-    system_content = (
-        f"{system_content}\n\n"
-        f"—— 作品上下文（检索拼装；人设/设定为内部参考）——\n{ctx.text}"
-    )
-    if chat_memory_block:
-        system_content += (
-            f"\n\n## 对话记忆归档（更早轮次，非正式剧情）\n{_clip(chat_memory_block, 2800)}"
-        )
-
-    history: List[Dict[str, str]] = [
-        {"role": m.role, "content": m.content} for m in recent_msgs
-    ]
-    messages: List[Dict[str, str]] = [
-        {"role": "system", "content": system_content},
-        *history,
-    ]
-
-    working: VnProject = request.project
-    accumulated: List[AgentAction] = []
-    trace: List[Dict[str, Any]] = []
-    final_message = ""
-    last_tool_text = ""
-    # 复杂检索类任务给更多步：一致性排查 / 大纲 / 改写需要多次查章-设定-角色。
-    # 用户显式传入 max_steps 时优先；否则按任务加权。
-    if max_steps is not None and max_steps != DEFAULT_MAX_STEPS:
-        steps = max(1, min(12, int(max_steps)))
-    else:
-        task_steps = {"consistency": 9, "outline": 8, "rewrite": 8, "voice": 8, "scene": 7}
-        steps = max(1, min(12, task_steps.get(task, DEFAULT_MAX_STEPS)))
-
-    for step in range(steps):
+    每步结束后若提供 on_checkpoint，则回调可序列化的执行快照——
+    断点续跑（run_state 持久化）的数据来源。
+    """
+    for step in range(start_step, steps):
         content = await _chat_json(
             provider,
             temperature=temperature,
@@ -389,13 +275,251 @@ async def run_agent_loop(
                 }
             )
             last_tool_text = "\n\n".join(result_chunks)
+            if on_checkpoint is not None:
+                try:
+                    await on_checkpoint(
+                        {
+                            "status": "running",
+                            "step": step + 1,
+                            "steps": steps,
+                            "task": request.task,
+                            "temperature": temperature,
+                            "messages": messages,
+                            "project": working.model_dump(mode="json"),
+                            "actions": accumulated,
+                            "trace": trace,
+                            "final_message": final_message,
+                            "last_tool_text": last_tool_text,
+                        }
+                    )
+                except Exception:  # noqa: BLE001 - checkpoint must never break the loop
+                    pass
             continue
 
         # No more tools → finish
+        if on_checkpoint is not None:
+            try:
+                await on_checkpoint(
+                    {
+                        "status": "running",
+                        "step": step + 1,
+                        "steps": steps,
+                        "task": request.task,
+                        "temperature": temperature,
+                        "messages": messages,
+                        "project": working.model_dump(mode="json"),
+                        "actions": accumulated,
+                        "trace": trace,
+                        "final_message": final_message,
+                        "last_tool_text": last_tool_text,
+                    }
+                )
+            except Exception:  # noqa: BLE001
+                pass
         break
     else:
         if not final_message:
             final_message = "已达本轮最大工具步数，以下为目前进展。"
+
+    return working, accumulated, trace, final_message, messages, last_tool_text
+
+
+async def run_agent_loop(
+    config: DeepSeekConfig,
+    request: AgentRequest,
+    *,
+    max_steps: int = DEFAULT_MAX_STEPS,
+    on_event=None,
+    on_checkpoint=None,
+    resume: Optional[Dict[str, Any]] = None,
+) -> AgentResponse:
+    if not config.apiKey or "your-key" in config.apiKey:
+        raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
+    model = config.model or DEFAULT_LLM_MODEL
+    provider = provider_from_config(config)
+
+    async def emit(evt: Dict[str, Any]) -> None:
+        """Fire a stream event; a failing sink must never break the loop."""
+        if on_event is None:
+            return
+        try:
+            await on_event(evt)
+        except Exception:  # noqa: BLE001 - sink failure is not agent failure
+            pass
+
+    if resume:
+        # 断点续跑：直接加载上次持久化的执行快照，不再重建上下文
+        # （messages 已含系统提示/历史/工具结果；working 已含中途应用的 actions）。
+        working = VnProject.model_validate(resume.get("project") or {})
+        accumulated: List[AgentAction] = list(resume.get("actions") or [])
+        trace: List[Dict[str, Any]] = list(resume.get("trace") or [])
+        final_message = str(resume.get("final_message") or "")
+        messages: List[Dict[str, str]] = list(resume.get("messages") or [])
+        last_tool_text = str(resume.get("last_tool_text") or "")
+        steps = int(resume.get("steps") or DEFAULT_MAX_STEPS)
+        start_step = int(resume.get("step") or 0)
+        task = str(resume.get("task") or "chat")
+        temperature = float(resume.get("temperature") or 0.7)
+        craft_mode = str(resume.get("craftMode") or "off")
+        await emit(
+            {
+                "type": "thought",
+                "text": f"已从断点继续（此前完成 {start_step}/{steps} 步），现在接着处理。",
+            }
+        )
+        await emit({"type": "task", "task": task, "craftMode": craft_mode})
+        last_user = next(
+            (m.get("content") for m in reversed(messages) if m.get("role") == "user"),
+            None,
+        )
+        # ctx 只做本地拼装（无 LLM 调用），供末尾 contextMeta 统计
+        ctx = build_agent_context(
+            working,
+            chapterId=request.chapterId,
+            selection=request.selection,
+            userMessage=last_user,
+            task=task,
+            maxChars=12000,
+            chatMemory=request.chatMemory,
+            longChapterMemory=request.longChapterMemory,
+            loreCraft=request.loreCraft,
+            referenceDocs=request.referenceDocs,
+        )
+    else:
+        last_user = next(
+            (m.content for m in reversed(request.messages) if m.role == "user"), None
+        )
+        task = request.task if is_agent_task(request.task) else infer_agent_task(last_user or "")
+        craft = select_craft_mode(
+            task=task,
+            user_message=last_user,
+            project=request.project,
+            chapter_id=request.chapterId,
+            preference=request.craftMode,
+        )
+        await emit({"type": "task", "task": task, "craftMode": craft.mode})
+        ctx = build_agent_context(
+            request.project,
+            chapterId=request.chapterId,
+            selection=request.selection,
+            userMessage=last_user,
+            task=task,
+            maxChars=12000,
+            chatMemory=request.chatMemory,
+            longChapterMemory=request.longChapterMemory,
+            loreCraft=request.loreCraft,
+            referenceDocs=request.referenceDocs,
+        )
+
+        if craft.mode == "off":
+            temperature = 0.82
+        elif task in ("polish", "voice", "consistency"):
+            temperature = 0.55
+        elif task == "outline":
+            temperature = 0.7
+        elif craft.mode == "lite":
+            temperature = 0.72
+        else:
+            temperature = 0.78
+
+        craft_block = build_writing_craft_prompt(task, craft.mode)
+        mentor_block = build_mentor_prompt_for_project(
+            request.project, task=task, override_ids=request.mentorIds
+        )
+        mentor_ids = [
+            p.id for p in resolve_project_mentors(request.project, override_ids=request.mentorIds)
+        ]
+        lens_intent = infer_lens_intent(last_user or "")
+        lens_block = build_lens_prompt_for_project(
+            request.project, override_ids=request.lensIds, intent=lens_intent
+        )
+        lens_ids = [
+            p.id for p in resolve_project_lenses(request.project, override_ids=request.lensIds)
+        ]
+
+        # 对话记忆：超过阈值时，早期轮次用 LLM 结构化摘要（防长对话失忆），
+        # 最近轮次保留原文。摘要失败自动回退抽取式，不阻塞。
+        _KEEP_RECENT = 16
+        _SUMMARIZE_AFTER = 22
+        all_msgs = [m for m in (request.messages or []) if m.role in ("user", "assistant")]
+        recent_msgs = all_msgs[-_KEEP_RECENT:] if len(all_msgs) > _KEEP_RECENT else all_msgs
+        chat_memory_block = ""
+        if len(all_msgs) > _SUMMARIZE_AFTER:
+            older = all_msgs[: len(all_msgs) - _KEEP_RECENT]
+            try:
+                chat_memory_block = await summarize_chat_memory(
+                    provider, older, request.chatMemory
+                )
+                if chat_memory_block:
+                    await emit({"type": "memory", "note": "已归档早期对话记忆"})
+            except Exception:  # noqa: BLE001 - memory summary must never break the loop
+                chat_memory_block = ""
+
+        system_parts = [
+            AGENT_SYSTEM,
+            task_hint(task),
+            craft_block,
+            mentor_block,
+            lens_block,
+            _LOOP_PROTOCOL,
+            tool_catalog_for_prompt(),
+        ]
+        if request.referenceDocs and request.referenceDocs.strip():
+            system_parts.append(
+                "本轮含用户上传参考资料。若用户要求写入/更新设定页：请用 update_bible "
+                "以及必要时 update_meta、add_character/update_character；不要只口头复述。"
+            )
+        system_content = "\n\n".join(p for p in system_parts if p and str(p).strip())
+        system_content = (
+            f"{system_content}\n\n"
+            f"—— 作品上下文（检索拼装；人设/设定为内部参考）——\n{ctx.text}"
+        )
+        if chat_memory_block:
+            system_content += (
+                f"\n\n## 对话记忆归档（更早轮次，非正式剧情）\n{_clip(chat_memory_block, 2800)}"
+            )
+
+        history: List[Dict[str, str]] = [
+            {"role": m.role, "content": m.content} for m in recent_msgs
+        ]
+        messages: List[Dict[str, str]] = [
+            {"role": "system", "content": system_content},
+            *history,
+        ]
+
+        working: VnProject = request.project
+        accumulated: List[AgentAction] = []
+        trace: List[Dict[str, Any]] = []
+        final_message = ""
+        last_tool_text = ""
+        # 复杂检索类任务给更多步：一致性排查 / 大纲 / 改写需要多次查章-设定-角色。
+        # 用户显式传入 max_steps 时优先；否则按任务加权。
+        if max_steps is not None and max_steps != DEFAULT_MAX_STEPS:
+            steps = max(1, min(12, int(max_steps)))
+        else:
+            task_steps = {"consistency": 9, "outline": 8, "rewrite": 8, "voice": 8, "scene": 7}
+            steps = max(1, min(12, task_steps.get(task, DEFAULT_MAX_STEPS)))
+        start_step = 0
+        mentor_ids: List[str] = []
+        lens_ids: List[str] = []
+
+    working, accumulated, trace, final_message, messages, last_tool_text = (
+        await _agent_steps(
+            provider,
+            request=request,
+            messages=messages,
+            working=working,
+            accumulated=accumulated,
+            trace=trace,
+            final_message=final_message,
+            last_tool_text=last_tool_text,
+            start_step=start_step,
+            steps=steps,
+            temperature=temperature,
+            emit=emit,
+            on_checkpoint=on_checkpoint,
+        )
+    )
 
     review_note = ""
     review_pref = request.selfReview or "auto"

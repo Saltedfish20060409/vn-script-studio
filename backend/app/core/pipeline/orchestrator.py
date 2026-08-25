@@ -277,6 +277,8 @@ async def run_pipeline(
     persist_run: bool = True,
     on_stage: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     on_token: Optional[Callable[[str], None]] = None,
+    on_checkpoint: Optional[Callable[[Dict[str, Any]], None]] = None,
+    resume: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Run selected stages. Default: plan → write → check → revise×N → check.
@@ -284,6 +286,11 @@ async def run_pipeline(
     voice_check: character voice audit on the final check only.
     on_stage: sync callback fired after each stage completes (SSE progress).
     on_token: sync callback fired per write-stage text delta (SSE typing).
+    on_checkpoint: sync callback fired after each stage with a serializable
+        snapshot {result, vn, done, draft, beatSheet, reviseRounds} — the
+        durable-execution checkpoint used by resume.
+    resume: checkpoint dict from a previous interrupted run; completed stages
+        are skipped and their outputs restored, remaining stages continue.
     """
     wanted = stages or ["plan", "write", "check", "revise", "check"]
     trace: List[Dict[str, Any]] = []
@@ -321,19 +328,58 @@ async def run_pipeline(
                 on_stage(stage, dict(row))
             except Exception:  # noqa: BLE001 - progress sink must not break run
                 pass
+        if on_checkpoint is not None:
+            try:
+                on_checkpoint(
+                    {
+                        "result": {k: v for k, v in result.items() if k != "project"},
+                        "vn": vn.model_dump(mode="json"),
+                        "done": list(result["stages"]),
+                        "draft": current,
+                        "beatSheet": beat_sheet,
+                        "reviseRounds": revise_done,
+                    }
+                )
+            except Exception:  # noqa: BLE001 - checkpoint sink must not break run
+                pass
 
     continuity = None
     if db is not None and project_id:
         continuity = await get_latest_continuity(db, project_id)
 
+    # ---- 断点续跑：恢复检查点状态，已完成的阶段跳过 ----
+    resume_state = resume or {}
+    done: set[str] = set(resume_state.get("done") or [])
     beat_sheet = None
     current = draft or ""
     vn = project
+    revise_done = 0
+    if resume_state:
+        saved_result = resume_state.get("result")
+        if isinstance(saved_result, dict):
+            saved_trace = saved_result.get("trace")
+            saved_result = {k: v for k, v in saved_result.items() if k != "project"}
+            result.update(saved_result)
+            if isinstance(saved_trace, list):
+                trace[:] = saved_trace  # 保持局部引用与 result["trace"] 同一对象
+        result["stages"] = list(resume_state.get("done") or result.get("stages") or [])
+        saved_vn = resume_state.get("vn")
+        if isinstance(saved_vn, dict):
+            try:
+                vn = VnProject.model_validate(saved_vn)
+            except Exception:  # noqa: BLE001 - corrupt checkpoint → fall back to input
+                vn = project
+        current = str(
+            resume_state.get("draft") or result.get("finalDraft") or current
+        )
+        beat_sheet = resume_state.get("beatSheet")
+        revise_done = int(resume_state.get("reviseRounds") or 0)
+
     want_check = "check" in wanted
     want_revise = "revise" in wanted
     rounds_cap = max(0, int(max_revise_rounds))
 
-    if "plan" in wanted:
+    if "plan" in wanted and "plan" not in done:
         t0 = time.perf_counter()
         plan = await stage_plan(
             cfg, vn, instruction=instruction, chapter_id=chapter_id
@@ -348,7 +394,7 @@ async def run_pipeline(
             extra={"hasBeatSheet": bool(beat_sheet)},
         )
 
-    if "write" in wanted:
+    if "write" in wanted and "write" not in done:
         t0 = time.perf_counter()
         written = await stage_write(
             cfg,
@@ -406,7 +452,7 @@ async def run_pipeline(
             voice_hard=voice_hard,
         )
 
-    if want_check:
+    if want_check and "check" not in done:
         t0 = time.perf_counter()
         chk = await _do_check(final=not want_revise)
         result["check"] = chk
@@ -424,7 +470,7 @@ async def run_pipeline(
         )
 
     revise_done = 0
-    if want_revise and result.get("check"):
+    if want_revise and result.get("check") and "revise" not in done:
         while revise_done < rounds_cap:
             chk_now = result["check"] or {}
             if chk_now.get("pass"):

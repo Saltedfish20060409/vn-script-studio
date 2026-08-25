@@ -544,6 +544,39 @@ html[data-panel-glass="ink"] .stageOverlay {
   opacity: 0.85;
 }
 
+/* 断点续跑提示条：上次运行中断/失败后可一键继续 */
+.resumeBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.4rem 0.75rem 0;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--line, #1a2338);
+  border-radius: var(--radius-sm, 8px);
+  background: color-mix(in srgb, var(--accent, #002fa7) 8%, transparent);
+  font-size: 0.72rem;
+  color: var(--ink, #0a0e1a);
+  flex-shrink: 0;
+}
+
+.resumeBar button {
+  flex-shrink: 0;
+  border: 1px solid var(--accent, #002fa7);
+  background: var(--accent, #002fa7);
+  color: #fff;
+  border-radius: var(--radius-sm, 8px);
+  padding: 0.28rem 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.resumeBar button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .mainHeadLeft {
   display: flex;
   align-items: center;

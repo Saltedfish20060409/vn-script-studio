@@ -298,11 +298,15 @@ async def run_agent(
     request: AgentRequest,
     *,
     on_event=None,
+    on_checkpoint=None,
+    resume=None,
 ) -> AgentResponse:
     """Editor agent entry — multi-step tool loop with trajectory."""
     from app.core.agent_loop import run_agent_loop
 
-    return await run_agent_loop(config, request, on_event=on_event)
+    return await run_agent_loop(
+        config, request, on_event=on_event, on_checkpoint=on_checkpoint, resume=resume
+    )
 
 
 @dataclass

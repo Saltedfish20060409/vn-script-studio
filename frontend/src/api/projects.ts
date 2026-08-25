@@ -373,6 +373,8 @@ export interface AgentRunInBody {
   lens_ids?: string[];
   lens_intent?: string;
   attachments?: AgentAttachment[];
+  /** 断点续跑：从该会话 run_state 检查点继续上次中断/失败的多步运行 */
+  resume?: boolean;
 }
 
 export type AgentAttachment = {
@@ -613,6 +615,13 @@ export interface AgentConversationOut {
   messages: AgentChatMessage[];
   chat_memory: string;
   undo_stack: unknown[];
+  /** 运行检查点摘要：status interrupted/error 时前端显示"继续上次运行" */
+  run_state?: {
+    status?: string;
+    step?: number;
+    steps?: number;
+    updatedAt?: string;
+  } | null;
   created_at: string;
   updated_at: string;
 }

@@ -124,6 +124,10 @@ class AgentSession(Base):
     messages: Mapped[list[Any]] = mapped_column(JSONB, default=list)
     chat_memory: Mapped[str] = mapped_column(Text, default="")
     undo_stack: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    # 运行中/中断的 Agent 执行快照（断点续跑的依据）：
+    # {status: running|interrupted|error|done, step, steps, task, temperature,
+    #  craftMode, messages, project, actions, trace, final_message, last_tool_text}
+    run_state: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 

@@ -71,6 +71,8 @@ class PipelineRunIn(BaseModel):
     async_mode: bool = False
     # When true (with async_mode), return SSE stream of stage progress + final
     stream: bool = False
+    # 断点续跑：从该 job 的最后一个阶段检查点继续（未完成的阶段接着跑）
+    resume_job_id: Optional[str] = None
 
 
 class GateIn(BaseModel):
@@ -163,6 +165,21 @@ async def pipeline_run(
         payload = body.model_dump()
         owner = SimpleNamespace(id=user.id)
         stage_queue: Optional[asyncio.Queue[dict]] = asyncio.Queue() if body.stream else None
+
+        # 断点续跑：从源 job 的检查点恢复（已完成的阶段跳过，未完成的接着跑）
+        resume_payload: Optional[dict] = None
+        if payload.get("resume_job_id"):
+            from app.core.jobs import get_job
+
+            prev = await get_job(db, payload["resume_job_id"])
+            cp = (prev._result or {}).get("checkpoint") if prev is not None else None
+            if not isinstance(cp, dict):
+                raise HTTPException(
+                    status_code=400,
+                    detail="源流水线任务不存在或没有可用检查点（可能尚未运行或已完成）",
+                )
+            resume_payload = cp
+
         # Throttle token deltas into ~40-char batches to keep SSE event volume sane.
         _token_buf: list[str] = []
         _token_lock = False
@@ -207,6 +224,23 @@ async def pipeline_run(
             if getattr(job, "cancel_requested", False):
                 await job.touch(status="cancelled", message="已取消")
                 return
+
+            async def _persist_checkpoint(snapshot: dict) -> None:
+                # 阶段级检查点：写入 job.result["checkpoint"]，断连/崩溃后
+                # 可用 resume_job_id 从最后一个完成阶段续跑。
+                try:
+                    await job.set_result({"checkpoint": snapshot})
+                except Exception:  # noqa: BLE001 - checkpoint must not break the run
+                    pass
+
+            def _on_checkpoint(snapshot: dict) -> None:
+                from app.core.jobs import spawn_background_task
+
+                spawn_background_task(
+                    _persist_checkpoint(snapshot),
+                    name=f"pipeline-cp-{job.id}",
+                )
+
             try:
                 async with AsyncSessionLocal() as session:
                     row2 = await get_owned_project(session, owner, project_id)
@@ -231,6 +265,8 @@ async def pipeline_run(
                         semantic_beats=bool(payload.get("semantic_beats", True)),
                         on_stage=_on_stage,
                         on_token=_on_token,
+                        on_checkpoint=_on_checkpoint,
+                        resume=resume_payload,
                     )
                     if out.get("project") is not None:
                         await sync_chapter_rows_from_vn(session, row2, out["project"])

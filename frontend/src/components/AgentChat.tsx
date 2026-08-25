@@ -25,6 +25,7 @@ import {
   chapterReviseApply,
   factsScan,
   type AgentAttachment,
+  type AgentConversationOut,
   type AgentConversationSummary,
   type LensPackMeta,
   type PipelineRunResult,
@@ -139,6 +140,11 @@ export function AgentChat({
   const projectId = project.id;
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  // 上次运行检查点摘要（run_state）：status=interrupted/error 时显示"继续上次"
+  const [runState, setRunState] = useState<NonNullable<
+    AgentConversationOut["run_state"]
+  > | null>(null);
+  const resumeMode = useRef(false);
   const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
   const [messages, setMessages] = useState<AgentChatMessage[]>(defaultWelcome);
   const [input, setInput] = useState("");
@@ -321,9 +327,11 @@ export function AgentChat({
       title: string;
       messages: AgentChatMessage[];
       undo_stack: unknown[];
+      run_state?: AgentConversationOut["run_state"];
     }) => {
       setConversationId(conv.id);
       persistActiveId(projectId, conv.id);
+      setRunState(conv.run_state ?? null);
       const raw = Array.isArray(conv.messages) ? conv.messages : [];
       const next = normalizeMessages(raw);
       setMessages(next);
@@ -663,6 +671,214 @@ export function AgentChat({
     ]);
   }
 
+  /** Agent 流式运行主体：普通消息与断点续跑共用（resume=true 时从 run_state 续跑）。 */
+  async function streamAgentRun(opts: {
+    resume: boolean;
+    apiMessages: AgentChatMessage[];
+    nextMessages: AgentChatMessage[];
+    task?: AgentTaskKind;
+    attachments?: AgentAttachment[];
+  }) {
+    const convId = conversationId;
+    if (!convId) return;
+    const pendingAttach = opts.attachments ?? [];
+    setError("");
+    setThinking(
+      opts.resume
+        ? "正在从断点继续上次运行…"
+        : pendingAttach.length
+          ? "编辑正在阅读附件 / 检索设定…"
+          : "编辑正在检索设定 / 读当前章…"
+    );
+    setBusy(true);
+    // 防御：90s 内一个事件都没收到（模型连接黑洞/后端异常未上报）就中止，
+    // 否则 busy 永远为 true，界面卡死在"正在检索设定"。（声明在 try 外，
+    // 供 finally 清理）
+    let noEventTimer: number | undefined;
+    try {
+      const snapshot = prepareProject ? prepareProject() : project;
+      const streamEvents: AgentTraceEvent[] = [];
+      setLiveStream({ events: [], text: "" });
+      streamAbortRef.current?.abort();
+      const controller = new AbortController();
+      streamAbortRef.current = controller;
+      let gotEvent = false;
+      noEventTimer = window.setTimeout(() => {
+        if (gotEvent || controller.signal.aborted) return;
+        controller.abort();
+        setBusy(false);
+        setThinking("");
+        setError("Agent 长时间无响应：请检查模型配置（Base URL / API Key / 模型名）后重试");
+      }, 90_000);
+      const res = await runAgentStream(
+        projectId,
+        {
+          messages: opts.apiMessages,
+          chapter_id: chapterId,
+          selection: selection || undefined,
+          task: opts.task,
+          conversation_id: convId,
+          apply_actions: true,
+          resume: opts.resume || undefined,
+          // 与 UI 选中同步；勿仅依赖 DB（避免 PUT 未完成时本轮漏注入）
+          lens_ids: activeLensIds,
+          attachments: opts.resume
+            ? undefined
+            : pendingAttach.map((a) => ({
+                filename: a.filename,
+                text: a.text,
+                id: a.id,
+              })),
+        },
+        (evt) => {
+          gotEvent = true;
+          if (evt.type === "thought") {
+            setLiveStream((p) => ({ events: p?.events ?? [], text: evt.text ?? "" }));
+            return;
+          }
+          if (evt.type === "memory") {
+            // 对话记忆归档提示：以工具结果样式进 trace 面板
+            streamEvents.push({
+              type: "tool_result",
+              name: "memory",
+              ok: true,
+              preview: evt.note ?? "已归档早期对话记忆",
+            } as AgentTraceEvent);
+            setLiveStream((p) => ({ events: [...streamEvents], text: p?.text ?? "" }));
+            return;
+          }
+          if (
+            evt.type === "task" ||
+            evt.type === "tool_call" ||
+            evt.type === "tool_result" ||
+            evt.type === "actions"
+          ) {
+            streamEvents.push(evt as unknown as AgentTraceEvent);
+            setLiveStream((p) => ({ events: [...streamEvents], text: p?.text ?? "" }));
+          }
+        },
+        controller.signal
+      );
+
+      const actions = res.actions ?? [];
+      const applied = res.applied && !!res.project;
+
+      if (applied && res.project) {
+        undoStack.current = [
+          ...undoStack.current,
+          { label: describeActions(actions), project: snapshot },
+        ].slice(-20);
+        setUndoCount(undoStack.current.length);
+        onProjectChange(res.project);
+      }
+
+      const meta = res.context_meta;
+      const taskName = meta?.task ? (TASK_LABEL[meta.task] ?? meta.task) : "";
+      const resultBit = applied
+        ? "已写入工程"
+        : actions.length > 0
+          ? "未写入（动作失败或跳过）"
+          : "仅讨论未改工程";
+      const craftShort =
+        meta?.craftMode === "full"
+          ? "工艺全"
+          : meta?.craftMode === "lite"
+            ? "工艺轻"
+            : meta?.craftMode === "off"
+              ? "工艺关"
+              : "";
+      const reviewShort = meta?.selfReview
+        ? meta.selfReview.includes("未通过") || meta.selfReview.includes("改写")
+          ? "自检已改"
+          : meta.selfReview.includes("通过")
+            ? "自检过"
+            : "自检"
+        : "";
+      const lensShort =
+        Array.isArray(meta?.lensIds) && meta.lensIds.length
+          ? `视角×${meta.lensIds.length}`
+          : "";
+      // 透明性：本次注入了哪些上下文（设定卡/设定bible/角色等）
+      const refs = Array.isArray(meta?.included)
+        ? meta.included.filter((x) =>
+            /工艺卡|bible|角色|地点|摘录|长程|对话记忆|上传|文风/.test(x)
+          )
+        : [];
+      const refShort = refs.length ? `参考 ${refs.join("·")}` : "";
+      setLastContext(
+        [taskName, resultBit, craftShort, reviewShort, lensShort, refShort]
+          .filter(Boolean)
+          .join(" · ")
+      );
+
+      const warnings = res.warnings ?? [];
+      const noteUndo = applied
+        ? `可用「撤回编辑」回滚（当前对话内 ${undoStack.current.length} 步）`
+        : "";
+      const foot = [
+        applied ? `已落地：${describeActions(actions)}` : "",
+        warnings.length ? `未执行：${warnings.join("；")}` : "",
+        noteUndo,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const assistantMsg: AgentChatMessage = {
+        role: "assistant",
+        content: foot ? `${res.message}\n\n${foot}` : res.message,
+        trace: Array.isArray(res.trace) ? res.trace : undefined,
+      };
+      const finalMessages = [...opts.nextMessages, assistantMsg];
+      setMessages(finalMessages);
+
+      await putAgentConversation(projectId, convId, {
+        messages: finalMessages.slice(-120),
+        chat_memory: "",
+        undo_stack: undoStack.current.slice(-20),
+      }).catch(() => undefined);
+      void refreshList();
+
+      if (actions.some((a) => a.op === "add_chapter") && res.project) {
+        const last = res.project.chapters[res.project.chapters.length - 1];
+        if (last) onChapterFocus?.(last.id);
+      }
+    } catch (e) {
+      // Aborted by unmount / superseded request — stay quiet (no error bubble).
+      if (
+        (e instanceof Error && e.message === "请求已取消") ||
+        (e instanceof Error && e.name === "AbortError") ||
+        streamAbortRef.current?.signal.aborted
+      ) {
+        return;
+      }
+      const msg = e instanceof Error ? e.message : "请求失败";
+      setError(msg);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `出错了：${msg}` },
+      ]);
+    } finally {
+      if (noEventTimer !== undefined) window.clearTimeout(noEventTimer);
+      setBusy(false);
+      setLiveStream(null);
+      // 同步服务器端 run_state（成功后为 done/空；失败后为 error → 显示"继续"）
+      getAgentConversation(projectId, convId)
+        .then((d) => setRunState(d.run_state ?? null))
+        .catch(() => undefined);
+    }
+  }
+
+  /** 断点续跑：上次多步运行中断/失败后，从检查点继续（不再重烧前面步骤）。 */
+  async function resumeLastRun() {
+    if (busy || !conversationId || !runState) return;
+    setRunState(null);
+    await streamAgentRun({
+      resume: true,
+      apiMessages: [],
+      nextMessages: messages,
+    });
+  }
+
   async function sendText(text: string, task?: AgentTaskKind) {
     const trimmed = text.trim();
     const pendingAttach = attachments;
@@ -788,179 +1004,15 @@ export function AgentChat({
     ];
     setMessages(nextMessages);
     setAttachments([]);
-    setBusy(true);
-    // 防御：90s 内一个事件都没收到（模型连接黑洞/后端异常未上报）就中止，
-    // 否则 busy 永远为 true，界面卡死在"正在检索设定"。（声明在 try 外，
-    // 供 finally 清理）
-    let noEventTimer: number | undefined;
-    try {
-      const snapshot = prepareProject ? prepareProject() : project;
-      const apiMessages = nextMessages
+    await streamAgentRun({
+      resume: false,
+      apiMessages: nextMessages
         .filter((m) => m.role === "user" || m.role === "assistant")
-        .slice(-20);
-
-      const streamEvents: AgentTraceEvent[] = [];
-      setLiveStream({ events: [], text: "" });
-      streamAbortRef.current?.abort();
-      const controller = new AbortController();
-      streamAbortRef.current = controller;
-      let gotEvent = false;
-      noEventTimer = window.setTimeout(() => {
-        if (gotEvent || controller.signal.aborted) return;
-        controller.abort();
-        setBusy(false);
-        setThinking("");
-        setError("Agent 长时间无响应：请检查模型配置（Base URL / API Key / 模型名）后重试");
-      }, 90_000);
-      const res = await runAgentStream(
-        projectId,
-        {
-          messages: apiMessages,
-          chapter_id: chapterId,
-          selection: selection || undefined,
-          task,
-          conversation_id: conversationId,
-          apply_actions: true,
-          // 与 UI 选中同步；勿仅依赖 DB（避免 PUT 未完成时本轮漏注入）
-          lens_ids: activeLensIds,
-          attachments: pendingAttach.map((a) => ({
-            filename: a.filename,
-            text: a.text,
-            id: a.id,
-          })),
-        },
-        (evt) => {
-          gotEvent = true;
-          if (evt.type === "thought") {
-            setLiveStream((p) => ({ events: p?.events ?? [], text: evt.text ?? "" }));
-            return;
-          }
-          if (evt.type === "memory") {
-            // 对话记忆归档提示：以工具结果样式进 trace 面板
-            streamEvents.push({
-              type: "tool_result",
-              name: "memory",
-              ok: true,
-              preview: evt.note ?? "已归档早期对话记忆",
-            } as AgentTraceEvent);
-            setLiveStream((p) => ({ events: [...streamEvents], text: p?.text ?? "" }));
-            return;
-          }
-          if (
-            evt.type === "task" ||
-            evt.type === "tool_call" ||
-            evt.type === "tool_result" ||
-            evt.type === "actions"
-          ) {
-            streamEvents.push(evt as unknown as AgentTraceEvent);
-            setLiveStream((p) => ({ events: [...streamEvents], text: p?.text ?? "" }));
-          }
-        },
-        controller.signal
-      );
-
-      const actions = res.actions ?? [];
-      const applied = res.applied && !!res.project;
-
-      if (applied && res.project) {
-        undoStack.current = [
-          ...undoStack.current,
-          { label: describeActions(actions), project: snapshot },
-        ].slice(-20);
-        setUndoCount(undoStack.current.length);
-        onProjectChange(res.project);
-      }
-
-      const meta = res.context_meta;
-      const taskName = meta?.task ? (TASK_LABEL[meta.task] ?? meta.task) : "";
-      const resultBit = applied
-        ? "已写入工程"
-        : actions.length > 0
-          ? "未写入（动作失败或跳过）"
-          : "仅讨论未改工程";
-      const craftShort =
-        meta?.craftMode === "full"
-          ? "工艺全"
-          : meta?.craftMode === "lite"
-            ? "工艺轻"
-            : meta?.craftMode === "off"
-              ? "工艺关"
-              : "";
-      const reviewShort = meta?.selfReview
-        ? meta.selfReview.includes("未通过") || meta.selfReview.includes("改写")
-          ? "自检已改"
-          : meta.selfReview.includes("通过")
-            ? "自检过"
-            : "自检"
-        : "";
-      const lensShort =
-        Array.isArray(meta?.lensIds) && meta.lensIds.length
-          ? `视角×${meta.lensIds.length}`
-          : "";
-      // 透明性：本次注入了哪些上下文（设定卡/设定bible/角色等）
-      const refs = Array.isArray(meta?.included)
-        ? meta.included.filter((x) =>
-            /工艺卡|bible|角色|地点|摘录|长程|对话记忆|上传|文风/.test(x)
-          )
-        : [];
-      const refShort = refs.length ? `参考 ${refs.join("·")}` : "";
-      setLastContext(
-        [taskName, resultBit, craftShort, reviewShort, lensShort, refShort]
-          .filter(Boolean)
-          .join(" · ")
-      );
-
-      const warnings = res.warnings ?? [];
-      const noteUndo = applied
-        ? `可用「撤回编辑」回滚（当前对话内 ${undoStack.current.length} 步）`
-        : "";
-      const foot = [
-        applied ? `已落地：${describeActions(actions)}` : "",
-        warnings.length ? `未执行：${warnings.join("；")}` : "",
-        noteUndo,
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-      const assistantMsg: AgentChatMessage = {
-        role: "assistant",
-        content: foot ? `${res.message}\n\n${foot}` : res.message,
-        trace: Array.isArray(res.trace) ? res.trace : undefined,
-      };
-      const finalMessages = [...nextMessages, assistantMsg];
-      setMessages(finalMessages);
-
-      await putAgentConversation(projectId, conversationId, {
-        messages: finalMessages.slice(-120),
-        chat_memory: "",
-        undo_stack: undoStack.current.slice(-20),
-      }).catch(() => undefined);
-      void refreshList();
-
-      if (actions.some((a) => a.op === "add_chapter") && res.project) {
-        const last = res.project.chapters[res.project.chapters.length - 1];
-        if (last) onChapterFocus?.(last.id);
-      }
-    } catch (e) {
-      // Aborted by unmount / superseded request — stay quiet (no error bubble).
-      if (
-        (e instanceof Error && e.message === "请求已取消") ||
-        (e instanceof Error && e.name === "AbortError") ||
-        streamAbortRef.current?.signal.aborted
-      ) {
-        return;
-      }
-      const msg = e instanceof Error ? e.message : "请求失败";
-      setError(msg);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: `出错了：${msg}` },
-      ]);
-    } finally {
-      if (noEventTimer !== undefined) window.clearTimeout(noEventTimer);
-      setBusy(false);
-      setLiveStream(null);
-    }
+        .slice(-20),
+      nextMessages,
+      task,
+      attachments: pendingAttach,
+    });
   }
 
   async function runListMentors() {
@@ -1731,6 +1783,26 @@ export function AgentChat({
         />
 
         <div className={styles.main}>
+          {runState &&
+            (runState.status === "interrupted" || runState.status === "error") && (
+              <div className={styles.resumeBar} role="status">
+                <span>
+                  上次运行{runState.status === "interrupted" ? "中断" : "失败"}
+                  {typeof runState.step === "number" &&
+                  typeof runState.steps === "number"
+                    ? `（已完成 ${runState.step}/${runState.steps} 步）`
+                    : ""}
+                  ——可从断点继续，不会重复已完成的步骤。
+                </span>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void resumeLastRun()}
+                >
+                  {busy ? "运行中…" : "继续上次运行"}
+                </button>
+              </div>
+            )}
           <AgentMessagesList
             messages={messages}
             busy={busy}

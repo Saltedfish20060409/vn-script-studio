@@ -1150,12 +1150,22 @@ async def compare_snapshots_endpoint(
 
 
 def _conversation_out(sess: AgentSession) -> AgentConversationOut:
+    run_state = dict(sess.run_state) if isinstance(sess.run_state, dict) else None
+    if run_state is not None:
+        # 只暴露摘要，不把内部 messages/actions 大对象发给列表接口
+        run_state = {
+            "status": run_state.get("status"),
+            "step": run_state.get("step"),
+            "steps": run_state.get("steps"),
+            "updatedAt": run_state.get("updated_at"),
+        }
     return AgentConversationOut(
         id=sess.id,
         title=sess.title or "新对话",
         messages=list(sess.messages or []),
         chat_memory=sess.chat_memory or "",
         undo_stack=list(sess.undo_stack or []),
+        run_state=run_state,
         created_at=sess.created_at,
         updated_at=sess.updated_at,
     )
@@ -1954,12 +1964,93 @@ async def run_project_agent_stream(
         )
     await ensure_under_quota(db, user.id, settings, creds)
 
-    req, last_user = await _build_agent_request(db, project_id, vn, body, settings, creds)
+    req_vn = vn
+    resume_state: Optional[dict] = None
+    if body.resume:
+        if not body.conversation_id:
+            raise HTTPException(status_code=400, detail="断点续跑需要 conversation_id")
+        sess = await _get_session(db, project_id, body.conversation_id)
+        resume_state = sess.run_state or {}
+        if resume_state.get("status") not in ("interrupted", "error", "running"):
+            raise HTTPException(
+                status_code=400,
+                detail="该会话没有可继续的已中断运行（检查点缺失或已结束）",
+            )
+        try:
+            # 检查点里的 working project 已含此前中途应用的 actions；
+            # finalize 仍以原始 vn 为基准一次性应用全部 actions，避免重复应用。
+            req_vn = VnProject.model_validate(resume_state.get("project") or {})
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="检查点数据损坏，无法续跑")
+
+    req, last_user = await _build_agent_request(db, project_id, req_vn, body, settings, creds)
     cfg = DeepSeekConfig(
         apiKey=creds["api_key"],
         baseUrl=creds["base_url"],
         model=creds["model"],
     )
+
+    # ---- 会话解析：检查点持久化（断点续跑）的落点 ----
+    if body.conversation_id:
+        sess = await _get_session(db, project_id, body.conversation_id)
+    else:
+        sess = await _get_or_create_latest_session(db, project_id)
+
+    # 检查点写入专用会话工厂：绑定请求会话的引擎
+    # （测试注入的 test DB 也跟随；不能用 app.db.AsyncSessionLocal）
+    from sqlalchemy.ext.asyncio import AsyncSession as _AsyncSessionType
+    from sqlalchemy.ext.asyncio import async_sessionmaker as _async_sessionmaker
+
+    from app.core.jobs import spawn_background_task
+
+    # AsyncSession.get_bind() 可能返回同步 Engine 外观；用会话的 bind（AsyncEngine）
+    _cp_session_factory = _async_sessionmaker(
+        db.bind, expire_on_commit=False, class_=_AsyncSessionType
+    )
+
+    _last_cp = {"t": -1.0}  # 负初始值：首次检查点必定写入（不被 2s 去抖误跳过）
+
+    async def _write_run_state(sess_id: str, state: dict) -> None:
+        from app.models.tables import AgentSession as AgentSessionRow
+
+        try:
+            async with _cp_session_factory() as s:
+                r = await s.get(AgentSessionRow, sess_id)
+                if r is not None:
+                    r.run_state = state
+                    r.updated_at = datetime.now(timezone.utc)
+                    await s.commit()
+        except Exception:  # noqa: BLE001 - checkpoint write must never break the run
+            pass
+
+    async def _persist_checkpoint(state: dict) -> None:
+        """runner 每步回调：去抖 2s 写检查点（断连/失败时由 _mark_run_state 收尾）。"""
+        import time as _time
+
+        now = _time.monotonic()
+        if state.get("status") not in ("done", "error") and now - _last_cp["t"] < 2.0:
+            return
+        _last_cp["t"] = now
+        state["updated_at"] = datetime.now(timezone.utc).isoformat()
+        await _write_run_state(sess.id, state)
+
+    async def _mark_run_state(status: str) -> None:
+        from app.models.tables import AgentSession as AgentSessionRow
+
+        try:
+            async with _cp_session_factory() as s:
+                r = await s.get(AgentSessionRow, sess.id)
+                if r is not None and isinstance(r.run_state, dict):
+                    # 注意：JSONB 列不追踪原地修改——必须重建 dict 整体赋值，
+                    # 否则 ORM 认为无变化，commit() 不会落库（曾致状态丢失）。
+                    new_state = dict(r.run_state)
+                    new_state["status"] = status
+                    new_state["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    r.run_state = new_state
+                    r.updated_at = datetime.now(timezone.utc)
+                    await s.commit()
+        except Exception:  # noqa: BLE001 - state marking must never break the stream
+            pass
 
     async def event_stream() -> AsyncIterator[str]:
         q: asyncio.Queue[dict] = asyncio.Queue()
@@ -1971,7 +2062,13 @@ async def run_project_agent_stream(
             return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
         runner = asyncio.create_task(
-            run_agent(cfg, req, on_event=sink),
+            run_agent(
+                cfg,
+                req,
+                on_event=sink,
+                on_checkpoint=_persist_checkpoint,
+                resume=resume_state,
+            ),
             name=f"agent-stream-{project_id}",
         )
         try:
@@ -1993,6 +2090,7 @@ async def run_project_agent_stream(
                         yield await _sse(
                             {"type": "error", "message": "Agent 未产出结果，请重试"}
                         )
+                    await _mark_run_state("error")
                     return
                 try:
                     evt = await asyncio.wait_for(q.get(), timeout=20)
@@ -2010,6 +2108,7 @@ async def run_project_agent_stream(
                             yield await _sse(
                                 {"type": "error", "message": "Agent 未产出结果，请重试"}
                             )
+                        await _mark_run_state("error")
                         return
                     yield ": keepalive\n\n"
                     continue
@@ -2019,17 +2118,26 @@ async def run_project_agent_stream(
             result = await runner
         except asyncio.CancelledError:
             runner.cancel()
+            # 客户端断开：标记检查点为 interrupted，前端可据此"继续上次运行"。
+            # 此时任务正在被取消，不能 await，用 fire-and-forget 收尾。
+            spawn_background_task(
+                _mark_run_state("interrupted"),
+                name=f"agent-state-{project_id}",
+            )
             raise
         except Exception as exc:  # noqa: BLE001 - stream errors as SSE events
             if not runner.done():
                 runner.cancel()
+            await _mark_run_state("error")
             yield await _sse({"type": "error", "message": str(exc)[:500]})
             return
         else:
             # Persist + finalize AFTER the loop finished (same as non-streaming).
+            # 先 finalize 再标记 done，避免与 finalize 并发写同一行丢状态。
             final = await _finalize_agent_run(
                 db, project_id, row, vn, body, result, last_user
             )
+            await _mark_run_state("done")
             yield await _sse(
                 {"type": "final", "result": final.model_dump(mode="json", by_alias=True)}
             )

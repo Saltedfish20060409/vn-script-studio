@@ -121,6 +121,8 @@ class AgentRunIn(BaseModel):
     lens_intent: Optional[str] = None
     # Pre-extracted attachment texts from /agent/attachments or client
     attachments: Optional[List[Dict[str, Any]]] = None
+    # 断点续跑：true 时从会话 run_state 的检查点继续上次中断/失败的多步运行
+    resume: bool = False
 
 
 class AgentRunOut(BaseModel):
@@ -150,6 +152,8 @@ class AgentConversationOut(BaseModel):
     messages: List[Dict[str, Any]] = Field(default_factory=list)
     chat_memory: str = ""
     undo_stack: List[Any] = Field(default_factory=list)
+    # 运行检查点摘要（前端据此显示"上次运行中断，可继续"）
+    run_state: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
 

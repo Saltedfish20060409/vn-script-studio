@@ -12,6 +12,68 @@ from app.core.pipeline.orchestrator import run_pipeline
 from app.domain.types import Character, SceneChapter, StoryBible, VnProject
 
 
+def _cfg() -> DeepSeekConfig:
+    return DeepSeekConfig(
+        apiKey="sk-test",
+        baseUrl="https://api.example.com",
+        model="test-model",
+    )
+
+
+def test_pipeline_resume_skips_done_stages():
+    """断点续跑：resume 里已完成的阶段必须被跳过，状态从检查点恢复。"""
+    proj = _project()
+    resume = {
+        "done": ["plan", "write", "check"],
+        "result": {
+            "stages": ["plan", "write", "check"],
+            "plan": {"beatSheet": BEAT, "summary": "雨夜"},
+            "draft": "草稿正文",
+            "check": {
+                "stage": "check",
+                "pass": False,
+                "errorCount": 1,
+                "warnCount": 0,
+                "infoCount": 0,
+                "issues": [
+                    {"severity": "error", "code": "mock", "message": "测试错误"}
+                ],
+                "notes": [],
+                "gateReady": True,
+            },
+            "finalDraft": "草稿正文",
+            "gate": {"pass": False, "errors": 1, "warnings": 0},
+            "applied": False,
+            "project": None,
+            "reviseRounds": 0,
+            "trace": [{"stage": "plan", "ms": 1, "ok": True}],
+        },
+        "vn": proj.model_dump(mode="json"),
+        "draft": "草稿正文",
+        "beatSheet": BEAT,
+        "reviseRounds": 0,
+    }
+
+    out = asyncio.run(
+        run_pipeline(
+            _cfg(),
+            proj,
+            instruction="雨夜",
+            stages=["plan", "write", "check"],
+            persist_run=False,
+            voice_check=False,
+            resume=resume,
+        )
+    )
+    # 三个阶段全部跳过，状态恢复而非重跑（语音终检已关，不再追加 check）
+    assert out["stages"] == ["plan", "write", "check"]
+    assert out["finalDraft"] == "草稿正文"
+    assert out["check"]["errorCount"] == 1
+    assert out["gate"]["pass"] is False
+    # 恢复的 trace 保留
+    assert out["trace"][0]["stage"] == "plan"
+
+
 def _project() -> VnProject:
     return VnProject(
         id="p1",
