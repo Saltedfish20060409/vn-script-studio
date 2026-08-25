@@ -12,13 +12,17 @@ GET /api/v1/music/stream?url=... — range-aware streaming proxy restricted to a
 
 from __future__ import annotations
 
-from urllib.parse import urlsplit
+import asyncio
+import ipaddress
+import socket
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.config import Settings, get_settings
+from app.core.llm_client_override import _BLOCKED_IPS
 from app.core.rate_limit import require_rate
 from app.security import get_current_user
 from app.services import music as music_svc
@@ -76,6 +80,44 @@ def _to_out(t: music_svc.ResolvedTrack) -> MusicTrackOut:
 def _net_cookie(request: Request, settings: Settings) -> str:
     """Per-request browser cookie wins over the server-configured one."""
     return request.headers.get("x-netease-cookie") or settings.netease_cookie
+
+
+async def _assert_public_host(url: str) -> None:
+    """Reject URLs whose hostname resolves to a private/loopback/metadata IP.
+
+    DNS 解析结果逐一过私网/回环/链路本地/保留段检查（与 llm_client_override
+    的 _BLOCKED_IPS 一致），任一命中即拒绝——防止 /music/stream 被当跳板打内网。
+    """
+    try:
+        host = (urlsplit(url).hostname or "").strip().lower()
+    except ValueError:
+        host = ""
+    if not host:
+        raise HTTPException(status_code=400, detail="无效的音源地址")
+    try:
+        infos = await asyncio.to_thread(socket.getaddrinfo, host, None)
+    except OSError:
+        raise HTTPException(status_code=400, detail="音源域名无法解析")
+    if not infos:
+        raise HTTPException(status_code=400, detail="音源域名无法解析")
+    for info in infos:
+        try:
+            addr = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if addr.version == 6 and addr.ipv4_mapped is not None:
+            addr = addr.ipv4_mapped
+        if (
+            addr.is_private
+            or addr.is_loopback
+            or addr.is_link_local
+            or addr.is_multicast
+            or addr.is_reserved
+        ):
+            raise HTTPException(status_code=400, detail="音源地址指向内网/保留地址")
+        for net in _BLOCKED_IPS:
+            if addr in ipaddress.ip_network(net):
+                raise HTTPException(status_code=400, detail="音源地址指向内网/保留地址")
 
 
 @router.post("/search", response_model=list[SearchItemOut])
@@ -161,24 +203,57 @@ async def stream_audio(
         raise HTTPException(status_code=400, detail="仅支持 http(s) 音源地址")
     if not music_svc.allowed_stream_host(parts.hostname):
         raise HTTPException(status_code=400, detail="该音源域名不在白名单内")
+    # 初始 URL 先过 IP 级校验（仅主机名后缀白名单不够：白名单域名可被 DNS
+    # 指向内网；也不允许先跟随重定向再校验——跳转目标一律逐跳重查）。
+    await _assert_public_host(url)
 
     headers = music_svc.stream_headers(parts.hostname)
-    if "range" in request.headers:
-        headers["Range"] = request.headers["range"]
+    range_header = request.headers.get("range")
+    if range_header:
+        headers["Range"] = range_header
 
-    client = httpx.AsyncClient(timeout=_STREAM_TIMEOUT, follow_redirects=True)
+    client = httpx.AsyncClient(timeout=_STREAM_TIMEOUT, follow_redirects=False)
     try:
-        request_obj = client.build_request("GET", url, headers=headers)
-        upstream = await client.send(request_obj, stream=True)
+        current_url = url
+        current_headers = dict(headers)
+        upstream = None
+        for _hop in range(4):  # 初始请求 + 最多 3 次跳转
+            request_obj = client.build_request("GET", current_url, headers=current_headers)
+            resp = await client.send(request_obj, stream=True)
+            if resp.status_code in (301, 302, 303, 307, 308):
+                location = resp.headers.get("location")
+                await resp.aclose()
+                if not location:
+                    raise HTTPException(status_code=502, detail="音源返回无效跳转")
+                current_url = urljoin(current_url, location)
+                hop = urlsplit(current_url)
+                if hop.scheme not in ("http", "https") or not hop.hostname:
+                    raise HTTPException(status_code=400, detail="跳转目标不是 http(s) 地址")
+                if not music_svc.allowed_stream_host(hop.hostname):
+                    raise HTTPException(status_code=400, detail="音源跳转到了白名单之外的地址")
+                await _assert_public_host(current_url)
+                current_headers = dict(headers)
+                current_headers.update(music_svc.stream_headers(hop.hostname))
+                if range_header:
+                    current_headers["Range"] = range_header
+                continue
+            upstream = resp
+            break
+        if upstream is None:
+            raise HTTPException(status_code=502, detail="音源跳转次数过多")
     except httpx.HTTPError as exc:
         await client.aclose()
         raise HTTPException(status_code=502, detail=f"音源暂不可达（{type(exc).__name__}）") from exc
+    except HTTPException:
+        # 白名单/SSRF 校验失败：释放连接后原样抛出。
+        await client.aclose()
+        raise
 
     if upstream.status_code >= 400:
         await client.aclose()
         raise HTTPException(status_code=502, detail=f"音源返回 {upstream.status_code}")
 
-    # Redirects must stay inside the whitelist too.
+    # Defense in depth: the final response host must also be inside the whitelist.
     final_host = upstream.url.host
     if not music_svc.allowed_stream_host(final_host):
         await client.aclose()

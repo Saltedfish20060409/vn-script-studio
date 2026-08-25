@@ -1,8 +1,9 @@
-"""API tests: /music resolve + stream endpoints (auth, whitelist, wiring)."""
+"""API tests: /music resolve + stream endpoints (auth, whitelist, SSRF, wiring)."""
 
 from __future__ import annotations
 
 import asyncio
+import socket
 
 import db_gate
 import pytest
@@ -109,7 +110,7 @@ def test_stream_proxies_whitelisted_audio():
 
     async def _scenario():
         # Override httpx client inside the endpoint with a MockTransport.
-        from unittest.mock import patch
+        from unittest.mock import AsyncMock, patch
 
         import httpx
 
@@ -150,7 +151,7 @@ def test_stream_proxies_whitelisted_audio():
 
         with patch(
             "app.api.v1.music.httpx.AsyncClient", side_effect=lambda *a, **k: FakeClient()
-        ):
+        ), patch("app.api.v1.music._assert_public_host", new_callable=AsyncMock):
             async with db_gate.make_client(APP) as client:
                 r = await client.get(
                     "/api/v1/music/stream",
@@ -159,5 +160,83 @@ def test_stream_proxies_whitelisted_audio():
                 assert r.status_code == 200, r.text
                 assert r.headers["content-type"] == "audio/mpeg"
                 assert r.content == b"\xff\xfb\x00\x01"
+
+    _run(_scenario())
+
+
+def test_stream_rejects_private_ip_resolution():
+    """白名单域名被 DNS 指向私网 IP → 400（IP 级 SSRF 校验）。"""
+
+    async def _scenario():
+        from unittest.mock import patch
+
+        def fake_getaddrinfo(host, port):
+            return [
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 0)),
+            ]
+
+        with patch(
+            "app.api.v1.music.socket.getaddrinfo", side_effect=fake_getaddrinfo
+        ):
+            async with db_gate.make_client(APP) as client:
+                r = await client.get(
+                    "/api/v1/music/stream",
+                    params={"url": "https://m701.music.126.net/song.mp3"},
+                )
+                assert r.status_code == 400, r.text
+                assert "内网" in r.json()["detail"]
+
+    _run(_scenario())
+
+
+def test_stream_rejects_redirect_outside_whitelist():
+    """302 跳到白名单外的主机必须 400（跳转逐跳白名单校验）。"""
+
+    async def _scenario():
+        from unittest.mock import AsyncMock, patch
+
+        import httpx
+
+        class FakeRedirectResp:
+            status_code = 302
+            url = httpx.URL("https://m701.music.126.net/a.mp3")
+
+            def __init__(self):
+                self.headers = httpx.Headers(
+                    {"location": "https://evil.example.com/x.mp3"}
+                )
+
+            async def aclose(self):
+                return None
+
+        class FakeClient:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return None
+
+            def build_request(self, method, url, headers=None):
+                return ("GET", url, headers)
+
+            async def send(self, request, stream=False):
+                return FakeRedirectResp()
+
+            async def aclose(self):
+                return None
+
+        with patch(
+            "app.api.v1.music.httpx.AsyncClient", side_effect=lambda *a, **k: FakeClient()
+        ), patch("app.api.v1.music._assert_public_host", new_callable=AsyncMock):
+            async with db_gate.make_client(APP) as client:
+                r = await client.get(
+                    "/api/v1/music/stream",
+                    params={"url": "https://m701.music.126.net/a.mp3"},
+                )
+                assert r.status_code == 400, r.text
+                assert "白名单" in r.json()["detail"]
 
     _run(_scenario())

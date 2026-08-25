@@ -11,6 +11,7 @@ Honest constraints (no official APIs for NetEase / QQ Music / Kugou):
 from __future__ import annotations
 
 import base64
+import copy
 import re
 import time
 from dataclasses import dataclass, field
@@ -49,6 +50,33 @@ _BILI_MIXIN = [
     40, 61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57,
     62, 11, 36, 20, 34, 44, 52,
 ]
+
+# --------------------------------------------------------------------------
+# 进程内 TTL 缓存：resolve/search 结果。B站/QQ 返回的播放地址有时效性，
+# TTL 必须短（120s）；容量超限直接整体清空（简单优先）。
+# transport 注入（测试）时跳过缓存，避免 MockTransport 语义被缓存串扰。
+# --------------------------------------------------------------------------
+_CACHE_TTL_SECONDS = 120
+_CACHE_MAX_ENTRIES = 500
+_resolve_cache: dict[str, tuple[float, "ResolvedTrack"]] = {}
+_search_cache: dict[str, tuple[float, list["SearchResult"]]] = {}
+
+
+def _cache_get(cache: dict, key: str):
+    hit = cache.get(key)
+    if not hit:
+        return None
+    ts, payload = hit
+    if time.time() - ts > _CACHE_TTL_SECONDS:
+        cache.pop(key, None)
+        return None
+    return copy.deepcopy(payload)
+
+
+def _cache_put(cache: dict, key: str, payload) -> None:
+    if len(cache) >= _CACHE_MAX_ENTRIES:
+        cache.clear()
+    cache[key] = (time.time(), copy.deepcopy(payload))
 
 
 class ResolveError(Exception):
@@ -439,8 +467,13 @@ async def resolve_music_track(
         parsed = parse_share_url(raw_url)
         if parsed is None:
             raise ResolveError("无法识别的链接：请粘贴网易云 / QQ音乐 / 酷狗的歌曲分享链接")
+    cache_key = f"{parsed.platform}:{parsed.id}"
+    if transport is None:
+        cached = _cache_get(_resolve_cache, cache_key)
+        if cached is not None:
+            return cached
     if parsed.platform == "netease":
-        return await _resolve_netease(
+        track = await _resolve_netease(
             parsed.id,
             netease_api_url.strip(),
             netease_cookie.strip(),
@@ -448,11 +481,15 @@ async def resolve_music_track(
             fallback_artist,
             transport,
         )
-    if parsed.platform == "qq":
-        return await _resolve_qq(parsed.id, fallback_title, fallback_artist, transport)
-    if parsed.platform == "bili":
-        return await _resolve_bili(parsed.id, transport)
-    return await _resolve_kugou(parsed.id, parsed.extra, transport)
+    elif parsed.platform == "qq":
+        track = await _resolve_qq(parsed.id, fallback_title, fallback_artist, transport)
+    elif parsed.platform == "bili":
+        track = await _resolve_bili(parsed.id, transport)
+    else:
+        track = await _resolve_kugou(parsed.id, parsed.extra, transport)
+    if transport is None:
+        _cache_put(_resolve_cache, cache_key, track)
+    return track
 
 
 async def search_tracks(
@@ -470,15 +507,24 @@ async def search_tracks(
     q = (query or "").strip()
     if not q:
         raise ResolveError("请输入要搜索的歌名或歌手")
+    cache_key = f"{platform}:{q}"
+    if transport is None:
+        cached = _cache_get(_search_cache, cache_key)
+        if cached is not None:
+            return cached
     if platform == "netease":
-        return await _search_netease(q, netease_cookie.strip(), transport)
-    if platform == "qq":
-        return await _search_qq(q, transport)
-    if platform == "kugou":
-        return await _search_kugou(q, transport)
-    if platform == "bili":
-        return await _search_bili(q, transport)
-    raise ResolveError("未知平台")
+        hits = await _search_netease(q, netease_cookie.strip(), transport)
+    elif platform == "qq":
+        hits = await _search_qq(q, transport)
+    elif platform == "kugou":
+        hits = await _search_kugou(q, transport)
+    elif platform == "bili":
+        hits = await _search_bili(q, transport)
+    else:
+        raise ResolveError("未知平台")
+    if transport is None:
+        _cache_put(_search_cache, cache_key, hits)
+    return hits
 
 
 async def _search_netease(
