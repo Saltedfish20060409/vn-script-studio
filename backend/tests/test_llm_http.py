@@ -8,7 +8,32 @@ import httpx
 import pytest
 
 from app.core.ai import DeepSeekConfig
-from app.core.llm_http import chat_completions, content_from_response
+from app.core.llm_http import _chat_url, chat_completions, content_from_response
+
+
+def test_chat_url_normalizes_trailing_v1():
+    """base_url 带 /v1（用户按厂商文档填写）不得拼成 /v1/v1/chat/completions。"""
+    assert (
+        _chat_url("https://api.example.com/v1")
+        == "https://api.example.com/v1/chat/completions"
+    )
+    assert (
+        _chat_url("https://api.example.com/v1/")
+        == "https://api.example.com/v1/chat/completions"
+    )
+    assert (
+        _chat_url("https://api.example.com")
+        == "https://api.example.com/v1/chat/completions"
+    )
+    assert (
+        _chat_url("https://dashscope.aliyuncs.com/compatible-mode/v1")
+        == "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+    )
+    # 非 /v1 结尾的厂商路径（如智谱 /api/paas/v4）不受影响
+    assert (
+        _chat_url("https://open.bigmodel.cn/api/paas/v4")
+        == "https://open.bigmodel.cn/api/paas/v4/v1/chat/completions"
+    )
 
 
 def _cfg() -> DeepSeekConfig:

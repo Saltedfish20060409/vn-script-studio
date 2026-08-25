@@ -207,3 +207,38 @@ def test_agent_stream_sse_events_and_final():
             assert len(r.json()["undo_stack"]) == 1
 
     _run(_scenario())
+
+
+def test_agent_stream_mid_loop_failure_surfaces_error_not_hang():
+    """回归：runner 中途抛错（如上游 404/超时）时，流必须发 error 事件并结束，
+    而不是 keepalive 死循环让前端永远卡在"正在检索设定"。
+    """
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "stream_fail_user")
+            pid = await _create_demo_project(client, headers)
+
+            async def failing_agent(config, request, *, on_event=None):
+                await on_event({"type": "task", "text": "分析当前章节"})
+                raise RuntimeError("DeepSeek API 404: not found (mock)")
+
+            with patch(PATCH_TARGET, new=failing_agent):
+                r = await client.post(
+                    f"/api/v1/projects/{pid}/agent/stream",
+                    json={"messages": MESSAGE, "apply_actions": True},
+                    headers=headers,
+                )
+
+            assert r.status_code == 200, r.text
+            events = []
+            for line in r.text.splitlines():
+                if line.startswith("data: "):
+                    events.append(json.loads(line[len("data: "):]))
+            types = [e["type"] for e in events]
+            assert "task" in types
+            assert "error" in types, f"expected error event, got {types}"
+            assert "404" in events[-1]["message"]
+            assert types[-1] == "error"  # 流以 error 收尾，不 keepalive 悬挂
+
+    _run(_scenario())

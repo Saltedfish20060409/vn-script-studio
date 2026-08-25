@@ -1976,9 +1976,41 @@ async def run_project_agent_stream(
         )
         try:
             while True:
+                # runner 已结束且队列排空（没有 done 事件）→ 把异常/空结果转成
+                # error 事件，否则循环会永远 keepalive（此前中途失败=前端无限
+                # "正在检索设定"）。注意必须等队列排空再判：runner 可能刚把
+                # 最后几个事件放进队列就结束了，不能跳过它们。
+                if runner.done() and q.empty():
+                    try:
+                        exc = runner.exception()
+                    except asyncio.CancelledError:
+                        raise
+                    if exc is not None:
+                        yield await _sse(
+                            {"type": "error", "message": str(exc)[:500]}
+                        )
+                    else:
+                        yield await _sse(
+                            {"type": "error", "message": "Agent 未产出结果，请重试"}
+                        )
+                    return
                 try:
                     evt = await asyncio.wait_for(q.get(), timeout=20)
                 except asyncio.TimeoutError:
+                    if runner.done():
+                        try:
+                            exc = runner.exception()
+                        except asyncio.CancelledError:
+                            raise
+                        if exc is not None:
+                            yield await _sse(
+                                {"type": "error", "message": str(exc)[:500]}
+                            )
+                        else:
+                            yield await _sse(
+                                {"type": "error", "message": "Agent 未产出结果，请重试"}
+                            )
+                        return
                     yield ": keepalive\n\n"
                     continue
                 yield await _sse(evt)

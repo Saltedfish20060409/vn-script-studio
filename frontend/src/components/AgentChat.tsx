@@ -789,6 +789,10 @@ export function AgentChat({
     setMessages(nextMessages);
     setAttachments([]);
     setBusy(true);
+    // 防御：90s 内一个事件都没收到（模型连接黑洞/后端异常未上报）就中止，
+    // 否则 busy 永远为 true，界面卡死在"正在检索设定"。（声明在 try 外，
+    // 供 finally 清理）
+    let noEventTimer: number | undefined;
     try {
       const snapshot = prepareProject ? prepareProject() : project;
       const apiMessages = nextMessages
@@ -800,6 +804,14 @@ export function AgentChat({
       streamAbortRef.current?.abort();
       const controller = new AbortController();
       streamAbortRef.current = controller;
+      let gotEvent = false;
+      noEventTimer = window.setTimeout(() => {
+        if (gotEvent || controller.signal.aborted) return;
+        controller.abort();
+        setBusy(false);
+        setThinking("");
+        setError("Agent 长时间无响应：请检查模型配置（Base URL / API Key / 模型名）后重试");
+      }, 90_000);
       const res = await runAgentStream(
         projectId,
         {
@@ -818,6 +830,7 @@ export function AgentChat({
           })),
         },
         (evt) => {
+          gotEvent = true;
           if (evt.type === "thought") {
             setLiveStream((p) => ({ events: p?.events ?? [], text: evt.text ?? "" }));
             return;
@@ -944,6 +957,7 @@ export function AgentChat({
         { role: "assistant", content: `出错了：${msg}` },
       ]);
     } finally {
+      if (noEventTimer !== undefined) window.clearTimeout(noEventTimer);
       setBusy(false);
       setLiveStream(null);
     }

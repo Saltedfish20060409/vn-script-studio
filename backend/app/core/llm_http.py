@@ -39,6 +39,19 @@ def _stream_retry_delay(headers) -> Optional[float]:
     return None
 
 
+def _chat_url(base_url: str) -> str:
+    """OpenAI 兼容端点：base + /v1/chat/completions。
+
+    用户常按厂商文档填带 /v1 的 base（如 https://api.xx.com/v1），而本客户端
+    会再拼 /v1/chat/completions 造成 /v1/v1 → 404。归一化：剥掉尾部 /v1。
+    同时也修正了 preset 里 dashscope compatible-mode/v1 这类同形路径。
+    """
+    base = (base_url or "https://api.deepseek.com").rstrip("/")
+    if base.endswith("/v1"):
+        base = base[: -len("/v1")]
+    return f"{base}/v1/chat/completions"
+
+
 async def chat_completions(
     config: DeepSeekConfig,
     *,
@@ -76,7 +89,7 @@ async def chat_completions(
             for attempt in range(max(1, max_retries)):
                 try:
                     res = await client.post(
-                        f"{base_url}/v1/chat/completions",
+                        _chat_url(base_url),
                         headers=headers,
                         json=body,
                     )
@@ -192,7 +205,7 @@ async def stream_chat_completions(
         async with _LLM_SEMAPHORE:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream(
-                    "POST", f"{base_url}/v1/chat/completions", headers=headers, json=body
+                    "POST", _chat_url(base_url), headers=headers, json=body
                 ) as res:
                     if res.status_code >= 400:
                         err = (await res.aread()).decode("utf-8", "replace")

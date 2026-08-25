@@ -95,6 +95,55 @@ export function AgentFloat(props: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const inited = useRef(false);
   const lastFree = useRef<{ x: number; y: number } | null>(null);
+  // 贴边标签拖拽状态：区分"点击展开"与"沿边拖动重定位"
+  const tabDrag = useRef<{ startX: number; startY: number; moved: boolean } | null>(
+    null
+  );
+  const suppressTabClick = useRef(false);
+
+  function onTabPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
+    if (!pos || pos.mode !== "docked") return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    tabDrag.current = { startX: e.clientX, startY: e.clientY, moved: false };
+  }
+
+  function onTabPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
+    const d = tabDrag.current;
+    if (!d || !pos || pos.mode !== "docked") return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (Math.abs(dx) + Math.abs(dy) > 4) d.moved = true;
+    if (!d.moved) return;
+    const vertical = pos.edge === "left" || pos.edge === "right";
+    const along = vertical
+      ? alongForEdge(pos.edge, 0, d.startY + dy, 0, 0)
+      : alongForEdge(pos.edge, d.startX + dx, 0, 0, 0);
+    setPos({ mode: "docked", edge: pos.edge, along });
+  }
+
+  function onTabPointerUp() {
+    const d = tabDrag.current;
+    tabDrag.current = null;
+    if (d?.moved) {
+      suppressTabClick.current = true; // 拖动过就不触发展开
+      return;
+    }
+    expandFromDock();
+  }
+
+  function onTabClick() {
+    if (suppressTabClick.current) {
+      suppressTabClick.current = false;
+      return;
+    }
+    expandFromDock();
+  }
 
   useEffect(() => {
     try {
@@ -309,8 +358,11 @@ export function AgentFloat(props: Props) {
               ? { top: pos.along }
               : { left: pos.along }
           }
-          onClick={expandFromDock}
-          title="展开审稿 Agent"
+          onPointerDown={onTabPointerDown}
+          onPointerMove={onTabPointerMove}
+          onPointerUp={onTabPointerUp}
+          onClick={onTabClick}
+          title="点击展开 · 可沿边拖动"
         >
           审稿 Agent
         </button>
