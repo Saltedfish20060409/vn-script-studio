@@ -2,9 +2,40 @@
 
 from __future__ import annotations
 
+from app.core.agent import _parse_agent_json
 from app.core.agent_loop import _normalize_tool_calls, _parse_loop_json
 from app.core.agent_tools import run_agent_tool, tool_catalog_for_prompt
 from app.domain.types import VnProject
+
+
+def test_parse_agent_json_prose_fallback():
+    """模型忽略 response_format 返回纯文本：不得抛 JSONDecodeError，原文当回复。"""
+    msg, actions = _parse_agent_json(
+        "好的，我来帮你审查并续写这个剧本。首先我需要通读第一章……"
+    )
+    assert "审查" in msg
+    assert actions == []
+
+
+def test_parse_agent_json_empty_fallback():
+    msg, actions = _parse_agent_json("")
+    assert "无法解析" in msg or "没产出" in msg
+    assert actions == []
+
+
+def test_parse_agent_json_fenced_json_still_parses():
+    msg, actions = _parse_agent_json(
+        '```json\n{"message": "已按意见修改", "actions": [{"op": "rewrite_chapter", "chapterId": "ch1"}]}\n```'
+    )
+    assert "已按意见修改" in msg
+    assert actions and actions[0]["op"] == "rewrite_chapter"
+
+
+def test_parse_loop_json_prose_no_crash():
+    """_parse_loop_json 对纯文本回复走兜底，不抛异常。"""
+    parsed = _parse_loop_json("模型直接说了句话，没给 JSON。")
+    assert isinstance(parsed.get("message"), str)
+    assert parsed.get("actions") == []
 
 
 def _demo() -> VnProject:

@@ -52,9 +52,7 @@ function clampFree(x: number, y: number, w: number, _h: number) {
 function clampDrag(x: number, y: number, w: number, h: number) {
   return {
     x: clamp(x, -w + 40, window.innerWidth - 40),
-    // 底部留出音乐条区域（38px 音乐条 + 26px 空隙 = 64px）：
-    // 面板拖不到屏幕最底部，也就不会被拖进音乐条底下"消失"。
-    y: clamp(y, -h + 40, Math.max(8, window.innerHeight - h - 64)),
+    y: clamp(y, -h + 40, window.innerHeight - 40),
   };
 }
 
@@ -64,12 +62,13 @@ function detectEdge(x: number, y: number, w: number, h: number): Edge | null {
   const distR = vw - (x + w);
   const distL = x;
   const distT = y;
-  // 底部是音乐条的地盘：永远不贴底 dock（否则标签会被音乐条遮住/撞车）
-  const nearest = Math.min(distR, distL, distT);
+  const distB = vh - (y + h);
+  const nearest = Math.min(distR, distL, distT, distB);
   if (nearest > EDGE_SNAP) return null;
   if (nearest === distR) return "right";
   if (nearest === distL) return "left";
-  return "top";
+  if (nearest === distT) return "top";
+  return "bottom";
 }
 
 function alongForEdge(edge: Edge, x: number, y: number, _w: number, _h: number) {
@@ -95,10 +94,13 @@ export function AgentFloat(props: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const inited = useRef(false);
   const lastFree = useRef<{ x: number; y: number } | null>(null);
-  // 贴边标签拖拽状态：区分"点击展开"与"沿边拖动重定位"
-  const tabDrag = useRef<{ startX: number; startY: number; moved: boolean } | null>(
-    null
-  );
+  // 贴边标签拖拽：沿边移动=重定位；垂直拖离边缘=把面板拉出来；单击=展开
+  const tabDrag = useRef<{
+    startX: number;
+    startY: number;
+    moved: boolean;
+    mode: "along" | "pulled";
+  } | null>(null);
   const suppressTabClick = useRef(false);
 
   function onTabPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
@@ -110,7 +112,7 @@ export function AgentFloat(props: Props) {
     } catch {
       /* ignore */
     }
-    tabDrag.current = { startX: e.clientX, startY: e.clientY, moved: false };
+    tabDrag.current = { startX: e.clientX, startY: e.clientY, moved: false, mode: "along" };
   }
 
   function onTabPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
@@ -121,20 +123,52 @@ export function AgentFloat(props: Props) {
     if (Math.abs(dx) + Math.abs(dy) > 4) d.moved = true;
     if (!d.moved) return;
     const vertical = pos.edge === "left" || pos.edge === "right";
-    const along = vertical
-      ? alongForEdge(pos.edge, 0, d.startY + dy, 0, 0)
-      : alongForEdge(pos.edge, d.startX + dx, 0, 0, 0);
-    setPos({ mode: "docked", edge: pos.edge, along });
-  }
-
-  function onTabPointerUp() {
-    const d = tabDrag.current;
-    tabDrag.current = null;
-    if (d?.moved) {
-      suppressTabClick.current = true; // 拖动过就不触发展开
+    const perp = vertical ? Math.abs(dx) : Math.abs(dy);
+    if (perp > 56) {
+      // 垂直拖离边缘 → 拉出为自由面板（跟随指针移动）
+      d.mode = "pulled";
+      const along = pos.along;
+      let fx: number;
+      let fy: number;
+      if (vertical) {
+        fx = pos.edge === "right" ? window.innerWidth - PANEL_W - 16 : 16;
+        fy = clamp(along + dy, 8, Math.max(8, window.innerHeight - PANEL_H - 8));
+      } else {
+        fx = clamp(along + dx, 8, Math.max(8, window.innerWidth - PANEL_W - 8));
+        fy = pos.edge === "bottom" ? window.innerHeight - PANEL_H - 16 : 16;
+      }
+      lastFree.current = { x: fx, y: fy };
+      setPos({ mode: "free", x: fx, y: fy });
       return;
     }
-    expandFromDock();
+    // 沿边拖动：重定位标签
+    const nAlong = vertical
+      ? alongForEdge(pos.edge, 0, d.startY + dy, 0, 0)
+      : alongForEdge(pos.edge, d.startX + dx, 0, 0, 0);
+    setPos({ mode: "docked", edge: pos.edge, along: nAlong });
+  }
+
+  function onTabPointerUp(e: React.PointerEvent<HTMLButtonElement>) {
+    const d = tabDrag.current;
+    tabDrag.current = null;
+    if (!d) return;
+    if (!d.moved) {
+      expandFromDock();
+      return;
+    }
+    if (d.mode === "pulled" && pos && pos.mode === "free") {
+      // 拉出后松手：按常规贴边判定（近边则 dock，否则保持自由）
+      const c = clampFree(pos.x, pos.y, PANEL_W, PANEL_H);
+      const edge = detectEdge(c.x, c.y, PANEL_W, PANEL_H);
+      if (edge) {
+        setPos({ mode: "docked", edge, along: alongForEdge(edge, c.x, c.y, PANEL_W, PANEL_H) });
+      } else {
+        lastFree.current = c;
+        setPos({ mode: "free", ...c });
+      }
+      return;
+    }
+    suppressTabClick.current = true; // 沿边拖动过就不触发展开
   }
 
   function onTabClick() {

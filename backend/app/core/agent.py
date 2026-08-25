@@ -259,7 +259,15 @@ def _parse_agent_json(raw: str) -> Tuple[str, List[AgentAction]]:
     end = text.rfind("}")
     if start >= 0 and end > start:
         text = text[start : end + 1]
-    parsed = json.loads(text)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        # 模型没吐 JSON（如忽略 response_format 返回纯文本，或返回空串）：
+        # 把原文当回复，绝不把裸 JSONDecodeError 抛给用户。
+        prose = text.strip()
+        if not prose:
+            return "模型返回了无法解析的内容（空响应），请重试。", []
+        return prose[:2000], []
     actions = _normalize_agent_actions(parsed.get("actions"))
     message = parsed.get("message")
     if isinstance(message, str) and message.strip():
