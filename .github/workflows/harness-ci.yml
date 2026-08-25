@@ -1,5 +1,9 @@
 name: ci
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     paths:
@@ -78,6 +82,10 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      - name: Bundle size guard (dist/assets/*.js)
+        run: |
+          # 阈值 500KB 为 gzip 前的原始字节（raw bytes），超限即失败
+          node -e "const fs=require('fs'),d='dist/assets';const over=fs.readdirSync(d).filter(f=>f.endsWith('.js')&&fs.statSync(d+'/'+f).size>500*1024);if(over.length){console.error('bundle(s) exceed 500KB raw:',over.join(', '));process.exit(1)}console.log('bundle size OK: all dist/assets/*.js <= 500KB (raw, pre-gzip)')"
 
   e2e:
     runs-on: ubuntu-latest
