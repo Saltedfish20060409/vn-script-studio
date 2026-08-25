@@ -20,6 +20,8 @@ type Props = {
   prepareProject: () => VnProject;
   onProjectChange: (p: VnProject) => void;
   onChapterFocus?: (id: string) => void;
+  /** 外部"打开"请求：值变化时把面板从任何状态（含贴边收起）拉出来 */
+  openRequest?: number;
 };
 
 /** v6：可拉伸面板 + 对话侧栏 */
@@ -77,6 +79,7 @@ function alongForEdge(edge: Edge, x: number, y: number, _w: number, _h: number) 
 }
 
 export function AgentFloat(props: Props) {
+  const { openRequest = 0 } = props;
   const [size, setSize] = useState<SizeMode>("normal");
   const [pos, setPos] = useState<PosState | null>(null);
   const [panelSize, setPanelSize] = useState({ w: PANEL_W, h: PANEL_H });
@@ -240,6 +243,16 @@ export function AgentFloat(props: Props) {
       setPos({ mode: "corner" });
     }
   }
+
+  // 顶栏"审稿"按钮：把面板从任何状态拉出来（防入口丢失/贴边收起后找不到）
+  const prevOpenRequest = useRef(0);
+  useEffect(() => {
+    if (!inited.current) return;
+    if (openRequest !== prevOpenRequest.current && openRequest > 0) {
+      prevOpenRequest.current = openRequest;
+      expandFromDock();
+    }
+  }, [openRequest]);
 
   function dockTo(edge: Edge = "right") {
     setPos((prev) => {

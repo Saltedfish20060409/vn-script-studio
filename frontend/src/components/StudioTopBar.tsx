@@ -6,6 +6,9 @@ type Props = {
   username?: string;
   /** Show the 专注 button only inside the script editor outside focus mode */
   showFocusToggle: boolean;
+  /** 审稿 Agent 入口（顶栏常驻，防浮动窗状态丢失后找不到入口） */
+  showAgent?: boolean;
+  onOpenAgent?: () => void;
   /** Hidden file input lives here; the ref is owned by StudioApp */
   fileInputRef: RefObject<HTMLInputElement | null>;
   onTitleChange: (value: string) => void;
@@ -33,6 +36,8 @@ export function StudioTopBar({
   title,
   username,
   showFocusToggle,
+  showAgent = false,
+  onOpenAgent,
   fileInputRef,
   onTitleChange,
   onFocusToggle,
@@ -78,6 +83,16 @@ export function StudioTopBar({
             title="专注全屏写作 (Ctrl+\\)"
           >
             专注
+          </button>
+        ) : null}
+        {showAgent && onOpenAgent ? (
+          <button
+            type="button"
+            className={styles.focusToggle}
+            onClick={onOpenAgent}
+            title="打开审稿 Agent"
+          >
+            审稿
           </button>
         ) : null}
         <details className={styles.moreMenu}>

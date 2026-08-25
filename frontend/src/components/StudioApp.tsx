@@ -246,6 +246,8 @@ export function StudioApp() {
   const [rpyStale, setRpyStale] = useState(false);
   const [bundleBusy, setBundleBusy] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  // 顶栏"审稿"按钮的展开信号：每次 +1 让 AgentFloat 把面板拉出来
+  const [agentOpenTick, setAgentOpenTick] = useState(0);
   const [focusSetupOpen, setFocusSetupOpen] = useState(false);
   const [focusPrefs, setFocusPrefs] = useState<FocusTimerPrefs | null>(null);
   // 之前每次渲染都调 loadFocusTimerPrefs()（localStorage.getItem + JSON.parse），
@@ -1734,6 +1736,8 @@ export function StudioApp() {
           title={project.title}
           username={user?.username}
           showFocusToggle={tab === "write" && writeSub === "script" && !focusMode}
+          showAgent={!focusMode}
+          onOpenAgent={() => setAgentOpenTick((t) => t + 1)}
           fileInputRef={fileRef}
           onTitleChange={(value) => updateActive((p) => ({ ...p, title: value }))}
           onFocusToggle={requestFocusSession}
@@ -2152,6 +2156,7 @@ export function StudioApp() {
               chapterId={chapterId}
               selection={selection}
               draft={editor}
+              openRequest={agentOpenTick}
               prepareProject={() => buildLatestProject() ?? project}
               onProjectChange={(p) => {
                 applyRemoteProject(p);
