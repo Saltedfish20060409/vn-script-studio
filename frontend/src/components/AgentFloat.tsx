@@ -94,8 +94,9 @@ export function AgentFloat(props: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const inited = useRef(false);
   const lastFree = useRef<{ x: number; y: number } | null>(null);
-  // 贴边标签交互：点一下=展开；长按 300ms「上膛」拖拽（面板不弹出），
-  // 真正开始移动才出现并跟随；拖动复用 window 级拖拽（按钮卸载也不中断）
+  // 贴边标签交互：点一下=展开；长按/按下即拖=拖动标签本身（面板不出现，
+  // 只是标签的样子跟随指针），松手贴到最近边（上下左右）。
+  // 标签全程保持挂载（pos 不变），无卸载丢事件问题。
   const tabDragStart = useRef<{
     x: number;
     y: number;
@@ -104,6 +105,7 @@ export function AgentFloat(props: Props) {
   } | null>(null);
   const tabHoldTimer = useRef<number | null>(null);
   const suppressTabClick = useRef(false);
+  const [tabFree, setTabFree] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(
     () => () => {
@@ -112,44 +114,19 @@ export function AgentFloat(props: Props) {
     []
   );
 
-  /** 进入拖拽：面板从贴边位置出现，交给 window 级拖拽跟随指针 */
-  function beginTabDrag(clientX: number, clientY: number) {
-    if (!pos || pos.mode !== "docked") return;
-    if (tabHoldTimer.current !== null) {
-      window.clearTimeout(tabHoldTimer.current);
-      tabHoldTimer.current = null;
-    }
-    const along = pos.along;
-    let px: number;
-    let py: number;
-    if (pos.edge === "right") {
-      px = window.innerWidth - PANEL_W - 16;
-      py = clamp(along, 8, Math.max(8, window.innerHeight - PANEL_H - 8));
-    } else if (pos.edge === "left") {
-      px = 16;
-      py = clamp(along, 8, Math.max(8, window.innerHeight - PANEL_H - 8));
-    } else if (pos.edge === "top") {
-      px = clamp(along, 8, Math.max(8, window.innerWidth - PANEL_W - 8));
-      py = 16;
-    } else {
-      px = clamp(along, 8, Math.max(8, window.innerWidth - PANEL_W - 8));
-      py = window.innerHeight - PANEL_H - 16;
-    }
-    drag.current = { ox: clientX - px, oy: clientY - py, w: PANEL_W, h: PANEL_H };
-    lastFree.current = { x: px, y: py };
-    setPos({ mode: "free", x: px, y: py });
-    if (tabDragStart.current) tabDragStart.current.mode = "dragging";
-    setDragging(true);
-  }
-
   function onTabPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
     // 只响应主键按下；悬停/其他键不启动
     if (e.button !== 0 || !pos || pos.mode !== "docked") return;
     e.preventDefault();
     e.stopPropagation();
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
     tabDragStart.current = { x: e.clientX, y: e.clientY, moved: 0, mode: "pending" };
     suppressTabClick.current = true;
-    // 长按 300ms → 上膛拖拽模式（仅标记，不弹面板；开始移动才出现）
+    // 长按 300ms → 上膛拖拽（仅标记；开始移动才拖动标签）
     tabHoldTimer.current = window.setTimeout(() => {
       if (tabDragStart.current && tabDragStart.current.mode === "pending") {
         tabDragStart.current.mode = "armed";
@@ -162,10 +139,16 @@ export function AgentFloat(props: Props) {
     if (!d || e.buttons === 0) return;
     const dist = Math.hypot(e.clientX - d.x, e.clientY - d.y);
     if (dist > d.moved) d.moved = dist;
-    // 开始移动（>4px）：pending（立即拖）或 armed（长按后拖）都进入拖拽
-    if (d.mode !== "dragging" && d.moved > 4) {
-      beginTabDrag(e.clientX, e.clientY);
-    }
+    if (d.moved <= 4) return;
+    // 拖动标签本身（面板不出现）：标签跟随指针
+    d.mode = "dragging";
+    const vertical =
+      pos?.mode === "docked" && (pos.edge === "left" || pos.edge === "right");
+    const w = vertical ? 40 : 130;
+    const h = vertical ? 130 : 40;
+    const x = clamp(e.clientX - w / 2, 4, Math.max(4, window.innerWidth - w - 4));
+    const y = clamp(e.clientY - h / 2, 4, Math.max(4, window.innerHeight - h - 4));
+    setTabFree({ x, y });
   }
 
   function onTabPointerUp() {
@@ -177,11 +160,36 @@ export function AgentFloat(props: Props) {
     }
     if (!d) return;
     if (d.mode === "pending") {
-      // 快速点击（未长按未拖动）：展开
+      // 快速点击：展开
       expandFromDock();
+      return;
     }
-    // armed：长按未拖动 → 无操作（不打开）
-    // dragging：由 window 级 onUp 处理贴边判定
+    if (d.mode === "dragging" && tabFree && pos && pos.mode === "docked") {
+      // 松手：贴到最近边（上下左右），面板不出现
+      const vertical = pos.edge === "left" || pos.edge === "right";
+      const w = vertical ? 40 : 130;
+      const h = vertical ? 130 : 40;
+      const distR = window.innerWidth - (tabFree.x + w);
+      const distL = tabFree.x;
+      const distT = tabFree.y;
+      const distB = window.innerHeight - (tabFree.y + h);
+      const nearest = Math.min(distR, distL, distT, distB);
+      let edge: Edge;
+      if (nearest === distR) edge = "right";
+      else if (nearest === distL) edge = "left";
+      else if (nearest === distT) edge = "top";
+      else edge = "bottom";
+      setPos({
+        mode: "docked",
+        edge,
+        along:
+          edge === "left" || edge === "right"
+            ? clamp(tabFree.y, 8, Math.max(8, window.innerHeight - 140))
+            : clamp(tabFree.x, 8, Math.max(8, window.innerWidth - 140)),
+      });
+    }
+    setTabFree(null);
+    // armed（长按未拖动）→ 无操作
   }
 
   function onTabClick() {
@@ -408,17 +416,21 @@ export function AgentFloat(props: Props) {
       {docked && (
         <button
           type="button"
-          className={`${styles.tab} ${styles[`tab_${pos.edge}`]}`}
+          className={`${styles.tab} ${
+            tabFree ? styles.tabDragging : styles[`tab_${pos.edge}`]
+          }`}
           style={
-            pos.edge === "left" || pos.edge === "right"
-              ? { top: pos.along }
-              : { left: pos.along }
+            tabFree
+              ? { left: tabFree.x, top: tabFree.y }
+              : pos.edge === "left" || pos.edge === "right"
+                ? { top: pos.along }
+                : { left: pos.along }
           }
           onPointerDown={onTabPointerDown}
           onPointerMove={onTabPointerMove}
           onPointerUp={onTabPointerUp}
           onClick={onTabClick}
-          title="点击展开 · 可沿边拖动"
+          title="点击展开 · 按住可拖动"
         >
           审稿 Agent
         </button>

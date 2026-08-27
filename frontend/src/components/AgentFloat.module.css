@@ -63,6 +63,16 @@
   min-width: 120px;
 }
 
+/* 拖动中的标签：脱离贴边样式，跟随指针横排显示 */
+.tabDragging {
+  writing-mode: horizontal-tb;
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--radius-sm);
+  opacity: 0.92;
+  cursor: grabbing;
+  box-shadow: var(--shadow-lg);
+}
+
 .panel,
 .panelCorner,
 .panelLarge {
