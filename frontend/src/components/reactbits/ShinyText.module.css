@@ -1,13 +1,16 @@
 .shiny {
   /* 基色 = 主题文字弱色；扫带 = 主题最强文字色（--ink），
-     深浅主题下都与基色形成明显反差 */
+     深浅主题下都与基色形成明显反差。
+     关键：background-size 必须 200%（不是更大）——200% 时扫动
+     100%→-100% 的可见窗口会完整经过 28-72% 的扫带；240% 时窗口
+     只扫过渐变两端，扫带永远不在文字上出现（此前"没变化"的根因）。 */
   background: linear-gradient(
     90deg,
     var(--ink-soft, #4a5568) 28%,
     var(--ink, #0a0e1a) 50%,
     var(--ink-soft, #4a5568) 72%
   );
-  background-size: 240% 100%;
+  background-size: 200% 100%;
   background-position: 100% 50%;
   -webkit-background-clip: text;
   background-clip: text;

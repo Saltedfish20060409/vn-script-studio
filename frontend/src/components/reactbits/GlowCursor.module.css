@@ -1,0 +1,17 @@
+.cursor {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent, #002fa7) 14%, transparent),
+    transparent 65%
+  );
+  pointer-events: none;
+  z-index: 5;
+  transform: translate(-300px, -300px);
+  will-change: transform;
+}

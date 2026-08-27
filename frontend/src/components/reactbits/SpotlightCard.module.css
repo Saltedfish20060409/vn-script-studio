@@ -7,9 +7,10 @@
   content: "";
   position: absolute;
   inset: 0;
+  /* 主题墨色光斑：白色在浅色背景上不可见（此前"没效果"根因） */
   background: radial-gradient(
     260px circle at var(--sx, 50%) var(--sy, 50%),
-    var(--sc, rgba(255, 255, 255, 0.14)),
+    color-mix(in srgb, var(--ink, #0a0e1a) 10%, transparent),
     transparent 65%
   );
   opacity: 0;

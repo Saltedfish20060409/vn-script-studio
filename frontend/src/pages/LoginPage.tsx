@@ -18,6 +18,7 @@ import { NoticeBanner } from "../components/NoticeBanner";
 import { FilingFooter } from "../components/FilingFooter";
 import { AnimatedText } from "../components/reactbits/AnimatedText";
 import { GlowButton } from "../components/reactbits/GlowButton";
+import { GlowCursor } from "../components/reactbits/GlowCursor";
 import { ShinyText } from "../components/reactbits/ShinyText";
 import styles from "./LoginPage.module.css";
 
@@ -164,6 +165,7 @@ export default function LoginPage() {
         📢 公告
       </button>
       {showNotice && <NoticeBanner forceOpen onClose={() => setShowNotice(false)} />}
+      <GlowCursor />
       {hasWallpaper ? (
         <>
           <div className="vnss-wallpaper" aria-hidden />
