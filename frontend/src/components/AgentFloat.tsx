@@ -417,7 +417,13 @@ export function AgentFloat(props: Props) {
         <button
           type="button"
           className={`${styles.tab} ${
-            tabFree ? styles.tabDragging : styles[`tab_${pos.edge}`]
+            tabFree
+              ? `${styles.tabDragging} ${
+                  pos.edge === "left" || pos.edge === "right"
+                    ? styles.tabDraggingVertical
+                    : styles.tabDraggingHorizontal
+                }`
+              : styles[`tab_${pos.edge}`]
           }`}
           style={
             tabFree

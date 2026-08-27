@@ -63,14 +63,25 @@
   min-width: 120px;
 }
 
-/* 拖动中的标签：脱离贴边样式，跟随指针横排显示 */
+/* 拖动中的标签：脱离贴边样式，跟随指针；方向由源边决定 */
 .tabDragging {
-  writing-mode: horizontal-tb;
-  padding: 0.4rem 0.8rem;
-  border-radius: var(--radius-sm);
   opacity: 0.92;
   cursor: grabbing;
   box-shadow: var(--shadow-lg);
+}
+
+.tabDraggingHorizontal {
+  writing-mode: horizontal-tb;
+  padding: 0.4rem 1rem;
+  min-width: 120px;
+  border-radius: var(--radius-sm);
+}
+
+.tabDraggingVertical {
+  writing-mode: vertical-rl;
+  padding: 1rem 0.45rem;
+  min-height: 120px;
+  border-radius: var(--radius-sm);
 }
 
 .panel,
