@@ -94,17 +94,31 @@ export function AgentFloat(props: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const inited = useRef(false);
   const lastFree = useRef<{ x: number; y: number } | null>(null);
-  // 贴边标签：按住可像桌宠一样随意拖动。复用面板的 window 级拖拽
-  // （pos 切 free 后按钮会卸载，window 监听不随之消失，拖动不中断）。
-  const tabDragStart = useRef<{ x: number; y: number; moved: number } | null>(null);
+  // 贴边标签交互：点一下=展开；长按 300ms 或按下即拖=进入桌宠式拖动
+  // （拖动复用面板的 window 级拖拽，pos 切 free 后按钮卸载也不中断）
+  const tabDragStart = useRef<{
+    x: number;
+    y: number;
+    moved: number;
+    mode: "pending" | "dragging";
+  } | null>(null);
+  const tabHoldTimer = useRef<number | null>(null);
   const suppressTabClick = useRef(false);
 
-  function onTabPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
-    // 只响应主键按下；悬停/其他键不启动拖拽状态
-    if (e.button !== 0 || !pos || pos.mode !== "docked") return;
-    e.preventDefault();
-    e.stopPropagation();
-    // 初始面板位置：贴边处对齐（右边缘面板右缘贴边、上边缘面板上缘贴边…）
+  useEffect(
+    () => () => {
+      if (tabHoldTimer.current !== null) window.clearTimeout(tabHoldTimer.current);
+    },
+    []
+  );
+
+  /** 进入拖拽：面板从贴边位置出现，交给 window 级拖拽跟随指针 */
+  function beginTabDrag(clientX: number, clientY: number) {
+    if (!pos || pos.mode !== "docked") return;
+    if (tabHoldTimer.current !== null) {
+      window.clearTimeout(tabHoldTimer.current);
+      tabHoldTimer.current = null;
+    }
     const along = pos.along;
     let px: number;
     let py: number;
@@ -121,12 +135,51 @@ export function AgentFloat(props: Props) {
       px = clamp(along, 8, Math.max(8, window.innerWidth - PANEL_W - 8));
       py = window.innerHeight - PANEL_H - 16;
     }
-    drag.current = { ox: e.clientX - px, oy: e.clientY - py, w: PANEL_W, h: PANEL_H };
+    drag.current = { ox: clientX - px, oy: clientY - py, w: PANEL_W, h: PANEL_H };
     lastFree.current = { x: px, y: py };
     setPos({ mode: "free", x: px, y: py });
-    tabDragStart.current = { x: e.clientX, y: e.clientY, moved: 0 };
-    suppressTabClick.current = true;
+    if (tabDragStart.current) tabDragStart.current.mode = "dragging";
     setDragging(true);
+  }
+
+  function onTabPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
+    // 只响应主键按下；悬停/其他键不启动
+    if (e.button !== 0 || !pos || pos.mode !== "docked") return;
+    e.preventDefault();
+    e.stopPropagation();
+    tabDragStart.current = { x: e.clientX, y: e.clientY, moved: 0, mode: "pending" };
+    suppressTabClick.current = true;
+    // 长按 300ms 进入拖拽（点一下不会立即打开）
+    tabHoldTimer.current = window.setTimeout(
+      () => beginTabDrag(e.clientX, e.clientY),
+      300
+    );
+  }
+
+  function onTabPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
+    const d = tabDragStart.current;
+    if (!d || e.buttons === 0) return;
+    const dist = Math.hypot(e.clientX - d.x, e.clientY - d.y);
+    if (dist > d.moved) d.moved = dist;
+    // 按下即移动 >4px → 不等长按，立即进入拖拽
+    if (d.mode === "pending" && d.moved > 4) {
+      beginTabDrag(e.clientX, e.clientY);
+    }
+  }
+
+  function onTabPointerUp() {
+    const d = tabDragStart.current;
+    tabDragStart.current = null;
+    if (tabHoldTimer.current !== null) {
+      window.clearTimeout(tabHoldTimer.current);
+      tabHoldTimer.current = null;
+    }
+    if (!d) return;
+    if (d.mode === "pending") {
+      // 快速点击（未进入拖拽）：展开
+      expandFromDock();
+    }
+    // mode === "dragging"：由 window 级 onUp 处理贴边判定（长按不展开）
   }
 
   function onTabClick() {
@@ -255,7 +308,7 @@ export function AgentFloat(props: Props) {
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       if (wasResize) return;
-      const tabStart = tabDragStart.current;
+      // 清理标签拖拽标记（面板自身拖拽时它为空，无影响）
       tabDragStart.current = null;
       const snap = (prev: PosState | null): PosState | null => {
         if (!prev || prev.mode !== "free") return prev;
@@ -273,16 +326,7 @@ export function AgentFloat(props: Props) {
         lastFree.current = c;
         return { mode: "free" as const, ...c };
       };
-      if (tabStart) {
-        // 标签拖动：位移 <4px 视为原地点击 → 展开面板
-        if (tabStart.moved < 4) {
-          expandFromDock();
-          return;
-        }
-        // 自由拖动：近边贴回，否则保持自由
-        setPos(snap);
-        return;
-      }
+      // 标签拖拽（长按/按下即拖进入）：仅贴边判定，不展开（长按不打开页面）
       setPos(snap);
     };
     window.addEventListener("pointermove", onMove);
@@ -369,6 +413,8 @@ export function AgentFloat(props: Props) {
               : { left: pos.along }
           }
           onPointerDown={onTabPointerDown}
+          onPointerMove={onTabPointerMove}
+          onPointerUp={onTabPointerUp}
           onClick={onTabClick}
           title="点击展开 · 可沿边拖动"
         >
