@@ -94,13 +94,13 @@ export function AgentFloat(props: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const inited = useRef(false);
   const lastFree = useRef<{ x: number; y: number } | null>(null);
-  // 贴边标签交互：点一下=展开；长按 300ms 或按下即拖=进入桌宠式拖动
-  // （拖动复用面板的 window 级拖拽，pos 切 free 后按钮卸载也不中断）
+  // 贴边标签交互：点一下=展开；长按 300ms「上膛」拖拽（面板不弹出），
+  // 真正开始移动才出现并跟随；拖动复用 window 级拖拽（按钮卸载也不中断）
   const tabDragStart = useRef<{
     x: number;
     y: number;
     moved: number;
-    mode: "pending" | "dragging";
+    mode: "pending" | "armed" | "dragging";
   } | null>(null);
   const tabHoldTimer = useRef<number | null>(null);
   const suppressTabClick = useRef(false);
@@ -149,11 +149,12 @@ export function AgentFloat(props: Props) {
     e.stopPropagation();
     tabDragStart.current = { x: e.clientX, y: e.clientY, moved: 0, mode: "pending" };
     suppressTabClick.current = true;
-    // 长按 300ms 进入拖拽（点一下不会立即打开）
-    tabHoldTimer.current = window.setTimeout(
-      () => beginTabDrag(e.clientX, e.clientY),
-      300
-    );
+    // 长按 300ms → 上膛拖拽模式（仅标记，不弹面板；开始移动才出现）
+    tabHoldTimer.current = window.setTimeout(() => {
+      if (tabDragStart.current && tabDragStart.current.mode === "pending") {
+        tabDragStart.current.mode = "armed";
+      }
+    }, 300);
   }
 
   function onTabPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
@@ -161,8 +162,8 @@ export function AgentFloat(props: Props) {
     if (!d || e.buttons === 0) return;
     const dist = Math.hypot(e.clientX - d.x, e.clientY - d.y);
     if (dist > d.moved) d.moved = dist;
-    // 按下即移动 >4px → 不等长按，立即进入拖拽
-    if (d.mode === "pending" && d.moved > 4) {
+    // 开始移动（>4px）：pending（立即拖）或 armed（长按后拖）都进入拖拽
+    if (d.mode !== "dragging" && d.moved > 4) {
       beginTabDrag(e.clientX, e.clientY);
     }
   }
@@ -176,10 +177,11 @@ export function AgentFloat(props: Props) {
     }
     if (!d) return;
     if (d.mode === "pending") {
-      // 快速点击（未进入拖拽）：展开
+      // 快速点击（未长按未拖动）：展开
       expandFromDock();
     }
-    // mode === "dragging"：由 window 级 onUp 处理贴边判定（长按不展开）
+    // armed：长按未拖动 → 无操作（不打开）
+    // dragging：由 window 级 onUp 处理贴边判定
   }
 
   function onTabClick() {
