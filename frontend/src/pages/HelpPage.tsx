@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { SpotlightCard } from "../components/reactbits/SpotlightCard";
 import { TiltedCard } from "../components/reactbits/TiltedCard";
 import { HELP_DISCLAIMER, HELP_FAQ, HELP_QUICK } from "../lib/helpContent";
 import styles from "./HelpPage.module.css";
@@ -25,7 +26,7 @@ export default function HelpPage() {
         </header>
       </TiltedCard>
 
-      <section className={styles.block}>
+      <SpotlightCard className={styles.block}>
         <h2>怎么用</h2>
         {HELP_QUICK.map((s) => (
           <article key={s.title}>
@@ -33,9 +34,9 @@ export default function HelpPage() {
             <p>{s.body}</p>
           </article>
         ))}
-      </section>
+      </SpotlightCard>
 
-      <section className={styles.block}>
+      <SpotlightCard className={styles.block}>
         <h2>常见问题</h2>
         {HELP_FAQ.map((item) => (
           <details key={item.q} className={styles.faq}>
@@ -43,9 +44,9 @@ export default function HelpPage() {
             <p>{item.a}</p>
           </details>
         ))}
-      </section>
+      </SpotlightCard>
 
-      <section className={styles.block}>
+      <SpotlightCard className={styles.block}>
         <h2>联系我们 / 反馈</h2>
         <article>
           <h3>QQ</h3>
@@ -71,7 +72,7 @@ export default function HelpPage() {
             不方便加群？发邮件到 <strong> {FEEDBACK_EMAIL} </strong>，标题注明「VNSS 反馈」。
           </p>
         </article>
-      </section>
+      </SpotlightCard>
 
       <p className={styles.disclaimer}>{HELP_DISCLAIMER}</p>
     </div>

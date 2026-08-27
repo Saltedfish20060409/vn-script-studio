@@ -16,6 +16,7 @@ import { MASCOT_MOODS, type MascotMood } from "../lib/mascotArt";
 import { mascotLine } from "../lib/mascotCopy";
 import { NoticeBanner } from "../components/NoticeBanner";
 import { FilingFooter } from "../components/FilingFooter";
+import { AnimatedText } from "../components/reactbits/AnimatedText";
 import { GlowButton } from "../components/reactbits/GlowButton";
 import { ShinyText } from "../components/reactbits/ShinyText";
 import styles from "./LoginPage.module.css";
@@ -189,7 +190,9 @@ export default function LoginPage() {
           <MascotFigure size="fill" mood={mascotMood} line={mascotSpeech} />
         </button>
         <div className={styles.heroInner}>
-          <p className={styles.kicker}>VISUAL NOVEL</p>
+          <p className={styles.kicker}>
+            <AnimatedText text="VISUAL NOVEL" stagger={35} />
+          </p>
           <h1 className={styles.brand}>
             Script
             <br />

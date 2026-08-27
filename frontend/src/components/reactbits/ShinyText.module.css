@@ -1,11 +1,11 @@
 .shiny {
-  /* 基色用主题文字色保证常显；强调色扫带加宽到 40%（30%→70%），
-     扫过时明显可辨 */
+  /* 基色 = 主题文字弱色；扫带 = 主题最强文字色（--ink），
+     深浅主题下都与基色形成明显反差 */
   background: linear-gradient(
     90deg,
-    var(--ink-soft, #4a5568) 30%,
-    var(--accent, #002fa7) 50%,
-    var(--ink-soft, #4a5568) 70%
+    var(--ink-soft, #4a5568) 28%,
+    var(--ink, #0a0e1a) 50%,
+    var(--ink-soft, #4a5568) 72%
   );
   background-size: 240% 100%;
   background-position: 100% 50%;

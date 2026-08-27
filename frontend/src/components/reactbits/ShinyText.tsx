@@ -8,10 +8,10 @@ type Props = {
 };
 
 /**
- * 流光文字（react-bits ShinyText 风格）：强调色高光带周期扫过。
- * 用 rAF 驱动 background-position：Chromium 下 CSS 动画
- * background-position 在 background-clip:text 上不重绘（渐变不动），
- * 内联样式更新必定重绘。
+ * 流光文字（react-bits ShinyText 风格）：高光带周期扫过。
+ * 用 rAF 内联更新 background-position + 强制重绘：
+ * Chromium 对 background-clip:text 的 background-position 变化可能不重绘，
+ * 每帧重赋 backgroundImage 触发重新栅格化。
  */
 export function ShinyText({ text, className }: Props) {
   const ref = useRef<HTMLSpanElement>(null);
@@ -22,12 +22,13 @@ export function ShinyText({ text, className }: Props) {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let raf = 0;
     let start: number | null = null;
-    const DURATION = 4200;
+    const DURATION = 4000;
     const tick = (t: number) => {
       if (start === null) start = t;
       const p = ((t - start) % DURATION) / DURATION; // 0..1 循环
-      // background-position 100% → -100%（背景宽 240%，扫带穿过可视窗）
       el.style.backgroundPosition = `${(100 - p * 200).toFixed(2)}% 50%`;
+      // 强制重绘：clip:text 下位置变化可能被缓存，重赋 backgroundImage 触发重栅格化
+      el.style.backgroundImage = el.style.backgroundImage;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
