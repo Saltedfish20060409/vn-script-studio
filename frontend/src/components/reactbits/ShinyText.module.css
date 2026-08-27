@@ -1,17 +1,16 @@
 .shiny {
-  /* 基色用主题文字色保证常显（background-clip:text 下透明基色=字消失），
-     白色高光带周期性扫过 */
+  /* 基色用主题文字色保证常显；扫光用主题强调色（白带在浅色主题上不可见） */
   background: linear-gradient(
     120deg,
     var(--ink-soft, #4a5568) 38%,
-    #ffffff 50%,
+    var(--accent, #002fa7) 50%,
     var(--ink-soft, #4a5568) 62%
   );
   background-size: 220% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   display: inline-block;
-  animation: shine 6s linear infinite;
+  animation: shine 4.5s linear infinite;
 }
 
 .disabled {

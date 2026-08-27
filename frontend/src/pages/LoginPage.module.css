@@ -193,21 +193,39 @@ html[data-theme="night"] .slash {
   font-family: var(--font-display);
   font-size: clamp(2.8rem, 7vw, 4.2rem);
   font-weight: 700;
+  /* 盒宽自适应内容，保证渐变覆盖每个字母（见下） */
+  display: inline-block;
+  width: max-content;
   line-height: 1.15;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-}
-
-/* 文库风渐变标题——应用到每个字符自身：
-   父级 background-clip:text 对 inline-block 子元素不生效（字会变透明消失），
-   所以渐变裁剪挂在每个字上；background-size 放大让相邻字颜色连续。 */
-.titleChar {
+  /* 文库风渐变标题：父级裁剪整词渐变（逐字拆分会破坏裁剪，见 titleChar 移除说明） */
   background: var(--grad-title);
-  background-size: 600% 130%;
+  background-size: 130% 130%;
   background-position: 0 40%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  padding: 0.06em 0.12em;
+  /* 整体入场：上浮淡入（替代逐字动画，保住整词渐变） */
+  animation: brandIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes brandIn {
+  from {
+    opacity: 0;
+    transform: translateY(0.5em);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand {
+    animation: none;
+  }
 }
 
 .sub {

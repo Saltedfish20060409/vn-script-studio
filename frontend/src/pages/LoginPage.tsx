@@ -16,7 +16,6 @@ import { MASCOT_MOODS, type MascotMood } from "../lib/mascotArt";
 import { mascotLine } from "../lib/mascotCopy";
 import { NoticeBanner } from "../components/NoticeBanner";
 import { FilingFooter } from "../components/FilingFooter";
-import { AnimatedText } from "../components/reactbits/AnimatedText";
 import { GlowButton } from "../components/reactbits/GlowButton";
 import { ShinyText } from "../components/reactbits/ShinyText";
 import styles from "./LoginPage.module.css";
@@ -192,9 +191,9 @@ export default function LoginPage() {
         <div className={styles.heroInner}>
           <p className={styles.kicker}>VISUAL NOVEL</p>
           <h1 className={styles.brand}>
-            <AnimatedText text="Script" charClassName={styles.titleChar} />
+            Script
             <br />
-            <AnimatedText text="Studio" delay={260} charClassName={styles.titleChar} />
+            Studio
           </h1>
           <p className={styles.sub}>
             <ShinyText text="非线性叙事工作台——角色、章节、地图与审稿。先写剧本，再导出 Word 或 .rpy。" />
