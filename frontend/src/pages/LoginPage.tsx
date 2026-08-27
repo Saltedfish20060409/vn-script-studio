@@ -19,7 +19,6 @@ import { FilingFooter } from "../components/FilingFooter";
 import { AnimatedText } from "../components/reactbits/AnimatedText";
 import { GlowButton } from "../components/reactbits/GlowButton";
 import { GlowCursor } from "../components/reactbits/GlowCursor";
-import { ShinyText } from "../components/reactbits/ShinyText";
 import styles from "./LoginPage.module.css";
 
 type Mode = "login" | "register" | "forgot" | "checkEmail";
@@ -201,7 +200,7 @@ export default function LoginPage() {
             Studio
           </h1>
           <p className={styles.sub}>
-            <ShinyText text="非线性叙事工作台——角色、章节、地图与审稿。先写剧本，再导出 Word 或 .rpy。" />
+            非线性叙事工作台——角色、章节、地图与审稿。先写剧本，再导出 Word 或 .rpy。
           </p>
         </div>
       </section>

@@ -234,6 +234,25 @@ html[data-theme="night"] .slash {
   font-size: 0.95rem;
   line-height: 1.55;
   color: var(--ink-soft);
+  /* 呼吸高亮：text-shadow 脉动（Edge 上 background-clip:text 的位置
+     动画不重绘，扫光方案放弃；text-shadow 必定渲染） */
+  animation: subGlow 4.5s ease-in-out infinite;
+}
+
+@keyframes subGlow {
+  0%,
+  100% {
+    text-shadow: 0 0 0 transparent;
+  }
+  50% {
+    text-shadow: 0 0 16px color-mix(in srgb, var(--accent, #002fa7) 42%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sub {
+    animation: none;
+  }
 }
 
 .panel {
