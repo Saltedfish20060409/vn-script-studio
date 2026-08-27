@@ -1,12 +1,13 @@
 .shiny {
-  color: var(--ink-soft, #4a5568);
+  /* 基色用主题文字色保证常显（background-clip:text 下透明基色=字消失），
+     白色高光带周期性扫过 */
   background: linear-gradient(
     120deg,
-    transparent 40%,
-    rgba(255, 255, 255, 0.85) 50%,
-    transparent 60%
+    var(--ink-soft, #4a5568) 38%,
+    #ffffff 50%,
+    var(--ink-soft, #4a5568) 62%
   );
-  background-size: 200% 100%;
+  background-size: 220% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   display: inline-block;

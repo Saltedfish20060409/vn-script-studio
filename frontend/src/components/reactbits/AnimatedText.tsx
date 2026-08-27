@@ -5,6 +5,8 @@ import styles from "./AnimatedText.module.css";
 type Props = {
   text: string;
   className?: string;
+  /** 应用到每个字符的类（用于 per-char 渐变等） */
+  charClassName?: string;
   /** 首字延迟（ms），用于多行错开 */
   delay?: number;
   /** 每字间隔（ms） */
@@ -17,6 +19,7 @@ type Props = {
 export function AnimatedText({
   text,
   className,
+  charClassName,
   delay = 0,
   stagger = 45,
   as: Tag = "span",
@@ -34,7 +37,7 @@ export function AnimatedText({
       {chars.map((c, i) => (
         <span
           key={`${i}-${c}`}
-          className={`${styles.char} ${show ? styles.visible : ""}`}
+          className={`${styles.char} ${show ? styles.visible : ""} ${charClassName ?? ""}`}
           style={{ transitionDelay: show ? `${i * stagger}ms` : "0ms" }}
           aria-hidden
         >

@@ -192,9 +192,9 @@ export default function LoginPage() {
         <div className={styles.heroInner}>
           <p className={styles.kicker}>VISUAL NOVEL</p>
           <h1 className={styles.brand}>
-            <AnimatedText text="Script" />
+            <AnimatedText text="Script" charClassName={styles.titleChar} />
             <br />
-            <AnimatedText text="Studio" delay={260} />
+            <AnimatedText text="Studio" delay={260} charClassName={styles.titleChar} />
           </h1>
           <p className={styles.sub}>
             <ShinyText text="非线性叙事工作台——角色、章节、地图与审稿。先写剧本，再导出 Word 或 .rpy。" />
