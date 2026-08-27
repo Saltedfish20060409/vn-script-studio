@@ -104,7 +104,8 @@ export function AgentFloat(props: Props) {
   const suppressTabClick = useRef(false);
 
   function onTabPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
-    if (!pos || pos.mode !== "docked") return;
+    // 只响应主键按下；悬停/其他键不启动拖拽状态
+    if (e.button !== 0 || !pos || pos.mode !== "docked") return;
     e.preventDefault();
     e.stopPropagation();
     try {
@@ -117,7 +118,8 @@ export function AgentFloat(props: Props) {
 
   function onTabPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
     const d = tabDrag.current;
-    if (!d || !pos || pos.mode !== "docked") return;
+    // 关键守卫：buttons===0 时是纯悬停（无按键），绝不能触发展开/拉出
+    if (!d || e.buttons === 0 || !pos || pos.mode !== "docked") return;
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
     if (Math.abs(dx) + Math.abs(dy) > 4) d.moved = true;
