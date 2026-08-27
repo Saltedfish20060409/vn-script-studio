@@ -5,6 +5,11 @@
 
 应用内顶栏 **帮助**，以及公开页 [帮助与 FAQ](https://studio.nexesr.top/help)。AI 生成内容请自行审稿后再用于发行。
 
+## 许可
+
+本项目代码采用 **AGPL-3.0**（见 [LICENSE](LICENSE)）。  
+ACG 设定卡内容参考自 **萌娘百科（Moegirlpedia）**，遵循其 **CC BY-NC-SA 3.0 CN** 许可（以各条目页面标注为准）；卡片为精炼改写，来源链接见各卡片 `source_url`。
+
 ---
 
 ## 给作者

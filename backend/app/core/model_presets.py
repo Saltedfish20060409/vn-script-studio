@@ -87,6 +87,16 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "note": "GLM 最新一代（5.1 已退役，自动指向 5.2）；中文创作稳定。",
     },
     {
+        "id": "glm-4.7-flash",
+        "label": "GLM-4.7-Flash（免费）",
+        "vendor": "Zhipu",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "model": "glm-4.7-flash",
+        "json_mode": True,
+        "context_k": 200,
+        "note": "智谱官方免费模型（200K 上下文）；适合无 key 用户的试用/兜底，调用有频控。",
+    },
+    {
         "id": "gpt-5",
         "label": "OpenAI GPT-5",
         "vendor": "OpenAI",

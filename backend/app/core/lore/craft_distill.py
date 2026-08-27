@@ -10,8 +10,8 @@ from typing import Any, Dict, List, Optional
 from app.core.lore.seed_cards import EXTRA_CARDS
 
 ATTRIBUTION = (
-    "参考萌娘百科条目（通常 CC BY-NC-SA 3.0）：仅作术语/套路启发，"
-    "禁止把百科正文粘进剧本；写表现勿念标签。"
+    "参考萌娘百科条目（Moegirlpedia，通常 CC BY-NC-SA 3.0）：仅作术语/套路启发，"
+    "禁止把百科正文粘进剧本；写表现勿念标签。来源见各卡片 source_url。"
 )
 
 # Curated offline seeds — do/dont tuned for visual novel & light novel

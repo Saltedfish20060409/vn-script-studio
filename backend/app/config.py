@@ -47,11 +47,13 @@ class Settings(BaseSettings):
     settings_fernet_key: str = ""
     algorithm: str = "HS256"
 
-    # Moegirlpedia (萌娘百科) lore lookup — self-use; respect CC BY-NC-SA
+    # Moegirlpedia (萌娘百科) lore lookup — 公开运营时 UA 须可识别并遵守
+    # CC BY-NC-SA 3.0 CN（归属+非商用+相同方式共享）
     moegirl_enabled: bool = True
     moegirl_api_base: str = "https://zh.moegirl.org.cn/api.php"
     moegirl_user_agent: str = (
-        "VNScriptStudio/0.1 (self-use writing aid; "
+        "VNScriptStudio/1.0 (public writing aid; content source: "
+        "Moegirlpedia CC BY-NC-SA 3.0 CN; "
         "+https://github.com/Saltedfish20060409/vn-script-studio)"
     )
 

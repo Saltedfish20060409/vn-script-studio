@@ -54,7 +54,10 @@ async def lore_meta(
     await get_project_readable(db, user, project_id)
     return {
         "attribution": ATTRIBUTION,
-        "licenseNote": "CC BY-NC-SA 3.0（以萌娘百科页面标注为准）；自用精炼，勿商业整页复用。",
+        "licenseNote": (
+            "内容来源：萌娘百科（Moegirlpedia），遵循 CC BY-NC-SA 3.0 CN "
+            "（以各页面标注为准）；已精炼改写，禁止整页复用。"
+        ),
         "moegirlEnabled": settings.moegirl_enabled,
         "checklistKinds": ["moe_attribute", "genre", "trope"],
     }
