@@ -94,14 +94,9 @@ export function AgentFloat(props: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const inited = useRef(false);
   const lastFree = useRef<{ x: number; y: number } | null>(null);
-  // 贴边标签：按住可像桌宠一样随意拖动（面板跟随指针，松手近边自动贴回）
-  const tabDrag = useRef<{
-    startX: number;
-    startY: number;
-    panelX: number; // 首次拖动时面板的初始位置
-    panelY: number;
-    moved: boolean;
-  } | null>(null);
+  // 贴边标签：按住可像桌宠一样随意拖动。复用面板的 window 级拖拽
+  // （pos 切 free 后按钮会卸载，window 监听不随之消失，拖动不中断）。
+  const tabDragStart = useRef<{ x: number; y: number; moved: number } | null>(null);
   const suppressTabClick = useRef(false);
 
   function onTabPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
@@ -109,11 +104,6 @@ export function AgentFloat(props: Props) {
     if (e.button !== 0 || !pos || pos.mode !== "docked") return;
     e.preventDefault();
     e.stopPropagation();
-    try {
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
     // 初始面板位置：贴边处对齐（右边缘面板右缘贴边、上边缘面板上缘贴边…）
     const along = pos.along;
     let px: number;
@@ -131,48 +121,12 @@ export function AgentFloat(props: Props) {
       px = clamp(along, 8, Math.max(8, window.innerWidth - PANEL_W - 8));
       py = window.innerHeight - PANEL_H - 16;
     }
-    tabDrag.current = { startX: e.clientX, startY: e.clientY, panelX: px, panelY: py, moved: false };
-  }
-
-  function onTabPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
-    const d = tabDrag.current;
-    // 关键守卫：buttons===0 时是纯悬停（无按键），绝不能触发展开/拉出
-    if (!d || e.buttons === 0) return;
-    const dx = e.clientX - d.startX;
-    const dy = e.clientY - d.startY;
-    if (Math.abs(dx) + Math.abs(dy) > 4) d.moved = true;
-    if (!d.moved) return;
-    // 自由拖动：面板跟随指针（任意方向，像桌宠）
-    const fx = clamp(d.panelX + dx, 8, Math.max(8, window.innerWidth - PANEL_W - 8));
-    const fy = clamp(d.panelY + dy, 8, Math.max(8, window.innerHeight - PANEL_H - 8));
-    lastFree.current = { x: fx, y: fy };
-    setPos({ mode: "free", x: fx, y: fy });
-  }
-
-  function onTabPointerUp() {
-    const d = tabDrag.current;
-    tabDrag.current = null;
-    if (!d) return;
-    if (d.moved) {
-      suppressTabClick.current = true; // 拖动过就不触发展开
-      if (pos && pos.mode === "free") {
-        // 松手：近边自动贴回（同时完成沿边重定位），否则保持自由
-        const c = clampFree(pos.x, pos.y, PANEL_W, PANEL_H);
-        const edge = detectEdge(c.x, c.y, PANEL_W, PANEL_H);
-        if (edge) {
-          setPos({
-            mode: "docked",
-            edge,
-            along: alongForEdge(edge, c.x, c.y, PANEL_W, PANEL_H),
-          });
-        } else {
-          lastFree.current = c;
-          setPos({ mode: "free", ...c });
-        }
-      }
-      return;
-    }
-    expandFromDock();
+    drag.current = { ox: e.clientX - px, oy: e.clientY - py, w: PANEL_W, h: PANEL_H };
+    lastFree.current = { x: px, y: py };
+    setPos({ mode: "free", x: px, y: py });
+    tabDragStart.current = { x: e.clientX, y: e.clientY, moved: 0 };
+    suppressTabClick.current = true;
+    setDragging(true);
   }
 
   function onTabClick() {
@@ -264,6 +218,11 @@ export function AgentFloat(props: Props) {
   useEffect(() => {
     if (!dragging) return;
     const onMove = (e: PointerEvent) => {
+      const ts = tabDragStart.current;
+      if (ts) {
+        const dist = Math.hypot(e.clientX - ts.x, e.clientY - ts.y);
+        if (dist > ts.moved) ts.moved = dist;
+      }
       if (resizeDrag.current) {
         const rd = resizeDrag.current;
         const nextW = clamp(
@@ -296,22 +255,35 @@ export function AgentFloat(props: Props) {
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       if (wasResize) return;
-      setPos((prev) => {
+      const tabStart = tabDragStart.current;
+      tabDragStart.current = null;
+      const snap = (prev: PosState | null): PosState | null => {
         if (!prev || prev.mode !== "free") return prev;
         const w = drag.current.w;
         const h = drag.current.h;
         const edge = detectEdge(prev.x, prev.y, w, h);
         if (edge) {
           return {
-            mode: "docked",
+            mode: "docked" as const,
             edge,
             along: alongForEdge(edge, prev.x, prev.y, w, h),
           };
         }
         const c = clampFree(prev.x, prev.y, w, h);
         lastFree.current = c;
-        return { mode: "free", ...c };
-      });
+        return { mode: "free" as const, ...c };
+      };
+      if (tabStart) {
+        // 标签拖动：位移 <4px 视为原地点击 → 展开面板
+        if (tabStart.moved < 4) {
+          expandFromDock();
+          return;
+        }
+        // 自由拖动：近边贴回，否则保持自由
+        setPos(snap);
+        return;
+      }
+      setPos(snap);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -397,8 +369,6 @@ export function AgentFloat(props: Props) {
               : { left: pos.along }
           }
           onPointerDown={onTabPointerDown}
-          onPointerMove={onTabPointerMove}
-          onPointerUp={onTabPointerUp}
           onClick={onTabClick}
           title="点击展开 · 可沿边拖动"
         >
