@@ -40,15 +40,21 @@ def _stream_retry_delay(headers) -> Optional[float]:
 
 
 def _chat_url(base_url: str) -> str:
-    """OpenAI 兼容端点：base + /v1/chat/completions。
+    """OpenAI 兼容端点 URL 归一化。
 
-    用户常按厂商文档填带 /v1 的 base（如 https://api.xx.com/v1），而本客户端
-    会再拼 /v1/chat/completions 造成 /v1/v1 → 404。归一化：剥掉尾部 /v1。
-    同时也修正了 preset 里 dashscope compatible-mode/v1 这类同形路径。
+    厂商路径分三种：
+    - 裸根（DeepSeek/Moonshot/OpenAI）：base + /v1/chat/completions
+    - 带 /v1 版本前缀（dashscope compatible-mode/v1、用户按文档填的 .../v1）：
+      base 已是版本前缀，直接 + /chat/completions（曾拼出 /v1/v1 → 404）
+    - 带 /v4 版本前缀（智谱 open.bigmodel.cn/api/paas/v4）：
+      同样直接 + /chat/completions（曾拼出 /v4/v1 → 404）
+    - 已是完整 .../chat/completions：原样使用
     """
     base = (base_url or "https://api.deepseek.com").rstrip("/")
-    if base.endswith("/v1"):
-        base = base[: -len("/v1")]
+    if base.endswith("/chat/completions"):
+        return base
+    if base.endswith("/v1") or base.endswith("/v4"):
+        return f"{base}/chat/completions"
     return f"{base}/v1/chat/completions"
 
 

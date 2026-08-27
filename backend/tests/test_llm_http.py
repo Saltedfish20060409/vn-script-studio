@@ -29,10 +29,15 @@ def test_chat_url_normalizes_trailing_v1():
         _chat_url("https://dashscope.aliyuncs.com/compatible-mode/v1")
         == "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
     )
-    # 非 /v1 结尾的厂商路径（如智谱 /api/paas/v4）不受影响
+    # 非 /v1 结尾的厂商路径（如智谱 /api/paas/v4）同样不得拼 /v1（曾拼出 /v4/v1 → 404）
     assert (
         _chat_url("https://open.bigmodel.cn/api/paas/v4")
-        == "https://open.bigmodel.cn/api/paas/v4/v1/chat/completions"
+        == "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    )
+    # 已是完整端点时原样使用
+    assert (
+        _chat_url("https://open.bigmodel.cn/api/paas/v4/chat/completions")
+        == "https://open.bigmodel.cn/api/paas/v4/chat/completions"
     )
 
 
