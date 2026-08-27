@@ -22,6 +22,12 @@ async def send_resend_email(
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
+        # Resend API 在 Cloudflare 后面：默认的 python-urllib / python-httpx UA
+        # 会被机器人签名拦截（403 error 1010）。带品牌 UA 才能发信。
+        "User-Agent": (
+            "VN-Script-Studio/1.0 "
+            "(+https://github.com/Saltedfish20060409/vn-script-studio)"
+        ),
     }
     body = {
         "from": f"VN Script Studio <{from_addr}>",
