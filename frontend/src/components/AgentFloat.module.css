@@ -11,8 +11,9 @@
   font-weight: 650;
   box-shadow: var(--shadow-lg);
   cursor: pointer;
+  /* Dock 风格弹性：transform 用过冲缓动模拟弹簧 */
   transition:
-    transform 160ms var(--ease-out, ease),
+    transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1),
     filter 160ms var(--ease-out, ease),
     box-shadow 160ms var(--ease-out, ease);
 }
@@ -20,6 +21,7 @@
 .tab:hover {
   filter: brightness(1.06);
   box-shadow: var(--shadow-lg);
+  transform: scale(1.06);
 }
 
 .tab:active {
@@ -64,7 +66,10 @@
 }
 
 /* 拖动中的标签：脱离贴边样式，跟随指针；方向由源边决定 */
-.tabDragging {
+.tabDragging,
+.tabDragging:hover {
+  transform: none; /* 拖动时不应用 hover 缩放 */
+  transition: none;
   opacity: 0.92;
   cursor: grabbing;
   box-shadow: var(--shadow-lg);

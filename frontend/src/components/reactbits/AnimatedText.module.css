@@ -1,0 +1,26 @@
+.root {
+  display: inline-block;
+}
+
+.char {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(0.55em);
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .char {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}

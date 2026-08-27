@@ -16,6 +16,9 @@ import { MASCOT_MOODS, type MascotMood } from "../lib/mascotArt";
 import { mascotLine } from "../lib/mascotCopy";
 import { NoticeBanner } from "../components/NoticeBanner";
 import { FilingFooter } from "../components/FilingFooter";
+import { AnimatedText } from "../components/reactbits/AnimatedText";
+import { GlowButton } from "../components/reactbits/GlowButton";
+import { ShinyText } from "../components/reactbits/ShinyText";
 import styles from "./LoginPage.module.css";
 
 type Mode = "login" | "register" | "forgot" | "checkEmail";
@@ -189,12 +192,12 @@ export default function LoginPage() {
         <div className={styles.heroInner}>
           <p className={styles.kicker}>VISUAL NOVEL</p>
           <h1 className={styles.brand}>
-            Script
+            <AnimatedText text="Script" />
             <br />
-            Studio
+            <AnimatedText text="Studio" delay={260} />
           </h1>
           <p className={styles.sub}>
-            非线性叙事工作台——角色、章节、地图与审稿。先写剧本，再导出 Word 或 .rpy。
+            <ShinyText text="非线性叙事工作台——角色、章节、地图与审稿。先写剧本，再导出 Word 或 .rpy。" />
           </p>
         </div>
       </section>
@@ -273,9 +276,9 @@ export default function LoginPage() {
                   placeholder="注册时使用的邮箱"
                 />
               </label>
-              <button type="submit" className={styles.submit} disabled={busy}>
+              <GlowButton type="submit" className={styles.submit} disabled={busy}>
                 {busy ? "发送中…" : "重新发送验证邮件"}
-              </button>
+              </GlowButton>
               <button
                 type="button"
                 className={styles.ghostLink}
@@ -348,7 +351,7 @@ export default function LoginPage() {
                 </p>
               )}
               {info && <p className={styles.okNote}>{info}</p>}
-              <button type="submit" className={styles.submit} disabled={busy}>
+              <GlowButton type="submit" className={styles.submit} disabled={busy}>
                 {busy
                   ? "处理中…"
                   : mode === "login"
@@ -356,7 +359,7 @@ export default function LoginPage() {
                     : mode === "register"
                       ? "注册并发送验证邮件"
                       : "发送重置链接"}
-              </button>
+              </GlowButton>
               {mode === "login" && (
                 <button
                   type="button"

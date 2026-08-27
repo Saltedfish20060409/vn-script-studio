@@ -1,0 +1,42 @@
+.glow {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  will-change: transform;
+}
+
+/* 光标发光层：跟随鼠标的径向高光 */
+.glow::after {
+  content: "";
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  left: calc(var(--gx, 50%) - 110px);
+  top: calc(var(--gy, 50%) - 110px);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.4), transparent 62%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.glow[data-on="1"]::after {
+  opacity: 1;
+}
+
+.inner {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glow::after {
+    display: none;
+  }
+}

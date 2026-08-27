@@ -12,6 +12,11 @@
   border-bottom: 2px solid var(--line);
 }
 
+/* TiltedCard 包裹：保持块级不塌陷 */
+.tiltWrap {
+  display: block;
+}
+
 .kicker {
   margin: 0 0 0.35rem;
   font-family: var(--font-display);
