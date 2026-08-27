@@ -54,6 +54,7 @@ import { SystemPanel } from "./SystemPanel";
 import { SettingsGear, SettingsModal } from "./SettingsModal";
 import { CharacterWorkshop } from "./CharacterWorkshop";
 import { FocusChrome } from "./FocusChrome";
+import { FilingFooter } from "./FilingFooter";
 import { useConfirm, usePrompt } from "../lib/confirmDialog";
 import { EmptyStage } from "./EmptyStage";
 import { ProjectLibraryPanel } from "./ProjectLibraryPanel";
@@ -2202,6 +2203,7 @@ export function StudioApp() {
             }}
           />
         ) : null}
+        <FilingFooter />
       </div>
     </>
   );

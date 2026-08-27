@@ -12,6 +12,7 @@ from app.api.v1 import (
     lore,
     memory,
     mentors,
+    meta,
     music,
     notice,
     pipeline,
@@ -41,4 +42,5 @@ api_router.include_router(consistency.router)
 api_router.include_router(style_memory.router)
 api_router.include_router(music.router)
 api_router.include_router(notice.router)
+api_router.include_router(meta.router)
 api_router.include_router(errors.router)

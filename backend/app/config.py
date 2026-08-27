@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 30
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # 网站底部备案号（ICP 备案通过后填写；公安备案通过后再填公安号）
+    icp_beian_number: str = ""
+    gongan_beian_number: str = ""
+
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"

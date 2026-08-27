@@ -15,6 +15,7 @@ import { MascotFigure } from "../components/MascotFigure";
 import { MASCOT_MOODS, type MascotMood } from "../lib/mascotArt";
 import { mascotLine } from "../lib/mascotCopy";
 import { NoticeBanner } from "../components/NoticeBanner";
+import { FilingFooter } from "../components/FilingFooter";
 import styles from "./LoginPage.module.css";
 
 type Mode = "login" | "register" | "forgot" | "checkEmail";
@@ -410,6 +411,7 @@ export default function LoginPage() {
           </p>
         </div>
       </section>
+      <FilingFooter />
     </div>
   );
 }

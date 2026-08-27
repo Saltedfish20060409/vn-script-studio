@@ -1,0 +1,21 @@
+.filing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 1rem 1rem;
+  font-size: 0.7rem;
+  color: var(--ink-soft, #4a5568);
+  opacity: 0.75;
+}
+
+.filing a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.filing a:hover {
+  text-decoration: underline;
+  opacity: 1;
+}

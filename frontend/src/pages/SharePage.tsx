@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getShare, type ShareOut } from "../api/client";
+import { FilingFooter } from "../components/FilingFooter";
 import type { VnProject } from "../types/vn";
 import { HELP_DISCLAIMER } from "../lib/helpContent";
 import styles from "./SharePage.module.css";
@@ -186,6 +187,7 @@ export default function SharePage() {
         <p>
           <Link to="/help">帮助与 FAQ</Link>
         </p>
+        <FilingFooter />
       </footer>
     </div>
   );
