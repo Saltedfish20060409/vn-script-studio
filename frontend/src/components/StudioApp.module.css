@@ -1178,7 +1178,10 @@
   min-height: calc(100dvh - 88px);
   border: none;
   box-shadow: none;
-  background: color-mix(in srgb, var(--paper) 96%, transparent) !important;
+  /* 专注模式是纯净纸面：不透明纯色 + 关闭玻璃模糊，避免全屏合成时文字被卷入 blur */
+  background: var(--paper) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 .focusMode .panel {
@@ -1195,6 +1198,16 @@
 .focusMode:fullscreen .scriptEditor,
 .focusMode:-webkit-full-screen .scriptEditor {
   min-height: calc(100vh - 88px);
+}
+
+/* 全屏时锁定 shell 尺寸：浏览器对 requestFullscreen 元素可能做拉伸缩放，
+   尺寸不一致会把文字位图化变模糊。这里用精确的视口尺寸固定。
+   用 100%/100% 而非 100vw/100vh：vw 在 Windows 含滚动条宽度会造成横向溢出。 */
+.focusMode:fullscreen,
+.focusMode:-webkit-full-screen {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
 }
 
 /* Non-writing: accent frost rails via Phase-8 tokens */

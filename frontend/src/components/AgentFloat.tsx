@@ -358,8 +358,10 @@ export function AgentFloat(props: Props) {
     }
   }
 
-  // 顶栏"审稿"按钮：把面板从任何状态拉出来（防入口丢失/贴边收起后找不到）
-  const prevOpenRequest = useRef(0);
+  // 顶栏"审稿"按钮：把面板从任何状态拉出来（防入口丢失/贴边收起后找不到）。
+  // 初始值取当前 openRequest：组件因专注模式被卸载再挂载时，历史 tick 不应
+  // 被当作一次新的"打开"请求（否则退出专注会自动弹出面板）。
+  const prevOpenRequest = useRef(openRequest);
   useEffect(() => {
     if (!inited.current) return;
     if (openRequest !== prevOpenRequest.current && openRequest > 0) {

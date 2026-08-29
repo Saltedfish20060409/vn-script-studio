@@ -43,7 +43,6 @@ export default function GuidePage() {
           </p>
           <p className={styles.nav}>
             <Link to="/login">登录</Link>
-            <Link to="/help">帮助与 FAQ</Link>
             <Link to="/">进入工作室</Link>
           </p>
         </header>
@@ -77,6 +76,30 @@ export default function GuidePage() {
           >
             {GUIDE_MD}
           </ReactMarkdown>
+
+          <section className={styles.contact}>
+            <h2>联系我们 / 反馈</h2>
+            <p>
+              使用中遇到问题、想提功能建议，欢迎直接加作者 QQ：
+              <strong> 464313944 </strong>
+              （加好友时备注「VNSS 反馈」）。
+            </p>
+            <p>
+              项目开源，欢迎提交 Issue（bug / 建议）或 Pull Request：
+              <br />
+              <a
+                href="https://github.com/Saltedfish20060409/vn-script-studio"
+                target="_blank"
+                rel="noreferrer"
+              >
+                github.com/Saltedfish20060409/vn-script-studio
+              </a>
+            </p>
+            <p>
+              不方便加群？发邮件到 <strong> 464313944@qq.com </strong>
+              ，标题注明「VNSS 反馈」。
+            </p>
+          </section>
         </article>
       </div>
     </div>

@@ -33,8 +33,8 @@ function steps(narrow: boolean) {
       emoji: "🤖",
       title: narrow ? "侧边贴片是 AI 编辑" : "右下角是你的 AI 编辑",
       body: narrow
-        ? "手机上 Agent 贴在屏幕侧边，点开即可。可以直接改工程，也能续写、改写、润色。不确定就说：「先不要改工程，给我本章修改意见」。顶栏「帮助」或登录页「帮助与 FAQ」有完整说明。"
-        : "Agent 可以直接改工程（加角色/改设定/写大纲），也能续写、改写、润色。不确定怎么用？直接问它：「先不要改工程，给我本章修改意见」。顶栏「帮助」随时可再看；完整 FAQ 在「帮助与 FAQ」。",
+        ? "手机上 Agent 贴在屏幕侧边，点开即可。可以直接改工程，也能续写、改写、润色。不确定就说：「先不要改工程，给我本章修改意见」。顶栏「帮助」或登录页「使用指南」有完整说明。"
+        : "Agent 可以直接改工程（加角色/改设定/写大纲），也能续写、改写、润色。不确定怎么用？直接问它：「先不要改工程，给我本章修改意见」。顶栏「帮助」随时可再看；完整说明在「使用指南」。",
     },
   ];
 }
@@ -68,8 +68,8 @@ export function OnboardingOverlay({ onDone }: { onDone: () => void }) {
         <p className={styles.body}>{s.body}</p>
         {last ? (
           <p className={styles.helpLink}>
-            <a href="/help" target="_blank" rel="noreferrer">
-              打开帮助与 FAQ
+            <a href="/guide" target="_blank" rel="noreferrer">
+              打开完整使用指南
             </a>
           </p>
         ) : null}

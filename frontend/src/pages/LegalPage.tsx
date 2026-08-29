@@ -60,7 +60,7 @@ export default function LegalPage() {
               </P>
             </Block>
             <Block title="6. 联系我们">
-              <P>如有隐私问题，可通过站点内「帮助与 FAQ」中登记的联系方式与我们联系。</P>
+              <P>如有隐私问题，可通过站点内「使用指南」中登记的联系方式与我们联系。</P>
             </Block>
           </>
         ) : (

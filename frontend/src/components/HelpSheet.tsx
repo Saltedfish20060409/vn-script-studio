@@ -59,14 +59,6 @@ export function HelpSheet({ open, onClose }: Props) {
             >
               打开完整使用指南
             </Link>
-            <Link
-              to="/help"
-              target="_blank"
-              rel="noreferrer"
-              className={styles.link}
-            >
-              新标签打开完整 FAQ
-            </Link>
             <button type="button" className={styles.primary} onClick={onClose}>
               知道了
             </button>

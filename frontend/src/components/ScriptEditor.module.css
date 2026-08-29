@@ -91,6 +91,11 @@
   color: transparent;
   caret-color: var(--ink);
   background: transparent !important;
+  /* 全局 textarea 规则带 backdrop-filter: blur(10px)。本编辑器是 mirror 渲染：
+     字形由背后 z-index 0 的 <pre> 显示，textarea 的 blur 会把 mirror 字形
+     一起卷入模糊（专注全屏时尤其明显）。这里显式关掉。 */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   outline: none;
   box-shadow: none;
   overflow: auto;

@@ -185,7 +185,7 @@ export default function SharePage() {
         <p>由 VN Script Studio 生成 · 只读发布</p>
         <p className={styles.disclaimer}>{HELP_DISCLAIMER}</p>
         <p>
-          <Link to="/help">帮助与 FAQ</Link>
+          <Link to="/guide">使用指南</Link>
         </p>
         <FilingFooter />
       </footer>

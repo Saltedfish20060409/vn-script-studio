@@ -409,8 +409,6 @@ export default function LoginPage() {
           <p className={styles.finePrint}>
             <Link to="/guide">使用指南 →</Link>
             <span aria-hidden> · </span>
-            <Link to="/help">帮助与 FAQ →</Link>
-            <span aria-hidden> · </span>
             <Link to="/legal?doc=privacy">隐私政策</Link>
             <span aria-hidden> · </span>
             <Link to="/legal?doc=terms">服务条款</Link>
