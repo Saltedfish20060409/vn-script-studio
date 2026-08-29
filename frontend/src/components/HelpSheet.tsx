@@ -52,6 +52,14 @@ export function HelpSheet({ open, onClose }: Props) {
           <p className={styles.disclaimer}>{HELP_DISCLAIMER}</p>
           <div className={styles.actions}>
             <Link
+              to="/guide"
+              target="_blank"
+              rel="noreferrer"
+              className={styles.link}
+            >
+              打开完整使用指南
+            </Link>
+            <Link
               to="/help"
               target="_blank"
               rel="noreferrer"

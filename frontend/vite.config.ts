@@ -48,6 +48,9 @@ export default defineConfig({
           "agent/**",
           "workshop/**",
           "email/**",
+          // 使用指南截图（约 14MB/44 张）不进 precache：首访不拖慢，页面用到时
+          // 走下方同源图片 CacheFirst 规则按需缓存。
+          "guide/**",
         ],
         runtimeCaching: [
           {

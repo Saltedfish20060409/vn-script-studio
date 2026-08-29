@@ -19,6 +19,7 @@ export default function HelpPage() {
             先写人话，再生成能上演的稿。下面按「怎么用」和常见问题排列。
           </p>
           <p className={styles.nav}>
+            <Link to="/guide">完整使用指南</Link>
             <Link to="/login">登录</Link>
             <Link to="/">进入工作室</Link>
           </p>

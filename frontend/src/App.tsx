@@ -25,6 +25,9 @@ const InvitePage = lazy(() =>
 const HelpPage = lazy(() =>
   import("./pages/HelpPage").then((m) => ({ default: m.default }))
 );
+const GuidePage = lazy(() =>
+  import("./pages/GuidePage").then((m) => ({ default: m.default }))
+);
 const LegalPage = lazy(() =>
   import("./pages/LegalPage").then((m) => ({ default: m.default }))
 );
@@ -64,6 +67,7 @@ export default function App() {
               <Route path="/share/:token" element={<SharePage />} />
               <Route path="/invite" element={<InvitePage />} />
               <Route path="/help" element={<HelpPage />} />
+              <Route path="/guide" element={<GuidePage />} />
               <Route path="/legal" element={<LegalPage />} />
               <Route
                 path="/"
