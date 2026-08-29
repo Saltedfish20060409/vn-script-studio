@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { FilingFooter } from "../components/FilingFooter";
 import { TiltedCard } from "../components/reactbits/TiltedCard";
 import GUIDE_MD from "../lib/guide.md?raw";
 import styles from "./GuidePage.module.css";
@@ -102,6 +103,8 @@ export default function GuidePage() {
           </section>
         </article>
       </div>
+
+      <FilingFooter />
     </div>
   );
 }
