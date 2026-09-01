@@ -1,4 +1,6 @@
-FROM python:3.12-slim
+# SECURITY: pin python base image to a specific patch release (reproducible
+# builds, no surprise upstream drift); run as non-root.
+FROM python:3.12.10-slim
 
 WORKDIR /app
 # 精确锁定依赖（可复现构建）：requirements.txt 为精确版本。
@@ -13,4 +15,11 @@ COPY alembic.ini .
 
 ENV PYTHONPATH=/app
 EXPOSE 8000
+
+# SECURITY: run as an unprivileged user; a container escape then lands as
+# 'app' instead of root.
+RUN useradd --create-home --shell /usr/sbin/nologin app \
+    && chown -R app:app /app
+USER app
+
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

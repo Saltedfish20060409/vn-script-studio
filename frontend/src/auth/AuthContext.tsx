@@ -6,10 +6,10 @@ import {
   type ReactNode,
 } from "react";
 import {
-  clearRefreshToken,
   clearToken,
   getToken,
   login as apiLogin,
+  logout as apiLogout,
   me as apiMe,
   register as apiRegister,
   type RegisterOut,
@@ -25,21 +25,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     async function bootstrap() {
-      const existing = getToken();
-      if (!existing) {
-        setLoading(false);
-        return;
-      }
       try {
+        // Always probe /auth/me: if we have a refresh cookie, apiFetch will
+        // transparently obtain a fresh access token on 401. This restores the
+        // session after a page reload (access token is memory-only by design).
         const u = await apiMe();
         if (!cancelled) {
           setUser(u);
-          setTokenState(existing);
+          setTokenState(getToken());
         }
       } catch {
         if (!cancelled) {
           clearToken();
-          clearRefreshToken();
           setTokenState(null);
           setUser(null);
         }
@@ -68,8 +65,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    void apiLogout().catch(() => undefined);
     clearToken();
-    clearRefreshToken();
     setTokenState(null);
     setUser(null);
   }, []);

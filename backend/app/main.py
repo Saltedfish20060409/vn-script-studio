@@ -25,6 +25,16 @@ from app.models import (  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
+# Path segments that carry unguessable tokens — never log them verbatim.
+_TOKEN_PREFIXES = ("/share/", "/shares/", "/invites/", "/reset-password", "/verify-email")
+
+
+def _mask_path(path: str) -> str:
+    for prefix in _TOKEN_PREFIXES:
+        if path.startswith(prefix):
+            return prefix.rstrip("/") + "/***"
+    return path
+
 
 def _access_logger() -> logging.Logger:
     """返回自带 handler 的 vnss.access logger（幂等，可在多次 create_app 间复用）。
@@ -95,6 +105,11 @@ def create_app() -> FastAPI:
         title="VN Script Studio API",
         version="1.0.0",
         lifespan=lifespan,
+        # SECURITY: disable interactive API docs in production (schema would
+        # expose every endpoint + parameter shape to unauthenticated visitors).
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
     )
     app.add_middleware(
         CORSMiddleware,
@@ -115,9 +130,9 @@ def create_app() -> FastAPI:
             token = auth[7:].strip()
             if token:
                 try:
-                    from jose import jwt as jose_jwt
+                    import jwt as pyjwt
 
-                    payload = jose_jwt.decode(
+                    payload = pyjwt.decode(
                         token, settings.secret_key, algorithms=[settings.algorithm]
                     )
                     user_id = str(payload.get("sub") or "") or None
@@ -153,7 +168,9 @@ def create_app() -> FastAPI:
             elapsed_ms = int((time.perf_counter() - t0) * 1000)
             record = {
                 "method": request.method,
-                "path": request.url.path,
+                # SECURITY: mask share/invite tokens in logged paths so a log
+                # leak doesn't expose unguessable-but-powerful links.
+                "path": _mask_path(request.url.path),
                 "status": status,
                 "ms": elapsed_ms,
             }

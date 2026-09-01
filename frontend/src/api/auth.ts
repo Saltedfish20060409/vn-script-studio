@@ -1,4 +1,4 @@
-import { apiFetch, setToken, setRefreshToken } from "./http";
+import { apiFetch, setToken } from "./http";
 
 export interface TokenOut {
   access_token: string;
@@ -45,9 +45,17 @@ export async function login(username: string, password: string): Promise<TokenOu
     body: JSON.stringify({ username, password }),
     skipAuthRedirect: true,
   });
+  // Refresh token arrives as an HttpOnly cookie; only the access token is
+  // kept (in memory) by the HTTP layer.
   setToken(data.access_token);
-  if (data.refresh_token) setRefreshToken(data.refresh_token);
   return data;
+}
+
+export function logout(): Promise<OkMessageOut> {
+  return apiFetch<OkMessageOut>("/auth/logout", {
+    method: "POST",
+    skipAuthRedirect: true,
+  });
 }
 
 export function me(): Promise<UserOut> {

@@ -1,8 +1,8 @@
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from jose import JWTError
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import EmailStr, TypeAdapter
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +16,6 @@ from app.schemas import (
     ForgotPasswordIn,
     LoginIn,
     OkMessageOut,
-    RefreshIn,
     RegisterIn,
     RegisterOut,
     ResendVerifyIn,
@@ -60,9 +59,33 @@ def _tokens(user: User, settings: Settings) -> TokenOut:
     tv = user.token_version or 0
     return TokenOut(
         access_token=create_access_token(user.id, settings, token_version=tv),
-        refresh_token=create_refresh_token(user.id, settings, token_version=tv),
+        refresh_token=None,  # refresh token travels in an HttpOnly cookie
         token_type="bearer",
         expires_in=settings.access_token_expire_minutes * 60,
+    )
+
+
+def _set_refresh_cookie(response: Response, token: str, settings: Settings) -> None:
+    """Set the refresh token as an HttpOnly, SameSite=Strict cookie.
+
+    SECURITY (M-4): the long-lived refresh token is no longer readable by JS
+    (localStorage was XSS-exfiltratable). Access token stays in memory only.
+    """
+    max_age = settings.refresh_token_expire_days * 24 * 3600
+    response.set_cookie(
+        key="vnss_refresh",
+        value=token,
+        max_age=max_age,
+        path="/api/v1/auth/refresh",
+        httponly=True,
+        samesite="strict",
+        secure=False,  # set True once HTTPS is live (deployment behind TLS)
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key="vnss_refresh", path="/api/v1/auth/refresh", samesite="strict"
     )
 
 
@@ -167,6 +190,7 @@ async def register(
 async def login(
     body: LoginIn,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
@@ -216,7 +240,13 @@ async def login(
     from app.services.admin_access import ensure_admin_access
 
     await ensure_admin_access(user, settings, db)
-    return _tokens(user, settings)
+    tokens = _tokens(user, settings)
+    _set_refresh_cookie(
+        response,
+        create_refresh_token(user.id, settings, token_version=(user.token_version or 0)),
+        settings,
+    )
+    return tokens
 
 
 @router.post("/verify-email", response_model=OkMessageOut)
@@ -315,19 +345,22 @@ async def reset_password(
 
 @router.post("/refresh", response_model=TokenOut)
 async def refresh(
-    body: RefreshIn,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    """Exchange a valid refresh token for a fresh access token (+ rotated refresh)."""
+    """Exchange the HttpOnly refresh cookie for a fresh access token (+ rotated cookie)."""
     if not check_rate(
         _client_ip(request), "refresh", limit=60, enabled=settings.rate_limit_enabled
     ):
         raise HTTPException(status_code=429, detail="刷新过于频繁，请稍后再试")
+    rt = request.cookies.get("vnss_refresh")
+    if not rt:
+        raise HTTPException(status_code=401, detail="刷新令牌缺失")
     try:
-        payload = decode_token(body.refresh_token.strip(), settings)
-    except JWTError as exc:
+        payload = decode_token(rt.strip(), settings)
+    except jwt.InvalidTokenError as exc:
         raise HTTPException(status_code=401, detail="刷新令牌无效或已过期") from exc
     if payload.get("typ") != "refresh" or not payload.get("sub"):
         raise HTTPException(status_code=401, detail="刷新令牌无效")
@@ -343,7 +376,20 @@ async def refresh(
     claimed = payload.get("tv")
     if isinstance(claimed, int) and claimed != (user.token_version or 0):
         raise HTTPException(status_code=401, detail="刷新令牌已失效，请重新登录")
-    return _tokens(user, settings)
+    tokens = _tokens(user, settings)
+    _set_refresh_cookie(
+        response,
+        create_refresh_token(user.id, settings, token_version=(user.token_version or 0)),
+        settings,
+    )
+    return tokens
+
+
+@router.post("/logout", response_model=OkMessageOut)
+async def logout(response: Response):
+    """Clear the HttpOnly refresh cookie (client discards the access token)."""
+    _clear_refresh_cookie(response)
+    return OkMessageOut(ok=True, message="已退出登录")
 
 
 @router.get("/me", response_model=UserOut)

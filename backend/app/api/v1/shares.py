@@ -49,6 +49,28 @@ def _build_preview(project: VnProject) -> Dict[str, Any]:
     }
 
 
+def _strip_chapter_bodies(data: Dict[str, Any]) -> Dict[str, Any]:
+    """SECURITY: a public share must not leak full chapter text.
+
+    The share page renders a 700-char-per-chapter preview (up to 8 chapters)
+    via ``preview``; the raw ``project`` payload only needs titles + synopses
+    for the chapter list. Strip every chapter's blocks before returning.
+    """
+    out = dict(data)
+    chapters = out.get("chapters")
+    if isinstance(chapters, list):
+        out["chapters"] = [
+            {
+                "id": ch.get("id"),
+                "title": ch.get("title"),
+                "synopsis": ch.get("synopsis"),
+            }
+            for ch in chapters
+            if isinstance(ch, dict)
+        ]
+    return out
+
+
 @router.get("/{token}", response_model=ShareOut)
 async def get_share(token: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Share).where(Share.token == token))
@@ -74,7 +96,7 @@ async def get_share(token: str, db: AsyncSession = Depends(get_db)):
     return ShareOut(
         token=share.token,
         title=share.title_snapshot or project.title,
-        project=share.data_snapshot or {},
+        project=_strip_chapter_bodies(share.data_snapshot or {}),
         preview=_build_preview(project),
         created_at=share.created_at,
     )

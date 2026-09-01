@@ -9,9 +9,13 @@ alembic==1.19.1
 pydantic==2.13.4
 pydantic-settings==2.15.0
 typing-extensions==4.16.0
-python-jose[cryptography]==3.5.0
-passlib[bcrypt]==1.7.4
-bcrypt==4.0.1
+# SECURITY: python-jose is unmaintained (CVE-2024-33663/33664 fixed but no
+# upstream work); PyJWT is the maintained successor with the same API.
+PyJWT==2.10.1
+# SECURITY: passlib is unmaintained since 2020 and pins bcrypt to 4.0.1;
+# use the bcrypt library directly (same $2b$ hash format — existing hashes
+# keep verifying).
+bcrypt==4.3.0
 httpx==0.28.1
 python-multipart==0.0.32
 python-docx==1.2.0

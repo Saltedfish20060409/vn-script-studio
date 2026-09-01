@@ -5,56 +5,38 @@
 import type { TokenOut } from "./auth";
 import { applyLlmHeaders } from "../lib/llmCredentials";
 
+// SECURITY (M-4): the refresh token lives ONLY in an HttpOnly cookie set by
+// the backend (JS cannot read it → XSS can't exfiltrate it). The access token
+// is kept in memory only (not localStorage) so a script-injection also can't
+// steal a long-lived credential; a page reload simply triggers one refresh.
 export const TOKEN_KEY = "vnss-token";
-export const REFRESH_TOKEN_KEY = "vnss-refresh-token";
 export const API_BASE = "/api/v1";
 
+let accessToken: string | null = null;
+
 export function getToken(): string | null {
-  try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
-  }
+  return accessToken;
 }
 
 export function setToken(token: string) {
-  try {
-    localStorage.setItem(TOKEN_KEY, token);
-  } catch {
-    /* ignore quota */
-  }
+  accessToken = token;
 }
 
 export function clearToken() {
-  try {
-    localStorage.removeItem(TOKEN_KEY);
-  } catch {
-    /* ignore */
-  }
+  accessToken = null;
 }
 
 export function getRefreshToken(): string | null {
-  try {
-    return localStorage.getItem(REFRESH_TOKEN_KEY);
-  } catch {
-    return null;
-  }
+  // No longer stored client-side — the refresh token is an HttpOnly cookie.
+  return null;
 }
 
-export function setRefreshToken(token: string) {
-  try {
-    localStorage.setItem(REFRESH_TOKEN_KEY, token);
-  } catch {
-    /* ignore quota */
-  }
+export function setRefreshToken(_token: string) {
+  // No-op: refresh token is server-managed (HttpOnly cookie).
 }
 
 export function clearRefreshToken() {
-  try {
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-  } catch {
-    /* ignore */
-  }
+  // No-op: cookie is cleared via POST /auth/logout.
 }
 
 export class ApiError extends Error {
@@ -202,8 +184,8 @@ export async function apiFetch<T = unknown>(
 let refreshPromise: Promise<boolean> | null = null;
 
 async function tryRefresh(): Promise<boolean> {
-  const rt = getRefreshToken();
-  if (!rt) return false;
+  // The refresh token is an HttpOnly cookie — fetch sends it automatically
+  // (same-origin). No body, no local storage read.
   try {
     // A network blackhole must not leave every concurrent 401 replay waiting
     // forever — cap the refresh round-trip at 10s.
@@ -212,15 +194,13 @@ async function tryRefresh(): Promise<boolean> {
     try {
       const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: rt }),
+        credentials: "same-origin",
         signal: controller.signal,
       });
       if (!res.ok) return false;
       const data = (await res.json()) as TokenOut;
       if (data.access_token) {
         setToken(data.access_token);
-        if (data.refresh_token) setRefreshToken(data.refresh_token);
         return true;
       }
       return false;

@@ -156,6 +156,45 @@ def test_register_invalid_payload_422():
     _run(_scenario())
 
 
+def test_login_refresh_cookie_roundtrip():
+    """M-4: refresh token travels in an HttpOnly cookie; /refresh uses it;
+    /logout clears it."""
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            await _register(client, "dave", "dave@example.com")
+            await _verify_latest(client, "dave@example.com")
+            r = await client.post(
+                "/api/v1/auth/login",
+                json={"username": "dave", "password": "secret123"},
+            )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["access_token"]
+            # Response body must NOT expose the refresh token (cookie-only).
+            assert body.get("refresh_token") in (None, "")
+
+            # Cookie was set by the server.
+            assert "vnss_refresh" in client.cookies
+            assert client.cookies["vnss_refresh"]
+
+            # /refresh with no body works (token comes from cookie).
+            r = await client.post("/api/v1/auth/refresh")
+            assert r.status_code == 200, r.text
+            assert r.json()["access_token"]
+
+            # /logout clears the cookie.
+            r = await client.post("/api/v1/auth/logout")
+            assert r.status_code == 200, r.text
+            assert "vnss_refresh" not in client.cookies
+
+            # Refresh after logout → 401.
+            r = await client.post("/api/v1/auth/refresh")
+            assert r.status_code == 401
+
+    _run(_scenario())
+
+
 def test_register_closed_403():
     async def _scenario():
         from app.config import get_settings
