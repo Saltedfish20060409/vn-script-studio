@@ -6,6 +6,7 @@ import asyncio
 
 import db_gate
 import pytest
+from sqlalchemy import select
 
 pytestmark = [
     pytest.mark.db,
@@ -56,7 +57,28 @@ def test_report_error_stores_and_lists():
             r = await client.get("/api/v1/errors")
             assert r.status_code in (401, 403)
 
+            # SECURITY (M-3): a normal logged-in user is NOT an admin →
+            # must be denied (previously any user could read all anonymous
+            # reports incl. stack/url that might carry tokens).
             r = await client.get("/api/v1/errors", headers=headers)
+            assert r.status_code == 403, r.text
+
+            # admin can read reports
+            admin_headers = await db_gate.register_headers(client, "err_admin")
+            # make err_admin an admin via bootstrap: empty ADMIN_USERNAMES is
+            # denied by default (H-1), so grant directly through the DB flag
+            from app.db import AsyncSessionLocal
+            from app.models import User
+
+            async with AsyncSessionLocal() as s:
+                row = (
+                    await s.execute(
+                        select(User).where(User.username == "err_admin")
+                    )
+                ).scalar_one()
+                row.is_admin = True
+                await s.commit()
+            r = await client.get("/api/v1/errors", headers=admin_headers)
             assert r.status_code == 200, r.text
             reports = r.json()["reports"]
             assert len(reports) == 2

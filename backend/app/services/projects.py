@@ -144,6 +144,23 @@ async def get_owned_project(db: AsyncSession, user: User, project_id: str) -> Pr
     raise HTTPException(status_code=404, detail="项目不存在")
 
 
+async def get_owned_project_owner_only(
+    db: AsyncSession, user: User, project_id: str
+) -> Project:
+    """Access control: project OWNER only (destructive / irreversible ops).
+
+    Delete project, restore/delete snapshots, revoke shares, remove members,
+    delete conversations — anything that permanently destroys data or changes
+    project ownership must not be reachable by 'editor' collaborators.
+    """
+    row = await get_project_row(db, project_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    if row.owner_id != user.id:
+        raise HTTPException(status_code=403, detail="仅项目创建者可执行此操作")
+    return row
+
+
 async def get_project_readable(db: AsyncSession, user: User, project_id: str) -> Project:
     """Read access: project owner or any member (editor / viewer)."""
     row = await get_project_row(db, project_id)

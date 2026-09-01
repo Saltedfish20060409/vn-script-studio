@@ -32,7 +32,8 @@ async def ensure_admin_access(
     1. ``user.is_admin`` in DB.
     2. Bootstrap when DB has zero admins:
        - username listed in ``ADMIN_USERNAMES``, OR
-       - ``ADMIN_USERNAMES`` is empty (local/dev break-glass: first login wins)
+       - ``ADMIN_USERNAMES`` is empty AND ``admin_bootstrap_empty`` is
+         explicitly enabled (local/dev break-glass: first login wins).
        → optionally persist ``is_admin=True``.
     """
     if bool(getattr(user, "is_admin", False)):
@@ -40,7 +41,12 @@ async def ensure_admin_access(
     if await count_db_admins(db) > 0:
         return False
     seed_names = settings.admin_username_set
-    allowed = (not seed_names) or (user.username in seed_names)
+    if seed_names:
+        allowed = user.username in seed_names
+    else:
+        # SECURITY: empty ADMIN_USERNAMES no longer auto-promotes the first
+        # login unless explicitly enabled (prevents public-instance hijack).
+        allowed = bool(settings.admin_bootstrap_empty)
     if not allowed:
         return False
     if persist_seed:

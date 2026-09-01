@@ -11,6 +11,7 @@ from app.core.rate_limit import check_rate
 from app.db import get_db
 from app.models import ErrorReport, User
 from app.security import get_current_user
+from app.services.admin_access import ensure_admin_access
 
 router = APIRouter(prefix="/errors", tags=["errors"])
 
@@ -56,7 +57,10 @@ async def report_error(
         level=body.level or "error",
         message=body.message.strip()[:2000],
         stack=body.stack.strip()[:8000],
-        url=body.url.strip()[:1024],
+        # SECURITY (M-3): strip query string before storing — error URLs on
+        # /verify-email?token=… or /reset-password?token=… would otherwise leak
+        # one-time tokens to anyone who can read reports.
+        url=_strip_query(body.url.strip())[:1024],
         component=body.component.strip()[:64],
         user_agent=(request.headers.get("user-agent") or "")[:512],
         user_id=user_id,
@@ -71,13 +75,18 @@ async def list_errors(
     limit: int = 100,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
-    """Recent error reports (own + anonymous) for local diagnosis."""
+    """Recent error reports for local diagnosis.
+
+    SECURITY (M-3): previously any logged-in user could read all anonymous
+    reports (stack/url may contain sensitive context). Now admin-only —
+    anonymous reports are shared operational data, not per-user data.
+    """
+    if not await ensure_admin_access(user, settings, db, persist_seed=False):
+        raise HTTPException(status_code=403, detail="仅管理员可查看错误报告")
     res = await db.execute(
         select(ErrorReport)
-        .where(
-            (ErrorReport.user_id == user.id) | (ErrorReport.user_id.is_(None))
-        )
         .order_by(ErrorReport.created_at.desc())
         .limit(min(max(limit, 1), 500))
     )
@@ -96,3 +105,14 @@ async def list_errors(
             for r in rows
         ]
     }
+
+
+def _strip_query(url: str) -> str:
+    """Remove the query string from a URL (keep scheme://host/path)."""
+    if not url:
+        return url
+    try:
+        q = url.index("?")
+        return url[:q]
+    except ValueError:
+        return url

@@ -183,11 +183,14 @@ async def stream_audio(
     url: str,
     request: Request,
     settings: Settings = Depends(get_settings),
+    _user=Depends(get_current_user),
 ):
     """Proxy an audio URL with vendor-correct Referer/UA.
 
     Only http(s) URLs on the music CDN whitelist are proxied (never an open
     proxy). The browser's Range header is forwarded so seeking works.
+    SECURITY (M-8): requires auth — an unauthenticated whitelisted proxy would
+    let anyone borrow the server's egress IP / bandwidth.
     """
     require_rate(
         request.client.host if request.client else None,

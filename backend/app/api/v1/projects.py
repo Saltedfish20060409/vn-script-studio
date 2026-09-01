@@ -75,6 +75,7 @@ from app.services.novel_memory import get_latest_continuity
 from app.services.projects import (
     create_project_row,
     get_owned_project,
+    get_owned_project_owner_only,
     get_project_readable,
     merge_project_changes,
     project_to_dict,
@@ -335,7 +336,9 @@ async def delete_project(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    row = await get_owned_project(db, user, project_id)
+    # Destructive: only the project owner may delete (editors would cascade-
+    # destroy all chapters/snapshots/members via ON DELETE CASCADE).
+    row = await get_owned_project_owner_only(db, user, project_id)
     # All child tables (chapter rows, members, comments, locks, snapshots,
     # invites, inbox, memory archives, jobs, usage, lore cards, shares,
     # agent sessions) reference projects.id with ON DELETE CASCADE — removing
@@ -1083,7 +1086,8 @@ async def restore_snapshot(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    row = await get_owned_project(db, user, project_id)
+    # Destructive: overwrites current content — owner only.
+    row = await get_owned_project_owner_only(db, user, project_id)
     payload = await get_snapshot_payload(db, project_id, snap_id)
     if payload is None:
         raise HTTPException(status_code=404, detail="快照不存在")
@@ -1106,7 +1110,8 @@ async def delete_snapshot(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await get_owned_project(db, user, project_id)
+    # Destructive: removes a snapshot — owner only.
+    await get_owned_project_owner_only(db, user, project_id)
     ok = await delete_snapshot_row(db, project_id, snap_id)
     if not ok:
         raise HTTPException(status_code=404, detail="快照不存在")
@@ -1353,7 +1358,8 @@ async def delete_agent_conversation(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await get_owned_project(db, user, project_id)
+    # Destructive: permanently removes a conversation — owner only.
+    await get_owned_project_owner_only(db, user, project_id)
     sess = await _get_session(db, project_id, conversation_id)
     await db.delete(sess)
     await db.commit()
@@ -2295,7 +2301,8 @@ async def revoke_share(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await get_owned_project(db, user, project_id)
+    # Revoking a public link is irreversible for that link — owner only.
+    await get_owned_project_owner_only(db, user, project_id)
     result = await db.execute(
         select(Share).where(Share.project_id == project_id, Share.token == token)
     )

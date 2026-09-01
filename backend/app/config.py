@@ -78,9 +78,16 @@ class Settings(BaseSettings):
 
     # Bootstrap only when users.is_admin is empty for everyone:
     # - listed usernames become the first admin(s); OR
-    # - if empty, the first authenticated user is promoted (handy for local).
+    # - if empty AND admin_bootstrap_empty is explicitly true, the first
+    #   authenticated user is promoted (handy for local dev only).
     # Day-to-day grant/revoke uses /admin and needs no restart.
     admin_usernames: str = ""
+
+    # SECURITY: when ADMIN_USERNAMES is empty, "first login becomes admin" is
+    # a privilege-escalation window on a public instance (anyone can register
+    # first and seize admin). Default OFF — production must either set
+    # ADMIN_USERNAMES or keep this false and seed an admin via CLI.
+    admin_bootstrap_empty: bool = False
 
     # Optional Redis URL (redis://host:6379/0). When set and reachable, the
     # collab SSE event bus bridges workers via Redis pub/sub so multi-worker

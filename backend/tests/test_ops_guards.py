@@ -115,7 +115,10 @@ def test_ensure_admin_seed_when_no_db_admins(monkeypatch):
     assert user.is_admin is True
 
 
-def test_ensure_admin_empty_env_bootstraps_first_user(monkeypatch):
+def test_ensure_admin_empty_env_denies_without_explicit_bootstrap(monkeypatch):
+    """SECURITY (H-1): empty ADMIN_USERNAMES must NOT auto-promote the first
+    login unless admin_bootstrap_empty is explicitly enabled. Prevents a
+    public instance being hijacked by whoever registers first."""
     import asyncio
 
     from app.config import Settings
@@ -137,13 +140,26 @@ def test_ensure_admin_empty_env_bootstraps_first_user(monkeypatch):
 
     monkeypatch.setattr(admin_access, "count_db_admins", fake_count)
     user = FakeUser()
+    # Default: admin_bootstrap_empty=False → denied
     settings = Settings.model_construct(secret_key="x" * 64, admin_usernames="")
 
     async def _run():
         return await admin_access.ensure_admin_access(user, settings, FakeDb())
 
-    assert asyncio.run(_run()) is True
-    assert user.is_admin is True
+    assert asyncio.run(_run()) is False
+    assert user.is_admin is False
+
+    # Explicit opt-in: admin_bootstrap_empty=True → first login still bootstraps
+    user2 = FakeUser()
+    settings2 = Settings.model_construct(
+        secret_key="x" * 64, admin_usernames="", admin_bootstrap_empty=True
+    )
+
+    async def _run2():
+        return await admin_access.ensure_admin_access(user2, settings2, FakeDb())
+
+    assert asyncio.run(_run2()) is True
+    assert user2.is_admin is True
 
 
 def test_ensure_admin_env_ignored_when_db_has_admins(monkeypatch):
