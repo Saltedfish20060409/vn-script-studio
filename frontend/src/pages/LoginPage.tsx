@@ -98,8 +98,8 @@ export default function LoginPage() {
           setError("请填写用户名、邮箱和密码");
           return;
         }
-        if (password.length < 6) {
-          setError("密码至少 6 位");
+        if (password.length < 8) {
+          setError("密码至少 8 位");
           return;
         }
         if (password !== confirm) {
@@ -332,7 +332,7 @@ export default function LoginPage() {
                     autoComplete={
                       mode === "login" ? "current-password" : "new-password"
                     }
-                    placeholder={mode === "register" ? "至少 6 位" : "密码"}
+                    placeholder={mode === "register" ? "至少 8 位" : "密码"}
                   />
                 </label>
               )}

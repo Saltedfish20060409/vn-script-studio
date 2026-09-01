@@ -20,8 +20,8 @@ export default function ResetPasswordPage() {
       setError("链接无效，请从邮件中重新打开");
       return;
     }
-    if (password.length < 6) {
-      setError("密码至少 6 位");
+    if (password.length < 8) {
+      setError("密码至少 8 位");
       return;
     }
     if (password !== confirm) {

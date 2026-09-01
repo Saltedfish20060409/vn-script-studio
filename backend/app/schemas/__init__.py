@@ -17,7 +17,8 @@ class RefreshIn(BaseModel):
 
 class RegisterIn(BaseModel):
     username: str = Field(min_length=2, max_length=64)
-    password: str = Field(min_length=6, max_length=128)
+    # 72 = bcrypt 输入上限；超过会被截断，造成"不同密码验证通过"的假象
+    password: str = Field(min_length=8, max_length=72)
     email: str = Field(min_length=3, max_length=255)
 
 
@@ -55,7 +56,7 @@ class ForgotPasswordIn(BaseModel):
 
 class ResetPasswordIn(BaseModel):
     token: str = Field(min_length=8, max_length=200)
-    password: str = Field(min_length=6, max_length=128)
+    password: str = Field(min_length=8, max_length=72)
 
 
 class OkMessageOut(BaseModel):

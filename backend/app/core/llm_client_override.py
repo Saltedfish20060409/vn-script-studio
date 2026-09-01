@@ -57,6 +57,9 @@ _BLOCKED_IPS = {
     "fc00::/7",
     "fe80::/10",
     "ff00::/8",
+    # NAT64 well-known prefix: 64:ff9b::/96 maps IPv4 literals into IPv6 —
+    # is_private() is False for these, so it could bypass the IPv4 blacklist.
+    "64:ff9b::/96",
 }
 
 

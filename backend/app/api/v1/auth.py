@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -43,6 +44,8 @@ from app.services.settings import DEFAULT_BG
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+logger = logging.getLogger(__name__)
+
 _email_adapter = TypeAdapter(EmailStr)
 
 
@@ -53,10 +56,11 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else ""
 
 
-def _tokens(user_id: str, settings: Settings) -> TokenOut:
+def _tokens(user: User, settings: Settings) -> TokenOut:
+    tv = user.token_version or 0
     return TokenOut(
-        access_token=create_access_token(user_id, settings),
-        refresh_token=create_refresh_token(user_id, settings),
+        access_token=create_access_token(user.id, settings, token_version=tv),
+        refresh_token=create_refresh_token(user.id, settings, token_version=tv),
         token_type="bearer",
         expires_in=settings.access_token_expire_minutes * 60,
     )
@@ -181,13 +185,30 @@ async def login(
     )
     user = result.scalar_one_or_none()
     if user is None or not verify_password(body.password, user.password_hash):
+        # Security event (A09): log failed login attempts (no PII beyond the
+        # submitted identifier, which the user already sent us).
+        logger.warning(
+            "security login_failed ip=%s ident=%s reason=bad_credentials",
+            _client_ip(request),
+            ident[:64],
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用户名或密码错误",
         )
     if user.disabled_at is not None:
+        logger.warning(
+            "security login_failed ip=%s user=%s reason=disabled",
+            _client_ip(request),
+            user.username,
+        )
         raise HTTPException(status_code=403, detail="账号已被停用")
     if user.email and not is_email_verified(user):
+        logger.info(
+            "security login_failed ip=%s user=%s reason=unverified",
+            _client_ip(request),
+            user.username,
+        )
         raise HTTPException(
             status_code=403,
             detail="邮箱尚未验证，请先查收验证邮件（可在注册页重新发送）",
@@ -195,7 +216,7 @@ async def login(
     from app.services.admin_access import ensure_admin_access
 
     await ensure_admin_access(user, settings, db)
-    return _tokens(user.id, settings)
+    return _tokens(user, settings)
 
 
 @router.post("/verify-email", response_model=OkMessageOut)
@@ -225,18 +246,21 @@ async def resend_verification(
     email = _parse_email(body.email)
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
-    # Don't leak whether the email exists.
+    # Don't leak whether the email exists (same response whether or not).
     if user is None or is_email_verified(user):
         return OkMessageOut(ok=True, message="若该邮箱未验证，我们已尝试重新发送")
     if not (settings.resend_api_key or "").strip():
-        raise HTTPException(status_code=503, detail="邮件服务未配置")
+        # Don't reveal the account exists via a 503 — treat as success.
+        logger.warning("security resend skipped (email service not configured)")
+        return OkMessageOut(ok=True, message="若该邮箱未验证，我们已尝试重新发送")
     token = await issue_email_token(db, user, "verify")
     try:
         await send_verify_email(settings, user, token)
         await db.commit()
     except Exception as exc:
         await db.rollback()
-        raise HTTPException(status_code=502, detail=f"发送失败：{exc}") from exc
+        logger.warning("resend verification send failed: %s", exc)
+        return OkMessageOut(ok=True, message="若该邮箱未验证，我们已尝试重新发送")
     return OkMessageOut(ok=True, message="若该邮箱未验证，我们已尝试重新发送")
 
 
@@ -257,14 +281,17 @@ async def forgot_password(
     if user is None or not user.email:
         return OkMessageOut(ok=True, message="若该邮箱已注册，我们已发送重置链接")
     if not (settings.resend_api_key or "").strip():
-        raise HTTPException(status_code=503, detail="邮件服务未配置")
+        # Don't reveal the account exists via a 503 — treat as success.
+        logger.warning("security forgot skipped (email service not configured)")
+        return OkMessageOut(ok=True, message="若该邮箱已注册，我们已发送重置链接")
     token = await issue_email_token(db, user, "reset")
     try:
         await send_reset_email(settings, user, token)
         await db.commit()
     except Exception as exc:
         await db.rollback()
-        raise HTTPException(status_code=502, detail=f"发送失败：{exc}") from exc
+        logger.warning("forgot password send failed: %s", exc)
+        return OkMessageOut(ok=True, message="若该邮箱已注册，我们已发送重置链接")
     return OkMessageOut(ok=True, message="若该邮箱已注册，我们已发送重置链接")
 
 
@@ -277,6 +304,8 @@ async def reset_password(
     if user is None:
         raise HTTPException(status_code=400, detail="重置链接无效或已过期")
     user.password_hash = hash_password(body.password)
+    # SECURITY (M-2): password reset invalidates all previously issued tokens.
+    user.token_version = (user.token_version or 0) + 1
     # Resetting via email also counts as proving ownership.
     if user.email and user.email_verified_at is None:
         user.email_verified_at = datetime.now(timezone.utc)
@@ -309,7 +338,12 @@ async def refresh(
         raise HTTPException(status_code=401, detail="用户不存在")
     if user.disabled_at is not None:
         raise HTTPException(status_code=403, detail="账号已被停用")
-    return _tokens(user.id, settings)
+    # SECURITY (M-2): refresh tokens are invalid once token_version was bumped
+    # (password reset / change / ban). Old stolen refresh tokens die instantly.
+    claimed = payload.get("tv")
+    if isinstance(claimed, int) and claimed != (user.token_version or 0):
+        raise HTTPException(status_code=401, detail="刷新令牌已失效，请重新登录")
+    return _tokens(user, settings)
 
 
 @router.get("/me", response_model=UserOut)

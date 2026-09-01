@@ -191,8 +191,11 @@ async def import_project(
         vn = normalize_project(raw)
         vn = normalize_project({**project_to_dict(vn), "id": uid("proj")})
     elif file is not None:
-        content = await file.read()
-        if len(content) > 2 * 1024 * 1024:
+        # SECURITY: read with a hard cap so oversized uploads are rejected
+        # while streaming (not buffered whole into memory first).
+        MAX_IMPORT = 2 * 1024 * 1024
+        content = await file.read(MAX_IMPORT + 1)
+        if len(content) > MAX_IMPORT:
             raise HTTPException(status_code=413, detail="文件过大（限 2MB）")
         name = (file.filename or "").lower()
         if name.endswith(".json") or name.endswith(".vnss-share.json"):
@@ -1673,7 +1676,11 @@ async def upload_agent_attachment(
     from app.services import analysis_inbox as inbox_svc
 
     await get_owned_project(db, user, project_id)
-    raw = await file.read()
+    # SECURITY: cap attachment size while reading (not buffered whole first).
+    MAX_ATTACH = 2 * 1024 * 1024
+    raw = await file.read(MAX_ATTACH + 1)
+    if len(raw) > MAX_ATTACH:
+        raise HTTPException(status_code=413, detail="附件过大（限 2MB）")
     filename = file.filename or "upload.txt"
     try:
         text, warning = extract_text_from_bytes(raw, filename)

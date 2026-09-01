@@ -54,8 +54,13 @@ async def consume_email_token(
     token: str,
     purpose: Purpose,
 ) -> Optional[User]:
+    # FOR UPDATE: serialize concurrent consumers so a one-time token cannot be
+    # redeemed twice (TOCTOU). Row-level lock on the token row; the second
+    # concurrent request sees used_at set after the first commits.
     result = await db.execute(
-        select(AuthEmailToken).where(AuthEmailToken.token == token.strip())
+        select(AuthEmailToken)
+        .where(AuthEmailToken.token == token.strip())
+        .with_for_update()
     )
     row = result.scalar_one_or_none()
     if row is None or row.purpose != purpose or row.used_at is not None:

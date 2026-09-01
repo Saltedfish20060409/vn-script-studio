@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, time, timedelta, timezone
 from typing import List, Literal, Optional
 
@@ -18,6 +19,9 @@ from app.security import get_admin_user
 from app.services.admin_access import count_db_admins
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+# Security audit log (A09): every privilege / ban change must be traceable.
+audit_logger = logging.getLogger("vnss.audit")
 
 # Soft thresholds — BYOK so token caps are advisory; storage/signup patterns matter more.
 _PROJECTS_WARN = 40
@@ -295,7 +299,12 @@ async def ban_user(
     if user is None:
         raise HTTPException(status_code=404, detail="用户不存在")
     user.disabled_at = datetime.now(timezone.utc)
+    # SECURITY (M-2): ban invalidates all of the user's sessions immediately.
+    user.token_version = (user.token_version or 0) + 1
     await db.commit()
+    audit_logger.info(
+        "audit action=ban actor=%s target=%s ok=true", admin.username, name
+    )
     return BanOut(ok=True, username=name, disabled=True, message="已停用")
 
 
@@ -314,6 +323,9 @@ async def unban_user(
         raise HTTPException(status_code=404, detail="用户不存在")
     user.disabled_at = None
     await db.commit()
+    audit_logger.info(
+        "audit action=unban actor=%s target=%s ok=true", _admin.username, name
+    )
     return BanOut(ok=True, username=name, disabled=False, message="已解禁")
 
 
@@ -334,6 +346,9 @@ async def grant_admin(
         raise HTTPException(status_code=400, detail="请先解禁再授予管理员")
     user.is_admin = True
     await db.commit()
+    audit_logger.info(
+        "audit action=grant_admin actor=%s target=%s ok=true", _admin.username, name
+    )
     return AdminFlagOut(ok=True, username=name, is_admin=True, message="已设为管理员")
 
 
@@ -363,6 +378,9 @@ async def revoke_admin(
         )
     user.is_admin = False
     await db.commit()
+    audit_logger.info(
+        "audit action=revoke_admin actor=%s target=%s ok=true", admin.username, name
+    )
     return AdminFlagOut(
         ok=True, username=name, is_admin=False, message="已撤销管理员"
     )

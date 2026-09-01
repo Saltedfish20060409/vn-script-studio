@@ -42,6 +42,11 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # SECURITY (M-2): bumped on password reset / password change / ban so all
+    # previously-issued access & refresh JWTs become invalid immediately.
+    token_version: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     projects: Mapped[list["Project"]] = relationship(back_populates="owner")

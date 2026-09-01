@@ -17,6 +17,7 @@ from app.security import get_current_user
 from app.services import collab
 from app.services.projects import (
     get_owned_project,
+    get_owned_project_owner_only,
     get_project_readable,
 )
 
@@ -260,7 +261,8 @@ async def list_invites(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await get_project_readable(db, user, project_id)
+    # SECURITY: invites are join credentials — viewers must not see them.
+    await get_owned_project(db, user, project_id)
     return {"invites": await collab.list_invites(db, project_id)}
 
 
@@ -271,9 +273,9 @@ async def revoke_invite(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    row = await get_owned_project(db, user, project_id)
-    actor_role = "owner" if row.owner_id == user.id else "editor"
-    await collab.revoke_invite(db, project_id, token, actor_role=actor_role)
+    # SECURITY: revoking an invite is destructive — owner only.
+    await get_owned_project_owner_only(db, user, project_id)
+    await collab.revoke_invite(db, project_id, token, actor_role="owner")
     return {"ok": True}
 
 

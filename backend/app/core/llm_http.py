@@ -20,6 +20,47 @@ _STREAM_RETRY_STATUSES = {429, 500, 502, 503, 504}
 # 进程内并发闸：限制同时进行的上游 LLM 请求数（共享服务器 key 防打爆）。
 _LLM_SEMAPHORE = asyncio.Semaphore(16)
 
+# 敏感字段模式：上游错误体里若混入 key/token 一类内容，回显前剥掉。
+_SECRET_PATTERNS = (
+    "sk-",
+    "api_key",
+    "apikey",
+    "authorization",
+    "bearer ",
+)
+
+
+def _summarize_upstream_error(body: str) -> str:
+    """Extract a short, safe error summary from an upstream provider response.
+
+    Providers return JSON like {"error": {"message": "..."}}; we keep only a
+    bounded message and never echo raw bodies that may embed secrets or
+    internal debugging info (SECURITY: error-reflect convergence).
+    """
+    text = (body or "").strip()
+    if not text:
+        return "（无详情）"
+    if text.startswith("{"):
+        try:
+            parsed = json.loads(text)
+            err = parsed.get("error") if isinstance(parsed, dict) else None
+            if isinstance(err, dict):
+                msg = err.get("message")
+            elif isinstance(err, str):
+                msg = err
+            else:
+                msg = None
+            if isinstance(msg, str) and msg.strip():
+                text = msg.strip()
+        except json.JSONDecodeError:
+            pass
+    # Never echo anything that looks like a credential.
+    low = text.lower()
+    for pat in _SECRET_PATTERNS:
+        if pat in low:
+            return "（上游返回了疑似敏感内容，已隐藏详情）"
+    return text[:200]
+
 
 class _StreamUpstreamError(Exception):
     """Carry upstream status/body/headers so the generator can decide retry."""
@@ -134,7 +175,8 @@ async def chat_completions(
                     continue
 
                 raise RuntimeError(
-                    f"DeepSeek API {res.status_code}: {res.text[:400]}"
+                    f"上游模型服务返回错误（HTTP {res.status_code}）："
+                    f"{_summarize_upstream_error(res.text)}"
                 )
 
     if last_exc:

@@ -29,13 +29,19 @@ def create_access_token(
     subject: str,
     settings: Settings,
     expires_delta: Optional[timedelta] = None,
+    token_version: int = 0,
 ) -> str:
     expire = datetime.now(timezone.utc) + (
         expires_delta
         or timedelta(minutes=settings.access_token_expire_minutes)
     )
     return jwt.encode(
-        {"sub": subject, "typ": "access", "exp": expire},
+        {
+            "sub": subject,
+            "typ": "access",
+            "tv": token_version,
+            "exp": expire,
+        },
         settings.secret_key,
         algorithm=settings.algorithm,
     )
@@ -45,12 +51,18 @@ def create_refresh_token(
     subject: str,
     settings: Settings,
     expires_delta: Optional[timedelta] = None,
+    token_version: int = 0,
 ) -> str:
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(days=settings.refresh_token_expire_days)
     )
     return jwt.encode(
-        {"sub": subject, "typ": "refresh", "exp": expire},
+        {
+            "sub": subject,
+            "typ": "refresh",
+            "tv": token_version,
+            "exp": expire,
+        },
         settings.secret_key,
         algorithm=settings.algorithm,
     )
@@ -132,6 +144,11 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="用户不存在")
     if user.disabled_at is not None:
         raise HTTPException(status_code=403, detail="账号已被停用")
+    # SECURITY (M-2): tokens carry the user's token_version at issuance; if the
+    # version has since been bumped (password reset / change / ban), reject.
+    claimed = payload.get("tv")
+    if isinstance(claimed, int) and claimed != (user.token_version or 0):
+        raise HTTPException(status_code=401, detail="令牌已失效，请重新登录")
     return user
 
 
