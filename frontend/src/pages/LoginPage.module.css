@@ -4,9 +4,10 @@
   min-height: 100vh;
   min-height: 100dvh;
   display: grid;
+  /* 首屏行至少一屏高，footer 行在其下方，滚动才见 */
   grid-template-columns: minmax(0, 1.15fr) minmax(320px, 440px);
+  grid-template-rows: minmax(100dvh, auto) auto;
   align-items: stretch;
-  overflow: hidden;
   background: transparent;
 }
 
@@ -489,6 +490,12 @@ html[data-theme="night"] .slash {
   text-underline-offset: 0.2em;
 }
 
+/* 备案信息：跨满两栏、排在首屏下方，滚动才可见 */
+.wrap > footer {
+  grid-column: 1 / -1;
+  padding-top: 1.2rem;
+}
+
 @keyframes rise {
   from {
     opacity: 0;
@@ -503,6 +510,7 @@ html[data-theme="night"] .slash {
 @media (max-width: 860px) {
   .wrap {
     grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
   }
 
   .hero {

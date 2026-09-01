@@ -52,3 +52,9 @@ deploy/
 # 个人工具/部署(不入库)
 scripts/pack_upload.py
 restore-ui.ps1
+
+# 内部文档(运维/美术参考, 不入公开库)
+docs/
+
+# react-bits 临时导出文件(不入库)
+_rb/
