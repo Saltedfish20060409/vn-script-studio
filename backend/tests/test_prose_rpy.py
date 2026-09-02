@@ -167,3 +167,108 @@ def test_gate_keeps_good_llm_output(monkeypatch):
     )
     assert rpy == good
     assert blocks
+
+
+APP_PROSE = """[场景：bg overpass_rain]
+
+延误再次延长。伞沿外，天桥的灯灭了半边。
+
+周屿：从月台往东，过天桥就能看见那家便利店。
+
+林夏：你怎么知道？
+
+选项：你要怎么试探？
+
+- 追问他为何熟悉动线
+
+- 提议去便利店避雨
+
+林夏：过路人不会把换乘口背得这么熟。
+"""
+
+APP_CHARS = [
+    Character(id="lx", defineName="linxia", displayName="林夏"),
+    Character(id="zy", defineName="zhouyu", displayName="周屿"),
+]
+
+
+def test_app_prose_format_round_trip():
+    """应用自己的剧本格式（[场景：]/[出现：]/选项：+ 列表项）必须能正确解析，
+    否则确定性回退会给「选项：」生成单个假选项，再被编辑器渲染成 jump start。"""
+    blocks = parse_prose_to_blocks(APP_PROSE, APP_CHARS)
+    types = [b.get("type") for b in blocks]
+    assert types[0] == "label"
+    assert "scene" in types  # [场景：bg overpass_rain] → scene，而不是 raw
+    scenes = [b for b in blocks if b.get("type") == "scene"]
+    assert scenes[0].get("image") == "bg overpass_rain"
+    menus = [b for b in blocks if b.get("type") == "menu"]
+    assert len(menus) == 1
+    m = menus[0]
+    assert m.get("prompt") == "你要怎么试探？"
+    texts = [c.get("text") for c in m.get("choices")]
+    assert texts == ["追问他为何熟悉动线", "提议去便利店避雨"]
+    # 两个真实选项在菜单里，而不是变成菜单外的旁白
+    leftovers = [
+        b
+        for b in blocks
+        if b.get("type") == "narration" and str(b.get("text", "")).startswith("-")
+    ]
+    assert not leftovers
+
+
+def test_app_prose_format_fallback_no_self_loop(monkeypatch):
+    """LLM 输出应用格式标注时被 gate 拦截 → 回退解析原稿 → 不再出现 jump start。"""
+    import app.core.prose_rpy as pr
+
+    echoed = '[场景：bg overpass_rain]\n选项：你要怎么试探？\n- 追问他为何熟悉动线'
+    assert _rpy_has_structural_flaws(echoed) is not None
+
+    async def fake_llm(project, prose, config):
+        return echoed
+
+    monkeypatch.setattr(pr, "llm_prose_to_rpy", fake_llm)
+    cfg = types.SimpleNamespace(apiKey="k", baseUrl="", model="m")
+    rpy, blocks = asyncio.run(
+        generate_rpy_from_prose(_proj(), APP_PROSE, cfg)
+    )
+    assert "jump start" not in rpy
+    menus = [b for b in blocks if b.get("type") == "menu"]
+    assert menus and len(menus[0].get("choices")) >= 2
+
+
+def test_gate_rejects_manuscript_markers():
+    """LLM 原样回显剧本标注（[场景：/选项：/列表项）→ 一律按结构缺陷拦截。"""
+    assert _rpy_has_structural_flaws("[场景：bg street]") is not None
+    assert _rpy_has_structural_flaws("选项：A / B") is not None
+    assert _rpy_has_structural_flaws("- 追问他为何熟悉动线") is not None
+
+
+def test_export_keeps_spaced_image_names():
+    """Ren'Py 图片名可含空格（bg overpass_rain / linxia neutral），
+    导出不得降级成 unnamed。"""
+    from app.core.renpy import export_to_renpy
+
+    vn = VnProject.model_validate(
+        {
+            "id": "p",
+            "title": "t",
+            "updatedAt": "2026-01-01T00:00:00+00:00",
+            "characters": [],
+            "chapters": [
+                {
+                    "id": "c1",
+                    "title": "一",
+                    "blocks": [
+                        {"type": "label", "id": "start", "name": "start"},
+                        {"type": "scene", "image": "bg overpass_rain"},
+                        {"type": "show", "image": "linxia neutral"},
+                        {"type": "return"},
+                    ],
+                }
+            ],
+        }
+    )
+    out = export_to_renpy(vn)
+    assert "scene bg overpass_rain" in out
+    assert "show linxia neutral" in out
+    assert "scene unnamed" not in out

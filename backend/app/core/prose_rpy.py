@@ -28,6 +28,11 @@ _SELF_LOOP = re.compile(r"^\s*jump\s+start\s*$", re.I)
 # `menu menu:` — model doubles the keyword when it meant a bare `menu:`.
 _MENU_MENU = re.compile(r"^\s*menu\s+menu\s*:", re.I)
 _LABEL_HEAD = re.compile(r"^\s*label\s+([A-Za-z_]\w*)\s*:", re.I)
+# Model echoed the manuscript instead of converting it to Ren'Py: app-native
+# markers like `[场景：X]` / `选项：…` / `- …` bullets never belong in a .rpy.
+_MS_BRACKET = re.compile(r"^\s*\[(?:场景|出现|消失|旁白)", re.I)
+_MS_OPTIONS = re.compile(r"^\s*选项\s*[:：]", re.I)
+_MS_BULLET = re.compile(r"^\s*[-*•]\s+\S")
 
 
 def prose_fingerprint(text: str) -> str:
@@ -181,6 +186,8 @@ def _rpy_has_structural_flaws(rpy: str) -> Optional[str]:
             continue
         if _MENU_MENU.match(s):
             return "menu 关键字重复（menu menu）"
+        if _MS_BRACKET.match(s) or _MS_OPTIONS.match(s) or _MS_BULLET.match(s):
+            return "模型输出了剧本标注（[场景：/选项：/列表符号），不是 Ren'Py 脚本"
         if _LOOSE_SCENE_NO_IMG.match(s):
             return "scene 缺少图片名（裸 scene）"
         if _LOOSE_SCENE.match(s):

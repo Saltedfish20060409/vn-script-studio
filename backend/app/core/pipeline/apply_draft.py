@@ -18,6 +18,13 @@ _MENU_HEAD = re.compile(r"^menu(?:\s+(\w+))?\s*:\s*$", re.I)
 _MENU_CHOICE = re.compile(r'^"([^"]+)"\s*:\s*$')
 _MENU_CHOICE_CN = re.compile(r"^[「『]([^」』]+)[」』]\s*[:：]\s*$")
 _OPTIONS_LINE = re.compile(r"^选项\s*[:：]\s*(.+)$")
+_OPTION_BULLET = re.compile(r"^\s*[-*•]\s+(.+)$")
+# App-native manuscript markers (blocks_to_prose / scriptProse) — the
+# deterministic parser must round-trip them, otherwise the fallback output
+# for a manuscript written in the editor's own prose format is garbage.
+_BRACKET_SCENE = re.compile(r"^\[场景\s*[:：]?\s*(.+?)\]\s*$")
+_BRACKET_SHOW = re.compile(r"^\[出现\s*[:：]?\s*(.+?)\]\s*$")
+_BRACKET_HIDE = re.compile(r"^\[消失\s*[:：]?\s*(.+?)\]\s*$")
 _BARE_QUOTE = re.compile(r'^[「"「](.+)[」"」]$')
 _INDENT = re.compile(r"^(\s*)")
 
@@ -84,6 +91,16 @@ def _parse_single_line_block(
     m_scene = _SCENE.match(s)
     if m_scene:
         return {"type": "scene", "image": m_scene.group(1)}
+    # App-native manuscript markers, e.g. `[场景：bg overpass_rain]`.
+    m_bscene = _BRACKET_SCENE.match(s)
+    if m_bscene:
+        return {"type": "scene", "image": m_bscene.group(1).strip()}
+    m_bshow = _BRACKET_SHOW.match(s)
+    if m_bshow:
+        return {"type": "show", "image": m_bshow.group(1).strip()}
+    m_bhide = _BRACKET_HIDE.match(s)
+    if m_bhide:
+        return {"type": "hide", "image": m_bhide.group(1).strip()}
     m_label = _LABEL.match(s)
     if m_label:
         return {
@@ -233,7 +250,38 @@ def plain_text_to_script_blocks(
 
         m_opt = _OPTIONS_LINE.match(s)
         if m_opt:
-            parts = [p.strip() for p in re.split(r"[/｜|]", m_opt.group(1)) if p.strip()]
+            opt_text = m_opt.group(1).strip()
+            # App-native manuscript format: `选项：prompt` followed by
+            # `- choice` bullet lines (scriptProse.ts walk). If bullets follow,
+            # the 选项 text is the menu prompt, NOT a single choice — otherwise
+            # "选项：你要怎么试探？" becomes a one-choice menu whose codec
+            # render turns into a `jump start` self-loop.
+            j = i + 1
+            bullets: List[str] = []
+            while j < len(lines):
+                sj = lines[j].strip()
+                if not sj:
+                    j += 1
+                    continue
+                mb = _OPTION_BULLET.match(sj)
+                if mb:
+                    bullets.append(mb.group(1).strip())
+                    j += 1
+                    continue
+                break
+            if bullets:
+                blocks.append(
+                    {
+                        "type": "menu",
+                        "id": "menu",
+                        "prompt": opt_text,
+                        "choices": [{"text": b} for b in bullets],
+                    }
+                )
+                i = j
+                continue
+            # Legacy inline form: 选项：A / B
+            parts = [p.strip() for p in re.split(r"[/｜|]", opt_text) if p.strip()]
             if parts:
                 blocks.append(
                     {
@@ -244,6 +292,35 @@ def plain_text_to_script_blocks(
                 )
             i += 1
             continue
+
+        # Bare bullet run with no 选项 prefix = prompt-less menu (the app's
+        # blocks_to_prose serializes a prompt-less menu as just `- choice`
+        # lines). Require ≥2 consecutive bullets so a stray dash narration
+        # line is not turned into a one-option menu.
+        if _OPTION_BULLET.match(s):
+            run: List[str] = []
+            j = i
+            while j < len(lines):
+                sj = lines[j].strip()
+                mb = _OPTION_BULLET.match(sj) if sj else None
+                if mb:
+                    run.append(mb.group(1).strip())
+                    j += 1
+                    continue
+                if not sj:
+                    j += 1
+                    continue
+                break
+            if len(run) >= 2:
+                blocks.append(
+                    {
+                        "type": "menu",
+                        "id": "menu",
+                        "choices": [{"text": b} for b in run],
+                    }
+                )
+                i = j
+                continue
 
         m_jump = _JUMP.match(s)
         if m_jump:
@@ -258,6 +335,22 @@ def plain_text_to_script_blocks(
         m_scene = _SCENE.match(s)
         if m_scene:
             blocks.append({"type": "scene", "image": m_scene.group(1)})
+            i += 1
+            continue
+        # App-native manuscript markers, e.g. `[场景：bg overpass_rain]`.
+        m_bscene = _BRACKET_SCENE.match(s)
+        if m_bscene:
+            blocks.append({"type": "scene", "image": m_bscene.group(1).strip()})
+            i += 1
+            continue
+        m_bshow = _BRACKET_SHOW.match(s)
+        if m_bshow:
+            blocks.append({"type": "show", "image": m_bshow.group(1).strip()})
+            i += 1
+            continue
+        m_bhide = _BRACKET_HIDE.match(s)
+        if m_bhide:
+            blocks.append({"type": "hide", "image": m_bhide.group(1).strip()})
             i += 1
             continue
         m_label = _LABEL.match(s)

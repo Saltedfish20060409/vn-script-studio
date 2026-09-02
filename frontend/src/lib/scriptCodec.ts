@@ -8,6 +8,15 @@ function unescapeQuote(text: string): string {
   return text.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
 }
 
+/** Indent every line of a chunk by `spaces` (used for nested menu bodies). */
+function indentBlock(chunk: string, spaces: number): string {
+  const pad = " ".repeat(spaces);
+  return chunk
+    .split("\n")
+    .map((l) => (l ? pad + l : l))
+    .join("\n");
+}
+
 function blockToEditableChunk(b: ScriptBlock, characters: Character[]): string {
   switch (b.type) {
     case "label":
@@ -34,7 +43,21 @@ function blockToEditableChunk(b: ScriptBlock, characters: Character[]): string {
       const head = `menu${label}:`;
       const prompt = b.prompt ? `  "${escapeQuote(b.prompt)}"` : "";
       const choices = b.choices
-        .map((ch) => `  "${escapeQuote(ch.text)}":\n    jump ${ch.jump ?? "start"}`)
+        .map((ch) => {
+          // A choice with no jump target must NOT be rendered as `jump start`
+          // (that fabricates a self-loop out of a linear fallback menu).
+          let body: string;
+          if (ch.jump) {
+            body = `    jump ${ch.jump}`;
+          } else if (ch.blocks?.length) {
+            body = ch.blocks
+              .map((nb) => indentBlock(blockToEditableChunk(nb, characters), 4))
+              .join("\n");
+          } else {
+            body = "    pass";
+          }
+          return `  "${escapeQuote(ch.text)}":\n${body}`;
+        })
         .join("\n");
       return [head, prompt, choices].filter(Boolean).join("\n");
     }
@@ -176,24 +199,38 @@ export function editableToBlocks(text: string): ScriptBlock[] {
         }
         const c = mt.match(new RegExp(`^"(${quoted})"\\s*:`));
         if (c) {
+          const choiceIndent = mline.length - mline.trimStart().length;
           let jump: string | undefined;
+          const bodyLines: string[] = [];
           i += 1;
           while (i < lines.length) {
             const nested = lines[i];
-            if (nested.trim().startsWith("jump ")) {
-              jump = nested.trim().slice(5).trim();
+            const ntrim = nested.trim();
+            const nestedIndent = nested.length - nested.trimStart().length;
+            if (!ntrim) {
+              i += 1;
+              continue;
+            }
+            if (nestedIndent <= choiceIndent) break; // next sibling / menu end
+            if (ntrim.startsWith("jump ")) {
+              jump = ntrim.slice(5).trim();
               i += 1;
               break;
             }
-            if (
-              nested.trim().startsWith('"') ||
-              (nested.length > 0 && !nested.startsWith(" ") && !nested.startsWith("\t"))
-            ) {
-              break;
-            }
+            // Deeper indented lines are the body of this option (dialogue /
+            // narration / nested blocks), not siblings.
+            if (ntrim !== "pass") bodyLines.push(nested);
             i += 1;
           }
-          choices.push({ text: unescapeQuote(c[1]), jump });
+          const choice: { text: string; jump?: string; blocks?: ScriptBlock[] } = {
+            text: unescapeQuote(c[1]),
+            ...(jump ? { jump } : {}),
+          };
+          if (!jump && bodyLines.length) {
+            const bodyBlocks = editableToBlocks(bodyLines.join("\n"));
+            if (bodyBlocks.length) choice.blocks = bodyBlocks;
+          }
+          choices.push(choice);
           continue;
         }
         i += 1;

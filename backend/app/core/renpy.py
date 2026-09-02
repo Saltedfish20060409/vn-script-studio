@@ -18,11 +18,15 @@ def _escape_renpy_string(text: str) -> str:
 # statements in the exported .rpy. Sanitize everything that lands in a code
 # position.
 _IDENT_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]*$")
+# Image names legitimately contain spaces in Ren'Py (e.g. `bg overpass_rain`,
+# `linxia neutral`) — they are an image lookup, not Python. Still reject
+# quotes / newlines / brackets / $ so a value can never escape into code.
+_IMAGE_IDENT_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./ -]*$")
 _COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
 def _safe_ident(value: Optional[str], fallback: str = "unnamed") -> str:
-    """Whitelist identifiers used in code positions (label/jump/menu/image/at)."""
+    """Whitelist identifiers used in code positions (label/jump/menu/at)."""
     v = (value or "").strip()
     if v and _IDENT_RE.match(v):
         return v
@@ -31,6 +35,14 @@ def _safe_ident(value: Optional[str], fallback: str = "unnamed") -> str:
         # still return the sanitized fallback but never echo the raw value
         return fallback
     return fallback
+
+
+def _safe_image(value: Optional[str]) -> str:
+    """Whitelist an image name used by scene/show/hide (may contain spaces)."""
+    v = (value or "").strip()
+    if v and _IMAGE_IDENT_RE.match(v):
+        return v
+    return "unnamed"
 
 
 def _safe_color(value: Optional[str]) -> str:
@@ -58,17 +70,17 @@ def _emit_block(
     elif btype == "scene":
         transition = block.get("transition")
         lines.append(
-            f"{indent}scene {_safe_ident(block.get('image'))}"
+            f"{indent}scene {_safe_image(block.get('image'))}"
             + (f" with {_safe_ident(transition)}" if transition else "")
         )
     elif btype == "show":
         at = block.get("at")
         lines.append(
-            f"{indent}show {_safe_ident(block.get('image'))}"
+            f"{indent}show {_safe_image(block.get('image'))}"
             + (f" at {_safe_ident(at)}" if at else "")
         )
     elif btype == "hide":
-        lines.append(f"{indent}hide {_safe_ident(block.get('image'))}")
+        lines.append(f"{indent}hide {_safe_image(block.get('image'))}")
     elif btype == "narration":
         lines.append(f'{indent}"{_escape_renpy_string(block["text"])}"')
     elif btype == "dialogue":

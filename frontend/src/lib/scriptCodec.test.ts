@@ -179,8 +179,9 @@ describe("blocksToEditable：块序列 → 文本", () => {
       ],
       []
     );
+    // 无 jump 的选项渲染成 pass —— 绝不能渲染 jump start（会自环）
     expect(text).toBe(
-      ["menu m1:", '  "选吧"', '  "A":', "    jump a", '  "B":', "    jump start"].join(
+      ["menu m1:", '  "选吧"', '  "A":', "    jump a", '  "B":', "    pass"].join(
         "\n"
       )
     );
@@ -217,6 +218,42 @@ describe("blocksToEditable：块序列 → 文本", () => {
   it("scene 无 transition 时输出不带 with 子句", () => {
     const text = blocksToEditable([{ type: "scene", image: "bg park" }], []);
     expect(text).toBe("scene bg park");
+  });
+
+  it("无 jump 无 body 的菜单选项渲染 pass，且不产生 jump start", () => {
+    const menu: ScriptBlock = {
+      type: "menu",
+      id: "menu",
+      prompt: "你要怎么试探？",
+      choices: [{ text: "追问他为何熟悉动线" }, { text: "提议去便利店避雨" }],
+    };
+    const editable = blocksToEditable([menu], []);
+    expect(editable).toContain("    pass");
+    expect(editable).not.toContain("jump start");
+    // 往返后选项保持无 jump（不会把线性菜单变成自环）
+    const parsed = editableToBlocks(editable);
+    const m = parsed.find((b) => b.type === "menu");
+    if (m?.type !== "menu") throw new Error("menu lost");
+    for (const ch of m.choices) {
+      expect(ch.jump).toBeUndefined();
+    }
+    expect(blocksToEditable(parsed, [])).toBe(editable);
+  });
+
+  it("菜单选项带内联对白 body 时往返保留 blocks", () => {
+    const menu: ScriptBlock = {
+      type: "menu",
+      id: "m1",
+      choices: [
+        {
+          text: "跟着他走",
+          blocks: [{ type: "dialogue", characterId: "lx", text: "好。" }],
+        },
+        { text: "问他为何熟悉", jump: "ch2" },
+      ],
+    };
+    const editable = blocksToEditable([menu], []);
+    expect(editableToBlocks(editable)).toEqual([menu]);
   });
 
   it("dialogue/narration 含引号文本时转义并正确往返", () => {
