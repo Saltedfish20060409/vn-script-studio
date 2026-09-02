@@ -208,7 +208,9 @@ describe("blocksToEditable：块序列 → 文本", () => {
     expect(text).toBe(["menu:", '  "A":', "    jump a"].join("\n"));
     // 往返后仍归一化为裸 menu:
     const parsed = editableToBlocks(text);
-    expect(parsed[0].id).toBe("menu");
+    const menuBlock = parsed.find((b) => b.type === "menu");
+    expect(menuBlock?.type).toBe("menu");
+    expect(menuBlock && "id" in menuBlock ? menuBlock.id : undefined).toBe("menu");
     expect(blocksToEditable(parsed, [])).toBe(text);
   });
 
