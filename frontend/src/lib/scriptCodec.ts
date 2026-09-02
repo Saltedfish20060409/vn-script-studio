@@ -28,7 +28,10 @@ function blockToEditableChunk(b: ScriptBlock, characters: Character[]): string {
       return `${who} "${escapeQuote(b.text)}"`;
     }
     case "menu": {
-      const head = `menu ${b.id}:`;
+      // `menu menu:` is broken output: id "menu" is the parser's sentinel for
+      // "no explicit id", so render it as a bare `menu:`.
+      const label = b.id && b.id !== "menu" ? ` ${b.id}` : "";
+      const head = `menu${label}:`;
       const prompt = b.prompt ? `  "${escapeQuote(b.prompt)}"` : "";
       const choices = b.choices
         .map((ch) => `  "${escapeQuote(ch.text)}":\n    jump ${ch.jump ?? "start"}`)
@@ -148,7 +151,10 @@ export function editableToBlocks(text: string): ScriptBlock[] {
       continue;
     }
     if (trimmed.startsWith("menu")) {
-      const menuId = trimmed.match(/^menu\s+([A-Za-z0-9_]+)\s*:/)?.[1] ?? `menu_${i}`;
+      // id "menu" is the shared sentinel for "no explicit id" (matches the
+      // backend parser), so a bare `menu:` round-trips as `menu:` again —
+      // never as `menu menu:` or a synthetic `menu_<n>:`.
+      const menuId = trimmed.match(/^menu\s+([A-Za-z0-9_]+)\s*:/)?.[1] ?? "menu";
       const choices: { text: string; jump?: string }[] = [];
       let prompt: string | undefined;
       i += 1;

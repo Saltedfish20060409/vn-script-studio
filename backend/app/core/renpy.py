@@ -77,7 +77,10 @@ def _emit_block(
         lines.append(f'{indent}{who} "{_escape_renpy_string(block["text"])}"')
     elif btype == "menu":
         menu_id = block.get("id")
-        lines.append(f"{indent}menu" + (f" {_safe_ident(menu_id)}" if menu_id else "") + ":")
+        # `menu menu:` is broken output: when no explicit id was given, parsers
+        # store the sentinel "menu" — never re-emit it as a second keyword.
+        label = f" {_safe_ident(menu_id)}" if menu_id and menu_id != "menu" else ""
+        lines.append(f"{indent}menu{label}:")
         prompt = block.get("prompt")
         if prompt:
             lines.append(f'{indent}    "{_escape_renpy_string(prompt)}"')

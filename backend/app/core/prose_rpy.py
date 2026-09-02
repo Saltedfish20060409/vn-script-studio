@@ -17,7 +17,17 @@ _LOOSE_SCENE = re.compile(r"^\s*scene\s*$", re.I)
 _LOOSE_SCENE_NO_IMG = re.compile(r"^\s*scene\s+(with\s+\w+|bg|bg\s|img\s|image\s)?\s*$", re.I)
 _NARRATOR_PREFIX = re.compile(r'^"旁白[:：]?\s*(.+)"$')
 _DEFINE_INSIDE = re.compile(r"^\s*define\s+\w+", re.I)
+# A usable character define is `define name = Character("显示名", ...)`.
+# Free models emit `define linxia "林夏"` (missing `=`) or
+# `define linxia = "林夏"` (string RHS, not a Character) — both crash Ren'Py
+# the moment that name speaks, so treat them as structural flaws anywhere.
+_DEFINE_CHAR = re.compile(
+    r'^\s*define\s+[A-Za-z_]\w*\s*=\s*Character\s*\(', re.I
+)
 _SELF_LOOP = re.compile(r"^\s*jump\s+start\s*$", re.I)
+# `menu menu:` — model doubles the keyword when it meant a bare `menu:`.
+_MENU_MENU = re.compile(r"^\s*menu\s+menu\s*:", re.I)
+_LABEL_HEAD = re.compile(r"^\s*label\s+([A-Za-z_]\w*)\s*:", re.I)
 
 
 def prose_fingerprint(text: str) -> str:
@@ -152,24 +162,36 @@ def _rpy_has_structural_flaws(rpy: str) -> Optional[str]:
 
     Checks that map to the failure modes observed with free models:
     scene missing image / bare scene, narrator prefix baked into text,
-    define statements inside a label, and a self-looping jump back to start.
+    malformed or in-label define statements, duplicated labels,
+    `menu menu:` keyword doubling, and a self-looping jump back to start.
     """
     in_label = False
+    seen_labels = set()
     for raw in (rpy or "").split("\n"):
         s = raw.strip()
         if not s or s.startswith("#"):
             continue
-        if re.match(r"^\s*label\s+\w+\s*:", raw, re.I):
+        m_label = _LABEL_HEAD.match(raw)
+        if m_label:
+            name = m_label.group(1)
             in_label = True
+            if name in seen_labels:
+                return f"重复的 label: {name}"
+            seen_labels.add(name)
             continue
+        if _MENU_MENU.match(s):
+            return "menu 关键字重复（menu menu）"
         if _LOOSE_SCENE_NO_IMG.match(s):
             return "scene 缺少图片名（裸 scene）"
         if _LOOSE_SCENE.match(s):
             return "scene 缺少图片名（裸 scene）"
         if _NARRATOR_PREFIX.match(s):
             return "旁白文本带「旁白」前缀"
-        if _DEFINE_INSIDE.match(s) and in_label:
-            return "define 写在了 label 内部"
+        if _DEFINE_INSIDE.match(s):
+            if in_label:
+                return "define 写在了 label 内部"
+            if not _DEFINE_CHAR.match(raw):
+                return "define 未用 = Character(...) 声明角色"
         if _SELF_LOOP.match(s):
             return "存在 jump start 自循环"
     return None
@@ -199,6 +221,7 @@ async def generate_rpy_from_prose(
             fallback = parse_prose_to_blocks(text, project.characters)
             if fallback:
                 return blocks_to_rpy_text(fallback, project.characters), fallback
+            raise ValueError(f"模型输出有结构缺陷（{flaw}），自动修复失败，请重试一次")
         return (rpy if rpy.endswith("\n") else rpy + "\n"), blocks
     blocks = parse_prose_to_blocks(text, project.characters)
     if not blocks:

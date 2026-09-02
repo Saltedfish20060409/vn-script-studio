@@ -194,6 +194,24 @@ describe("blocksToEditable：块序列 → 文本", () => {
     expect(text).toBe(["menu m2:", '  "A":', "    jump a"].join("\n"));
   });
 
+  it("id 为哨兵值 menu 的块序列化为裸 menu:（不产生 menu menu）", () => {
+    const text = blocksToEditable(
+      [
+        {
+          type: "menu",
+          id: "menu",
+          choices: [{ text: "A", jump: "a" }],
+        },
+      ],
+      []
+    );
+    expect(text).toBe(["menu:", '  "A":', "    jump a"].join("\n"));
+    // 往返后仍归一化为裸 menu:
+    const parsed = editableToBlocks(text);
+    expect(parsed[0].id).toBe("menu");
+    expect(blocksToEditable(parsed, [])).toBe(text);
+  });
+
   it("scene 无 transition 时输出不带 with 子句", () => {
     const text = blocksToEditable([{ type: "scene", image: "bg park" }], []);
     expect(text).toBe("scene bg park");
