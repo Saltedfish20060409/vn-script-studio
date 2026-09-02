@@ -209,6 +209,16 @@ define gui.insensitive_color = "#88888888"
 def export_script_rpy(project: VnProject) -> str:
     """script.rpy — story + a start label bridging to the first chapter."""
     body = export_to_renpy(project)
+    # Only inject a `start → first-label` bridge when the project does NOT
+    # already define `start` itself (otherwise we'd emit a duplicate label
+    # and Ren'Py would refuse to load the script).
+    has_start = any(
+        b.get("type") == "label" and (b.get("name") == "start")
+        for ch in project.chapters
+        for b in (ch.blocks or [])
+    )
+    if has_start:
+        return body
     first = _first_chapter_label(project)
     if first:
         body = (
@@ -218,6 +228,8 @@ def export_script_rpy(project: VnProject) -> str:
             f"{body}"
         )
     else:
+        # No label at all in the story → give it a start that says so
+        # (and let the real chapters follow; none of them define start).
         body = "label start:\n    \"（空项目——请先在 VN Script Studio 中写开场。）\"\n\n" + body
     return body
 

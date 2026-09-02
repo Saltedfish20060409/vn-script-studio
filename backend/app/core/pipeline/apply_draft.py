@@ -110,7 +110,11 @@ def _parse_single_line_block(
         }
     m_bare = _BARE_QUOTE.match(s)
     if m_bare:
-        return {"type": "narration", "text": m_bare.group(1).strip()}
+        t = m_bare.group(1).strip()
+        # Free models often bake the "旁白" label into quoted narration
+        # (e.g. "旁白 雨下大了。") — strip it so the line plays as plain text.
+        t = re.sub(r"^旁白[:：]?\s*", "", t)
+        return {"type": "narration", "text": t}
     if s.startswith(("$", "define ", "image ")):
         return {"type": "raw", "code": raw.rstrip()}
     if ":" not in s and "：" not in s and not s.startswith("["):
@@ -290,7 +294,9 @@ def plain_text_to_script_blocks(
 
         m_bare = _BARE_QUOTE.match(s)
         if m_bare:
-            blocks.append({"type": "narration", "text": m_bare.group(1).strip()})
+            t = m_bare.group(1).strip()
+            t = re.sub(r"^旁白[:：]?\s*", "", t)
+            blocks.append({"type": "narration", "text": t})
             i += 1
             continue
 

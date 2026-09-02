@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Character, SceneChapter, ScriptBlock } from "../types/vn";
 import {
   advance,
   choose,
+  MAX_PLAY_STEPS,
   nextVisible,
   PLAY_START,
   scopeOf,
@@ -38,11 +39,23 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
   const [cursor, setCursor] = useState<PlayState>(PLAY_START);
   const [history, setHistory] = useState<PlayState[]>([]);
   const [phase, setPhase] = useState<"intro" | "playing" | "ended">("intro");
+  const [loopStop, setLoopStop] = useState(false);
+  const stepRef = useRef(0);
 
   const current = useMemo(() => {
     const scope = scopeOf(cursor, chapter.blocks ?? []);
     return scope[cursor.index] ?? null;
   }, [cursor, chapter.blocks]);
+
+  const bumpStep = useCallback(() => {
+    stepRef.current += 1;
+    if (stepRef.current > MAX_PLAY_STEPS) {
+      setLoopStop(true);
+      setPhase("ended");
+      return true;
+    }
+    return false;
+  }, []);
 
   const move = useCallback((next: PlayState, ended: boolean) => {
     setCursor(next);
@@ -52,6 +65,7 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
   // Land on the first playable block when playback starts.
   useEffect(() => {
     if (phase !== "playing") return;
+    stepRef.current = 0;
     const idx = nextVisible(chapter.blocks ?? [], 0);
     if (idx === null) setPhase("ended");
     else if (idx !== 0) setCursor({ index: idx, stack: [], resume: [] });
@@ -64,6 +78,7 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
     if (current.type === "jump") {
       const target = labelIndex.get(current.target);
       if (target !== undefined) {
+        if (bumpStep()) return;
         setHistory((h) => [...h.slice(-300), cursor]);
         // 落在 label 之后第一个可见块，避免停在 label 上显示空白页
         const vi = nextVisible(chapter.blocks ?? [], target);
@@ -77,13 +92,14 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
       setPhase("ended");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, phase, labelIndex]);
+  }, [current, phase, labelIndex, bumpStep]);
 
   const advanceStep = useCallback(() => {
+    if (bumpStep()) return;
     setHistory((h) => [...h.slice(-300), cursor]);
     const { state, ended } = advance(cursor, chapter.blocks ?? []);
     move(state, ended);
-  }, [cursor, chapter.blocks, move]);
+  }, [cursor, chapter.blocks, move, bumpStep]);
 
   const goBack = useCallback(() => {
     setHistory((h) => {
@@ -97,12 +113,15 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
   }, []);
 
   const reset = useCallback(() => {
+    stepRef.current = 0;
+    setLoopStop(false);
     setCursor(PLAY_START);
     setHistory([]);
     setPhase("playing");
   }, []);
 
   const onChoose = (c: { text: string; jump?: string; blocks?: ScriptBlock[] }) => {
+    if (bumpStep()) return;
     setHistory((h) => [...h.slice(-300), cursor]);
     const { state, ended } = choose(cursor, chapter.blocks ?? [], c, labelIndex);
     move(state, ended);
@@ -190,7 +209,15 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
     return (
       <div className={styles.wrap}>
         <div className={styles.endCard}>
-          <p className={styles.projectTitle}>—— 本章完 ——</p>
+          <p className={styles.projectTitle}>
+            {loopStop ? "—— 检测到疑似死循环 ——" : "—— 本章完 ——"}
+          </p>
+          {loopStop ? (
+            <p className={styles.endNote}>
+              脚本结构可能导致无限跳转（常见于 AI 生成的 RPY：选项跳回开头）。
+              已自动停止。可返回编辑检查脚本，或重新生成。
+            </p>
+          ) : null}
           <button type="button" className={styles.start} onClick={reset}>
             重新播放
           </button>

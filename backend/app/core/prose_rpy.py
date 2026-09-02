@@ -2,11 +2,22 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import List, Optional, Sequence
 
 from app.core.pipeline.apply_draft import extract_script_body, plain_text_to_script_blocks
 from app.core.renpy import _char_lookup, _emit_block
 from app.domain.types import Character, ScriptBlock, VnProject
+
+# SECURITY/QUALITY: prompts + free models routinely emit structurally broken
+# Ren'Py (scene without image, define inside label, stray "旁白" prefixes,
+# menu with a single jump-to-start self-loop, duplicated keywords). We reject
+# such output instead of shipping it to the player / exporter.
+_LOOSE_SCENE = re.compile(r"^\s*scene\s*$", re.I)
+_LOOSE_SCENE_NO_IMG = re.compile(r"^\s*scene\s+(with\s+\w+|bg|bg\s|img\s|image\s)?\s*$", re.I)
+_NARRATOR_PREFIX = re.compile(r'^"旁白[:：]?\s*(.+)"$')
+_DEFINE_INSIDE = re.compile(r"^\s*define\s+\w+", re.I)
+_SELF_LOOP = re.compile(r"^\s*jump\s+start\s*$", re.I)
 
 
 def prose_fingerprint(text: str) -> str:
@@ -112,12 +123,15 @@ async def llm_prose_to_rpy(
                 "role": "system",
                 "content": (
                     "你是视觉小说编剧。把自然语言剧本改写成可上演的 Ren'Py 脚本。"
-                    "只输出脚本，不要解释。约定：\n"
-                    "- label start: 作为本章入口（若已有其他 label 可保留）\n"
-                    '- 旁白：一行 "旁白"\n'
+                    "只输出脚本，不要解释。严格语法：\n"
+                    "- label 必须顶格；对白/旁白在 label 内缩进 4 空格\n"
+                    '- 旁白：一行双引号文本，如 "雨下大了。"（不要把"旁白"二字写进去）\n'
                     '- 对白：define名 "台词"（define 名用英文小写）\n'
-                    "- 场景：scene bg_xxx / show / hide\n"
-                    "- 分支：menu / jump\n"
+                    '- 场景：scene 后必须有图片名，如 scene bg_street；禁止裸 scene\n'
+                    "- define 声明角色放在所有 label 之前（顶层），禁止放进 label 内部\n"
+                    "- 分支：menu: 后每行一个选项，选项文本用双引号；不要写 menu menu\n"
+                    "- 选项若跳转用 jump 标签名；全章必须有且只有一个 return 结尾，"
+                    "禁止把选项跳回 start 造成死循环\n"
                     f"已有角色：{roster}"
                 ),
             },
@@ -131,6 +145,34 @@ async def llm_prose_to_rpy(
     )
     content, _ = content_from_response(res)
     return extract_script_body(content)
+
+
+def _rpy_has_structural_flaws(rpy: str) -> Optional[str]:
+    """Return a reason string when LLM Ren'Py is structurally unsafe, else None.
+
+    Checks that map to the failure modes observed with free models:
+    scene missing image / bare scene, narrator prefix baked into text,
+    define statements inside a label, and a self-looping jump back to start.
+    """
+    in_label = False
+    for raw in (rpy or "").split("\n"):
+        s = raw.strip()
+        if not s or s.startswith("#"):
+            continue
+        if re.match(r"^\s*label\s+\w+\s*:", raw, re.I):
+            in_label = True
+            continue
+        if _LOOSE_SCENE_NO_IMG.match(s):
+            return "scene 缺少图片名（裸 scene）"
+        if _LOOSE_SCENE.match(s):
+            return "scene 缺少图片名（裸 scene）"
+        if _NARRATOR_PREFIX.match(s):
+            return "旁白文本带「旁白」前缀"
+        if _DEFINE_INSIDE.match(s) and in_label:
+            return "define 写在了 label 内部"
+        if _SELF_LOOP.match(s):
+            return "存在 jump start 自循环"
+    return None
 
 
 async def generate_rpy_from_prose(
@@ -148,6 +190,15 @@ async def generate_rpy_from_prose(
         blocks = parse_prose_to_blocks(rpy, project.characters)
         if not blocks:
             raise ValueError("模型没有产出可用脚本，请重试")
+        # QUALITY GATE: if the model's output is structurally broken (common
+        # with free models), fall back to the deterministic prose parser which
+        # always yields structurally sound blocks — worse fidelity, but never
+        # a dead loop or a bare `scene bg`.
+        flaw = _rpy_has_structural_flaws(rpy)
+        if flaw:
+            fallback = parse_prose_to_blocks(text, project.characters)
+            if fallback:
+                return blocks_to_rpy_text(fallback, project.characters), fallback
         return (rpy if rpy.endswith("\n") else rpy + "\n"), blocks
     blocks = parse_prose_to_blocks(text, project.characters)
     if not blocks:

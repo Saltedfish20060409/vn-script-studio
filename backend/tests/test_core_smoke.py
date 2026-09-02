@@ -59,9 +59,8 @@ def test_renpy_project_bundle():
     files = export_project_bundle(p)
     assert set(files) == {"script.rpy", "options.rpy", "gui.rpy", "README.txt"}
     script = export_script_rpy(p)
-    assert "label start:" in script
-    # start bridges to the first chapter label
-    bridge = script.split("label start:")[1].split("\n")[1]
-    assert bridge.strip().startswith("jump ")
+    # demo chapter already defines `label start:` — the export must NOT inject
+    # a duplicate start bridge (regression: previously emitted two `label start:`)
+    assert script.count("label start:") == 1
     assert "define config.name" in files["options.rpy"]
     assert "define gui.accent_color" in files["gui.rpy"]

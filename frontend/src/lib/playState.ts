@@ -16,7 +16,14 @@ export type PlayState = {
   resume: number[];
 };
 
+/** SECURITY/QUALITY: cap total advance/jump steps before we declare a loop.
+ *  A chapter that legitimately loops (e.g. menu cycles) could exceed this,
+ *  but a pathological `jump start` self-loop would otherwise never end. */
+export const MAX_PLAY_STEPS = 2000;
+
 export const PLAY_START: PlayState = { index: 0, stack: [], resume: [] };
+
+export type StepCount = { steps: number };
 
 export function scopeOf(state: PlayState, blocks: ScriptBlock[]): ScriptBlock[] {
   return state.stack.length ? state.stack[state.stack.length - 1] : blocks;
