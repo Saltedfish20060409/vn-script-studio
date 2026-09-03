@@ -39,6 +39,17 @@ export function nextVisible(
   return null;
 }
 
+/** Is there a `return` later in this scope (past `from`, ignoring comments)? */
+function hasReturnAfter(blocks: ScriptBlock[], from: number): boolean {
+  for (let i = from; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (b.type === "return") return true;
+    if (b.type === "comment" || b.type === "label") continue;
+    if (VISIBLE.has(b.type) || b.type === "jump") return false; // 之后还有内容
+  }
+  return false;
+}
+
 export function advance(
   state: PlayState,
   blocks: ScriptBlock[]
@@ -46,6 +57,11 @@ export function advance(
   const scope = scopeOf(state, blocks);
   const ni = nextVisible(scope, state.index + 1);
   if (ni !== null) return { state: { ...state, index: ni }, ended: false };
+  // 分支正文常以 return 收尾（Ren'Py 合法）：当前 scope 之后只有 return 时
+  // 直接结束，而不是回退外层后把 index 归零重播（会死循环）。
+  if (hasReturnAfter(scope, state.index + 1)) {
+    return { state, ended: true };
+  }
   if (state.stack.length) {
     const stack = state.stack.slice(0, -1);
     const resume = state.resume.slice(0, -1);
@@ -53,7 +69,8 @@ export function advance(
     const resumeAt = state.resume[state.resume.length - 1];
     const ri = nextVisible(top, resumeAt);
     if (ri !== null) return { state: { index: ri, stack, resume }, ended: false };
-    return { state: { index: 0, stack, resume }, ended: false };
+    // 外层也没有可续内容 → 结束，而不是 index 归零重播
+    return { state: { index: 0, stack, resume }, ended: true };
   }
   return { state, ended: true };
 }

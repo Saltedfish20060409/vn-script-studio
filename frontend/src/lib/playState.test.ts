@@ -17,6 +17,59 @@ const dialog = (text: string): ScriptBlock => ({
 });
 
 describe("playState", () => {
+  it("menu 分支正文以 return 收尾时，走完分支即结束（不归零重播）", () => {
+    const blocks: ScriptBlock[] = [
+      narr("A"),
+      {
+        type: "menu",
+        id: "m",
+        choices: [
+          {
+            text: "接过伞沿",
+            blocks: [dialog("谢谢。"), dialog("不用。"), { type: "return" }],
+          },
+        ],
+      },
+      { type: "return" },
+    ];
+    const menuIdx = 1;
+    const { state } = choose(
+      { ...PLAY_START, index: menuIdx },
+      blocks,
+      { blocks: [dialog("谢谢。"), dialog("不用。"), { type: "return" }] },
+      new Map()
+    );
+    // 播放分支内的两句对白
+    const s1 = advance(state, blocks);
+    expect(s1.ended).toBe(false);
+    const s2 = advance(s1.state, blocks);
+    // 分支以 return 结束 → advance 直接 ended，而不是 index 归零
+    expect(s2.ended).toBe(true);
+    expect(s2.state.index).not.toBe(0);
+  });
+
+  it("分支无 return 且菜单后无可见内容时结束，不死循环回开头", () => {
+    const blocks: ScriptBlock[] = [
+      narr("A"),
+      {
+        type: "menu",
+        id: "m",
+        choices: [{ text: "x", blocks: [dialog("inner")] }],
+      },
+    ];
+    const menuIdx = 1;
+    const { state } = choose(
+      { ...PLAY_START, index: menuIdx },
+      blocks,
+      { blocks: [dialog("inner")] },
+      new Map()
+    );
+    // 播放分支内唯一对白后：栈空 + 菜单后无可见块 → 必须 ended，
+    // 而不是回到 index 0 造成死循环。
+    const fin = advance(state, blocks);
+    expect(fin.ended).toBe(true);
+  });
+
   it("advance skips invisible blocks (labels/comments) to the next visible", () => {
     const blocks = [label("start"), narr("A"), label("mid"), dialog("B")];
     // Start at the narration (index 1).
