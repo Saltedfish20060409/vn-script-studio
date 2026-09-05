@@ -13,7 +13,7 @@ router = APIRouter(tags=["notice"])
 NOTICE = {
     "version": 3,
     "title": "欢迎使用 VN Script Studio 🎬",
-    "updatedAt": "2026-08-23",
+    "updatedAt": "2026-09-06",
     "sections": [
         {
             "heading": "欢迎",
