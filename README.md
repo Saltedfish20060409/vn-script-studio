@@ -7,7 +7,7 @@
 
 ## 许可
 
-本项目代码采用 **AGPL-3.0**（见 [LICENSE](LICENSE)）。  
+本项目代码采用 **MIT License**（见 [LICENSE](LICENSE)）。  
 ACG 设定卡内容参考自 **萌娘百科（Moegirlpedia）**，遵循其 **CC BY-NC-SA 3.0 CN** 许可（以各条目页面标注为准）；卡片为精炼改写，来源链接见各卡片 `source_url`。
 
 ---
