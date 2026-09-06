@@ -11,9 +11,9 @@ from fastapi import APIRouter
 router = APIRouter(tags=["notice"])
 
 NOTICE = {
-    "version": 3,
+    "version": 4,
     "title": "欢迎使用 VN Script Studio 🎬",
-    "updatedAt": "2026-09-06",
+    "updatedAt": "2026-09-07",
     "sections": [
         {
             "heading": "欢迎",
