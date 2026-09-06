@@ -3,7 +3,7 @@
 面向**视觉小说 / 轻小说向剧本**的 AI 辅助写作工作室。  
 默认用自然语言写剧本，需要上演时再切到 Ren'Py（`.rpy`）。
 
-应用内顶栏 **帮助**，以及公开页 [帮助与 FAQ](https://studio.nexesr.top/help)。AI 生成内容请自行审稿后再用于发行。
+应用内顶栏 **帮助** 有完整使用说明。AI 生成内容请自行审稿后再用于发行。
 
 ## 许可
 
@@ -14,7 +14,7 @@ ACG 设定卡内容参考自 **萌娘百科（Moegirlpedia）**，遵循其 **CC
 
 ## 给作者
 
-在线试用：[studio.nexesr.top](https://studio.nexesr.top)（需注册并验证邮箱）。
+想先上手体验的话，最快的方式是本地 Docker 一键跑起来（见下方「给开发者 · 方式 A」）；需要公网服务时，把 `vnscriptstudio.cn`（或你自己的域名）解析到你的服务器即可，README 其余部分不绑定任何特定站点。
 
 自建见下方「给开发者」。
 
@@ -158,7 +158,7 @@ cd frontend
 npm ci && npm run build
 ```
 
-生产部署一般用 Nginx 反代 `/api` 到后端 :8000、托管 `frontend/dist`（或参考 `scripts/ops/` 的备份/监控脚本）。
+自己长期运行时，可用任意 Nginx / Caddy 反代 `/api` 到后端 :8000 并托管 `frontend/dist`；备份与日常维护由你自行安排（本仓库只含应用代码与本地部署入口，不含特定服务器的运维脚本）。
 
 ### 主要 API（`/api/v1`）
 
@@ -240,11 +240,9 @@ pytest tests/ -q
 > 前端：`cd frontend && npm test`（vitest，纯函数单测）。
 > 前端 e2e：`cd frontend && npm run build && npm run test:e2e`（需本地 PG 可达，见 playwright.config.ts）。
 
-### 备份 / 恢复 / 监控
+### 备份 / 恢复
 
-线上：`scripts/ops/backup_pg.sh` 每天 03:00 UTC `pg_dump`（保留 14 份，目录 `/opt/vn-script-studio/backups`）。健康检查 `GET /health`（Cloudflare 可对 `https://studio.nexesr.top/health` 配 uptime）。容器日志 json-file 轮转（20MB × 5）。封禁字段为 `users.disabled_at`（登录 / refresh / 鉴权均检查）：`docker exec -it vnss-api python -m app ban <用户名>` / `unban` / `list-banned`；或设 `ADMIN_USERNAMES` 后调 `POST /api/v1/admin/users/{username}/ban`。
-
-本机 Windows：
+本机 Windows（PostgreSQL 数据在本地 Docker 卷中时同样适用）：
 
 ```powershell
 cd backend

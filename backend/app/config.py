@@ -110,7 +110,7 @@ class Settings(BaseSettings):
 
     # Resend transactional email (verify / password reset). Empty = email auth off.
     resend_api_key: str = ""
-    resend_from_email: str = "noreply@send.studio.nexesr.top"
+    resend_from_email: str = "noreply@vnscriptstudio.cn"
     public_app_url: str = "http://localhost:5173"
 
     @property
