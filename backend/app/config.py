@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     icp_beian_number: str = ""
     gongan_beian_number: str = ""
 
+    # Agent 写作上下文主预算（字符数）。默认 12000 是成本/质量平衡值而非
+    # 模型窗口限制；用环境变量 AGENT_CONTEXT_MAX_CHARS 可调大试跑。
+    # 注意：调大 = 每次请求输入 token 线性变多（费用/耗时/免费档限流都受影响），
+    # 而且治不了"记住整本书"——跨章连贯靠检索与滚动记忆，不是单次窗口。
+    agent_context_max_chars: int = 12000
+
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"

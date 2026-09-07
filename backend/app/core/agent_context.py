@@ -30,6 +30,21 @@ def is_agent_task(v: Any) -> bool:
     return isinstance(v, str) and v in AGENT_TASKS
 
 
+def _default_context_max_chars() -> int:
+    """Agent 上下文主预算：优先 AGENT_CONTEXT_MAX_CHARS（Settings），默认 12000。
+
+    用 try/except 包裹，保证纯上下文拼装（含测试）永远有可用默认值，
+    不会因 SECRET_KEY 校验等环境问题抛错。
+    """
+    try:
+        from app.config import get_settings
+
+        v = get_settings().agent_context_max_chars
+        return int(v) if v and v > 0 else 12000
+    except Exception:  # noqa: BLE001 - core util must never raise for tuning knob
+        return 12000
+
+
 @dataclass
 class AgentContextOptions:
     chapterId: Optional[str] = None
@@ -268,7 +283,7 @@ def build_agent_context(
 
     Prefer: meta + bible digest + chapter index + focus chapter + scored slices.
     """
-    max_chars = maxChars if maxChars is not None else 12000
+    max_chars = maxChars if maxChars is not None else _default_context_max_chars()
     resolved_task = task or (infer_agent_task(userMessage) if userMessage else "chat")
     included: List[str] = [f"模式:{resolved_task}"]
 
