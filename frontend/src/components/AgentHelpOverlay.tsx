@@ -19,14 +19,14 @@ const HELP_MD = `### 责编能帮你做什么
 5. **整理设定 / 附件**：说「把这段整理进关系表 / 时间线」，或传份资料说「按附件更新设定」。
 6. **改坏能撤**：Agent 写入后，消息下方有「撤回编辑（N 步）」，一步回到写入前。
 
-不换任何作家视角时，默认的「通用文学编辑」会自动带上轻小说 / 视觉小说写法底盘（可演对白、场钩子、去说明书腔）——这块你不用管，说人话就行。
+不换任何作家视角时，默认的「通用文学编辑」会自动按一套轻小说 / 视觉小说的写作要点帮你看稿（对白要能演得动、每场留个让人想读下去的钩子、别把设定像说明书一样倒出来）——这些你不用管，说人话就行。
 
 ### 推荐写作流程
 
 1. **直接聊**：说清场次或卡点。  
-2. **（可选）换作家眼光**：点顶部 **⇄**，选一位作家 skill 卡（可开多选做头脑风暴）。  
+2. **（可选）换作家眼光**：点顶部 **⇄**，挑一位作家视角（可开多选做头脑风暴）。  
 3. **文风体检**（可选）：扫问题不改文。  
-4. **定稿**：过门禁并更新写作账本。
+4. **定稿**：AI 先做自动检查，通过后把改动写进正文并记入变更记录。
 
 ### 怎么说话
 
@@ -34,7 +34,7 @@ const HELP_MD = `### 责编能帮你做什么
 
 ### 卡壳时的替代
 
-「跑流水线：……」适合没思路或要整场戏——**不是**日常必经步骤。
+「自动写作：……」适合没思路或要一整场戏——**不是**日常必经步骤。
 
 ### 强头脑风暴
 
@@ -46,9 +46,9 @@ const HELP_MD = `### 责编能帮你做什么
 
 ### 作家卡从哪来
 
-内置若干公开技法蒸馏包（女娲五层格式）。也可用 [女娲.skill](https://github.com/alchaincyf/nuwa-skill) 离线蒸馏作家 → 导入工程（见仓库 \`backend/vendor/NUWA_LENS_WORKFLOW.md\`）。
+内置 15 位作家的视角（每张卡是一套公开写作技法的启发视角，不是作家本人，禁止仿写原文）。想自制更多视角的高级用户：用 [女娲.skill](https://github.com/alchaincyf/nuwa-skill) 离线把作家技法蒸馏成卡再导入工程（流程见仓库 \`backend/vendor/NUWA_LENS_WORKFLOW.md\`）。
 
-冲突时：**风格硬规则 > 通用编辑 > 所选作家视角**。`;
+冲突时：**你作品里定的硬规则 > 通用编辑 > 所选作家视角**。`;
 
 /** 功能说明弹层：Harness 纪律偏好 + 推荐流程 markdown。纯展示。 */
 export function AgentHelpOverlay({ prefs, onPrefsChange, onClose }: Props) {
@@ -64,7 +64,7 @@ export function AgentHelpOverlay({ prefs, onPrefsChange, onClose }: Props) {
         </button>
       </header>
       <div className={styles.harnessPrefs}>
-        <p className={styles.harnessPrefsTitle}>Harness 定稿纪律</p>
+        <p className={styles.harnessPrefsTitle}>定稿纪律（进阶）</p>
         <label className={styles.harnessToggle}>
           <input
             type="checkbox"
@@ -73,7 +73,7 @@ export function AgentHelpOverlay({ prefs, onPrefsChange, onClose }: Props) {
           />
           <span>
             声线硬门禁
-            <small>破人设（high）直接挡定稿 / 入库</small>
+            <small>对白明显不像这个角色（破人设）时，直接拦下，不写入正文</small>
           </span>
         </label>
         <label className={styles.harnessToggle}>
@@ -84,7 +84,7 @@ export function AgentHelpOverlay({ prefs, onPrefsChange, onClose }: Props) {
           />
           <span>
             终检声线
-            <small>流水线末轮 / 定稿跑角色声线检查</small>
+            <small>自动写作 / 定稿收尾时，自动检查对白像不像角色</small>
           </span>
         </label>
         <label className={styles.harnessToggle}>

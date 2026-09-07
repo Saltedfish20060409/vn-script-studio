@@ -129,7 +129,7 @@ export function AnalysisPanels({
         if (dirty) {
           setScanPrompt(
             chg.isFirstScan
-              ? "尚未扫描过事实层。要根据剧本 / 圣经 / 角色卡生成关系与时间线候选吗？"
+              ? "还没扫描过。要让 AI 通读剧本、作品设定和角色卡，整理出角色关系与时间线候选吗？"
               : "检测到剧本或设定变更。要增量扫描并更新待审候选吗？"
           );
         } else if (rec.staleCount > 0) {
@@ -322,7 +322,7 @@ export function AnalysisPanels({
         <button
           type="button"
           disabled={factBusy}
-          title="忽略增量指纹，全量重扫"
+          title="不看上次扫到哪，把全部内容重新扫一遍"
           onClick={() => void runScan(true)}
         >
           全量扫描
@@ -332,7 +332,7 @@ export function AnalysisPanels({
           disabled={factBusy || inbox.length === 0}
           onClick={() => setReviewOpen(true)}
         >
-          待审托盘{inbox.length ? ` (${inbox.length})` : ""}
+          待审列表{inbox.length ? ` (${inbox.length})` : ""}
         </button>
         {staleCount > 0 ? (
           <>
@@ -408,7 +408,7 @@ export function AnalysisPanels({
       {sub === "branch" && (
         <div className={styles.panel}>
           <p className={styles.hint}>
-            结构事实：根据当前章节的 label / menu / jump 自动生成，不进待审托盘。
+            分支路线图：按当前章节里的分支点自动画出结构，直接生成、不需要你确认。
           </p>
           {tree[0]?.children.length ? (
             <BranchView nodes={tree} />
@@ -640,7 +640,7 @@ export function AnalysisPanels({
       {sub === "voice" && (
         <div className={styles.panel}>
           <p className={styles.hint}>
-            观点层：语气报告不写入关系图/时间线。二期将升级为对抗式审稿并按章节版本落库。
+            语气报告只是参考意见，不会改动正文或关系图 / 时间线；最终以你的判断为准。
           </p>
           <div className={styles.toolbar}>
             <button type="button" disabled={voiceBusy} onClick={() => void runVoice()}>

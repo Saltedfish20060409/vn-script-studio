@@ -43,7 +43,7 @@ const zh = {
   "settings.criticModel": "评审模型名",
   "settings.criticHint": "可选：独立的评审模型（critic，改稿对照时使用）。",
   "settings.llmNote":
-    "Key 存在本机浏览器，请求时带给后端去连模型。本站不提供共用额度，用量走你自己的账户。留空则回退服务端环境变量（公网实例通常为空）。",
+    "填写你从模型服务商（如 DeepSeek 开放平台）申请的 API Key（形如 sk-…），AI 才能为你写作，费用记在你自己的模型账户上。可加密保存到账号（推荐，可跨设备），也可只存当前浏览器。留空则使用站内免费体验模型（每日限额，适合先试效果）。",
   "common.cancel": "取消",
   "common.save": "保存",
   "common.ok": "好的",
@@ -87,7 +87,7 @@ const en: Record<keyof typeof zh, string> = {
   "settings.criticHint":
     "Optional separate review model (used when comparing revisions).",
   "settings.llmNote":
-    "Keys stay in this browser and are sent with Studio API calls so the backend can reach your model. We do not provide a shared quota — usage bills your own account. Empty falls back to the server environment (usually empty on the public instance).",
+    "Add your own model API key (e.g. from the DeepSeek platform, like sk-…) so AI can write for you; usage is billed to your own model account. You can store it encrypted in your account (recommended, works across devices) or only in this browser. Leave empty to use the built-in free trial model (daily quota, good for trying).",
   "common.cancel": "Cancel",
   "common.save": "Save",
   "common.ok": "OK",

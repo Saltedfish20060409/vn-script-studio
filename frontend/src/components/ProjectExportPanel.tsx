@@ -34,8 +34,9 @@ export function ProjectExportPanel({
     <>
       <div className={styles.toolbar}>
         <span>
-          先根据当前剧本生成 .rpy 预览；投稿可直接下载 Markdown / Word 稿，工程
-          JSON 随时导出；需要可运行工程时下载 Ren'Py 项目包（zip）。
+          按你的目的选：投稿 / 交稿 → 「下载 Word」或「下载 Markdown」；想在电脑上运行试玩
+          → 「下载 Ren'Py 项目包（zip）」（Ren'Py 是免费的文字冒险游戏制作软件，用它打开即可运行）。
+          「生成 .rpy / 下载 .rpy」是给想在 Ren'Py 里继续改脚本的进阶用法；「下载工程 .json」是整份作品的备份文件。
         </span>
         <div className={styles.aiQuick}>
           <button type="button" className={styles.primary} onClick={onGenerateRpy}>
@@ -61,14 +62,14 @@ export function ProjectExportPanel({
           <button type="button" onClick={onDownloadDocx} title="投稿用 Word 稿（.docx）">
             下载 Word
           </button>
-          <button type="button" onClick={onDownloadJson}>
-            下载工程 .json
+          <button type="button" onClick={onDownloadJson} title="整份作品的备份文件，以后可导入恢复">
+            下载工程备份 (.json)
           </button>
           <button
             type="button"
             disabled={bundleBusy}
             onClick={onDownloadBundle}
-            title="下载完整 Ren'Py 项目骨架（script/options/gui/README 打包为 zip）"
+            title="下载一个 zip，内含可直接运行的完整工程文件，用免费的 Ren'Py 引擎打开即可试玩"
           >
             {bundleBusy ? "打包中…" : "下载 Ren'Py 项目包"}
           </button>

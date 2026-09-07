@@ -67,7 +67,7 @@ export function LorePanel({ projectId }: Props) {
     setLookupCard(null);
     try {
       const res = await loreSearch(projectId, t);
-      if (!res.moegirlEnabled) setError("萌百未启用（MOEGIRL_ENABLED=false）");
+      if (!res.moegirlEnabled) setError("萌百搜索暂未启用：现在不能在线查词，但仍可手动添加参考卡。");
       setHits(res.hits || []);
     } catch (e) {
       setError(String((e as { message?: unknown } | null)?.message ?? e));
@@ -182,9 +182,9 @@ export function LorePanel({ projectId }: Props) {
       <header className={styles.head}>
         <h2>写作参考卡</h2>
         <p className={styles.sub}>
-          收藏的参考卡会在 <strong>Agent 写作时作为参考注入上下文</strong>
-          （指导套路怎么落地、什么该避免）。可手动添加，也可从萌百搜索精炼后收藏。
-          {meta && !meta.moegirlEnabled && "（萌百未启用，仅离线种子与手动添加）"}
+          收藏的参考卡会在 <strong>AI 写作时作为参考</strong>
+          （教它这类套路具体怎么落地、什么写法要避免）。可手动添加，也可从萌百（萌娘百科）搜索词条、精炼后收藏。
+          {meta && !meta.moegirlEnabled && "（萌百搜索暂未启用，只能用离线条目和手动添加）"}
         </p>
       </header>
 
@@ -252,7 +252,7 @@ export function LorePanel({ projectId }: Props) {
           disabled={busy !== ""}
           onClick={() => void doInspire()}
         >
-          {busy === "inspire" ? "生成中…" : "查看 Agent 注入"}
+          {busy === "inspire" ? "生成中…" : "查看 AI 会参考哪些卡"}
         </button>
       </div>
 
@@ -343,13 +343,13 @@ export function LorePanel({ projectId }: Props) {
 
       {inspireBlock && (
         <div className={styles.inspire}>
-          <h4>当前 Agent 会看到的设定卡</h4>
+          <h4>当前 AI 写作时会参考的设定卡</h4>
           <pre>{inspireBlock}</pre>
         </div>
       )}
 
       <div className={styles.saved}>
-        <h3>本作参考卡（{cards.length}）· 写入时注入 Agent</h3>
+        <h3>本作参考卡（{cards.length}）· AI 写作时会带上这些卡作参考</h3>
         {grouped.length === 0 && (
           <p className={styles.empty}>
             暂无参考卡；可手动添加，或搜索萌百后「收藏到本作」。

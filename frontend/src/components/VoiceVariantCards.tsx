@@ -56,10 +56,10 @@ export function VoiceVariantCards({
               onClick={() => onAccept(v, i)}
             >
               {busy === `accept-${i}`
-                ? "写入语料…"
+                ? "保存中…"
                 : handlePlaceholder && v.placeholder
-                  ? "不可入库"
-                  : "选这组入库"}
+                  ? "无法保存"
+                  : "选这组存为示例"}
             </button>
           </footer>
         </article>

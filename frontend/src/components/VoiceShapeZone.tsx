@@ -334,7 +334,7 @@ export function VoiceShapeZone({
       {shapeMode === "manual" && (
         <div className={styles.manualBox}>
           <p className={styles.manualHint}>
-            每行一句，或「角色：台词」格式；直接作为金句正例入库
+            每行一句，或「角色：台词」格式；直接存成这个角色的示例（只作参考，不写进正文）
           </p>
           {renderScenarioControls(false)}
           <textarea
@@ -348,7 +348,7 @@ export function VoiceShapeZone({
             disabled={!!busy || !manualText.trim()}
             onClick={() => onAcceptManual("manual")}
           >
-            {busy === "accept-manual" ? "入库中…" : "金句入库"}
+            {busy === "accept-manual" ? "保存中…" : "存为示例"}
           </button>
         </div>
       )}

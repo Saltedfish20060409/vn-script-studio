@@ -712,7 +712,7 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                   </span>
                 </label>
                 <p className={styles.note}>
-                  模型 API Key 与 Base URL 在「模型」页签保存在本机；请求后端时用于连接对应模型。
+                  模型连接信息（API Key、Base URL、模型名）在「模型」页签配置：可加密保存到你的账号（跨设备），也可只存当前浏览器。之后的 AI 调用会用你配置的模型。
                 </p>
               </div>
             )}

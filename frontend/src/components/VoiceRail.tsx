@@ -100,14 +100,14 @@ export function VoiceRail({
               {character.displayName}
             </h3>
             <p className={styles.dossierMeta}>
-              {sampleCount} 正例 · 覆盖 {coverage} 场景
+              {sampleCount} 条示例 · 覆盖 {coverage} 类场景
               {hasMindPack ? " · 已有思维包" : " · 尚无思维包"}
               {ready ? " · 可合成" : ""}
             </p>
           </div>
           <dl className={styles.dossierGrid}>
             <div>
-              <dt>短正例</dt>
+              <dt>短对白示例</dt>
               <dd>{shortCount}</dd>
             </div>
             <div>

@@ -28,14 +28,14 @@ export function VoiceProgressRail({
   }> = [
     {
       id: "shape",
-      title: "① 定声音",
+      title: "① 定口吻",
       desc:
         sampleCount > 0
           ? `已有 ${sampleCount} 条 · ${uniqueCount} 类场景` +
             (uniqueCount <= 1 && sampleCount >= 2 ? "（偏窄，请换场景）" : "")
-          : "建议多场景三选一，勿单场景刷",
+          : "建议多换几个场景做三选一，别只在一个场景里收集",
       done: sampleCount > 0,
-      cta: sampleCount > 0 ? "继续塑形" : "开始塑形",
+      cta: sampleCount > 0 ? "继续收集" : "开始收集",
     },
     {
       id: "pack",

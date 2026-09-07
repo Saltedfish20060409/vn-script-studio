@@ -24,7 +24,7 @@ export default function InvitePage() {
       setMessage(
         res.alreadyMember
           ? "你已是该项目成员，直接打开即可。"
-          : `已加入项目（${res.role === "viewer" ? "只读" : "可编辑"}）。`
+          : `已加入项目（${res.role === "viewer" ? "你只能查看，不能修改" : "你可以一起编辑"}）。`
       );
       setState("done");
     } catch (e) {

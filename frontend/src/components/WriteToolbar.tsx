@@ -82,20 +82,20 @@ export function WriteToolbar({
             title="打开未写入的改稿对照（刷新后仍可进入）"
             onClick={onOpenRevise}
           >
-            改稿对照
+            查看改稿对比
           </button>
           <button
             type="button"
             className={styles.ghost}
-            title="丢弃本章未写入的改稿预览"
+            title="放弃这次改稿预览，正文保持原样"
             onClick={onDiscardRevise}
           >
-            丢弃预览
+            放弃改稿（正文不动）
           </button>
         </div>
       ) : writeMode === "prose" ? (
         <span className={styles.hintInline}>
-          默认写自然语言剧本；切到 RPY 可手写或一键生成
+          默认写普通剧本文字（对白写成「角色名：台词」）；想做成可试玩的游戏时，再切到 RPY 自动转换
         </span>
       ) : null}
     </div>

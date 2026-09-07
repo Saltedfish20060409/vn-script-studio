@@ -35,7 +35,7 @@ export function VoicePackZone({
   return (
     <div className={styles.packZone}>
       <p className={styles.muted}>
-        思维包由正例语料蒸馏而来，写剧本与对话时 Agent 会参照其中的口吻规则。
+        「思维包」是 AI 从你认可的角色对白里，总结出的这个角色“会怎么说话”的说明（参考卡，不写进正文）。之后 AI 帮你写对白、审稿时，会拿它检查新对白有没有偏离角色。
       </p>
       <VoiceReadinessBanner info={readiness} narrow={narrow} />
       <div className={styles.actions}>
@@ -65,7 +65,7 @@ export function VoicePackZone({
       </div>
       {!ready && sampleCount >= 1 && (
         <p className={styles.muted}>
-          未达门槛时「合成思维包」会失败；可用「强制合成」，但更推荐先换场景补语料。
+          素材不够时「合成思维包」会失败；可用「强制合成」试一次，但更推荐先换个场景多收集几条示例。
         </p>
       )}
       {showImport && (
@@ -90,7 +90,7 @@ export function VoicePackZone({
         <pre className={styles.mindPre}>{mind}</pre>
       ) : (
         <p className={styles.muted}>
-          还没有思维包。凑够上方门槛后点合成，或导入已有女娲包。
+          还没有思维包。凑够上方任一条素材后点「合成思维包」，或导入已有的角色包。
         </p>
       )}
     </div>

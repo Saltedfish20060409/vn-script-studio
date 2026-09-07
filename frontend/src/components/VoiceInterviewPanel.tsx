@@ -55,7 +55,7 @@ export function VoiceInterviewPanel({
         {variants.length === 0 && !busy && (
           <div className={styles.emptyStage}>
             <p>扮演采访</p>
-            <span>出一道压力题，生成三组回答，挑最像本音的入库。</span>
+            <span>给角色出一道难回答的题（如被误会、被当众质问），AI 会生成三种不同风格的回答；挑最接近他平时说话方式的一种，存成示例（只作参考，不会写进正文）。</span>
             <button
               type="button"
               className={styles.primary}
@@ -90,7 +90,7 @@ export function VoiceInterviewPanel({
         />
       </div>
       <div className={styles.manualBox}>
-        <p className={styles.manualHint}>或手写回答（一行或多行），作为采访正例入库</p>
+        <p className={styles.manualHint}>或手写回答（一行或多行），存成这个角色的示例</p>
         <textarea
           rows={4}
           value={interviewManual}
@@ -103,7 +103,7 @@ export function VoiceInterviewPanel({
           disabled={!!busy || !interviewManual.trim()}
           onClick={onAcceptManual}
         >
-          {busy === "accept-interview" ? "入库中…" : "手写回答入库"}
+          {busy === "accept-interview" ? "保存中…" : "存为示例"}
         </button>
       </div>
     </>

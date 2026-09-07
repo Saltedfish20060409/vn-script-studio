@@ -27,15 +27,15 @@ export function SaveConflictDialog({
         className={styles.dialog}
         role="dialog"
         aria-modal="true"
-        aria-label="工程保存冲突"
+        aria-label="保存冲突"
       >
         <div className={styles.body}>
           <p className={styles.idx}>CONFLICT</p>
-          <h3 className={styles.title}>工程版本冲突</h3>
+          <h3 className={styles.title}>你写的内容和云端对不上</h3>
           <p className={styles.line}>{mascotLine("confirmSoft")}</p>
           <p className={styles.msg}>
-            「{localTitle || "当前工程"}」在服务器上已有更新（{when}
-            ）。本地未保存的修改仍在内存，并已暂存到浏览器。请选择如何处理：
+            「{localTitle || "当前工程"}」在服务器上已被更新过（{when}
+            ），可能是另一台设备或另一位协作者保存的。你刚才没保存的修改还在，只是还没传上去。请选择怎么处理：
           </p>
           <div className={styles.actions}>
             <button
@@ -43,25 +43,25 @@ export function SaveConflictDialog({
               className={styles.primary}
               onClick={() => onChoose("keep_local")}
             >
-              保留我的修改
+              保留我这份（覆盖云端）
             </button>
             <button
               type="button"
               className={styles.ghost}
               onClick={() => onChoose("take_server")}
             >
-              使用服务器版本
+              用云端那份（丢弃我这版）
             </button>
             <button
               type="button"
               className={styles.ghost}
               onClick={() => onChoose("download")}
             >
-              先下载本地稿
+              先把我这版下载备份
             </button>
           </div>
           <p className={styles.hint}>
-            「保留我的修改」会强制覆盖服务器；「使用服务器」会丢掉本次未同步编辑（本地暂存仍可从浏览器取出）。
+            「保留我这份」会用你刚写的内容盖掉云端（云端更新会丢）；「用云端那份」会丢弃你这次的改动（可先用「下载备份」留底）。下载的备份文件以后可以重新导入。
           </p>
         </div>
       </div>

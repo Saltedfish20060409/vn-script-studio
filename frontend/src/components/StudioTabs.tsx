@@ -6,7 +6,7 @@ const TABS: ReadonlyArray<readonly [StudioTab, string, string, string]> = [
   ["world", "02", "设定", "设定"],
   ["voice", "03", "角色工坊", "工坊"],
   ["map", "04", "地图", "地图"],
-  ["system", "05", "VN状态", "状态"],
+  ["system", "05", "剧情状态", "状态"],
   ["project", "06", "项目", "项目"],
 ];
 

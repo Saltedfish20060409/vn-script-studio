@@ -666,7 +666,7 @@ export function AgentChat({
       ...prev,
       {
         role: "assistant",
-        content: `已撤回「${popped.label}」，工程回到该次 Agent 写入之前。`,
+        content: `已撤回「${popped.label}」，文稿已恢复到这次 AI 改动之前。`,
       },
     ]);
   }
@@ -903,7 +903,7 @@ export function AgentChat({
         const userMsg: AgentChatMessage = { role: "user", content: userVisible };
         const assistantMsg: AgentChatMessage = {
           role: "assistant",
-          content: `好，本章会尽量别动「${name}」。下次回炉会带上这条偏好。`,
+          content: `好，本章会尽量别动「${name}」。下次改稿会带上这条偏好。`,
         };
         const next = [...messagesRef.current, userMsg, assistantMsg].slice(-120);
         setMessages(next);
@@ -984,7 +984,7 @@ export function AgentChat({
 
     let outbound = userVisible;
     if (intent.kind === "critique_only") {
-      outbound = `${userVisible}\n\n【系统】本轮以文字审稿为主：完整意见写进 message；未明确要求写入前不要 replace_script。`;
+      outbound = `${userVisible}\n\n（本轮只做文字审稿，不要直接改动正文：把完整意见写进回复；除非用户明确说「写入」，否则不要修改章节内容。）`;
     }
 
     setError("");
@@ -1034,8 +1034,8 @@ export function AgentChat({
       const content =
         `### 写作导师\n\n` +
         `当前启用：${activeNames}\n\n` +
-        `这是**一份完整的 LN/VN 文学编辑方法论**（可演对白、钩子、类型热度），无需切换角色。\n` +
-        `硬门禁仍以风格 Skill 为准；导师只提供写法判断。`;
+        `这是**一份完整的轻小说 / 视觉小说文学编辑方法论**（可演对白、钩子、类型热度），无需切换角色。\n` +
+        `你作品里定的硬规则优先于导师建议；导师只提供写法判断。`;
       const finalMessages = [...nextMessages, { role: "assistant" as const, content }];
       setMessages(finalMessages);
       await putAgentConversation(projectId, conversationId, {
@@ -1105,7 +1105,7 @@ export function AgentChat({
       (topicOverride ?? brainstormTopic).trim() ||
       "请就当前章节与选区，从各自擅长角度给建议（未指定具体议题）。";
     if (activeLensIds.length < 2) {
-      setError("强头脑风暴至少多选 2 位作家（点 ⇄ 打开多选）");
+      setError("头脑风暴需要至少 2 位作家参加。已为你打开选人面板：请勾选 2 位以上，再开始头脑风暴。");
       setPersonaOpen(true);
       setMultiSelect(true);
       return;
@@ -1159,7 +1159,7 @@ export function AgentChat({
       return;
     }
     setError("");
-    setThinking("正在对照风格 Skill 做体检…");
+    setThinking("正在按你项目里定好的文风要求检查本章文字…");
     const nextMessages: AgentChatMessage[] = [
       ...messages,
       { role: "user", content: "【文风体检】请检查当前章节草稿。" },
@@ -1193,16 +1193,16 @@ export function AgentChat({
   async function runPipelineFlow(instruction: string) {
     if (busy || !conversationId) return;
     const userLine =
-      instruction.trim() || "请按风格 Skill 与项目硬锚，续写下一场可上演戏。";
+      instruction.trim() || "（自动写作）请根据项目文风与已有设定，续写下一场戏。";
     setError("");
-    setThinking("流水线运行中：规划 → 生成 → 检查 → 修正…");
+    setThinking("自动写作进行中：规划 → 起草 → 检查 → 修正…");
     const nextMessages: AgentChatMessage[] = [
       ...messages,
-      { role: "user", content: `【流水线】${userLine}` },
+      { role: "user", content: `【自动写作】${userLine}` },
     ];
     setMessages(nextMessages);
     setBusy(true);
-    setLastContext("流水线 · Plan→Write→Check→Revise");
+    setLastContext("自动写作 · 起草→检查→修正");
     try {
       const prefs = getHarnessPrefs();
       const body = {
@@ -1226,7 +1226,7 @@ export function AgentChat({
       let liveDraft = "";
       let controller: AbortController | undefined;
       try {
-        setThinking("流水线启动（流式）…");
+        setThinking("自动写作启动中…");
         streamAbortRef.current?.abort();
         controller = new AbortController();
         streamAbortRef.current = controller;
@@ -1245,7 +1245,7 @@ export function AgentChat({
                 : evt.warnCount != null
                   ? ` · warn ${evt.warnCount}`
                   : "";
-            setThinking(`流水线：${label} 完成${ms}${extra}`);
+            setThinking(`阶段完成：${label}${ms}${extra}`);
           }
         }, controller.signal);
       } catch (e) {
@@ -1263,14 +1263,14 @@ export function AgentChat({
           async_mode: true,
         });
         if (!("jobId" in kicked) || !kicked.jobId) {
-          throw new Error("流水线启动失败", { cause: e });
+          throw new Error("自动写作启动失败", { cause: e });
         }
-        setThinking("流水线已后台启动，正在等待各阶段…");
+        setThinking("自动写作已后台启动，正在等待各阶段完成…");
         job = await waitProjectJob(projectId, kicked.jobId, {
           onTick: (j) => {
             const pct = Math.round((j.progress ?? 0) * 100);
             setThinking(
-              `流水线 ${j.stage || "运行中"} · ${pct}%${
+              `自动写作进行中（${j.stage || "处理中"}）· ${pct}%${
                 j.message ? ` — ${j.message}` : ""
               }`
             );
@@ -1278,7 +1278,7 @@ export function AgentChat({
         });
       }
       if (job.status === "error") {
-        throw new Error(job.error || job.message || "流水线任务失败");
+        throw new Error(job.error || job.message || "自动写作失败");
       }
       const data = (job.result ?? {}) as unknown as PipelineRunResult;
       const content = formatPipelineResult(data);
@@ -1295,10 +1295,10 @@ export function AgentChat({
       void refreshList();
       setLastContext(
         data.applied
-          ? "流水线完成 · 已写入章节"
+          ? "自动写作完成 · 已写入本章"
           : data.gate?.pass
-            ? "流水线完成 · 门禁通过"
-            : `流水线完成 · 门禁未过（error ${data.gate?.errorCount ?? "?"}）`
+            ? "自动写作完成 · 已通过自动检查"
+            : `自动写作完成，但自动检查发现 ${data.gate?.errorCount ?? "?"} 处问题，本次没有写入本章`
       );
     } catch (e) {
       if (
@@ -1307,7 +1307,7 @@ export function AgentChat({
       ) {
         return;
       }
-      const msg = e instanceof Error ? e.message : "流水线失败";
+      const msg = e instanceof Error ? e.message : "自动写作失败";
       setError(msg);
       setMessages((prev) => [
         ...prev,
@@ -1335,13 +1335,13 @@ export function AgentChat({
       });
       const ok = data.gate?.pass;
       const enrichBit = data.enrichMeta?.enrich
-        ? `（账本 LLM 充实：事实 ${data.enrichMeta.factCount ?? 0} / 状态 ${data.enrichMeta.stateCount ?? 0} / 伏笔 ${data.enrichMeta.foreshadowCount ?? 0}）`
+        ? `（AI 补充：事实 ${data.enrichMeta.factCount ?? 0} 条 / 状态 ${data.enrichMeta.stateCount ?? 0} 条 / 伏笔 ${data.enrichMeta.foreshadowCount ?? 0} 条）`
         : data.enrichMeta?.error
-          ? `（账本充实回退启发式：${data.enrichMeta.error}）`
+          ? `（AI 补充未成功，已用保守方式记录：${data.enrichMeta.error}）`
           : "";
       const content = ok
-        ? `### 定稿入库\n\n${data.gate?.message || "已通过质量门禁"}${enrichBit}\n\n章节事实摘要已写入写作账本，供后续生成作硬锚。`
-        : `### 定稿被门禁拦截\n\n${data.gate?.message || "未通过"}\n\n${(
+        ? `### 定稿完成\n\n${data.gate?.message || "已通过自动检查"}${enrichBit}\n\n已把本章新增的事实、出场状态和结尾悬念记入项目档案，供之后 AI 写作参考、尽量不前后矛盾。`
+        : `### 定稿被拦下\n\n${data.gate?.message || "未通过自动检查"}\n\n${(
             data.check?.issues || []
           )
             .filter((i) => i.severity === "error")
@@ -1353,7 +1353,7 @@ export function AgentChat({
         onProjectChange(data.project);
       }
       setLastContext(
-        ok ? "定稿 · 门禁通过 · 账本已更新" : "定稿 · 门禁拦截（已记运行历史）"
+        ok ? "定稿完成 · 已通过自动检查 · 项目档案已更新" : "定稿未通过自动检查（已记入运行历史）"
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "定稿失败");
@@ -1372,21 +1372,21 @@ export function AgentChat({
       });
       onProjectChange(data.project);
       const enrichBit = data.enrichMeta?.enrich
-        ? `（LLM 充实：事实 ${data.enrichMeta.factCount ?? 0} / 状态 ${data.enrichMeta.stateCount ?? 0} / 伏笔 ${data.enrichMeta.foreshadowCount ?? 0}）`
+        ? `（AI 补充：事实 ${data.enrichMeta.factCount ?? 0} 条 / 状态 ${data.enrichMeta.stateCount ?? 0} 条 / 伏笔 ${data.enrichMeta.foreshadowCount ?? 0} 条）`
         : data.enrichMeta?.error
-          ? `（LLM 充实未成功，已用启发式：${data.enrichMeta.error}）`
-          : "（启发式摘要）";
+          ? `（AI 补充未成功，已用保守方式记录：${data.enrichMeta.error}）`
+          : "（保守摘要）";
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: `### 章节锚点已入库${enrichBit}\n\n已将当前章的事实摘要 / 出场状态 / 章末钩子写入写作账本。\n\n${(
+          content: `### 本章要点已记录${enrichBit}\n\n已把本章的新增事实、出场人物状态和结尾悬念存入项目档案，之后 AI 写作会参考这些记录，尽量不前后矛盾。\n\n${(
             data.agentBlock || ""
           ).slice(0, 1200)}`,
         },
       ]);
       setLastContext(
-        data.enrichMeta?.enrich ? "账本 · LLM 充实已更新" : "账本 · 章节摘要已更新"
+        data.enrichMeta?.enrich ? "项目档案 · 已更新（含 AI 补充）" : "项目档案 · 章节要点已更新"
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "账本更新失败");
@@ -1531,11 +1531,11 @@ export function AgentChat({
       const assistantMsg: AgentChatMessage = {
         role: "assistant",
         content: [
-          "已跑完事实扫描，候选进**写作分析待审托盘**（需你确认后才进关系图/时间线）。",
+          "已跑完事实扫描，候选先放进了「写作分析 → 待审列表」，需要你逐条确认后才会真正更新关系图和时间线——AI 不会直接改动。",
           s
             ? `摘要：新增候选 ${s.added}（关系 ${s.characterLinks} / 时间线 ${s.timelineEvents}）。`
             : "",
-          n ? `当前托盘约 ${n} 条。` : "本轮没有新的待审条目。",
+          n ? `当前待审列表约 ${n} 条。` : "本轮没有新的待审条目。",
           paste ? "已把附件正文当作临时粘贴源。" : "",
         ]
           .filter(Boolean)
@@ -1615,19 +1615,19 @@ export function AgentChat({
         [k: string]: unknown;
       };
       if ("jobId" in kicked && kicked.jobId) {
-        setThinking("回炉已后台启动…");
+        setThinking("正在生成改稿预览（后台处理中，完成后会先给你对照挑选，不会直接改动正文）…");
         const job = await waitProjectJob(projectId, kicked.jobId, {
           onTick: (j) => {
             const pct = Math.round((j.progress ?? 0) * 100);
             setThinking(
-              `回炉 ${j.stage || "运行中"} · ${pct}%${
+              `正在生成改稿预览…（已完成 ${pct}%）${
                 j.message ? ` — ${j.message}` : ""
               }`
             );
           },
         });
         if (job.status === "error") {
-          throw new Error(job.error || job.message || "回炉任务失败");
+          throw new Error(job.error || job.message || "改稿预览生成失败");
         }
         res = (job.result || {}) as typeof res;
       } else {
@@ -1787,19 +1787,19 @@ export function AgentChat({
             (runState.status === "interrupted" || runState.status === "error") && (
               <div className={styles.resumeBar} role="status">
                 <span>
-                  上次运行{runState.status === "interrupted" ? "中断" : "失败"}
+                  上次 AI 任务{runState.status === "interrupted" ? "中断" : "失败"}
                   {typeof runState.step === "number" &&
                   typeof runState.steps === "number"
                     ? `（已完成 ${runState.step}/${runState.steps} 步）`
                     : ""}
-                  ——可从断点继续，不会重复已完成的步骤。
+                  ——可以接着上次停下的地方继续，做过的部分不会重来。
                 </span>
                 <button
                   type="button"
                   disabled={busy}
                   onClick={() => void resumeLastRun()}
                 >
-                  {busy ? "运行中…" : "继续上次运行"}
+                  {busy ? "运行中…" : "继续上次任务"}
                 </button>
               </div>
             )}

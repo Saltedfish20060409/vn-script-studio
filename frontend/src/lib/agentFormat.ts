@@ -34,7 +34,7 @@ const ACTION_LABEL: Record<string, string> = {
   scan_facts: "扫描事实",
 };
 
-const WELCOME_MARKER = "轻小说 / 视觉小说的写法底盘会自动带上";
+const WELCOME_MARKER = "我会默认按一套面向轻小说 / 视觉小说的写作要点帮你看稿";
 
 export function describeActions(actions: AgentAction[]): string {
   if (actions.length === 0) return "";
@@ -47,7 +47,7 @@ export function defaultWelcome(): AgentChatMessage[] {
     {
       role: "assistant",
       content:
-        "我是这部作品的驻场责编（通用文学编辑）。轻小说 / 视觉小说的写法底盘会自动带上——你只要用平常话说想续写、改哪段、卡在哪就行。\n\n若想换一位作家的眼光来参谋，点顶部 **⇄** 打开作家卡；需要多视角时可打开「多选」。右上角 **!** 有说明。卡壳或要整场戏时，再说「跑流水线」也不迟。",
+        "我是这部作品的驻场责编（通用文学编辑）。我会默认按一套面向轻小说 / 视觉小说的写作要点帮你看稿——比如对白要能演得动、每场留个让人想读下去的钩子、别把设定像说明书一样倒出来。这些你不用管，用平常话说想续写、改哪段、卡在哪就行。\n\n若想换一位作家的眼光来参谋，点顶部 **⇄** 打开作家卡；需要多视角时可打开「多选」。右上角 **!** 有说明。卡壳或要一整场戏时，再说「自动写作：……」（旧叫法「跑流水线」也认）。",
     },
   ];
 }
@@ -81,10 +81,10 @@ export function formatLintBlock(data: HarnessLintResult): string {
 }
 
 export function formatPipelineResult(data: PipelineRunResult): string {
-  const parts: string[] = ["### 写作流水线结果"];
-  parts.push(`阶段：${(data.stages || []).join(" → ") || "—"}`);
+  const parts: string[] = ["### 自动写作结果"];
+  parts.push(`顺序：${(data.stages || []).join(" → ") || "—"}`);
   if (typeof data.reviseRounds === "number" && data.reviseRounds > 0) {
-    parts.push(`修正轮次：${data.reviseRounds}`);
+    parts.push(`自改轮次：${data.reviseRounds}`);
   }
   if (data.runId) {
     parts.push(`运行记录：\`${data.runId}\``);
@@ -120,21 +120,21 @@ export function formatPipelineResult(data: PipelineRunResult): string {
   }
   if (data.gate) {
     parts.push(
-      `#### 质量门禁\n\n${data.gate.pass ? "✅ 通过" : "❌ 未通过"} — ${
+      `#### 自动检查\n\n${data.gate.pass ? "✅ 通过" : "❌ 未通过"} — ${
         data.gate.message || ""
       }`
     );
   }
   if (data.applied) {
-    parts.push("\n_已将通过门禁的终稿写入当前章节。_");
+    parts.push("\n_已把通过检查的终稿写入当前章节。_");
   } else if (data.applyError) {
-    parts.push(`\n_未能写入章节：${data.applyError}_`);
+    parts.push(`\n_没能写入章节：${data.applyError}_`);
   } else if (!data.gate?.pass) {
     parts.push(
-      "\n_门禁未过，稿件未写入工程。可先改后再说「跑流水线」或「定稿」。_"
+      "\n_自动检查未通过，这次没有写入正文。可以改好后再说「自动写作」或「定稿」。_"
     );
   } else {
-    parts.push("\n_门禁已过但未写入章节（未指定章节或未开启入库）。_");
+    parts.push("\n_检查已通过但没有写入章节（未指定章节或未开启自动写入）。_");
   }
   const trace = data.trace;
   if (trace?.length) {

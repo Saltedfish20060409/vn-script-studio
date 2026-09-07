@@ -135,14 +135,15 @@ export function ProjectHistoryPanel({
         <span>版本快照可回退大改稿；只读链接给画师 / 配音看设定</span>
       </div>
       <div className={styles.shareBox}>
-        <strong>长程章节记忆</strong>
+        <strong>章节记忆存档</strong>
         <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--ink-soft)" }}>
-          借鉴 NovelMaster：每 10 章一段 continuity，拆成 PostgreSQL TEXT 切片；Agent
-          会自动注入最新段。
+          章节多起来后，点下面按钮把每 10 章左右的剧情要点整理成一段文字摘要存档，
+          AI 写作时会参考存档的最新部分。注意：AI 记不住整本书，它只按需读取这份存档和你的设定，
+          内容过长时会被截断。
         </p>
         <div className={styles.aiQuick}>
           <button type="button" className={styles.primary} onClick={onArchiveMemory}>
-            归档长程记忆
+            生成章节记忆
           </button>
         </div>
         <ul className={styles.snapList}>
@@ -166,7 +167,7 @@ export function ProjectHistoryPanel({
               </button>
             </li>
           ))}
-          {memoryArchives.length === 0 && <li>尚未归档。章节较多时点上方按钮生成。</li>}
+          {memoryArchives.length === 0 && <li>还没有记忆存档。章节较多时点上方按钮生成。</li>}
         </ul>
         {memoryDetail && (
           <div className={styles.memoryPeek}>
@@ -180,7 +181,7 @@ export function ProjectHistoryPanel({
                 关闭
               </button>
             </div>
-            <p className={styles.hint}>continuity 切片预览（Agent 注入用最新段）</p>
+            <p className={styles.hint}>记忆内容预览（只读，不改动你的正文；AI 写作时会参考这份记忆的最近部分）</p>
             <pre className={styles.pre}>
               {(memoryDetail.continuityText || "").slice(0, 4000) ||
                 "（无 continuity 正文）"}

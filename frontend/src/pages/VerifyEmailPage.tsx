@@ -10,7 +10,7 @@ export default function VerifyEmailPage() {
     token ? "working" : "error"
   );
   const [message, setMessage] = useState(
-    token ? "正在验证邮箱…" : "链接缺少 token，请从邮件中重新打开"
+    token ? "正在验证邮箱…" : "链接不完整，请回到邮箱里重新打开验证邮件并点击链接"
   );
 
   useEffect(() => {

@@ -20,6 +20,16 @@ type Props = {
   projectId: string;
 };
 
+const ROLE_LABEL: Record<string, string> = {
+  owner: "创建者",
+  editor: "可编辑",
+  viewer: "只读",
+};
+
+function roleLabel(role?: string): string {
+  return ROLE_LABEL[role ?? ""] ?? role ?? "";
+}
+
 /** 项目 → 成员子页：邀请 / 改角色 / 移除（仅 owner 可管理）。 */
 export function CollabPanel({ projectId }: Props) {
   const { user } = useAuth();
@@ -166,7 +176,7 @@ export function CollabPanel({ projectId }: Props) {
   return (
     <section className={styles.panel}>
       <div className={styles.toolbar}>
-        <span>成员可共同编辑剧本；只读成员（viewer）不能修改。</span>
+        <span>成员可共同编辑剧本；「只读」成员只能看，不能改。</span>
       </div>
 
       {activity && (
@@ -174,7 +184,7 @@ export function CollabPanel({ projectId }: Props) {
           <div className={styles.liveHead}>
             <strong>实时协作</strong>
             <span className={styles.liveStats}>
-              正在编辑 {activity.stats.activeEditors} 人 · 锁 {activity.stats.lockedChapters} 章 · 近 7 日批注{" "}
+              正在编辑 {activity.stats.activeEditors} 人 · 正在被占用 {activity.stats.lockedChapters} 章 · 近 7 日批注{" "}
               {activity.stats.comments7d} 条
             </span>
           </div>
@@ -186,7 +196,7 @@ export function CollabPanel({ projectId }: Props) {
                   aria-hidden
                 />
                 <strong>{p.username}</strong>
-                <span className={styles.kind}>{p.role}</span>
+                <span className={styles.kind}>{roleLabel(p.role)}</span>
                 {p.editingChapterIds.length > 0 ? (
                   <span className={styles.editing}>正在编辑：{p.editingChapterIds.join("、")}</span>
                 ) : (
@@ -218,7 +228,7 @@ export function CollabPanel({ projectId }: Props) {
         <div className={styles.card}>
           <div className={styles.cardHead}>
             <strong>{owner?.username ?? "—"}</strong>
-            <span className={styles.kind}>owner</span>
+            <span className={styles.kind}>{roleLabel(owner?.role)}</span>
           </div>
           <p className={styles.cardBody}>项目创建者</p>
         </div>
@@ -226,7 +236,7 @@ export function CollabPanel({ projectId }: Props) {
           <div key={m.userId} className={styles.card}>
             <div className={styles.cardHead}>
               <strong>{m.username}</strong>
-              <span className={styles.kind}>{m.role}</span>
+              <span className={styles.kind}>{roleLabel(m.role)}</span>
             </div>
             <div className={styles.cardFoot}>
               {isOwner && m.role !== "owner" && (
@@ -241,8 +251,8 @@ export function CollabPanel({ projectId }: Props) {
                       )
                     }
                   >
-                    <option value="editor">editor</option>
-                    <option value="viewer">viewer</option>
+                    <option value="editor">可编辑</option>
+                    <option value="viewer">只读</option>
                   </select>
                   <button
                     type="button"
@@ -314,7 +324,7 @@ export function CollabPanel({ projectId }: Props) {
                   <code className={styles.linkCode}>
                     {window.location.origin}/invite?token={inv.token.slice(0, 12)}…
                   </code>
-                  <span className={styles.kind}>{inv.role}</span>
+                  <span className={styles.kind}>{roleLabel(inv.role)}</span>
                   <span className={styles.kind}>至 {new Date(inv.expiresAt).toLocaleDateString()}</span>
                   <button
                     type="button"

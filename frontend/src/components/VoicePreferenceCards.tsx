@@ -58,8 +58,8 @@ export function VoicePreferenceCards({
     <div className={styles.cardStage}>
       {variants.length === 0 && !busy && (
         <div className={styles.emptyStage}>
-          <p>定声音</p>
-          <span>选场景 → 生成三组（动态轴）→ 选最像的入库。都不像可手写并记方向。</span>
+          <p>定口吻</p>
+          <span>选好上方场景后点「生成三组」，AI 按三种说话风格各写一段对白；挑最像的一组，存成这个角色的示例（只作参考，不改正文）。都不像就手写一段，并注明更像哪种方向。</span>
           <button
             type="button"
             className={styles.primary}
@@ -140,7 +140,7 @@ export function VoicePreferenceCards({
               disabled={!!busy || !unlikeText.trim()}
               onClick={onAcceptUnlike}
             >
-              {busy === "accept-unlike" ? "入库中…" : "手写入库"}
+              {busy === "accept-unlike" ? "保存中…" : "手写存为示例"}
             </button>
             <button type="button" disabled={!!busy} onClick={onDiscardUnlike}>
               丢弃并重开

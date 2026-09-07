@@ -200,7 +200,8 @@ export default function LoginPage() {
             Studio
           </h1>
           <p className={styles.sub}>
-            非线性叙事工作台——角色、章节、地图与审稿。先写剧本，再导出 Word 或 .rpy。
+            云端写作台，帮你把角色、章节、地点和 AI 审稿放在一起。先专心写剧本，
+            之后再导出成 Word，或转成 Ren'Py（视觉小说引擎，能把剧本变成可试玩的游戏脚本）。
           </p>
         </div>
       </section>
@@ -211,7 +212,7 @@ export default function LoginPage() {
           <h2 className={styles.cardTitle}>{title}</h2>
           <p className={styles.cardLead}>
             {mode === "login"
-              ? "同步云端剧本库与 Agent 会话。"
+              ? "剧本在云端自动保存，随时换设备接着写；审稿 Agent（AI 责编）也在工作台里待命。"
               : mode === "register"
                 ? "注册后请验证邮箱，再登录进入。"
                 : mode === "forgot"

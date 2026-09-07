@@ -90,7 +90,7 @@ export function StudioTopBar({
             type="button"
             className={styles.focusToggle}
             onClick={onOpenAgent}
-            title="打开审稿 Agent"
+            title="打开审稿 Agent（AI 责编：通读当前内容后给修改意见，请自行判断是否采纳）"
           >
             审稿
           </button>

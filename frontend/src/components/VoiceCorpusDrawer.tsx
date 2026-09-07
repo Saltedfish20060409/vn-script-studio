@@ -50,8 +50,8 @@ export function VoiceCorpusDrawer({
               从剧本抽取
             </button>
           </div>
-          {corpus.length === 0 ? (
-            <p className={styles.muted}>尚未入库。塑形后正例会出现在这里。</p>
+           {corpus.length === 0 ? (
+            <p className={styles.muted}>还没有示例。用「三选一 / 长场次 / 采访」生成并挑选后，你认可的对白会作为示例出现在这里（只作参考，不会写进正文）。</p>
           ) : (
             <ul className={styles.corpusList}>
               {corpus.map((s) => (

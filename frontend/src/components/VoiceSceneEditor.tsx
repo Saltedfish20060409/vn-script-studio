@@ -31,7 +31,7 @@ export function VoiceSceneEditor({
         </div>
       ) : sceneText.trim() ? (
         <>
-          <p className={styles.muted}>生成后可编辑台词，确认无误后整段入库。</p>
+          <p className={styles.muted}>这段是草稿，不会自动写进正文。先改好台词、确认无误后，再点「存为示例」。</p>
           <textarea
             value={sceneText}
             onChange={(e) => onTextChange(e.target.value)}
@@ -44,7 +44,7 @@ export function VoiceSceneEditor({
               disabled={!!busy || !sceneText.trim()}
               onClick={onAccept}
             >
-              {busy === "accept-scene" ? "入库中…" : "整段入库"}
+              {busy === "accept-scene" ? "保存中…" : "存为示例"}
             </button>
             <button type="button" disabled={!!busy} onClick={onRegenerate}>
               重新生成
@@ -54,7 +54,7 @@ export function VoiceSceneEditor({
       ) : (
         <div className={styles.emptyStage}>
           <p>长场次加厚</p>
-          <span>一次约 8～12 轮，整段入库。无结果时看底部错误提示。</span>
+          <span>让 AI 写一整场（约 8～12 轮对白）再存成示例，用来给角色积累更完整的长对话口吻。无结果时看底部错误提示。</span>
           <button
             type="button"
             className={styles.primary}

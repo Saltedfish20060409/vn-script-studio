@@ -642,7 +642,7 @@ export function StudioApp() {
           serverUpdatedAt: detail?.serverUpdatedAt,
         });
         setError("");
-        setStatus("发现版本冲突 — 请选择保留本地或使用服务器");
+        setStatus("发现保存冲突 — 你刚写的内容和云端已有的内容不一致（可能两处都改过同一部分），请选择保留哪一份");
         return false;
       }
       setError(e instanceof Error ? e.message : "保存失败");
@@ -655,7 +655,7 @@ export function StudioApp() {
     if (!pending) return;
     if (choice === "download") {
       downloadProjectJson(pending.local);
-      setStatus("已下载本地稿 JSON，冲突对话框仍打开");
+      setStatus("已把你这边的稿子下载成备份文件，弹窗仍保留，可以继续选择保留哪一份稿子");
       return;
     }
     if (choice === "keep_local") {
@@ -881,7 +881,7 @@ export function StudioApp() {
     const ch = flushed.chapters.find((c) => c.id === chapter.id);
     const prose = (ch?.prose || "").trim() || chapterProse(ch, flushed.characters);
     if (!prose.trim()) {
-      setError("先写一点自然语言剧本，再生成 RPY。");
+      setError("本章还没有可转换的内容。请先在编辑器里写一段正文或对白（对白写成「角色名：台词」），写完再点一次生成。");
       return;
     }
     setGeneratingRpy(true);
@@ -907,7 +907,7 @@ export function StudioApp() {
       if (updated) loadEditorFromChapter(updated, next.characters, "rpy");
       setRpyPreview(out.rpy);
       setRpyStale(false);
-      setStatus(out.usedLlm ? "已根据剧本生成 RPY" : "已按规则把剧本转成 RPY（未走模型）");
+      setStatus(out.usedLlm ? "已把正文转换成可试玩的 Ren'Py 脚本" : "已把正文转换成可试玩的 Ren'Py 脚本（本次为直接转换，未使用 AI）");
     } catch (e) {
       setError(e instanceof Error ? e.message : "生成 RPY 失败");
     } finally {
@@ -1050,7 +1050,7 @@ export function StudioApp() {
     const target = projectsList.find((p) => p.id === id);
     const ok = await confirm({
       title: `删除剧本「${target?.title ?? ""}」？`,
-      body: "云端工程将被移除，此操作不可从列表撤销。",
+      body: "删除后，该剧本连同全部章节、正文和设定都会被永久删除，无法恢复。如果只是想暂时放着，也可以先不删。",
       danger: true,
       confirmLabel: "确认删除",
     });
@@ -1165,7 +1165,7 @@ export function StudioApp() {
   async function deleteCharacter(id: string) {
     const ok = await confirm({
       title: "删除该角色？",
-      body: "剧本中相关对白不会自动改写，需手动处理残留指称。",
+      body: "删除角色卡片后，正文里已写好的对白不会自动修改，需要你手动检查所有提到 TA 的地方，再决定是否删除。",
       danger: true,
       confirmLabel: "确认删除",
     });
@@ -1220,7 +1220,7 @@ export function StudioApp() {
     }
     const ok = await confirm({
       title: "删除该章节？",
-      body: "章节正文将一并移除，请确认已不需要此稿。",
+      body: "该章节连同全部正文会从云端永久删除，无法恢复。请确认这一章的内容你已经不需要了。",
       danger: true,
       confirmLabel: "确认删除",
     });
@@ -1234,7 +1234,7 @@ export function StudioApp() {
     if (!project) return;
     commitEditor();
     try {
-      setStatus(mode === "smart" ? "智能提取地图中…" : "按 scene 提取中…");
+      setStatus(mode === "smart" ? "智能提取地图中…" : "按场景标签提取中…");
       const latest = buildLatestProject();
       const projectId = latest?.id ?? project.id;
       if (latest) {
@@ -1250,7 +1250,7 @@ export function StudioApp() {
       const newLinks = result.proposal?.newLinkIds?.length ?? result.linkCount;
       if (newPlaces === 0 && newLinks === 0) {
         setStatus(
-          `未发现新地点或通路。可在剧本写 scene bg xxx，或在对白/设定中出现明确场所。${warn}`
+          `没有从正文里识别出新的地点。想让地图更完整，可以在场景开头写清地点（例如「scene bg 车站」），或让对白/设定明确提到具体场所，然后再试一次。${warn}`
         );
         setTab("map");
         return;
@@ -1261,7 +1261,7 @@ export function StudioApp() {
         modeLabel:
           mode === "smart"
             ? `智能提取${result.llmUsed ? "（含模型）" : ""}`
-            : "仅 scene",
+            : "按场景标签",
       });
       setStatus(`找到候选：地点 ${newPlaces}、通路 ${newLinks}，请勾选后写入${warn}`);
       setTab("map");
@@ -1300,7 +1300,7 @@ export function StudioApp() {
     if (!project) return;
     commitEditor();
     try {
-      setStatus("正在按章节切片归档长程记忆…");
+      setStatus("正在把前面的章节整理成记忆存档…");
       const latest = buildLatestProject();
       if (latest) {
         const saved = await putProject(latest.id, latest, latest.updatedAt);
@@ -1316,8 +1316,8 @@ export function StudioApp() {
       setMemoryDetail(null);
       setStatus(
         result.count
-          ? `长程记忆已归档：${result.count} 段（最新 ${result.latestLabel}），Agent 续写会自动读取`
-          : "章节不足，未生成归档（可勾选不完整段或继续写章）"
+          ? `已把前面的章节整理成记忆存档：共 ${result.count} 段，最新到「${result.latestLabel}」。续写时 AI 会按需参考这些存档；内容太多时太久远的段落可能读不到，重要设定建议另外写在设定资料里。`
+          : "章节还不够，暂未生成记忆存档（继续写几章再试，或先把重要设定写进设定资料）"
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "记忆归档失败");
@@ -1365,7 +1365,7 @@ export function StudioApp() {
     if (!snap) return;
     const ok = await confirm({
       title: `回退到「${snap.label}」？`,
-      body: "当前未快照的改动会丢失。",
+      body: "剧本会回到保存这个快照时的状态；从那时起新增或修改的内容都会被覆盖，无法恢复。",
       danger: true,
       confirmLabel: "确认回退",
     });
@@ -1951,7 +1951,7 @@ export function StudioApp() {
                       onDiscardRevise={() => {
                         clearChapterReviseDraft(project.id, chapterId);
                         setReviseDraft(null);
-                        setStatus("已丢弃本章改稿预览");
+                        setStatus("已放弃这次改稿的对照预览。正文保持原样，没有做任何改动。");
                       }}
                       onDictateInsert={(text) => {
                         // Insert transcript at the editor caret; fall back to append.
@@ -2024,7 +2024,7 @@ export function StudioApp() {
                           );
                           if (!playable) {
                             setError(
-                              "试玩读的是 RPY 稿。请切到 RPY 后点「根据剧本生成」，或直接手写脚本。"
+                              "试玩需要先有一份可运行的脚本。请点「根据剧本生成」，把本章正文转成可试玩脚本后再点「试玩本章」；想自己改也可以切到脚本模式手动调整。"
                             );
                             persistWriteMode("rpy");
                             if (ch) {

@@ -102,7 +102,12 @@ export function WorldPanel({
                   />
                 </label>
                 <label>
-                  define 名
+                  <span>
+                    define 名
+                    <small style={{ fontWeight: 400, opacity: 0.75 }}>
+                      （生成的 Ren'Py 剧本用这个名字指代角色；只填英文、数字、下划线，如 linxia）
+                    </small>
+                  </span>
                   <input
                     value={c.defineName}
                     onChange={(e) =>
@@ -110,6 +115,7 @@ export function WorldPanel({
                         defineName: e.target.value.replace(/[^A-Za-z0-9_]/g, ""),
                       })
                     }
+                    placeholder="如 linxia"
                   />
                 </label>
                 <label>
@@ -155,7 +161,7 @@ export function WorldPanel({
       {worldSub === "bible" && (
         <section className={styles.panel}>
           <div className={styles.toolbar}>
-            <span>故事设定独立于角色卡，会进入 AI 上下文</span>
+            <span>世界观、大纲等设定会单独保存，AI 写作 / 审稿时按需参考，不会直接混入正文。单次可参考的内容有长度上限，超出会被截断——建议只写关键设定，不必堆长文。</span>
           </div>
           <div className={styles.bibleGrid}>
             <label>

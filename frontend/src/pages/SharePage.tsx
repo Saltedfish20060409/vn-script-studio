@@ -88,7 +88,7 @@ export default function SharePage() {
             SH
           </span>
           <div className={styles.headCopy}>
-            <p className={styles.badge}>作品发布页 · 无需会员</p>
+            <p className={styles.badge}>作品分享页 · 无需登录（≠正式发布，仅供展示与预览）</p>
             <h1>{p.title}</h1>
             <p className={styles.meta}>
               {p.genre || "未标题材"} · 分享于{" "}

@@ -36,7 +36,7 @@ export function PwaInstallPrompt() {
       <span className={styles.icon} aria-hidden>
         ⬇️
       </span>
-      <span className={styles.text}>安装为应用，离线也能写作</span>
+      <span className={styles.text}>把写作台添加到桌面 / 主屏，像普通 App 一样点开就能写</span>
       <button
         type="button"
         className={styles.install}

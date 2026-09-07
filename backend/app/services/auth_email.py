@@ -156,6 +156,6 @@ async def send_reset_email(settings: Settings, user: User, token: str) -> None:
     await send_resend_email(
         settings,
         to=user.email or "",
-        subject="重置你的 Script Studio 密码",
+        subject="重置你的 VN Script Studio 密码",
         html=html,
     )

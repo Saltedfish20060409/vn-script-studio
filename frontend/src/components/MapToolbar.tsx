@@ -150,9 +150,9 @@ export function MapToolbar({
             type="button"
             className={styles.toolBtn}
             onClick={onExtractRulesOnly}
-            title="仅从 scene bg 标签提取"
+            title="只从正文里写了场景标签的地方提取地点，不靠对白猜测"
           >
-            仅 scene
+            按场景标签提取
           </button>
         )}
       </div>

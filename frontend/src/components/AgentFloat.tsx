@@ -438,9 +438,9 @@ export function AgentFloat(props: Props) {
           onPointerMove={onTabPointerMove}
           onPointerUp={onTabPointerUp}
           onClick={onTabClick}
-          title="点击展开 · 按住可拖动"
+          title="AI 责编：帮你改稿、审稿、续写、头脑风暴。点一下展开面板；按住可拖动这个标签的位置"
         >
-          审稿 Agent
+          AI 责编
         </button>
       )}
       <div
@@ -497,9 +497,9 @@ export function AgentFloat(props: Props) {
           <span className={styles.titleIdx} aria-hidden>
             AG
           </span>
-          <strong>审稿 Agent</strong>
+          <strong>AI 责编</strong>
           <span className={styles.sub}>
-            {nearEdgeHint ? "松手贴边收起" : "卷宗 · ⇄ 参谋"}
+            {nearEdgeHint ? "松手贴边收起" : "审稿 · 改稿 · ⇄ 参谋"}
           </span>
           <div className={styles.winBtns}>
             <button

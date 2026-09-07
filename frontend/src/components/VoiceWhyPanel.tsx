@@ -46,7 +46,7 @@ export function VoiceWhyPanel({
   return (
     <div className={styles.whyBox}>
       <p className={styles.manualHint}>
-        为何更像「{label}」？（可选，可跳过）填写后会进入偏好笔记，帮助后续收敛。
+        为什么这一组更像「{label}」？（可选）点几个词或补一句理由，能帮 AI 更懂你想要的方向；不填也能直接保存。
       </p>
       <div className={styles.tagCloud} role="group" aria-label="为何更像">
         {WHY_CHIPS.map((chip) => {
@@ -81,10 +81,10 @@ export function VoiceWhyPanel({
             onConfirm([...chips, custom.trim()].filter(Boolean).join("；"))
           }
         >
-          {busy.startsWith("accept-") ? "写入语料…" : "确认入库"}
+          {busy.startsWith("accept-") ? "保存中…" : "确认存为示例"}
         </button>
         <button type="button" disabled={!!busy} onClick={onSkip}>
-          跳过，直接入库
+          不填理由，直接保存
         </button>
         <button type="button" disabled={!!busy} onClick={onCancel}>
           取消

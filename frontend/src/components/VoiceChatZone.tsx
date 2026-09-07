@@ -127,7 +127,7 @@ export function VoiceChatZone({
           清空会话
         </button>
         <button type="button" disabled={!!busy || !canSave} onClick={onSaveSample}>
-          {busy === "save-chat" ? "存入中…" : "存入正例"}
+          {busy === "save-chat" ? "存入中…" : "存为示例（让角色更像这段话的语气）"}
         </button>
       </div>
 

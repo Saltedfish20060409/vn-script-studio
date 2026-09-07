@@ -119,9 +119,10 @@ export function ProjectLibraryPanel({
               <button
                 type="button"
                 className={styles.ghost}
+                title="把这份剧本完整另存一份新的，可在两份上分别继续写"
                 onClick={() => onDuplicate(p.id)}
               >
-                复制
+                另存副本
               </button>
               <button
                 type="button"

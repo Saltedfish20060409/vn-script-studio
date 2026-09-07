@@ -137,7 +137,7 @@ function readinessPaths(opts: {
   const { sampleCount, coverage, volumeChars, sceneCount, interviewCount, ready } =
     opts;
   const paths = [
-    `短正例 ${sampleCount}/${READY_TARGETS.samples}`,
+    `短对白示例 ${sampleCount}/${READY_TARGETS.samples}`,
     `不同场景 ${coverage}/${READY_TARGETS.coverage}`,
     `角色台词约 ${volumeChars}/${READY_TARGETS.volume} 字`,
     `长场次 ${sceneCount}/${READY_TARGETS.scenes}`,
@@ -147,12 +147,12 @@ function readinessPaths(opts: {
     return {
       ready: true,
       paths,
-      nextHint: "已达到合成门槛，可以去「思维包」合成了。",
+      nextHint: "素材够了，可以到「思维包」生成角色的口吻规则了。",
     };
   }
   const remain: string[] = [];
   if (sampleCount < READY_TARGETS.samples) {
-    remain.push(`再攒 ${READY_TARGETS.samples - sampleCount} 条短正例`);
+    remain.push(`再收集 ${READY_TARGETS.samples - sampleCount} 条短对白示例`);
   }
   if (coverage < READY_TARGETS.coverage) {
     remain.push(`再换 ${READY_TARGETS.coverage - coverage} 类不同场景做三选一`);
@@ -163,7 +163,7 @@ function readinessPaths(opts: {
     );
   }
   if (sceneCount < READY_TARGETS.scenes) {
-    remain.push(`或再入库 ${READY_TARGETS.scenes - sceneCount} 段长场次`);
+    remain.push(`或再存 ${READY_TARGETS.scenes - sceneCount} 段长场次示例`);
   }
   return {
     ready: false,
@@ -518,7 +518,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
       resetGen();
       await loadState(character.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "入库失败");
+      setError(e instanceof Error ? e.message : "保存示例失败");
     } finally {
       setBusy("");
     }
@@ -561,7 +561,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
       resetGen();
       await loadState(character.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "入库失败");
+      setError(e instanceof Error ? e.message : "保存示例失败");
     } finally {
       setBusy("");
     }
@@ -596,7 +596,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
       if (source === "interview") setInterviewManual("");
       await loadState(character.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "入库失败");
+      setError(e instanceof Error ? e.message : "保存示例失败");
     } finally {
       setBusy("");
     }
@@ -664,7 +664,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
       resetGen();
       await loadState(character.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "入库失败");
+      setError(e instanceof Error ? e.message : "保存示例失败");
     } finally {
       setBusy("");
     }
@@ -1050,7 +1050,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
         />
       )}
       <VoiceWorkshopHero
-        value="定声音 → 思维包 → 试聊 / 写对白"
+        value="定口吻 → 合成思维包 → 试聊 / 写对白"
         railOpen={railOpen}
         onToggleRail={handleRailToggle}
         showGuide={showGuide}
@@ -1120,9 +1120,9 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
           <div className={styles.zoneTabs}>
             {(
               [
-                ["shape", "塑形"],
+                ["shape", "定口吻"],
                 ["pack", "思维包"],
-                ["chat", "对话"],
+                ["chat", "试聊"],
               ] as const
             ).map(([id, label]) => (
               <button

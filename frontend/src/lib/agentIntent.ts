@@ -57,13 +57,15 @@ export function inferAgentIntent(text: string, attachmentCount = 0): AgentIntent
   const t = trimmed || (hasAttach(attachmentCount) ? "请阅读附件并协助整理" : "");
 
   if (
-    /^(跑|运行)?\s*(完整)?流水线/.test(t) ||
+    /^(跑|运行)?\s*(完整)?(流水线|自动写作)/.test(t) ||
     t.startsWith("【流水线】") ||
+    t.startsWith("【自动写作】") ||
     /请.*(规划|计划).*(写|生成|续写)/.test(t)
   ) {
     const note = t
       .replace(/^【流水线】/, "")
-      .replace(/^(跑|运行)?\s*(完整)?流水线[：:\s]*/, "")
+      .replace(/^【自动写作】/, "")
+      .replace(/^(跑|运行)?\s*(完整)?(流水线|自动写作)[：:\s]*/, "")
       .trim();
     return { kind: "pipeline", note: note || t };
   }

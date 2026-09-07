@@ -30,7 +30,7 @@ export function StyleMemoryPanel({ project, onChange }: Props) {
       onChange(res.project);
       setOk(
         res.guide
-          ? "已从你的章节归纳文风，Agent 后续写作会自动贴合。"
+          ? "已从你的章节归纳出文风记忆，之后 AI 写作会自动参考。"
           : "学习完成。"
       );
     } catch (e) {
@@ -58,8 +58,9 @@ export function StyleMemoryPanel({ project, onChange }: Props) {
   return (
     <div className={styles.wrap}>
       <p className={styles.hint}>
-        AI 通读你的全文，归纳「你习惯怎么写」：句式节奏、用词、对白风格与应避免的套话。
-        归纳结果注入 Agent 上下文，续写 / 改写 / 润色都会贴合你自己的文风。
+        写几章后，点「从全文学习文风」：AI 会通读你写过的内容，归纳你的习惯——
+        句式节奏、用词、对白风格、要避免的套话。以后的续写 / 改写 / 润色都会参考这份
+        “文风记忆”，让 AI 行文贴近你本人，而不是 AI 腔。
       </p>
       {error && <p className={styles.error}>{error}</p>}
       {ok && <p className={styles.ok}>{ok}</p>}

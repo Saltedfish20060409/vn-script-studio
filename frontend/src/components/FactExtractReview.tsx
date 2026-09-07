@@ -60,10 +60,10 @@ export function FactExtractReview({
       >
         <header className={styles.head}>
           <p className={styles.stamp}>FACT · REVIEW</p>
-          <h2 id="fact-extract-review-title">确认写入分析事实</h2>
+          <h2 id="fact-extract-review-title">确认加入关系与时间线</h2>
           <p className={styles.sub}>
-            候选来自剧本 / 圣经 /
-            角色卡（及粘贴源）。勾选后可接受写入或单独拒绝；「稍后处理」只关对话框，保留托盘。
+            候选来自剧本、作品设定和角色卡（及你粘贴的内容）。勾选后点「接受」才会把条目
+            加进角色关系与时间线（只加资料，不改正文）；「稍后处理」只关弹窗，候选仍保留，可稍后再看。
           </p>
         </header>
 
@@ -178,7 +178,7 @@ export function FactExtractReview({
             disabled={busy || selected.size === 0}
             onClick={() => onConfirm([...selected])}
           >
-            {busy ? "写入中…" : `接受 ${selected.size} 条`}
+            {busy ? "处理中…" : `接受所选 ${selected.size} 条`}
           </button>
         </footer>
       </div>

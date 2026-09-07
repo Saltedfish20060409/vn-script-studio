@@ -84,10 +84,10 @@ export function MapExtractReview({
       >
         <header className={styles.head}>
           <p className={styles.stamp}>MAP · REVIEW</p>
-          <h2 id="map-extract-review-title">确认写入地图</h2>
+          <h2 id="map-extract-review-title">确认加入地图</h2>
           <p className={styles.sub}>
             {modeLabel ? `${modeLabel} · ` : ""}
-            已有钉的坐标不会被重排。勾选要新增的地点与通路。
+            勾选要新增的地点与通路（只加地图，不改正文）；已经放在地图上的地点不会被移动。
           </p>
         </header>
 

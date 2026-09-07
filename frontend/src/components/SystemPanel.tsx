@@ -85,7 +85,7 @@ export function SystemPanel({ project, onChange, sub, onSub }: Props) {
       {sub === "variables" && (
         <>
           <div className={styles.toolbar}>
-            <span>状态机变量会写入 Agent 上下文，便于按好感度写戏</span>
+            <span>记录会随剧情变化的值（例如好感度），写稿时 AI 会参考当前数值来写不同反应的戏</span>
             <button type="button" className={styles.primary} onClick={addVar}>
               添加变量
             </button>
@@ -116,7 +116,7 @@ export function SystemPanel({ project, onChange, sub, onSub }: Props) {
                   />
                 </label>
                 <label>
-                  键名（Ren&apos;Py）
+                  键名（Ren&apos;Py 脚本里用的名字）
                   <input
                     value={v.key}
                     onChange={(e) =>
@@ -124,6 +124,7 @@ export function SystemPanel({ project, onChange, sub, onSub }: Props) {
                         key: e.target.value.replace(/[^A-Za-z0-9_]/g, ""),
                       })
                     }
+                    placeholder="只填英文、数字、下划线，例如 affection_1"
                   />
                 </label>
                 <label>
@@ -151,8 +152,8 @@ export function SystemPanel({ project, onChange, sub, onSub }: Props) {
                         patchVar(v.id, { value: e.target.value === "true" })
                       }
                     >
-                      <option value="false">false</option>
-                      <option value="true">true</option>
+                      <option value="false">否</option>
+                      <option value="true">是</option>
                     </select>
                   ) : (
                     <input
@@ -204,7 +205,7 @@ export function SystemPanel({ project, onChange, sub, onSub }: Props) {
       {sub === "sprites" && (
         <>
           <div className={styles.toolbar}>
-            <span>立绘与表情槽：对白旁可标注 show 标签</span>
+            <span>角色立绘与表情：剧本里写到该角色时，可标注用哪张图、哪个表情</span>
             <button type="button" className={styles.primary} onClick={addSprite}>
               添加立绘
             </button>
