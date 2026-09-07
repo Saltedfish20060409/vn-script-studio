@@ -79,7 +79,8 @@ def _set_refresh_cookie(response: Response, token: str, settings: Settings) -> N
         path="/api/v1/auth/refresh",
         httponly=True,
         samesite="strict",
-        secure=False,  # set True once HTTPS is live (deployment behind TLS)
+        # 部署在 HTTPS 后置 True（.env: COOKIE_SECURE=true），Cookie 只在 TLS 上传输。
+        secure=settings.cookie_secure,
     )
 
 

@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # on 401 (api/http.ts refreshOnce), so no UX change.
     access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 30
+    # Set True once the site is served over HTTPS (nginx TLS terminates).
+    # Marks the refresh cookie Secure so it never travels over plain HTTP.
+    cookie_secure: bool = False
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     # 网站底部备案号（ICP 备案通过后填写；公安备案通过后再填公安号）
