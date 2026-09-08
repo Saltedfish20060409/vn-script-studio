@@ -414,7 +414,7 @@ export default function LoginPage() {
             <span aria-hidden> · </span>
             <Link to="/legal?doc=terms">服务条款</Link>
             <br />
-            AI 生成内容请自行审稿后再用于发行。
+            AI 生成内容请自行审稿后再用于发行。本站与所用模型不提供色情等露骨成人内容的生成。
           </p>
         </div>
       </section>
