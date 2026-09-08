@@ -59,7 +59,12 @@ export function logout(): Promise<OkMessageOut> {
 }
 
 export function me(): Promise<UserOut> {
-  return apiFetch<UserOut>("/auth/me");
+  // 登录态探测：401 时静默失败即可（refresh 也在 apiFetch 内自动尝试）。
+  // 不能带全局跳转登录——否则公开页（/verify-email、/reset-password 等）
+  // 一挂载就因未登录被踢去 /login，验证/重置流程无法执行。
+  return apiFetch<UserOut>("/auth/me", {
+    skipAuthRedirect: true,
+  });
 }
 
 export function verifyEmail(token: string): Promise<OkMessageOut> {

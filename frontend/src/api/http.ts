@@ -147,7 +147,12 @@ export async function apiFetch<T = unknown>(
   });
 
   // Expired access token → try one refresh, then replay the request once.
-  if (res.status === 401 && !options.skipAuthRedirect) {
+  // Refresh is attempted on ANY 401 (skipAuthRedirect only controls the final
+  // redirect-to-login). Rationale: me() runs on every page mount including
+  // public pages (/verify-email, /reset-password…). It must still be able to
+  // restore a session via the refresh cookie, but its failure must NOT bounce
+  // an anonymous visitor away from a public page before that page can act.
+  if (res.status === 401) {
     if (await refreshOnce()) {
       const h2 = buildApiHeaders(
         options.headers,
