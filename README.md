@@ -211,7 +211,10 @@ python -m app eval -m qwen2.5:7b --base-url http://localhost:11434 --api-key oll
 | `REDIS_URL` | 协作 SSE 与接口限流跨 worker；留空 = 单进程内存。线上 compose 会写入 `redis://redis:6379/0` |
 | `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` | 可选：pgvector 语义搜索的 embedding 端点；留空 = 启发式关键词检索 |
 | `LLM_DAILY_TOKEN_CAP` | 用户自备 Key 的每日上限（**0 = 不限**，默认） |
-| `LLM_SHARED_KEY_DAILY_CAP` | 仅当请求落到**服务端** `DEEPSEEK_API_KEY` 时的每日上限（默认 20 万；无服务端 Key 则不会触发） |
+| `LLM_SHARED_KEY_DAILY_CAP` | 仅当请求落到**服务端** `DEEPSEEK_API_KEY` 时的**每用户每日**上限。代码默认 20 万；生产现设为 **200 万** |
+| `AGENT_CONTEXT_MAX_CHARS` | Agent 单次注入的项目上下文预算（字符）。代码默认 12000，生产现设 **18000** |
+| `SAMPLE_PROJECT_ON_SIGNUP` | 注册时自动送示例项目（激活用，默认 `true`） |
+| `MEMORY_AUTO_ARCHIVE` | 每攒满 10 章自动重建章节记忆归档（纯本地计算、不调模型，默认 `true`） |
 | `MAX_PROJECTS_PER_USER` | 每账号项目数上限（默认 80） |
 | `ALLOW_REGISTRATION` | `false` 一键关注册 |
 | `ADMIN_USERNAMES` | 逗号分隔管理员用户名；可调用 `/api/v1/admin/*` 封禁/解禁。空 = 仅 CLI |
@@ -220,6 +223,12 @@ python -m app eval -m qwen2.5:7b --base-url http://localhost:11434 --api-key oll
 | `AUTH_AUTO_VERIFY` | 仅测试/e2e：跳过发信并直接验证新账号 |
 
 前端「设置」含外观、工具背景、用量与**模型凭据**（用户级 Key 按账号加密存储）；服务端级模型接入改 `backend/.env` 后重启 API。
+
+> **上下文预算怎么定？**（2026-09 实测）`AGENT_CONTEXT_MAX_CHARS` 是**上限**而不是固定开销：
+> 拼装量小于上限时提高它不产生任何额外 token。当时抽查线上 8 个真实项目，拼装量只有
+> 698–2679 字符（章节最多 5 章），**没有一个触顶**，所以那个值只对"长篇 + 多角色 + 长设定"
+> 才起作用（触顶时会先压缩其他章摘要、再压缩中段）。真正影响"AI 忘前文"的是检索命中与
+> 章节记忆归档（`MEMORY_AUTO_ARCHIVE`），不是窗口大小——别指望调大它解决连贯性问题。
 
 ### 可选功能：多 worker SSE 与语义搜索
 
