@@ -65,8 +65,13 @@ export default defineConfig({
             // 同源图片兜底：相对路径（如 /mascot/angel.png）会按页面 origin 解析成
             // 绝对 URL，若部署在 http（dev/preview/LAN）上，上面 ^https:// 正则匹配
             // 不到；这里按 sameOrigin 匹配，兜住被 globIgnores 排除后按需加载的同源图片。
+            //
+            // 注意：这里刻意只做字符串匹配，不访问 url.pathname ——
+            // vite.config.ts 用的是 tsconfig.node.json（lib 只有 ES2023，没有 DOM），
+            // URL 的类型视各环境解析结果而定，取属性在 CI 的 Linux 上会报
+            // TS2339（本机 Windows 不报），改成 String(url) 后两边都成立。
             urlPattern: ({ sameOrigin, url }) =>
-              sameOrigin && /\.(png|jpg|jpeg|webp|gif)$/.test(url.pathname),
+              sameOrigin && /\.(png|jpe?g|webp|gif)(?:[?#]|$)/.test(String(url)),
             handler: "CacheFirst",
             options: {
               cacheName: "images",
