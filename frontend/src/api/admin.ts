@@ -41,6 +41,26 @@ export interface AdminFlagOut {
   message: string;
 }
 
+export interface AdminFunnelStep {
+  key: string;
+  label: string;
+  users: number;
+}
+
+export interface AdminFunnelSource {
+  source: string;
+  signups: number;
+  active7d: number;
+}
+
+export interface AdminFunnelOut {
+  days: number;
+  funnel: AdminFunnelStep[];
+  sources: AdminFunnelSource[];
+  events: Record<string, number>;
+  notes?: string;
+}
+
 export function fetchAdminOverview(opts?: {
   anomaliesOnly?: boolean;
   disabledOnly?: boolean;
@@ -50,6 +70,10 @@ export function fetchAdminOverview(opts?: {
   if (opts?.disabledOnly) q.set("disabled_only", "true");
   const qs = q.toString();
   return apiFetch<AdminOverviewOut>(`/admin/overview${qs ? `?${qs}` : ""}`);
+}
+
+export function fetchAdminFunnel(days = 30): Promise<AdminFunnelOut> {
+  return apiFetch<AdminFunnelOut>(`/admin/funnel?days=${days}`);
 }
 
 export function banUser(username: string): Promise<BanOut> {

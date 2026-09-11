@@ -57,6 +57,7 @@ import { FocusChrome } from "./FocusChrome";
 import { FilingFooter } from "./FilingFooter";
 import { useConfirm, usePrompt } from "../lib/confirmDialog";
 import { EmptyStage } from "./EmptyStage";
+import { FirstRunChecklist } from "./FirstRunChecklist";
 import { ProjectLibraryPanel } from "./ProjectLibraryPanel";
 import { CollabPanel } from "./CollabPanel";
 import { CommentsPanel } from "./CommentsPanel";
@@ -91,6 +92,7 @@ import { blockTextRange, blocksToEditable, editableToBlocks } from "../lib/scrip
 import { chapterProse, proseFingerprint, rpyIsStale } from "../lib/scriptProse";
 import { normalizeProject } from "../lib/vnLocal";
 import { diffProjectAgainst } from "../lib/projectDiff";
+import { EVENTS, trackOncePerUser } from "../lib/track";
 import {
   applySettingsToDom,
   DEFAULT_SETTINGS,
@@ -907,9 +909,11 @@ export function StudioApp() {
       if (writeModeRef.current === "rpy") {
         const text = await exportRpy(latest.id);
         downloadText(`${latest.title || "script"}.rpy`, text, "text/plain;charset=utf-8");
+        trackOncePerUser(EVENTS.exportDone, { kind: "rpy" });
       } else {
         const blob = await exportDocx(latest.id);
         downloadBlob(`${latest.title || "script"}.docx`, blob);
+        trackOncePerUser(EVENTS.exportDone, { kind: "docx" });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "导出失败");
@@ -1449,6 +1453,7 @@ export function StudioApp() {
       rpyPreview,
       "text/plain;charset=utf-8"
     );
+    trackOncePerUser(EVENTS.exportDone, { kind: "rpy_manual" });
     setStatus("已下载 .rpy");
   }
 
@@ -1899,6 +1904,21 @@ export function StudioApp() {
                   onDeleteChapter={() => void deleteChapter(chapterId)}
                 />
                 {writeSub === "script" && (
+                  <FirstRunChecklist
+                    hasContent={Boolean((chapter?.prose || editor || "").trim().length > 20)}
+                    onOpenAgent={() => setAgentOpenTick((t) => t + 1)}
+                    onGenerateRpy={() => {
+                      setTab("project");
+                      setProjectSub("export");
+                      void generateRpyFromManuscript();
+                    }}
+                    onExport={() => void exportCurrentView()}
+                    onStep={(step) =>
+                      trackOncePerUser(`onboarding_${step}`, { step })
+                    }
+                  />
+                )}
+                {writeSub === "script" && (
                   <section className={styles.panel}>
                     <WriteToolbar
                       chapterTitle={chapter?.title ?? ""}
@@ -2011,6 +2031,7 @@ export function StudioApp() {
                             return;
                           }
                           setPlayOpen(true);
+                          trackOncePerUser(EVENTS.playtestOpened, {});
                         }}
                         title="以视觉小说方式试玩当前章节（分支/选项可点）"
                       >

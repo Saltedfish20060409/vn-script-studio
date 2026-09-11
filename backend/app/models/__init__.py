@@ -10,6 +10,7 @@ from app.models.tables import (
     ErrorReport,
     LlmUsage,
     LoreCraftCard,
+    ProductEvent,
     Project,
     ProjectChapterRow,
     ProjectComment,
@@ -43,4 +44,5 @@ __all__ = [
     "ProjectChapterRow",
     "WritingActivity",
     "ErrorReport",
+    "ProductEvent",
 ]

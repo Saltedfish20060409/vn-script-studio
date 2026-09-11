@@ -7,6 +7,7 @@ from app.api.v1 import (
     collab,
     consistency,
     errors,
+    events,
     harness,
     lenses,
     lore,
@@ -44,3 +45,4 @@ api_router.include_router(music.router)
 api_router.include_router(notice.router)
 api_router.include_router(meta.router)
 api_router.include_router(errors.router)
+api_router.include_router(events.router)

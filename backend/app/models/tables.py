@@ -42,6 +42,9 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # 渠道归因：注册时把前端首次带到的 ?ref=xxx 存下来（bili / douyin / github …）。
+    # 只用于"哪条视频真的带来了用户"，不参与鉴权。
+    signup_source: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     # SECURITY (M-2): bumped on password reset / password change / ban so all
     # previously-issued access & refresh JWTs become invalid immediately.
     token_version: Mapped[int] = mapped_column(
@@ -485,3 +488,23 @@ class ErrorReport(Base):
         String(36), ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ProductEvent(Base):
+    """最小产品埋点：只记「谁在何时触发了哪个关键动作」。
+
+    刻意不记正文/设定等创作内容——漏斗只关心动作是否发生。
+    事件名集中在 app/core/analytics.py 的常量里，避免名字满天飞。
+    """
+
+    __tablename__ = "product_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(48), index=True)
+    props: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, index=True
+    )

@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime, timezone
 
 import jwt
@@ -8,6 +9,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
+from app.core.analytics import SAMPLE_CREATED, SIGNUP, record_event
 from app.core.rate_limit import check_rate
 from app.db import get_db
 from app.models import User, UserSettings
@@ -46,6 +48,51 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
 _email_adapter = TypeAdapter(EmailStr)
+
+# 渠道名只允许短标识（字母/数字/下划线/连字符）。这里允许到 200 再截断，
+# 免得一个手写的超长 ?ref= 让注册接口直接 422（漏斗数据不值得挡住注册）。
+_REF_RE = re.compile(r"^[a-zA-Z0-9_-]{1,200}$")
+
+# 新用户自动创建示例项目时用的标题（可删，用户随手改掉也无妨）
+SAMPLE_PROJECT_TITLE = "示例 · 雨夜车站（可直接改）"
+
+
+def _clean_signup_source(raw: str | None) -> str | None:
+    """校验并归一化 ?ref= 渠道名；不合法就当没带。"""
+    if not raw:
+        return None
+    value = raw.strip().lower()
+    if not _REF_RE.match(value):
+        return None
+    return value[:64]
+
+
+async def _seed_sample_project(db: AsyncSession, user: User) -> None:
+    """给新用户建一个示例项目（激活用）。
+
+    任何失败都只记日志——注册流程绝不能因为示例项目建不出来而失败。
+    """
+    from app.config import get_settings as _get_settings
+
+    if not getattr(_get_settings(), "sample_project_on_signup", True):
+        return
+    try:
+        from app.services.projects import create_project_row
+
+        row = await create_project_row(
+            db, user, title=SAMPLE_PROJECT_TITLE, from_demo=True
+        )
+        await record_event(
+            db,
+            user.id,
+            SAMPLE_CREATED,
+            {"is_sample": "1", "kind": "auto", "from": "signup"},
+        )
+        await db.commit()
+        logger.info("seeded sample project for new user %s (%s)", user.username, row.id)
+    except Exception as exc:  # noqa: BLE001 - 激活流程不该阻塞注册
+        await db.rollback()
+        logger.warning("sample project seeding failed for %s: %s", user.username, exc)
 
 
 def _client_ip(request: Request) -> str:
@@ -153,11 +200,16 @@ async def register(
         email=email,
         email_verified_at=datetime.now(timezone.utc) if settings.auth_auto_verify else None,
     )
+    user.signup_source = _clean_signup_source(body.ref)
     db.add(user)
     await db.flush()
     db.add(UserSettings(user_id=user.id, bg=dict(DEFAULT_BG)))
+    await record_event(
+        db, user.id, SIGNUP, {"source": user.signup_source or "direct"}
+    )
     if settings.auth_auto_verify:
         await db.commit()
+        await _seed_sample_project(db, user)
         return RegisterOut(
             ok=True,
             message="注册成功，请登录",
@@ -179,6 +231,9 @@ async def register(
         raise HTTPException(
             status_code=502, detail="验证邮件发送失败，请稍后重试或联系管理员"
         ) from exc
+
+    # 注册成功 → 送一个示例项目，让用户一进站就有内容可写（见 roadmap 方向 A）。
+    await _seed_sample_project(db, user)
 
     return RegisterOut(
         ok=True,

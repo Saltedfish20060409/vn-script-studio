@@ -82,6 +82,10 @@ class Settings(BaseSettings):
     # Soft storage caps (generous — anti-abuse, not a product paywall).
     max_projects_per_user: int = 80
 
+    # 新用户注册时自动送一个示例项目（激活用：进站就有内容可写）。
+    # 置 false 可退回"空项目库"的旧行为。
+    sample_project_on_signup: bool = True
+
     # Kill switch: set ALLOW_REGISTRATION=false to stop new sign-ups.
     allow_registration: bool = True
 

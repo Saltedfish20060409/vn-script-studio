@@ -161,6 +161,52 @@ async def create_project(
         )
     except KeyError as exc:
         raise HTTPException(status_code=400, detail="未知模板") from exc
+    # 埋点：区分"示例项目"与用户自建，便于看激活漏斗（见 roadmap 方向 B）
+    from app.core.analytics import PROJECT_CREATED, SAMPLE_CREATED, record_event
+
+    if body.from_demo and not body.template_id:
+        await record_event(
+            db, user.id, SAMPLE_CREATED, {"is_sample": "1", "kind": "manual"}
+        )
+    else:
+        await record_event(
+            db,
+            user.id,
+            PROJECT_CREATED,
+            {"template": body.template_id or ("sample" if body.from_demo else "blank")},
+        )
+    await db.commit()
+    return project_to_dict(row_to_vn(row))
+
+
+@router.post("/sample", response_model=dict)
+async def create_sample_project(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """按需创建示例项目（空项目库引导、或用户删掉示例后想再来一个时用）。"""
+    if not check_rate(
+        user.id,
+        "create_project",
+        limit=40,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+    ):
+        raise HTTPException(status_code=429, detail="新建过于频繁，请稍后再试")
+    from app.api.v1.auth import SAMPLE_PROJECT_TITLE
+    from app.core.analytics import SAMPLE_CREATED, record_event
+
+    try:
+        row = await create_project_row(
+            db, user, title=SAMPLE_PROJECT_TITLE, from_demo=True
+        )
+    except HTTPException:
+        raise
+    await record_event(
+        db, user.id, SAMPLE_CREATED, {"is_sample": "1", "kind": "manual"}
+    )
+    await db.commit()
     return project_to_dict(row_to_vn(row))
 
 
@@ -514,6 +560,17 @@ async def generate_rpy_from_prose_api(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    # 埋点：首次生成 RPY（激活漏斗里"能不能做成游戏"这一环）
+    from app.core.analytics import RPY_GENERATED, record_first_event
+
+    await record_first_event(
+        db, user.id, RPY_GENERATED, {"model": "llm" if use_llm else "rules"}
+    )
+    try:
+        await db.commit()
+    except Exception:  # noqa: BLE001 - 埋点失败不影响返回
+        await db.rollback()
 
     return {
         "rpy": rpy,

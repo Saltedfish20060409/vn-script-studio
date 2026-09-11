@@ -8,13 +8,13 @@ from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import Text, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.db import get_db
 from app.models import User
-from app.models.tables import LlmUsage, Project
+from app.models.tables import LlmUsage, Project, ProjectChapterRow
 from app.security import get_admin_user
 from app.services.admin_access import count_db_admins
 
@@ -281,6 +281,156 @@ async def list_users(
         anomalies_only=anomalies_only,
         limit=limit,
     )
+
+
+@router.get("/funnel")
+async def admin_funnel(
+    days: int = Query(30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+):
+    """激活漏斗 + 渠道来源（见 docs/roadmap-2026-09.md 方向 B / C）。
+
+    - 漏斗按「首次发生」口径统计，避免重复动作把数字撑大；
+    - 来源取 users.signup_source（?ref= 首次归因），并给出各渠道的 7 日留存；
+    - 只读，不做任何写操作。
+    """
+    from app.core.analytics import (
+        AI_CALL,
+        EXPORT_DONE,
+        PLAYTEST_OPENED,
+        PROJECT_CREATED,
+        PROSE_SAVED,
+        RPY_GENERATED,
+        SAMPLE_CREATED,
+        SHARE_CREATED,
+        SIGNUP,
+    )
+    from app.models.tables import ProductEvent
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    # 各事件的唯一用户数（首次口径天然成立：同一用户只会有一次 first_* 写入，
+    # 这里用 distinct 再兜一层）
+    rows = (
+        await db.execute(
+            select(ProductEvent.name, func.count(func.distinct(ProductEvent.user_id)))
+            .where(ProductEvent.created_at >= since)
+            .group_by(ProductEvent.name)
+        )
+    ).all()
+    counts = {str(r[0]): int(r[1] or 0) for r in rows}
+
+    # 注册 / 验证 / 建项目 / 写过正文 / 用过 AI 直接从业务表算（更准）
+    total_users = int(
+        (await db.execute(select(func.count()).select_from(User))).scalar_one() or 0
+    )
+    verified = int(
+        (
+            await db.execute(
+                select(func.count())
+                .select_from(User)
+                .where(User.email_verified_at.is_not(None))
+            )
+        ).scalar_one()
+        or 0
+    )
+    users_with_project = int(
+        (
+            await db.execute(select(func.count(func.distinct(Project.owner_id))))
+        ).scalar_one()
+        or 0
+    )
+    users_with_prose = int(
+        (
+            await db.execute(
+                select(func.count(func.distinct(Project.owner_id)))
+                .select_from(ProjectChapterRow)
+                .join(Project, Project.id == ProjectChapterRow.project_id)
+                .where(
+                    func.length(cast(ProjectChapterRow.blocks, Text)) > 60
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+    users_with_ai = int(
+        (
+            await db.execute(select(func.count(func.distinct(LlmUsage.user_id))))
+        ).scalar_one()
+        or 0
+    )
+
+    funnel = [
+        {"key": "signup", "label": "注册", "users": total_users},
+        {"key": "verified", "label": "邮箱已验证", "users": verified},
+        {"key": "project", "label": "建过项目", "users": users_with_project},
+        {"key": "prose", "label": "写过正文", "users": users_with_prose},
+        {"key": "ai", "label": "用过 AI", "users": users_with_ai},
+        {
+            "key": "rpy",
+            "label": "生成过 RPY",
+            "users": counts.get(RPY_GENERATED, 0),
+        },
+        {
+            "key": "playtest",
+            "label": "试玩过",
+            "users": counts.get(PLAYTEST_OPENED, 0),
+        },
+        {
+            "key": "export",
+            "label": "导出过",
+            "users": counts.get(EXPORT_DONE, 0),
+        },
+    ]
+
+    # 渠道来源 + 留存（一次查询：按来源统计注册数与该来源中"用过 AI"的人数）
+    src_rows = (
+        await db.execute(
+            select(
+                func.coalesce(User.signup_source, "direct"),
+                func.count(func.distinct(User.id)),
+                func.count(func.distinct(LlmUsage.user_id)),
+            )
+            .select_from(User)
+            .outerjoin(
+                LlmUsage,
+                (LlmUsage.user_id == User.id) & (LlmUsage.created_at >= since),
+            )
+            .where(User.created_at >= since)
+            .group_by(func.coalesce(User.signup_source, "direct"))
+            .order_by(func.count(func.distinct(User.id)).desc())
+        )
+    ).all()
+    sources = [
+        {
+            "source": str(src),
+            "signups": int(cnt or 0),
+            "active7d": int(active or 0),
+        }
+        for src, cnt, active in src_rows
+    ]
+
+    event_totals = {
+        "sample_created": counts.get(SAMPLE_CREATED, 0),
+        "project_created": counts.get(PROJECT_CREATED, 0),
+        "prose_saved": counts.get(PROSE_SAVED, 0),
+        "ai_call": counts.get(AI_CALL, 0),
+        "share_created": counts.get(SHARE_CREATED, 0),
+        "playtest_opened": counts.get(PLAYTEST_OPENED, 0),
+        "export_done": counts.get(EXPORT_DONE, 0),
+    }
+
+    return {
+        "days": days,
+        "funnel": funnel,
+        "sources": sources,
+        "events": event_totals,
+        "notes": (
+            "漏斗为累计口径（除注明按天）；来源为 ?ref= 首次归因；"
+            "active7d = 该渠道用户中近 %d 天有 AI 调用的人数。" % days
+        ),
+    }
 
 
 @router.post("/users/{username}/ban", response_model=BanOut)

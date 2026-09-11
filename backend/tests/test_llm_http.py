@@ -215,6 +215,7 @@ def test_stream_chat_completions_skips_non_content_events():
 
 
 def test_v4_flash_sends_thinking_disabled():
+    """官方兼容名 deepseek-v4-flash 出站后落到 V4.1 正式名 deepseek-flash。"""
     posts = AsyncMock(return_value=_ok_response())
     mock_client = MagicMock()
     mock_client.post = posts
@@ -234,7 +235,7 @@ def test_v4_flash_sends_thinking_disabled():
 
     asyncio.run(_run())
     body = posts.await_args.kwargs["json"]
-    assert body["model"] == "deepseek-v4-flash"
+    assert body["model"] == "deepseek-flash"
     assert body["thinking"] == {"type": "disabled"}
 
 
@@ -258,7 +259,7 @@ def test_legacy_reasoner_rewrites_to_flash_thinking():
 
     asyncio.run(_run())
     body = posts.await_args.kwargs["json"]
-    assert body["model"] == "deepseek-v4-flash"
+    assert body["model"] == "deepseek-flash"
     assert body["thinking"] == {"type": "enabled"}
 
 

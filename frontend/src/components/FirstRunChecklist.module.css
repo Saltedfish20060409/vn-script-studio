@@ -1,0 +1,93 @@
+/* 新手上手三步引导条：细长横条，放在写作区上方，不抢编辑区空间。 */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.55rem 0.75rem;
+  margin: 0 0 0.6rem;
+  border: 1.5px solid var(--rail-border, var(--line));
+  border-radius: var(--radius-sm, 12px);
+  background: var(--rail-fill, color-mix(in srgb, var(--accent) 6%, var(--panel-bg)));
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  text-transform: uppercase;
+  padding-right: 0.2rem;
+  white-space: nowrap;
+}
+
+.step,
+.stepDone {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.32rem 0.62rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: var(--panel-bg, #f6f8fc);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 0.8rem;
+  text-align: left;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+
+.step:hover,
+.stepDone:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.stepDone {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  color: var(--ink-soft, #4a5568);
+}
+
+.idx {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.hint {
+  font-size: 0.72rem;
+  color: var(--ink-soft, #4a5568);
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft, #4a5568);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+}
+
+.close:hover {
+  color: var(--accent);
+}
+
+@media (max-width: 820px) {
+  .hint {
+    display: none;
+  }
+  .step,
+  .stepDone {
+    font-size: 0.76rem;
+    padding: 0.3rem 0.5rem;
+  }
+}

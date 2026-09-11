@@ -334,3 +334,86 @@
     transform: none;
   }
 }
+
+/* ---- 激活漏斗卡片（roadmap 方向 B / C）---- */
+.funnelBox {
+  margin: 0.4rem 0 0.9rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 12px);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+.funnelTitle {
+  margin: 0 0 0.5rem;
+  font-family: var(--font-display);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.funnelList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.funnelList li {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.78rem;
+}
+
+.funnelLabel {
+  color: var(--ink);
+}
+
+.funnelBar {
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  overflow: hidden;
+}
+
+.funnelBar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0.75;
+}
+
+.funnelNum {
+  color: var(--ink-soft, #4a5568);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.funnelSources {
+  margin: 0.6rem 0 0;
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  color: var(--ink-soft, #4a5568);
+  align-items: center;
+}
+
+.sourceChip {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-bg, #f6f8fc);
+}
+
+.funnelNote {
+  margin: 0.45rem 0 0;
+  font-size: 0.7rem;
+  color: var(--ink-soft, #4a5568);
+  opacity: 0.85;
+}

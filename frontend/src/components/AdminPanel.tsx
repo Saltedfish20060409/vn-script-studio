@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   banUser,
+  fetchAdminFunnel,
   fetchAdminOverview,
   grantAdmin,
   revokeAdmin,
   unbanUser,
+  type AdminFunnelOut,
   type AdminOverviewOut,
   type AdminUserOut,
 } from "../api/admin";
@@ -22,6 +24,7 @@ export function AdminPanel({ open, onClose }: Props) {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<"all" | "anomalies" | "disabled">("all");
   const [acting, setActing] = useState<string | null>(null);
+  const [funnel, setFunnel] = useState<AdminFunnelOut | null>(null);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -32,6 +35,12 @@ export function AdminPanel({ open, onClose }: Props) {
         disabledOnly: filter === "disabled",
       });
       setData(overview);
+      // 漏斗单独取（失败不影响用户列表展示）
+      try {
+        setFunnel(await fetchAdminFunnel(30));
+      } catch {
+        setFunnel(null);
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "加载失败");
     } finally {
@@ -152,6 +161,46 @@ export function AdminPanel({ open, onClose }: Props) {
           <p className={styles.banner} role="status">
             有 {data?.danger_count} 个账号触发红色异常，建议先看下方标红行。
           </p>
+        ) : null}
+
+        {funnel ? (
+          <div className={styles.funnelBox} data-testid="admin-funnel">
+            <p className={styles.funnelTitle}>
+              激活漏斗（近 {funnel.days} 天，人数为累计去重）
+            </p>
+            <ul className={styles.funnelList}>
+              {funnel.funnel.map((step, i) => {
+                const first = funnel.funnel[0]?.users || 0;
+                const prev = i === 0 ? step.users : funnel.funnel[i - 1].users;
+                const pct = first > 0 ? Math.round((step.users / first) * 100) : 0;
+                const drop = i === 0 || prev <= 0 ? null : Math.round(((prev - step.users) / prev) * 100);
+                return (
+                  <li key={step.key}>
+                    <span className={styles.funnelLabel}>{step.label}</span>
+                    <span className={styles.funnelBar} aria-hidden>
+                      <span style={{ width: `${Math.max(pct, 2)}%` }} />
+                    </span>
+                    <span className={styles.funnelNum}>
+                      {step.users}
+                      {i > 0 ? ` · ${pct}%` : ""}
+                      {drop !== null && drop > 0 ? `（↓${drop}%）` : ""}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            {funnel.sources.length > 0 ? (
+              <p className={styles.funnelSources}>
+                渠道：
+                {funnel.sources.map((s) => (
+                  <span key={s.source} className={styles.sourceChip}>
+                    {s.source} · {s.signups} 注册 / {s.active7d} 活跃
+                  </span>
+                ))}
+              </p>
+            ) : null}
+            {funnel.notes ? <p className={styles.funnelNote}>{funnel.notes}</p> : null}
+          </div>
         ) : null}
 
         <div className={styles.toolbar}>

@@ -1,7 +1,8 @@
-import { lazy, Suspense, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import { useAuth } from "./lib/authContext";
+import { captureRef } from "./lib/refSource";
 import { ConfirmProvider } from "./components/ConfirmDialog";
 import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 import { NoticeBanner } from "./components/NoticeBanner";
@@ -50,6 +51,11 @@ function RouteFallback() {
 }
 
 export default function App() {
+  // 渠道归因：进站第一件事就记下 ?ref=（首次归因，90 天有效）。
+  useEffect(() => {
+    captureRef();
+  }, []);
+
   return (
     <AuthProvider>
       <ConfirmProvider>
