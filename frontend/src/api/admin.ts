@@ -47,16 +47,9 @@ export interface AdminFunnelStep {
   users: number;
 }
 
-export interface AdminFunnelSource {
-  source: string;
-  signups: number;
-  active7d: number;
-}
-
 export interface AdminFunnelOut {
   days: number;
   funnel: AdminFunnelStep[];
-  sources: AdminFunnelSource[];
   events: Record<string, number>;
   notes?: string;
 }

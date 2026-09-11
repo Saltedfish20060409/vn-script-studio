@@ -62,7 +62,7 @@ EVENT_NAMES = frozenset(
 
 # props 只允许这些键（避免前端不小心把正文/密钥带上来）
 _ALLOWED_PROP_KEYS = frozenset(
-    {"source", "template", "is_sample", "kind", "step", "from", "chars", "model"}
+    {"template", "is_sample", "kind", "step", "from", "chars", "model"}
 )
 _MAX_PROPS = 6
 _MAX_VALUE_LEN = 64

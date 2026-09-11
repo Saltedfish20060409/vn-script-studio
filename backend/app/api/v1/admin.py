@@ -289,10 +289,9 @@ async def admin_funnel(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(get_admin_user),
 ):
-    """激活漏斗 + 渠道来源（见 docs/roadmap-2026-09.md 方向 B / C）。
+    """激活漏斗（见 docs/roadmap-2026-09.md 方向 B）。
 
     - 漏斗按「首次发生」口径统计，避免重复动作把数字撑大；
-    - 来源取 users.signup_source（?ref= 首次归因），并给出各渠道的 7 日留存；
     - 只读，不做任何写操作。
     """
     from app.core.analytics import (
@@ -383,36 +382,6 @@ async def admin_funnel(
         },
     ]
 
-    # 渠道来源 + 留存（一次查询：按来源统计注册数与该来源中"用过 AI"的人数）
-    # 注意：按 User.signup_source 原列分组（NULL 视为 direct），不要在 GROUP BY 里
-    # 重复写 func.coalesce(...)——那样会被渲染成两个不同绑定参数，PG 会报
-    # "must appear in the GROUP BY clause"。
-    src_rows = (
-        await db.execute(
-            select(
-                User.signup_source,
-                func.count(func.distinct(User.id)),
-                func.count(func.distinct(LlmUsage.user_id)),
-            )
-            .select_from(User)
-            .outerjoin(
-                LlmUsage,
-                (LlmUsage.user_id == User.id) & (LlmUsage.created_at >= since),
-            )
-            .where(User.created_at >= since)
-            .group_by(User.signup_source)
-        )
-    ).all()
-    sources = [
-        {
-            "source": str(src) if src else "direct",
-            "signups": int(cnt or 0),
-            "active7d": int(active or 0),
-        }
-        for src, cnt, active in src_rows
-    ]
-    sources.sort(key=lambda s: -s["signups"])
-
     event_totals = {
         "sample_created": counts.get(SAMPLE_CREATED, 0),
         "project_created": counts.get(PROJECT_CREATED, 0),
@@ -426,11 +395,10 @@ async def admin_funnel(
     return {
         "days": days,
         "funnel": funnel,
-        "sources": sources,
         "events": event_totals,
         "notes": (
-            "漏斗为累计口径（除注明按天）；来源为 ?ref= 首次归因；"
-            "active7d = 该渠道用户中近 %d 天有 AI 调用的人数。" % days
+            "漏斗为累计口径；各步人数为该动作的累计去重人数"
+            "（数据库口径用注册/验证/建项目/写正文/用 AI，事件口径用 rpy/试玩/导出）。"
         ),
     }
 

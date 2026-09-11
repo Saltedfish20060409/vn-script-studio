@@ -42,9 +42,6 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    # 渠道归因：注册时把前端首次带到的 ?ref=xxx 存下来（bili / douyin / github …）。
-    # 只用于"哪条视频真的带来了用户"，不参与鉴权。
-    signup_source: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     # SECURITY (M-2): bumped on password reset / password change / ban so all
     # previously-issued access & refresh JWTs become invalid immediately.
     token_version: Mapped[int] = mapped_column(

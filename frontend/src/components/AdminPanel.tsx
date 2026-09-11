@@ -189,16 +189,6 @@ export function AdminPanel({ open, onClose }: Props) {
                 );
               })}
             </ul>
-            {funnel.sources.length > 0 ? (
-              <p className={styles.funnelSources}>
-                渠道：
-                {funnel.sources.map((s) => (
-                  <span key={s.source} className={styles.sourceChip}>
-                    {s.source} · {s.signups} 注册 / {s.active7d} 活跃
-                  </span>
-                ))}
-              </p>
-            ) : null}
             {funnel.notes ? <p className={styles.funnelNote}>{funnel.notes}</p> : null}
           </div>
         ) : null}

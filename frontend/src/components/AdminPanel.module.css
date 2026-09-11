@@ -394,23 +394,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.funnelSources {
-  margin: 0.6rem 0 0;
-  display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-  font-size: 0.75rem;
-  color: var(--ink-soft, #4a5568);
-  align-items: center;
-}
-
-.sourceChip {
-  padding: 0.15rem 0.5rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--panel-bg, #f6f8fc);
-}
-
 .funnelNote {
   margin: 0.45rem 0 0;
   font-size: 0.7rem;

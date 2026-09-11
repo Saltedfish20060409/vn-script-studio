@@ -20,9 +20,6 @@ class RegisterIn(BaseModel):
     # 72 = bcrypt 输入上限；超过会被截断，造成"不同密码验证通过"的假象
     password: str = Field(min_length=8, max_length=72)
     email: str = Field(min_length=3, max_length=255)
-    # 渠道归因（?ref=bili / douyin / github …）：只做统计，不参与鉴权。
-    # 放宽到 200 再在后端截断，避免超长 ref 把注册打成 422。
-    ref: Optional[str] = Field(default=None, max_length=200)
 
 
 class RegisterOut(BaseModel):

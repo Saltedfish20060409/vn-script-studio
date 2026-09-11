@@ -1,5 +1,4 @@
 import logging
-import re
 from datetime import datetime, timezone
 
 import jwt
@@ -49,22 +48,8 @@ logger = logging.getLogger(__name__)
 
 _email_adapter = TypeAdapter(EmailStr)
 
-# 渠道名只允许短标识（字母/数字/下划线/连字符）。这里允许到 200 再截断，
-# 免得一个手写的超长 ?ref= 让注册接口直接 422（漏斗数据不值得挡住注册）。
-_REF_RE = re.compile(r"^[a-zA-Z0-9_-]{1,200}$")
-
 # 新用户自动创建示例项目时用的标题（可删，用户随手改掉也无妨）
 SAMPLE_PROJECT_TITLE = "示例 · 雨夜车站（可直接改）"
-
-
-def _clean_signup_source(raw: str | None) -> str | None:
-    """校验并归一化 ?ref= 渠道名；不合法就当没带。"""
-    if not raw:
-        return None
-    value = raw.strip().lower()
-    if not _REF_RE.match(value):
-        return None
-    return value[:64]
 
 
 async def _seed_sample_project(db: AsyncSession, user: User) -> None:
@@ -200,13 +185,10 @@ async def register(
         email=email,
         email_verified_at=datetime.now(timezone.utc) if settings.auth_auto_verify else None,
     )
-    user.signup_source = _clean_signup_source(body.ref)
     db.add(user)
     await db.flush()
     db.add(UserSettings(user_id=user.id, bg=dict(DEFAULT_BG)))
-    await record_event(
-        db, user.id, SIGNUP, {"source": user.signup_source or "direct"}
-    )
+    await record_event(db, user.id, SIGNUP, {})
     if settings.auth_auto_verify:
         await db.commit()
         await _seed_sample_project(db, user)

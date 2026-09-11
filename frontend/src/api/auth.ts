@@ -1,5 +1,4 @@
 import { apiFetch, setToken } from "./http";
-import { getRef } from "../lib/refSource";
 
 export interface TokenOut {
   access_token: string;
@@ -33,11 +32,9 @@ export async function register(
   password: string,
   email: string
 ): Promise<RegisterOut> {
-  // 渠道归因：把首次带到的 ?ref= 一起提交（后端写入 users.signup_source）。
-  const ref = getRef();
   return apiFetch<RegisterOut>("/auth/register", {
     method: "POST",
-    body: JSON.stringify(ref ? { username, password, email, ref } : { username, password, email }),
+    body: JSON.stringify({ username, password, email }),
     skipAuthRedirect: true,
   });
 }
