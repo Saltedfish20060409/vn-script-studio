@@ -75,6 +75,24 @@ export function ProjectExportPanel({
           </button>
         </div>
       </div>
+      <details className={styles.hint}>
+        <summary>下载了 Ren'Py 项目包之后怎么跑？（三步）</summary>
+        <ol>
+          <li>
+            去{" "}
+            <a href="https://www.renpy.org/latest.html" target="_blank" rel="noreferrer">
+              官网
+            </a>{" "}
+            下载安装免费的 Ren'Py（Windows / macOS / Linux 都有）。
+          </li>
+          <li>
+            打开 Ren'Py，在「preferences」里把 Projects Directory 指向你解压出的工程文件夹的
+            <strong>上一级目录</strong>——Ren'Py 会把工程列出来。
+          </li>
+          <li>在列表里选中你的工程，点「Launch Project」就能试玩。</li>
+        </ol>
+        <p>想让朋友也玩到：把解压后的整个文件夹发给他，他照上面三步做即可（不用注册本站）。</p>
+      </details>
       {rpyStale && rpyPreview && (
         <p className={styles.hint}>
           剧本已修改，预览已过期 — 请重新点击「生成 .rpy」。

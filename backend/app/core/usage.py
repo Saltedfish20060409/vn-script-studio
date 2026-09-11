@@ -236,10 +236,24 @@ async def ensure_under_quota(
     settings,
     creds: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """Raise 429 when this request's effective daily cap is already spent."""
+    """Raise 429 when this request's effective daily cap is already spent.
+
+    提示要能让用户知道"接下来能做什么"：走站内免费额度时说明额度用完了、
+    以及填自己的 Key 可以立刻继续（roadmap 方向 G）。
+    """
     if await quota_exceeded_for(db, user_id, settings, creds):
         from fastapi import HTTPException
 
-        raise HTTPException(
-            status_code=429, detail="今日 LLM 用量已达上限，请明日再试"
-        )
+        source = str((creds or {}).get("source") or "")
+        if source == "server":
+            detail = (
+                "站内免费体验额度今天的份用完了（每天有上限，高峰期还可能限流）。"
+                "想现在继续写：在「设置 → 模型」填入你自己的 API Key（DeepSeek / 智谱 / "
+                "通义 等都能用，用量走你自己的账户）；或者明天再来。"
+            )
+        else:
+            detail = (
+                "今天的用量已达上限（这是你自己账户的每日上限）。"
+                "可在配置里调高或明天继续。"
+            )
+        raise HTTPException(status_code=429, detail=detail)

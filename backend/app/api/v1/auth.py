@@ -328,7 +328,10 @@ async def resend_verification(
     if not check_rate(
         _client_ip(request), "resend_verify", limit=10, enabled=settings.rate_limit_enabled
     ):
-        raise HTTPException(status_code=429, detail="发送过于频繁，请稍后再试")
+        raise HTTPException(
+            status_code=429,
+            detail="刚发过一次，请等一会儿再点（邮件可能要几分钟才到，先看看垃圾箱）",
+        )
     email = _parse_email(body.email)
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
@@ -347,7 +350,10 @@ async def resend_verification(
         await db.rollback()
         logger.warning("resend verification send failed: %s", exc)
         return OkMessageOut(ok=True, message="若该邮箱未验证，我们已尝试重新发送")
-    return OkMessageOut(ok=True, message="若该邮箱未验证，我们已尝试重新发送")
+    return OkMessageOut(
+        ok=True,
+        message="验证邮件已发送。若 1~2 分钟没收到，请查垃圾箱；QQ 邮箱偶尔会延迟。",
+    )
 
 
 @router.post("/forgot-password", response_model=OkMessageOut)

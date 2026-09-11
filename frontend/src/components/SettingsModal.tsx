@@ -51,6 +51,19 @@ type Props = {
 
 type Pane = "theme" | "bg" | "usage" | "llm";
 
+/** 各厂商「申请 API Key」控制台地址（预设里选了哪家就显示哪家的链接）。 */
+const VENDOR_KEY_URL: Record<string, string> = {
+  DeepSeek: "https://platform.deepseek.com/api_keys",
+  Zhipu: "https://open.bigmodel.cn/usercenter/apikeys",
+  Alibaba: "https://bailian.console.aliyun.com/",
+  Moonshot: "https://platform.moonshot.cn/console/api-keys",
+  ByteDance: "https://console.volcengine.com/ark",
+  Anthropic: "https://console.anthropic.com/settings/keys",
+  Google: "https://aistudio.google.com/app/apikey",
+  OpenAI: "https://platform.openai.com/api-keys",
+  Ollama: "https://ollama.com/download",
+};
+
 function fmtTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
@@ -121,6 +134,7 @@ function LlmPane() {
   const [criticModel, setCriticModel] = useState("");
   const [storageMode, setStorageModeState] = useState<LlmStorageMode>(loadStorageMode);
   const [presets, setPresets] = useState<ModelPreset[]>([]);
+  const [presetId, setPresetId] = useState<string>("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     ok: boolean;
@@ -267,6 +281,7 @@ function LlmPane() {
   const applyPreset = (presetId: string) => {
     const p = presets.find((x) => x.id === presetId);
     if (!p) return;
+    setPresetId(p.id);
     setBaseUrl(p.base_url);
     setModel(p.model);
     setTestResult(null);
@@ -293,7 +308,7 @@ function LlmPane() {
         <label>
           {t("settings.preset")}
           <select
-            value=""
+            value={presetId}
             onChange={(e) => applyPreset(e.target.value)}
             data-testid="model-preset-select"
           >
@@ -305,8 +320,29 @@ function LlmPane() {
             ))}
           </select>
           <span className={styles.note}>
-            {presets[0]?.note} 选择预设只填 Base URL 与模型名，Key 仍需自己输入。
+            {presets.find((p) => p.id === presetId)?.note ??
+              "选择预设只会帮你填好 Base URL 与模型名，Key 仍需自己输入。"}
           </span>
+          {(() => {
+            const current = presets.find((p) => p.id === presetId);
+            const link = current ? VENDOR_KEY_URL[current.vendor] : undefined;
+            if (!current) return null;
+            return (
+              <span className={styles.note}>
+                {link ? (
+                  <>
+                    还没有 Key？
+                    <a href={link} target="_blank" rel="noreferrer">
+                      去 {current.vendor} 控制台申请
+                    </a>
+                    （注册后免费额度通常够试用）。
+                  </>
+                ) : (
+                  "该厂商的 Key 申请地址见其官网控制台。"
+                )}
+              </span>
+            );
+          })()}
         </label>
       )}
       <label>

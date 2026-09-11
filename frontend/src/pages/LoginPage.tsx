@@ -120,7 +120,20 @@ export default function LoginPage() {
       await login(username.trim(), password);
       navigate(redirectTo, { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "操作失败，请重试");
+      const message = err instanceof ApiError ? err.message : "操作失败，请重试";
+      setError(message);
+      // 邮箱未验证是最常见的登录失败原因：直接切到「重发验证邮件」并预填，
+      // 省掉用户自己找入口（roadmap 方向 D）。
+      if (message.includes("邮箱尚未验证")) {
+        const ident = username.trim();
+        if (ident.includes("@")) {
+          setEmail(ident);
+          setPendingEmail(ident);
+        }
+        // checkEmail 就是「重发验证邮件」界面，直接切过去省掉用户找入口。
+        setMode("checkEmail");
+        setInfo("点下面的「重新发送验证邮件」，收到后点邮件里的链接即可登录。");
+      }
     } finally {
       setBusy(false);
     }
