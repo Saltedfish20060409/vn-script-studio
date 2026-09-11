@@ -4,14 +4,14 @@ Every preset speaks the OpenAI-compatible /v1/chat/completions wire format,
 so a single client (llm_http) serves them all. Presets only fill in the
 base URL and model name; the user still supplies their own API key.
 
-ID 可信度分级（2026-09 校对）：
-- 实测验证：智谱（用线上 key 拉过 /models：glm-5.3 / glm-5.3-flash / glm-5-turbo…）、
+ID 可信度分级（2026-09-11 校对）：
+- **实测验证**：智谱（用线上 key 拉过 /models：glm-5.3 / glm-5.3-flash / glm-5-turbo…）、
   豆包（用户在站内真实调用成功：doubao-seed-2-1-turbo-260628）、
-  DeepSeek（deepseek-v4-flash / deepseek-v4-pro）。
-- 官方文档核对：Claude（OpenAI 兼容端点）、Gemini（OpenAI 兼容端点）。
-  这两家在国内需自备网络条件，且 ID 以官方控制台为准——若报 model 不存在，
-  在「设置 → 模型」里手动改成控制台显示的名字即可。
-- 其余为通用别名（qwen-max / kimi-k2.6 / gpt-5 等），同样以厂商控制台为准。
+  DeepSeek（官方更新日志 + 定价页：正式名 deepseek-flash，服务端为 V4.1-Flash）。
+- **仅官方文档/官方更新说明**（未在线校验）：Claude、Gemini、GPT、Kimi、Qwen 的最新档。
+  这类条目的 note 里都标了「ID 未在线校验，以官方控制台为准」——它们在国内多数还需
+  自备网络条件；用户若报 model 不存在，在「设置 → 模型」里改成控制台显示的名字即可
+  （预设只是帮忙填端点，不锁定模型名）。
 
 ``*-think`` 后缀是本工作室对思考模式的别名（在 llm_http 出站前改写）。
 """
@@ -160,6 +160,16 @@ MODEL_PRESETS: List[Dict[str, object]] = [
     },
     # ---------------- Claude（OpenAI 兼容端点） ----------------
     {
+        "id": "claude-opus-5",
+        "label": "Claude Opus 5",
+        "vendor": "Anthropic",
+        "base_url": "https://api.anthropic.com/v1",
+        "model": "claude-opus-5",
+        "json_mode": False,
+        "context_k": 200,
+        "note": "最新一代（ID 未在线校验，以 Anthropic 控制台为准）。文风与长文改写口碑好；国内需自备网络条件，不支持 JSON 模式。",
+    },
+    {
         "id": "claude-opus",
         "label": "Claude Opus 4.8",
         "vendor": "Anthropic",
@@ -167,7 +177,7 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "model": "claude-opus-4-8",
         "json_mode": False,
         "context_k": 200,
-        "note": "Anthropic 的 OpenAI 兼容端点。文风与长文改写口碑好；国内需自备网络条件，且不支持 JSON 模式（本工作室会自动退回普通文本解析）。ID 以 Anthropic 控制台为准。",
+        "note": "上一代旗舰（ID 未在线校验）。若报 model 不存在，按控制台显示的名字改。",
     },
     {
         "id": "claude-sonnet",
@@ -177,7 +187,7 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "model": "claude-sonnet-4-8",
         "json_mode": False,
         "context_k": 200,
-        "note": "同上的轻量档：更快更省，适合日常润色。国内需自备网络条件；ID 以控制台为准。",
+        "note": "轻量档：更快更省，适合日常润色（ID 未在线校验）。国内需自备网络条件。",
     },
     # ---------------- Gemini（OpenAI 兼容端点） ----------------
     {
@@ -188,19 +198,29 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "model": "gemini-3.7-flash",
         "json_mode": True,
         "context_k": 1000,
-        "note": "Google 的 OpenAI 兼容端点。超长上下文、价格低；国内需自备网络条件，ID 以 Google AI 控制台为准。",
+        "note": "Google 官方文档标注的最新主力 Flash（ID 未在线校验）。超长上下文、价格低；国内需自备网络条件。",
     },
     {
         "id": "gemini-pro",
-        "label": "Gemini 3 Pro",
+        "label": "Gemini 3.7 Pro",
         "vendor": "Google",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "model": "gemini-3-pro",
+        "model": "gemini-3.7-pro",
         "json_mode": True,
         "context_k": 1000,
-        "note": "同上的旗舰档，质量优先。国内需自备网络条件，ID 以控制台为准。",
+        "note": "旗舰档（ID 未在线校验；若控制台暂无该档，改用 Flash）。国内需自备网络条件。",
     },
     # ---------------- OpenAI ----------------
+    {
+        "id": "gpt-5.5",
+        "label": "OpenAI GPT-5.5",
+        "vendor": "OpenAI",
+        "base_url": "https://api.openai.com",
+        "model": "gpt-5.5",
+        "json_mode": True,
+        "context_k": 1000,
+        "note": "最新一代（ID 未在线校验，以 OpenAI 控制台为准）。国际访问需要网络条件。",
+    },
     {
         "id": "gpt-5",
         "label": "OpenAI GPT-5",
@@ -209,7 +229,7 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "model": "gpt-5",
         "json_mode": True,
         "context_k": 400,
-        "note": "国际访问需要网络条件；模型名以 OpenAI 控制台为准。",
+        "note": "上一代，仍可用；模型名以 OpenAI 控制台为准。",
     },
     {
         "id": "gpt-5-mini",
