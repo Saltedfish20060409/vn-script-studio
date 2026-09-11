@@ -73,7 +73,6 @@ import { OnboardingOverlay } from "./OnboardingOverlay";
 import { hasSeenTour } from "../lib/onboarding";
 import { QPet } from "./QPet";
 import { AdminPanel } from "./AdminPanel";
-import { fetchAdminOverview } from "../api/admin";
 import { ClickFx } from "./ClickFx";import { WorldPanel } from "./WorldPanel";
 import { WriteToolbar, type WriteMode } from "./WriteToolbar";
 import { MusicPlayerBar } from "./MusicPlayerBar";
@@ -291,40 +290,13 @@ export function StudioApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 管理后台入口探测：只有管理员才轮询（判断"新增异常报告"红点）。
-  // 非管理员不再每 2 分钟打一次 /admin/overview —— 那只会稳定拿到 403，
-  // 白费请求还刷控制台报错；是否管理员 /auth/me 里已经有 is_admin。
+  // 管理后台入口：直接看 /auth/me 的 is_admin，不做探测请求。
+  // （历史上这里每 2 分钟打一次 /admin/overview 只为判断"是不是管理员"，
+  //   普通用户必然 403——3 天 2318 次无效请求，已删除。）
+  // 红点提醒改成打开管理面板时由 AdminPanel 自己加载。
   useEffect(() => {
-    if (!user?.id) {
-      setAdminCapable(false);
-      setAdminAlert(false);
-      return;
-    }
-    if (!user.is_admin) {
-      setAdminCapable(false);
-      setAdminAlert(false);
-      return;
-    }
-    let cancelled = false;
-    const tick = () => {
-      void fetchAdminOverview()
-        .then((ov) => {
-          if (cancelled) return;
-          setAdminCapable(true);
-          setAdminAlert(ov.danger_count > 0);
-        })
-        .catch(() => {
-          if (cancelled) return;
-          // 401/403：配置短暂不一致时仍按 is_admin 保留入口
-          setAdminCapable(Boolean(user.is_admin));
-        });
-    };
-    tick();
-    const id = window.setInterval(tick, 120_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
+    setAdminCapable(Boolean(user?.is_admin));
+    setAdminAlert(false);
   }, [user?.id, user?.is_admin]);
 
   // Chapter revise preview chip (survives refresh via localStorage)

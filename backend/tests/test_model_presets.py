@@ -22,11 +22,21 @@ def test_preset_shape():
 
 
 def test_deepseek_default_present():
-    d = find_preset("deepseek-v4-flash")
+    """默认档：DeepSeek-V4.1 Flash 的官方名是 deepseek-flash（2026-09-10 起）。"""
+    d = find_preset("deepseek-flash")
     assert d is not None
     assert d["base_url"] == "https://api.deepseek.com"
-    assert d["model"] == "deepseek-v4-flash"
+    assert d["model"] == "deepseek-flash"
     assert d["json_mode"] is True
+    # 旧名保留为兼容项，但模型名也指向 V4.1（官方会路由）
+    legacy = find_preset("deepseek-v4-flash")
+    assert legacy is not None
+
+
+def test_deepseek_v41_release_names_present():
+    ids = {p["id"] for p in MODEL_PRESETS}
+    for pid in ("deepseek-flash", "deepseek-flash-think", "deepseek-v4-pro"):
+        assert pid in ids
 
 
 def test_ollama_local_present():
@@ -49,9 +59,9 @@ def test_old_models_removed_and_latest_present():
     ):
         assert retired not in ids, f"retired model still listed: {retired}"
     for latest in (
-        "deepseek-v4-flash",
+        "deepseek-flash",
         "deepseek-v4-pro",
-        "kimi-k2.6",
+        "kimi-k3",
         "qwen-max",
         "glm-5",
         "gpt-5",

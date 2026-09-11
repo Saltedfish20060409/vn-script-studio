@@ -25,21 +25,21 @@ from app.llm_models import DEFAULT_LLM_MODEL
 MODEL_PRESETS: List[Dict[str, object]] = [
     # ---------------- DeepSeek（默认） ----------------
     {
-        "id": "deepseek-v4-flash",
-        "label": "DeepSeek-V4 Flash",
+        "id": "deepseek-flash",
+        "label": "DeepSeek-V4.1 Flash（默认）",
         "vendor": "DeepSeek",
         "base_url": "https://api.deepseek.com",
         "model": DEFAULT_LLM_MODEL,
         "json_mode": True,
         "context_k": 1000,
-        "note": "默认。官方 ID deepseek-v4-flash，非思考（等价旧 deepseek-chat）。",
+        "note": "官方正式名 deepseek-flash，服务端即 DeepSeek-V4.1-Flash（2026-09-10 发布，新架构、原生多模态）。默认非思考。",
     },
     {
-        "id": "deepseek-v4-flash-think",
-        "label": "DeepSeek-V4 Flash 推理",
+        "id": "deepseek-flash-think",
+        "label": "DeepSeek-V4.1 Flash 推理",
         "vendor": "DeepSeek",
         "base_url": "https://api.deepseek.com",
-        "model": "deepseek-v4-flash-think",
+        "model": "deepseek-flash-think",
         "json_mode": False,
         "context_k": 1000,
         "note": "思考模式（等价旧 deepseek-reasoner）。请求改写为官方 Flash + thinking；不支持 JSON 模式。",
@@ -52,7 +52,17 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "model": "deepseek-v4-pro",
         "json_mode": True,
         "context_k": 1000,
-        "note": "官方旗舰。默认非思考，质量优先。",
+        "note": "上代旗舰，仍可用；官方公告：2026-09-14 12:00 起至 V4.1 Pro 发布前，其请求会路由到 V4.1 Flash 并按 V4.1 计费。",
+    },
+    {
+        "id": "deepseek-v4-flash",
+        "label": "DeepSeek-V4 Flash（兼容旧名）",
+        "vendor": "DeepSeek",
+        "base_url": "https://api.deepseek.com",
+        "model": "deepseek-v4-flash",
+        "json_mode": True,
+        "context_k": 1000,
+        "note": "旧模型名。V4 Flash 已退役，官方保留此名做兼容：请求实际由 V4.1 Flash 承接。建议直接用上面的 deepseek-flash。",
     },
     # ---------------- 智谱 GLM（实测可用 ID） ----------------
     {
@@ -109,13 +119,13 @@ MODEL_PRESETS: List[Dict[str, object]] = [
     # ---------------- 通义千问 ----------------
     {
         "id": "qwen-max",
-        "label": "通义千问旗舰（qwen-max）",
+        "label": "通义千问旗舰（qwen3.7-max）",
         "vendor": "Alibaba",
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "model": "qwen-max",
+        "model": "qwen3.7-max",
         "json_mode": True,
-        "context_k": 131,
-        "note": "阿里云百炼旗舰，质量优先，中文创作强。模型名以百炼控制台为准。",
+        "context_k": 1000,
+        "note": "Qwen3.7 旗舰（MoE、百万级上下文），质量优先，中文创作强。若报 model 不存在，改用控制台里的当前旗舰 ID。",
     },
     {
         "id": "qwen-plus",
@@ -125,9 +135,19 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "model": "qwen-plus",
         "json_mode": True,
         "context_k": 131,
-        "note": "均衡款，速度与质量兼顾，适合日常写作。",
+        "note": "均衡款，速度与质量兼顾，适合日常写作。也会自动指向 Qwen 最新均衡版本。",
     },
     # ---------------- Kimi ----------------
+    {
+        "id": "kimi-k3",
+        "label": "Kimi K3（moonshot）",
+        "vendor": "Moonshot",
+        "base_url": "https://api.moonshot.cn",
+        "model": "kimi-k3",
+        "json_mode": True,
+        "context_k": 256,
+        "note": "最新一代，中文长文与 Agent 能力突出。若报 model 不存在，按 Moonshot 控制台显示的 ID 改。",
+    },
     {
         "id": "kimi-k2.6",
         "label": "Kimi K2.6（moonshot）",
@@ -136,7 +156,7 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "model": "kimi-k2.6",
         "json_mode": True,
         "context_k": 256,
-        "note": "中文长文与 Agent 能力突出；模型名以 Moonshot 控制台为准（K2 系列已下线）。",
+        "note": "上一代，仍可用；长文与对话稳定。",
     },
     # ---------------- Claude（OpenAI 兼容端点） ----------------
     {
