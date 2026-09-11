@@ -59,6 +59,34 @@ def test_old_models_removed_and_latest_present():
         assert latest in ids, f"missing latest model: {latest}"
 
 
+def test_international_and_domestic_vendors_present():
+    """Keep the catalogue broad: 国外强模型 + 国内主力都要有预设入口。"""
+    ids = {p["id"] for p in MODEL_PRESETS}
+    for pid in (
+        "claude-opus",
+        "claude-sonnet",
+        "gemini-flash",
+        "gemini-pro",
+        "doubao-seed-turbo",
+        "glm-5-flash",
+        "glm-5-turbo",
+    ):
+        assert pid in ids, f"missing preset: {pid}"
+
+
+def test_glm_presets_use_live_verified_ids():
+    """GLM 档位用线上实测到的模型名，避免写回已下线的老 ID。"""
+    assert find_preset("glm-5")["model"] == "glm-5.3"
+    assert find_preset("glm-5-flash")["model"] == "glm-5.3-flash"
+
+
+def test_claude_and_gemini_use_openai_compatible_endpoints():
+    """Claude / Gemini 走各自官方的 OpenAI 兼容端点，便于统一客户端调用。"""
+    assert find_preset("claude-opus")["base_url"] == "https://api.anthropic.com/v1"
+    g = find_preset("gemini-flash")
+    assert g["base_url"].endswith("/v1beta/openai")
+
+
 def test_find_unknown_returns_none():
     assert find_preset("no-such-model") is None
 

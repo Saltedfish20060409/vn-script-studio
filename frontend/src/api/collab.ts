@@ -1,4 +1,4 @@
-import { apiFetch } from "./http";
+import { apiFetch, getToken, refreshOnce } from "./http";
 
 // ---------------------------------------------------------------------------
 // Collaboration — project members, chapter locks, live events
@@ -227,13 +227,27 @@ export function subscribeProjectEvents(
 
   async function connect() {
     if (closed) return;
-    const token = localStorage.getItem("vnss-token") || "";
+    // SECURITY (M-4): the access token lives in memory only — reading
+    // localStorage here silently produced an empty header, so this SSE stream
+    // got 401 on every attempt and retried forever (3 天 3 万次 401，协作事件全丢).
+    const token = getToken() || "";
     controller = new AbortController();
     try {
       const res = await fetch(`/api/v1/projects/${projectId}/events`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         signal: controller.signal,
       });
+      if (res.status === 401) {
+        // access token 过期（内存态，60 分钟）→ 先静默续期一次再重连；
+        // 续期也失败说明真的没会话了，停止重试，别再打 401 风暴。
+        const refreshed = await refreshOnce();
+        if (!refreshed) {
+          closed = true;
+          return;
+        }
+        retryTimer = window.setTimeout(() => void connect(), 300);
+        return;
+      }
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
       const reader = res.body.getReader();
       const decoder = new TextDecoder();

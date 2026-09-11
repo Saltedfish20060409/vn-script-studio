@@ -291,9 +291,16 @@ export function StudioApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 管理后台入口探测：管理员显示「管理」，有新增异常报告时标红
+  // 管理后台入口探测：只有管理员才轮询（判断"新增异常报告"红点）。
+  // 非管理员不再每 2 分钟打一次 /admin/overview —— 那只会稳定拿到 403，
+  // 白费请求还刷控制台报错；是否管理员 /auth/me 里已经有 is_admin。
   useEffect(() => {
     if (!user?.id) {
+      setAdminCapable(false);
+      setAdminAlert(false);
+      return;
+    }
+    if (!user.is_admin) {
       setAdminCapable(false);
       setAdminAlert(false);
       return;
@@ -308,9 +315,8 @@ export function StudioApp() {
         })
         .catch(() => {
           if (cancelled) return;
-          // 403/401：非管理员；若 /me 已标 is_admin 仍保留入口（配置短暂不一致时）
+          // 401/403：配置短暂不一致时仍按 is_admin 保留入口
           setAdminCapable(Boolean(user.is_admin));
-          if (!user.is_admin) setAdminAlert(false);
         });
     };
     tick();

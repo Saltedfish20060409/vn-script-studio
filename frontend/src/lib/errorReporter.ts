@@ -4,6 +4,8 @@
  * 会话内去重 + 限量，绝不影响主流程。
  */
 
+import { getToken } from "../api/http";
+
 const SESSION_LIMIT = 20;
 let sentCount = 0;
 const seenMessages = new Set<string>();
@@ -27,7 +29,9 @@ export function reportError(payload: ErrorPayload): void {
   sentCount += 1;
 
   try {
-    const token = localStorage.getItem("vnss-token") || "";
+    // SECURITY (M-4): token is memory-only (see api/http.ts) — localStorage
+    // never holds it, so reading it there sent anonymous reports.
+    const token = getToken() || "";
     void fetch("/api/v1/errors", {
       method: "POST",
       headers: {

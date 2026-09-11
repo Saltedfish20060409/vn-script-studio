@@ -4,9 +4,16 @@ Every preset speaks the OpenAI-compatible /v1/chat/completions wire format,
 so a single client (llm_http) serves them all. Presets only fill in the
 base URL and model name; the user still supplies their own API key.
 
-DeepSeek V4 official IDs are deepseek-v4-flash / deepseek-v4-pro.
-``*-think`` suffixes are this studio's alias for thinking mode (rewritten
-in llm_http before the request leaves the server).
+ID 可信度分级（2026-09 校对）：
+- 实测验证：智谱（用线上 key 拉过 /models：glm-5.3 / glm-5.3-flash / glm-5-turbo…）、
+  豆包（用户在站内真实调用成功：doubao-seed-2-1-turbo-260628）、
+  DeepSeek（deepseek-v4-flash / deepseek-v4-pro）。
+- 官方文档核对：Claude（OpenAI 兼容端点）、Gemini（OpenAI 兼容端点）。
+  这两家在国内需自备网络条件，且 ID 以官方控制台为准——若报 model 不存在，
+  在「设置 → 模型」里手动改成控制台显示的名字即可。
+- 其余为通用别名（qwen-max / kimi-k2.6 / gpt-5 等），同样以厂商控制台为准。
+
+``*-think`` 后缀是本工作室对思考模式的别名（在 llm_http 出站前改写）。
 """
 
 from __future__ import annotations
@@ -16,6 +23,7 @@ from typing import Dict, List
 from app.llm_models import DEFAULT_LLM_MODEL
 
 MODEL_PRESETS: List[Dict[str, object]] = [
+    # ---------------- DeepSeek（默认） ----------------
     {
         "id": "deepseek-v4-flash",
         "label": "DeepSeek-V4 Flash",
@@ -46,56 +54,133 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "context_k": 1000,
         "note": "官方旗舰。默认非思考，质量优先。",
     },
-    {
-        "id": "kimi-k2.6",
-        "label": "Kimi K2.6（kimi-k2.6）",
-        "vendor": "Moonshot",
-        "base_url": "https://api.moonshot.cn",
-        "model": "kimi-k2.6",
-        "json_mode": True,
-        "context_k": 256,
-        "note": "K2 系列已下线，现为 K2.6；中文长文与 Agent 能力突出。",
-    },
-    {
-        "id": "qwen-max",
-        "label": "通义千问旗舰（qwen-max · Qwen3.7）",
-        "vendor": "Alibaba",
-        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "model": "qwen-max",
-        "json_mode": True,
-        "context_k": 131,
-        "note": "旗舰模型（当前 Qwen3.7 系列），质量优先，中文创作强。",
-    },
-    {
-        "id": "qwen-plus",
-        "label": "通义千问均衡（qwen-plus · Qwen3.7）",
-        "vendor": "Alibaba",
-        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "model": "qwen-plus",
-        "json_mode": True,
-        "context_k": 131,
-        "note": "均衡款（当前 Qwen3.7 系列），速度与质量兼顾。",
-    },
+    # ---------------- 智谱 GLM（实测可用 ID） ----------------
     {
         "id": "glm-5",
-        "label": "智谱 GLM-5",
+        "label": "智谱 GLM-5.3（旗舰）",
         "vendor": "Zhipu",
         "base_url": "https://open.bigmodel.cn/api/paas/v4",
-        "model": "glm-5",
+        "model": "glm-5.3",
         "json_mode": True,
         "context_k": 200,
-        "note": "GLM 最新一代（5.1 已退役，自动指向 5.2）；中文创作稳定。",
+        "note": "智谱最新旗舰（实测可用）。中文创作稳定，质量优先。",
+    },
+    {
+        "id": "glm-5-flash",
+        "label": "智谱 GLM-5.3-Flash（快 / 省）",
+        "vendor": "Zhipu",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "model": "glm-5.3-flash",
+        "json_mode": True,
+        "context_k": 128,
+        "note": "智谱 Flash 档（实测可用）：速度快、便宜，适合日常续写与润色。额度与限流以智谱控制台为准。",
+    },
+    {
+        "id": "glm-5-turbo",
+        "label": "智谱 GLM-5-Turbo（均衡）",
+        "vendor": "Zhipu",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "model": "glm-5-turbo",
+        "json_mode": True,
+        "context_k": 200,
+        "note": "智谱 Turbo 档（实测可用）：速度与质量折中。",
     },
     {
         "id": "glm-4-flash",
-        "label": "GLM-4-Flash-250414（免费）",
+        "label": "GLM-4-Flash-250414（站内免费档）",
         "vendor": "Zhipu",
         "base_url": "https://open.bigmodel.cn/api/paas/v4",
         "model": "glm-4-flash-250414",
         "json_mode": True,
         "context_k": 128,
-        "note": "智谱长期免费模型，稳定、json 模式可用；适合无 key 用户的试用/兜底。GLM-4.7-Flash 免费档当前访问量过大易限流，暂不推荐。",
+        "note": "站方免费兜底档（每日限额、可能限流），无 key 先体验用；正式写作建议换上面的档位或自带 Key。",
     },
+    # ---------------- 豆包（实测可用 ID） ----------------
+    {
+        "id": "doubao-seed-turbo",
+        "label": "豆包 Seed 2.1 Turbo",
+        "vendor": "ByteDance",
+        "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+        "model": "doubao-seed-2-1-turbo-260628",
+        "json_mode": True,
+        "context_k": 256,
+        "note": "火山方舟（实测可用，站内已有用户在用）：中文长文快、价格低。若控制台改版，按控制台显示改模型名。",
+    },
+    # ---------------- 通义千问 ----------------
+    {
+        "id": "qwen-max",
+        "label": "通义千问旗舰（qwen-max）",
+        "vendor": "Alibaba",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "model": "qwen-max",
+        "json_mode": True,
+        "context_k": 131,
+        "note": "阿里云百炼旗舰，质量优先，中文创作强。模型名以百炼控制台为准。",
+    },
+    {
+        "id": "qwen-plus",
+        "label": "通义千问均衡（qwen-plus）",
+        "vendor": "Alibaba",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "model": "qwen-plus",
+        "json_mode": True,
+        "context_k": 131,
+        "note": "均衡款，速度与质量兼顾，适合日常写作。",
+    },
+    # ---------------- Kimi ----------------
+    {
+        "id": "kimi-k2.6",
+        "label": "Kimi K2.6（moonshot）",
+        "vendor": "Moonshot",
+        "base_url": "https://api.moonshot.cn",
+        "model": "kimi-k2.6",
+        "json_mode": True,
+        "context_k": 256,
+        "note": "中文长文与 Agent 能力突出；模型名以 Moonshot 控制台为准（K2 系列已下线）。",
+    },
+    # ---------------- Claude（OpenAI 兼容端点） ----------------
+    {
+        "id": "claude-opus",
+        "label": "Claude Opus 4.8",
+        "vendor": "Anthropic",
+        "base_url": "https://api.anthropic.com/v1",
+        "model": "claude-opus-4-8",
+        "json_mode": False,
+        "context_k": 200,
+        "note": "Anthropic 的 OpenAI 兼容端点。文风与长文改写口碑好；国内需自备网络条件，且不支持 JSON 模式（本工作室会自动退回普通文本解析）。ID 以 Anthropic 控制台为准。",
+    },
+    {
+        "id": "claude-sonnet",
+        "label": "Claude Sonnet 4.8",
+        "vendor": "Anthropic",
+        "base_url": "https://api.anthropic.com/v1",
+        "model": "claude-sonnet-4-8",
+        "json_mode": False,
+        "context_k": 200,
+        "note": "同上的轻量档：更快更省，适合日常润色。国内需自备网络条件；ID 以控制台为准。",
+    },
+    # ---------------- Gemini（OpenAI 兼容端点） ----------------
+    {
+        "id": "gemini-flash",
+        "label": "Gemini 3.7 Flash",
+        "vendor": "Google",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "model": "gemini-3.7-flash",
+        "json_mode": True,
+        "context_k": 1000,
+        "note": "Google 的 OpenAI 兼容端点。超长上下文、价格低；国内需自备网络条件，ID 以 Google AI 控制台为准。",
+    },
+    {
+        "id": "gemini-pro",
+        "label": "Gemini 3 Pro",
+        "vendor": "Google",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "model": "gemini-3-pro",
+        "json_mode": True,
+        "context_k": 1000,
+        "note": "同上的旗舰档，质量优先。国内需自备网络条件，ID 以控制台为准。",
+    },
+    # ---------------- OpenAI ----------------
     {
         "id": "gpt-5",
         "label": "OpenAI GPT-5",
@@ -104,7 +189,7 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "model": "gpt-5",
         "json_mode": True,
         "context_k": 400,
-        "note": "国际访问需要代理；当前 GPT-5 系列旗舰。",
+        "note": "国际访问需要网络条件；模型名以 OpenAI 控制台为准。",
     },
     {
         "id": "gpt-5-mini",
@@ -114,8 +199,9 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "model": "gpt-5-mini",
         "json_mode": True,
         "context_k": 400,
-        "note": "国际访问需要代理；轻量快速，日常写作够用。",
+        "note": "国际访问需要网络条件；轻量快速，日常写作够用。",
     },
+    # ---------------- 本地 ----------------
     {
         "id": "local-ollama",
         "label": "本地 Ollama（离线）",
