@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -16,6 +16,82 @@ from app.core.novel_memory import (
 )
 from app.domain.types import VnProject
 from app.models.tables import ChapterMemoryArchive, ChapterMemorySlice
+
+# 自动归档：至少攒够一个完整跨度才值得生成（见 roadmap 方向 F）。
+# 该过程是纯本地启发式抽取，不调用模型，因此可以放心放在保存路径上。
+AUTO_MIN_SPANS = 1
+
+
+def should_auto_archive(
+    chapter_count: int,
+    latest_range_to: int,
+    *,
+    span: int = DEFAULT_SPAN,
+    min_spans: int = AUTO_MIN_SPANS,
+) -> bool:
+    """该不该重建记忆归档（纯函数，便于单测）。
+
+    - 章数不足 min_spans 个完整跨度 → 不归档（凑不出有意义的前情摘要）
+    - 已有归档已经覆盖到最新完整跨度 → 不重复做
+    """
+    if span <= 0 or chapter_count <= 0:
+        return False
+    complete_spans = chapter_count // span
+    if complete_spans < max(1, min_spans):
+        return False
+    covered_to = complete_spans * span
+    return latest_range_to < covered_to
+
+
+async def maybe_auto_archive(
+    db: AsyncSession,
+    project_id: str,
+    project: VnProject,
+    *,
+    span: int = DEFAULT_SPAN,
+    user_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """保存后按需自动重建记忆归档。
+
+    只在「又攒满一个跨度」时触发（例如 10→20 章），因此对绝大多数保存请求
+    只是一个 SELECT 的开销。任何失败都不影响保存主流程。
+    """
+    from app.config import get_settings
+
+    try:
+        if not getattr(get_settings(), "memory_auto_archive", True):
+            return None
+        chapter_count = len(project.chapters or [])
+        latest_range_to = int(
+            (
+                await db.execute(
+                    select(func.coalesce(func.max(ChapterMemoryArchive.range_to), 0)).where(
+                        ChapterMemoryArchive.project_id == project_id
+                    )
+                )
+            ).scalar()
+            or 0
+        )
+        if not should_auto_archive(chapter_count, latest_range_to, span=span):
+            return None
+
+        result = await archive_project_memory(
+            db, project_id, project, span=span, include_incomplete=False
+        )
+        if user_id:
+            from app.core.analytics import MEMORY_ARCHIVED, record_event
+
+            await record_event(
+                db,
+                user_id,
+                MEMORY_ARCHIVED,
+                {"kind": "auto", "chars": chapter_count},
+            )
+            await db.commit()
+        return result
+    except Exception:  # noqa: BLE001 - 记忆归档失败不该影响保存
+        await db.rollback()
+        return None
 
 
 async def archive_project_memory(

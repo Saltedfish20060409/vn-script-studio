@@ -315,6 +315,10 @@ async def put_project(
         from app.services.snapshots import maybe_auto_snapshot
 
         await maybe_auto_snapshot(db, project_id, row_to_vn(row))
+        # 章节记忆自动归档（纯本地计算；只在攒满一个跨度时真的干活）
+        from app.services.novel_memory import maybe_auto_archive
+
+        await maybe_auto_archive(db, project_id, row_to_vn(row), user_id=user.id)
         await db.commit()
         await db.refresh(row)
         return project_to_dict(row_to_vn(row))
@@ -348,6 +352,10 @@ async def put_project(
     from app.services.snapshots import maybe_auto_snapshot
 
     await maybe_auto_snapshot(db, project_id, row_to_vn(row))
+    # 章节记忆自动归档（纯本地计算，不调模型；只在攒满一个跨度时干活）
+    from app.services.novel_memory import maybe_auto_archive
+
+    await maybe_auto_archive(db, project_id, row_to_vn(row), user_id=user.id)
     await db.commit()
     await db.refresh(row)
     return project_to_dict(row_to_vn(row))

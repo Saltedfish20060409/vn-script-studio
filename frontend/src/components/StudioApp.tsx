@@ -17,6 +17,7 @@ import {
   exportRpy,
   generateRpyFromProse,
   getChapterMemoryArchive,
+  getLatestMemory,
   getProject,
   getSettings,
   importProjectFile,
@@ -295,7 +296,39 @@ export function StudioApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 管理后台入口：直接看 /auth/me 的 is_admin，不做探测请求。
+  // 章节记忆自动归档状态：章节够多时显示"已自动记住前 N 章要点"（roadmap 方向 F）
+  const [memAuto, setMemAuto] = useState<{
+    rangeTo: number;
+    label: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!project?.id) {
+      setMemAuto(null);
+      return;
+    }
+    const chapterCount = (project.chapters ?? []).length;
+    if (chapterCount < 10) {
+      setMemAuto(null);
+      return;
+    }
+    let cancelled = false;
+    getLatestMemory(project.id)
+      .then(({ latest }) => {
+        if (cancelled) return;
+        setMemAuto(
+          latest ? { rangeTo: latest.rangeTo, label: latest.label } : null
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setMemAuto(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // 章节数变化时重查（保存后自动归档可能刚生成）
+  }, [project?.id, project?.chapters?.length]);
+
+
   // （历史上这里每 2 分钟打一次 /admin/overview 只为判断"是不是管理员"，
   //   普通用户必然 403——3 天 2318 次无效请求，已删除。）
   // 红点提醒改成打开管理面板时由 AdminPanel 自己加载。
@@ -1906,6 +1939,21 @@ export function StudioApp() {
                   onAddChapter={() => void addChapter()}
                   onDeleteChapter={() => void deleteChapter(chapterId)}
                 />
+                {writeSub === "script" && memAuto ? (
+                  <div className={styles.collabNote} role="status">
+                    已自动记住前 {memAuto.rangeTo} 章要点（AI 续写时会参考；长篇前情不容易丢）。
+                    <button
+                      type="button"
+                      className={styles.hintInline}
+                      onClick={() => {
+                        setTab("project");
+                        setProjectSub("history");
+                      }}
+                    >
+                      查看 / 修改记忆
+                    </button>
+                  </div>
+                ) : null}
                 {writeSub === "script" && (
                   <FirstRunChecklist
                     hasContent={Boolean((chapter?.prose || editor || "").trim().length > 20)}

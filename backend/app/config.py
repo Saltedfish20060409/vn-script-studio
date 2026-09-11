@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     # 置 false 可退回"空项目库"的旧行为。
     sample_project_on_signup: bool = True
 
+    # 章节记忆自动归档：每攒满一个跨度（默认 10 章）自动重建一次前情摘要。
+    # 纯本地启发式抽取、不调模型，所以默认开启；置 false 关闭。
+    memory_auto_archive: bool = True
+
     # Kill switch: set ALLOW_REGISTRATION=false to stop new sign-ups.
     allow_registration: bool = True
 

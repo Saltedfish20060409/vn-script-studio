@@ -40,6 +40,23 @@ export function listChapterMemory(
   return apiFetch(`/projects/${id}/memory/archives`);
 }
 
+export interface LatestMemory {
+  archiveId: string;
+  label: string;
+  rangeFrom: number;
+  rangeTo: number;
+  spine: string[];
+  continuityText: string;
+  agentBlock: string;
+}
+
+/** 最新一段「章节记忆」——写作页用它显示"已自动记住前 N 章要点"。 */
+export function getLatestMemory(
+  id: string
+): Promise<{ latest: LatestMemory | null }> {
+  return apiFetch(`/projects/${id}/memory/latest`);
+}
+
 export interface MemoryArchiveDetail {
   id: string;
   label: string;

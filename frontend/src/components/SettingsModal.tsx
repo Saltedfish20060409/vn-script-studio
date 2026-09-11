@@ -12,6 +12,7 @@ import {
   getUsage,
   putSettings,
   testLlm,
+  type ActiveLlmInfo,
   type ModelPreset,
   type UsageTotals,
 } from "../api/misc";
@@ -135,6 +136,8 @@ function LlmPane() {
   const [storageMode, setStorageModeState] = useState<LlmStorageMode>(loadStorageMode);
   const [presets, setPresets] = useState<ModelPreset[]>([]);
   const [presetId, setPresetId] = useState<string>("");
+  // 服务端解析出的「当前真正生效」的模型（含来源与 base_url）
+  const [activeInfo, setActiveInfo] = useState<ActiveLlmInfo | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     ok: boolean;
@@ -165,7 +168,10 @@ function LlmPane() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : "读取失败"));
     getModelCatalogue()
-      .then(({ presets: p }) => setPresets(p))
+      .then(({ presets: p, active }) => {
+        setPresets(p);
+        setActiveInfo(active);
+      })
       .catch(() => {
         /* preset catalogue is a nice-to-have */
       });
@@ -288,22 +294,49 @@ function LlmPane() {
     setSavedNote("");
   };
 
-  const sourceLabel = apiKey
-    ? t("settings.activeClient")
-    : serverFallback?.has_api_key
-      ? t("settings.activeUser")
-      : t("settings.activeServer");
+  // 「当前生效」必须以服务端解析结果为准（浏览器头 > 账号已存 Key > 服务端配置）。
+  // 旧实现把「本地输入的模型名」和「服务端来源」拼在一起显示，会出现
+  // “显示 deepseek-v4-flash、实际在跑智谱免费档”这种误导，这里改掉。
+  const activeHost = (() => {
+    const url = activeInfo?.base_url || serverFallback?.active_base_url || "";
+    if (!url) return "";
+    try {
+      return new URL(url).host;
+    } catch {
+      return url;
+    }
+  })();
+  const activeModel = activeInfo?.model || serverFallback?.active_model || "";
+  const effectiveSource: "client" | "user" | "server" = activeInfo?.source
+    ? (activeInfo.source as "client" | "user" | "server")
+    : apiKey
+      ? "client"
+      : serverFallback?.has_api_key
+        ? "user"
+        : "server";
+  const sourceLabel =
+    effectiveSource === "client"
+      ? t("settings.activeClient")
+      : effectiveSource === "user"
+        ? t("settings.activeUser")
+        : "使用站内免费档（服务端配置）";
 
   return (
     <div className={styles.form}>
       <p className={styles.note}>{t("settings.llmNote")}</p>
       {error && <p className={styles.error}>{error}</p>}
-      <p className={styles.note}>
+      <p className={styles.note} data-testid="active-model-line">
         {t("settings.activeModel", {
-          model: model || serverFallback?.active_model || "deepseek-v4-flash",
-        })}{" "}
-        · {sourceLabel}
+          model: activeModel || "读取中…",
+        })}
+        {activeHost ? ` @ ${activeHost}` : ""} · {sourceLabel}
       </p>
+      {effectiveSource === "server" ? (
+        <p className={styles.note}>
+          服务端配置 = 站方提供的免费体验模型（智谱 GLM-4-Flash，每日限额），
+          <strong>不是</strong>你自己的 DeepSeek 账号。想用自己的 Key，在上面选预设并填入 Key 即可。
+        </p>
+      ) : null}
       {presets.length > 0 && (
         <label>
           {t("settings.preset")}

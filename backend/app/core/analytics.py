@@ -42,6 +42,7 @@ PLAYTEST_OPENED = "playtest_opened"
 EXPORT_DONE = "export_done"
 SHARE_CREATED = "share_created"
 INVITE_SENT = "invite_sent"
+MEMORY_ARCHIVED = "memory_archived"
 
 EVENT_NAMES = frozenset(
     {
@@ -55,6 +56,7 @@ EVENT_NAMES = frozenset(
         EXPORT_DONE,
         SHARE_CREATED,
         INVITE_SENT,
+        MEMORY_ARCHIVED,
     }
 )
 
