@@ -1,0 +1,82 @@
+name: ci
+
+# 自动 CI 只跑「干净环境必然能过」的检查：静态检查 + 纯单元测试 + 构建。
+#
+# 刻意不做的事（避免出现"永远红"的伪失败）：
+# - 不连数据库：DB 集成测试在缺少 DATABASE_URL_TEST 时会自动 skip
+#   （见 backend/tests/db_gate.py），所以这里只保留纯单元测试；
+#   需要真库的用例走 .github/workflows/integration.yml（手动触发）。
+# - 不调外部服务：不注入任何 API Key / 邮件密钥，模型调用相关用例全部用 mock。
+# - 不跑 e2e：端到端需要完整前后端 + 注册链路，走 e2e.yml（手动触发）。
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: backend lint + unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install deps
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+          pip install pytest httpx ruff==0.16.3
+      - name: Verify imports (fail fast on install issues)
+        run: |
+          python -c "import fastapi, sqlalchemy, asyncpg, pytest, httpx, ruff; print('imports OK')"
+      - name: Ruff lint (hard gate)
+        run: ruff check app/ --output-format=github
+      - name: Unit tests (DB-backed cases auto-skip without DATABASE_URL_TEST)
+        run: python -m pytest tests/ -q --tb=short
+
+  frontend:
+    name: frontend typecheck + lint + unit tests + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install deps
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint (hard gate, zero warnings)
+        run: npm run lint:strict
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Bundle size guard (dist/assets/*.js)
+        run: |
+          # 阈值 500KB 为 gzip 前的原始字节（raw bytes），超限即失败
+          node -e "const fs=require('fs'),d='dist/assets';const over=fs.readdirSync(d).filter(f=>f.endsWith('.js')&&fs.statSync(d+'/'+f).size>500*1024);if(over.length){console.error('bundle(s) exceed 500KB raw:',over.join(', '));process.exit(1)}console.log('bundle size OK: all dist/assets/*.js <= 500KB (raw, pre-gzip)')"

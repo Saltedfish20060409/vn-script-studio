@@ -144,7 +144,6 @@ export function AgentChat({
   const [runState, setRunState] = useState<NonNullable<
     AgentConversationOut["run_state"]
   > | null>(null);
-  const resumeMode = useRef(false);
   const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
   const [messages, setMessages] = useState<AgentChatMessage[]>(defaultWelcome);
   const [input, setInput] = useState("");

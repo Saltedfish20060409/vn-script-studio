@@ -46,7 +46,9 @@ export default defineConfig({
           process.env.E2E_SECRET_KEY ||
           "e2e-test-secret-key-0123456789abcdef0123456789abcdef",
       },
-      url: "http://127.0.0.1:8000/docs",
+      // 就绪探针必须用 /health：生产配置关掉了 /docs（docs_url=None），
+      // 用 /docs 会一直等到超时 —— 这是 e2e 以前必挂的原因之一。
+      url: "http://127.0.0.1:8000/health",
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
     },

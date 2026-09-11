@@ -1,0 +1,87 @@
+name: db-integration
+
+# 需要真实 PostgreSQL 的集成测试 —— **手动触发**（不参与日常 CI）。
+#
+# 为什么手动：这些用例（API / 迁移 / 行锁 / 快照等）必须连真库才有意义，
+# 而 CI 环境里的库版本、扩展、迁移状态都需要先确认一遍。没配好之前跑它只会
+# 得到"看起来是代码坏了、其实是环境没配"的伪失败，所以改成按需触发。
+#
+# 用法：Actions → db-integration → Run workflow。
+# 本地等价命令（需要本机有 Postgres）：
+#   $env:DATABASE_URL_TEST='postgresql+asyncpg://vnss:vnss@localhost:15432/vnss_test'
+#   python -m pytest tests/ -q
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      marker:
+        description: "要跑的用例范围（pytest -k 表达式，留空=全部）"
+        required: false
+        default: ""
+
+jobs:
+  db-tests:
+    name: backend tests against Postgres
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vnss
+          POSTGRES_PASSWORD: vnss
+          POSTGRES_DB: vnss_test
+        ports:
+          - 15432:5432
+        options: >-
+          --health-cmd "pg_isready -U vnss -d vnss_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL_TEST: postgresql+asyncpg://vnss:vnss@localhost:15432/vnss_test
+      SECRET_KEY: ci-integration-secret-key-0123456789abcdef0123456789abcdef
+      # 空 Key → 模型相关路径走 mock/规则，不产生外部调用
+      DEEPSEEK_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install deps
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+          pip install pytest httpx ruff==0.16.3
+      - name: Confirm test database is reachable (fail loudly if not)
+        run: |
+          python - <<'PY'
+          import asyncio, os, asyncpg
+
+          url = os.environ["DATABASE_URL_TEST"].replace("postgresql+asyncpg://", "postgresql://")
+
+          async def main() -> None:
+              conn = await asyncpg.connect(url)
+              version = await conn.fetchval("select version()")
+              await conn.close()
+              print("db reachable:", version.split(",")[0])
+
+          asyncio.run(main())
+          PY
+      - name: Integration tests (real DB)
+        env:
+          MARKER: ${{ github.event.inputs.marker }}
+        run: |
+          if [ -n "$MARKER" ]; then
+            python -m pytest tests/ -q --tb=short -k "$MARKER"
+          else
+            python -m pytest tests/ -q --tb=short
+          fi

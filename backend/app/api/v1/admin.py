@@ -304,7 +304,6 @@ async def admin_funnel(
         RPY_GENERATED,
         SAMPLE_CREATED,
         SHARE_CREATED,
-        SIGNUP,
     )
     from app.models.tables import ProductEvent
 

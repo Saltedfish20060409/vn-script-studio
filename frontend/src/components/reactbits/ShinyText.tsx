@@ -26,9 +26,9 @@ export function ShinyText({ text, className }: Props) {
     const tick = (t: number) => {
       if (start === null) start = t;
       const p = ((t - start) % DURATION) / DURATION; // 0..1 循环
+      // 只改 background-position；需要重栅格化时用 transform 触发，别自赋值。
       el.style.backgroundPosition = `${(100 - p * 200).toFixed(2)}% 50%`;
-      // 强制重绘：clip:text 下位置变化可能被缓存，重赋 backgroundImage 触发重栅格化
-      el.style.backgroundImage = el.style.backgroundImage;
+      el.style.transform = "translateZ(0)";
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

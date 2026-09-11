@@ -236,9 +236,26 @@ pytest tests/ -q
 
 > API/DB 集成测试（`tests/test_api_*.py`）需要测试库 `vnss_test`：连接串来自
 > `DATABASE_URL_TEST`（默认 `postgresql+asyncpg://vnss:vnss@localhost:54102/vnss_test`）。
-> 连不上时这些用例自动跳过；CI 会起一个 Postgres service 全量运行。
+> 连不上时这些用例自动跳过，所以本地不配库也能跑（本机实测 350 passed / 76 skipped）。
 > 前端：`cd frontend && npm test`（vitest，纯函数单测）。
 > 前端 e2e：`cd frontend && npm run build && npm run test:e2e`（需本地 PG 可达，见 playwright.config.ts）。
+
+### CI 策略（约定）
+
+自动 CI（`.github/workflows/ci.yml`，push/PR 触发）**只跑干净环境必然能过的检查**：
+
+- 后端：`ruff check app/` + `pytest tests/`（不连库 → DB 集成用例自动 skip）
+- 前端：`npm ci` → typecheck → `lint:strict` → `npm test` → `npm run build` → bundle 体积门禁
+
+需要外部条件、在没配好的环境里只会产生"伪失败"的检查，一律改成**手动触发**，不参与日常 CI：
+
+| 工作流 | 触发 | 需要什么 |
+|---|---|---|
+| `integration.yml` | 手动 | Postgres service（工作流自己起）+ 真库跑 `tests/` |
+| `e2e.yml` | 手动 | Postgres + 后端 + 前端构建 + Playwright 浏览器（注册走 `AUTH_AUTO_VERIFY=true` 免发信） |
+
+**加新检查时的原则**：先在本机把它跑绿，再放进自动 CI；凡是要密钥、要外部服务、要真数据的，
+放进手动工作流，并在文件头注明需要什么环境。
 
 ### 备份 / 恢复
 

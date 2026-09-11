@@ -255,10 +255,13 @@ export function StudioApp() {
   // 之前每次渲染都调 loadFocusTimerPrefs()（localStorage.getItem + JSON.parse），
   // 编辑器每次按键都会触发整树重渲染。改为：仅当打开设置弹窗或保存了新 prefs
   // （startFocusSession 会 setFocusPrefs）时才重读，其余渲染直接复用缓存对象。
-  const focusInitialPrefs = useMemo(
-    () => loadFocusTimerPrefs(),
-    [focusSetupOpen, focusPrefs]
-  );
+  const focusInitialPrefs = useMemo(() => {
+    // focusSetupOpen / focusPrefs 作为「失效键」：只在打开设置弹窗或保存了新 prefs
+    // 时重读 localStorage，其余渲染复用缓存（避免每次按键都读盘解析）。
+    void focusSetupOpen;
+    void focusPrefs;
+    return loadFocusTimerPrefs();
+  }, [focusSetupOpen, focusPrefs]);
   const shellRef = useRef<HTMLDivElement>(null);
   /** 页面切换滑动方向：记录上一个 tab 序号，新 tab 靠右→从右滑入，靠左→从左滑入 */
   const prevTabIndexRef = useRef(0);

@@ -19,7 +19,7 @@ Ported into VN Script Studio as `app/core/harness/` + `app/core/pipeline/`.
    optional semantic + voice, structured apply, **LLM ledger enrich** (fallback heuristic), run history.
 5. **Writing ledger** — heuristic digest; digest/finalize enrich defaults on.
 6. **Observability** — `GET .../pipeline/runs`, stage `trace` (ms, beatMode, blockTypes, revise round).
-7. **Tests** — golden (30+) + mock E2E + multi-revise + run history / voice soft-fail; CI workflow `harness-ci.yml`.
+7. **Tests** — golden (30+) + mock E2E + multi-revise + run history / voice soft-fail; 自动 CI 见 `.github/workflows/ci.yml`（纯单元 + 静态检查），连真库的集成用例走手动 `integration.yml`，端到端走手动 `e2e.yml`。
 8. **Agent prefs** — Help 面板可开「声线硬门禁 / 终检声线 / 修正轮次」（localStorage）。
 
 ## Product entry (Agent chat)
