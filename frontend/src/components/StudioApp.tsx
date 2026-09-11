@@ -296,23 +296,21 @@ export function StudioApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 章节记忆自动归档状态：章节够多时显示"已自动记住前 N 章要点"（roadmap 方向 F）
+  // 章节记忆自动归档状态：章节够多时显示"已自动记住前 N 章要点"（roadmap 方向 F）。
+  // 依赖用纯量（projectId / 章节数），避免每次保存都因为对象换引用而重复请求。
+  const memProjectId = project?.id ?? "";
+  const memChapterCount = (project?.chapters ?? []).length;
   const [memAuto, setMemAuto] = useState<{
     rangeTo: number;
     label: string;
   } | null>(null);
   useEffect(() => {
-    if (!project?.id) {
-      setMemAuto(null);
-      return;
-    }
-    const chapterCount = (project.chapters ?? []).length;
-    if (chapterCount < 10) {
+    if (!memProjectId || memChapterCount < 10) {
       setMemAuto(null);
       return;
     }
     let cancelled = false;
-    getLatestMemory(project.id)
+    getLatestMemory(memProjectId)
       .then(({ latest }) => {
         if (cancelled) return;
         setMemAuto(
@@ -325,8 +323,7 @@ export function StudioApp() {
     return () => {
       cancelled = true;
     };
-    // 章节数变化时重查（保存后自动归档可能刚生成）
-  }, [project?.id, project?.chapters?.length]);
+  }, [memProjectId, memChapterCount]);
 
 
   // （历史上这里每 2 分钟打一次 /admin/overview 只为判断"是不是管理员"，
