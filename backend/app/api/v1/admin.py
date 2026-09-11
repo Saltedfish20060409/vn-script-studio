@@ -385,10 +385,13 @@ async def admin_funnel(
     ]
 
     # 渠道来源 + 留存（一次查询：按来源统计注册数与该来源中"用过 AI"的人数）
+    # 注意：按 User.signup_source 原列分组（NULL 视为 direct），不要在 GROUP BY 里
+    # 重复写 func.coalesce(...)——那样会被渲染成两个不同绑定参数，PG 会报
+    # "must appear in the GROUP BY clause"。
     src_rows = (
         await db.execute(
             select(
-                func.coalesce(User.signup_source, "direct"),
+                User.signup_source,
                 func.count(func.distinct(User.id)),
                 func.count(func.distinct(LlmUsage.user_id)),
             )
@@ -398,18 +401,18 @@ async def admin_funnel(
                 (LlmUsage.user_id == User.id) & (LlmUsage.created_at >= since),
             )
             .where(User.created_at >= since)
-            .group_by(func.coalesce(User.signup_source, "direct"))
-            .order_by(func.count(func.distinct(User.id)).desc())
+            .group_by(User.signup_source)
         )
     ).all()
     sources = [
         {
-            "source": str(src),
+            "source": str(src) if src else "direct",
             "signups": int(cnt or 0),
             "active7d": int(active or 0),
         }
         for src, cnt, active in src_rows
     ]
+    sources.sort(key=lambda s: -s["signups"])
 
     event_totals = {
         "sample_created": counts.get(SAMPLE_CREATED, 0),
