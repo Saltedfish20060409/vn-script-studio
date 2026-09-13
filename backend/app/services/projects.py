@@ -152,13 +152,20 @@ async def get_owned_project_owner_only(
     Delete project, restore/delete snapshots, revoke shares, remove members,
     delete conversations — anything that permanently destroys data or changes
     project ownership must not be reachable by 'editor' collaborators.
+
+    与 get_owned_project 保持同一套"存在性不外泄"策略：**非成员给 404**（否则
+    陌生人用别人的 project_id 试一次就能确认这个项目存在），只有确实在项目里
+    的协作者才配拿到 403。
     """
     row = await get_project_row(db, project_id)
     if row is None:
         raise HTTPException(status_code=404, detail="项目不存在")
-    if row.owner_id != user.id:
+    if row.owner_id == user.id:
+        return row
+    role = await member_role(db, project_id, user.id)
+    if role in ("editor", "viewer"):
         raise HTTPException(status_code=403, detail="仅项目创建者可执行此操作")
-    return row
+    raise HTTPException(status_code=404, detail="项目不存在")
 
 
 async def get_project_readable(db: AsyncSession, user: User, project_id: str) -> Project:

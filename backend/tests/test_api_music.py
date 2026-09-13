@@ -89,16 +89,25 @@ def test_search_bad_platform_422():
 
 
 def test_stream_rejects_non_whitelisted_host():
+    """白名单之外的主机 / 非 http(s) 协议 → 400。
+
+    注意：/music/stream 是**先鉴权、再校验地址**（SSRF 代理不应该对匿名开放），
+    所以这里必须带登录态，否则只会拿到 401、根本测不到白名单逻辑。
+    """
+
     async def _scenario():
         async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "music_stream_anon")
             r = await client.get(
                 "/api/v1/music/stream",
                 params={"url": "https://evil.example.com/song.mp3"},
+                headers=headers,
             )
             assert r.status_code == 400, r.text
             r2 = await client.get(
                 "/api/v1/music/stream",
                 params={"url": "file:///etc/passwd"},
+                headers=headers,
             )
             assert r2.status_code == 400, r2.text
 
@@ -153,9 +162,11 @@ def test_stream_proxies_whitelisted_audio():
             "app.api.v1.music.httpx.AsyncClient", side_effect=lambda *a, **k: FakeClient()
         ), patch("app.api.v1.music._assert_public_host", new_callable=AsyncMock):
             async with db_gate.make_client(APP) as client:
+                headers = await db_gate.register_headers(client, "music_stream_ok")
                 r = await client.get(
                     "/api/v1/music/stream",
                     params={"url": "https://m701.music.126.net/song.mp3"},
+                    headers=headers,
                 )
                 assert r.status_code == 200, r.text
                 assert r.headers["content-type"] == "audio/mpeg"
@@ -179,9 +190,11 @@ def test_stream_rejects_private_ip_resolution():
             "app.api.v1.music.socket.getaddrinfo", side_effect=fake_getaddrinfo
         ):
             async with db_gate.make_client(APP) as client:
+                headers = await db_gate.register_headers(client, "music_stream_ssrf")
                 r = await client.get(
                     "/api/v1/music/stream",
                     params={"url": "https://m701.music.126.net/song.mp3"},
+                    headers=headers,
                 )
                 assert r.status_code == 400, r.text
                 assert "内网" in r.json()["detail"]
@@ -232,9 +245,11 @@ def test_stream_rejects_redirect_outside_whitelist():
             "app.api.v1.music.httpx.AsyncClient", side_effect=lambda *a, **k: FakeClient()
         ), patch("app.api.v1.music._assert_public_host", new_callable=AsyncMock):
             async with db_gate.make_client(APP) as client:
+                headers = await db_gate.register_headers(client, "music_stream_redir")
                 r = await client.get(
                     "/api/v1/music/stream",
                     params={"url": "https://m701.music.126.net/a.mp3"},
+                    headers=headers,
                 )
                 assert r.status_code == 400, r.text
                 assert "白名单" in r.json()["detail"]

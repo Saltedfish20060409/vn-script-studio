@@ -67,10 +67,12 @@ def test_report_error_stores_and_lists():
             admin_headers = await db_gate.register_headers(client, "err_admin")
             # make err_admin an admin via bootstrap: empty ADMIN_USERNAMES is
             # denied by default (H-1), so grant directly through the DB flag
-            from app.db import AsyncSessionLocal
+            # 注意：必须用 db_gate.SessionLocal（测试库）。用 app.db.AsyncSessionLocal
+            # 会走生产 DATABASE_URL 默认值，在 CI 里根本连不上测试库——
+            # 这条断言此前从来没真正跑过。
             from app.models import User
 
-            async with AsyncSessionLocal() as s:
+            async with db_gate.SessionLocal() as s:
                 row = (
                     await s.execute(
                         select(User).where(User.username == "err_admin")
