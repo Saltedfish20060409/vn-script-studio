@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime, time, timedelta, timezone
 from typing import List, Literal, Optional
 
@@ -12,6 +11,7 @@ from sqlalchemy import Text, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
+from app.core.app_logging import app_logger
 from app.db import get_db
 from app.models import User
 from app.models.tables import LlmUsage, Project, ProjectChapterRow
@@ -21,7 +21,8 @@ from app.services.admin_access import count_db_admins
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 # Security audit log (A09): every privilege / ban change must be traceable.
-audit_logger = logging.getLogger("vnss.audit")
+# 必须自带 handler，否则这些审计行在容器日志里根本看不到（见 core/app_logging.py）。
+audit_logger = app_logger("vnss.audit")
 
 # Soft thresholds — BYOK so token caps are advisory; storage/signup patterns matter more.
 _PROJECTS_WARN = 40

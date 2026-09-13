@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime, timezone
 
 import jwt
@@ -9,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.core.analytics import SAMPLE_CREATED, SIGNUP, record_event
+from app.core.app_logging import app_logger
 from app.core.rate_limit import check_rate
 from app.db import get_db
 from app.models import User, UserSettings
@@ -44,7 +44,9 @@ from app.services.settings import DEFAULT_BG
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-logger = logging.getLogger(__name__)
+# 自带 handler：否则 uvicorn 导入后重配 logging，这里的 INFO/WARNING 全都进不了容器日志
+# （线上"收不到验证邮件"排查时服务端零线索，就是踩的这个坑）。
+logger = app_logger("vnss.auth")
 
 _email_adapter = TypeAdapter(EmailStr)
 

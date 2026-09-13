@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import api_router
 from app.config import get_settings
+from app.core.app_logging import app_logger
 from app.db import Base, engine
 from app.models import (  # noqa: F401
     AgentSession,
@@ -44,17 +45,10 @@ def _access_logger() -> logging.Logger:
     disable_existing_loggers=True）——导入期创建的 logger 会被静默禁用，
     info() 全部丢弃（本仓库此前线上 40 分钟零访问日志即为实证）。显式挂上
     StreamHandler + INFO 级别 + 关闭 propagate，不再依赖 root/uvicorn 配置。
+
+    同一坑也吃掉了其它模块的日志（安全审计、验证邮件排查），统一走 app_logger。
     """
-    lg = logging.getLogger("vnss.access")
-    if not lg.handlers:
-        handler = logging.StreamHandler()
-        handler.setFormatter(
-            logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
-        )
-        lg.addHandler(handler)
-    lg.setLevel(logging.INFO)
-    lg.propagate = False
-    return lg
+    return app_logger("vnss.access")
 
 
 def _alembic_upgrade_sync() -> None:
