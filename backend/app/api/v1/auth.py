@@ -142,6 +142,23 @@ def _parse_email(raw: str) -> str:
     return email
 
 
+async def _find_by_identifier(db: AsyncSession, raw: str):
+    """按「用户名或邮箱」查账号（登录框就是这么用的，重发/找回也照做）。
+
+    只按邮箱查会让输用户名的用户拿到一次假的"已发送"，实际一封信都没发——
+    线上反馈"重发也收不到"里有几例就是这么来的。
+    """
+    ident = (raw or "").strip()
+    if not ident:
+        return None
+    if "@" in ident:
+        email = _parse_email(ident)  # 格式错直接 400，别静默成功
+        stmt = select(User).where(User.email == email)
+    else:
+        stmt = select(User).where(User.username == ident)
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
 @router.post("/register", response_model=RegisterOut)
 async def register(
     body: RegisterIn,
@@ -314,12 +331,29 @@ async def resend_verification(
             status_code=429,
             detail="刚发过一次，请等一会儿再点（邮件可能要几分钟才到，先看看垃圾箱）",
         )
-    email = _parse_email(body.email)
-    result = await db.execute(select(User).where(User.email == email))
-    user = result.scalar_one_or_none()
-    # Don't leak whether the email exists (same response whether or not).
+    user = await _find_by_identifier(db, body.email)
+    # 防枚举：不确认该账号是否存在；但要能在日志里区分「没这个账号」和「已验证」，
+    # 否则用户反馈"收不到验证邮件"时无从排查（线上就踩过这个坑：连续十几次重发
+    # 都返回 200、耗时 3ms，其实一封信都没发，用户只能反复点）。
     if user is None or is_email_verified(user):
-        return OkMessageOut(ok=True, message="若该邮箱未验证，我们已尝试重新发送")
+        logger.info(
+            "resend noop ip=%s ident=%s reason=%s",
+            _client_ip(request),
+            (body.email or "")[:64],
+            "already_verified" if user is not None else "no_such_account",
+        )
+        if user is not None:
+            return OkMessageOut(
+                ok=True,
+                message="这个账号的邮箱已经验证过了，直接登录即可；若提示密码错误，请用「找回密码」。",
+            )
+        return OkMessageOut(
+            ok=True,
+            message=(
+                "没查到需要验证的账号。请确认填的内容和注册时完全一致（可以直接填用户名），"
+                "很多人注册时用的是另一个邮箱；若确实注册过，请用「找回密码」走一遍。"
+            ),
+        )
     if not (settings.resend_api_key or "").strip():
         # Don't reveal the account exists via a 503 — treat as success.
         logger.warning("security resend skipped (email service not configured)")
@@ -332,6 +366,11 @@ async def resend_verification(
         await db.rollback()
         logger.warning("resend verification send failed: %s", exc)
         return OkMessageOut(ok=True, message="若该邮箱未验证，我们已尝试重新发送")
+    logger.info(
+        "resend sent user=%s dom=%s",
+        user.username,
+        (user.email or "").split("@")[-1].lower(),
+    )
     return OkMessageOut(
         ok=True,
         message="验证邮件已发送。若 1~2 分钟没收到，请查垃圾箱；QQ 邮箱偶尔会延迟。",
@@ -349,11 +388,22 @@ async def forgot_password(
         _client_ip(request), "forgot", limit=10, enabled=settings.rate_limit_enabled
     ):
         raise HTTPException(status_code=429, detail="发送过于频繁，请稍后再试")
-    email = _parse_email(body.email)
-    result = await db.execute(select(User).where(User.email == email))
-    user = result.scalar_one_or_none()
+    user = await _find_by_identifier(db, body.email)
     if user is None or not user.email:
-        return OkMessageOut(ok=True, message="若该邮箱已注册，我们已发送重置链接")
+        # 同 resend：静默成功必须留痕，否则「找回密码也没收到」无法排查。
+        logger.info(
+            "forgot noop ip=%s ident=%s reason=%s",
+            _client_ip(request),
+            (body.email or "")[:64],
+            "no_email_on_account" if user is not None else "no_such_account",
+        )
+        return OkMessageOut(
+            ok=True,
+            message=(
+                "若该账号已注册，我们已发送重置链接。没收到时请确认填的账号和注册时一致"
+                "（用户名或邮箱都可以），再查一下垃圾邮件箱。"
+            ),
+        )
     if not (settings.resend_api_key or "").strip():
         # Don't reveal the account exists via a 503 — treat as success.
         logger.warning("security forgot skipped (email service not configured)")
@@ -366,6 +416,11 @@ async def forgot_password(
         await db.rollback()
         logger.warning("forgot password send failed: %s", exc)
         return OkMessageOut(ok=True, message="若该邮箱已注册，我们已发送重置链接")
+    logger.info(
+        "forgot sent user=%s dom=%s",
+        user.username,
+        (user.email or "").split("@")[-1].lower(),
+    )
     return OkMessageOut(ok=True, message="若该邮箱已注册，我们已发送重置链接")
 
 

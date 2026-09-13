@@ -195,6 +195,96 @@ def test_login_refresh_cookie_roundtrip():
     _run(_scenario())
 
 
+def test_resend_verification_accepts_username_and_email():
+    """重发验证邮件既认邮箱也认用户名，且两条静默分支都要给出可执行的提示。
+
+    线上反馈"重发也收不到"的根因之一：只按邮箱查，用户填了用户名（或另一个邮箱）
+    时静默返回 200、其实一封信都没发。
+    """
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            await _register(client, "resenduser", "resenduser@example.com")
+
+            with patch(
+                "app.api.v1.auth.send_verify_email", new_callable=AsyncMock
+            ) as mocked:
+                # 用用户名重发 → 真的发信
+                r = await client.post(
+                    "/api/v1/auth/resend-verification", json={"email": "resenduser"}
+                )
+                assert r.status_code == 200, r.text
+                mocked.assert_awaited_once()
+                assert "已发送" in r.json()["message"]
+
+                # 用邮箱重发 → 也真的发信
+                mocked.reset_mock()
+                r = await client.post(
+                    "/api/v1/auth/resend-verification",
+                    json={"email": "resenduser@example.com"},
+                )
+                assert r.status_code == 200, r.text
+                mocked.assert_awaited_once()
+
+                # 查不到账号 → 不发信，但要告诉用户去核对/走找回密码
+                mocked.reset_mock()
+                r = await client.post(
+                    "/api/v1/auth/resend-verification",
+                    json={"email": "nobody-here@example.com"},
+                )
+                assert r.status_code == 200, r.text
+                mocked.assert_not_awaited()
+                assert "没查到" in r.json()["message"]
+
+            # 已验证账号 → 不发信，提示直接登录
+            await _verify_latest(client, "resenduser@example.com")
+            with patch(
+                "app.api.v1.auth.send_verify_email", new_callable=AsyncMock
+            ) as mocked:
+                r = await client.post(
+                    "/api/v1/auth/resend-verification", json={"email": "resenduser"}
+                )
+                assert r.status_code == 200, r.text
+                mocked.assert_not_awaited()
+                assert "已经验证" in r.json()["message"]
+
+            # 邮箱格式明显写错 → 400，别静默成功
+            r = await client.post(
+                "/api/v1/auth/resend-verification", json={"email": "not-an-email@"}
+            )
+            assert r.status_code == 400, r.text
+
+    _run(_scenario())
+
+
+def test_forgot_password_accepts_username():
+    """找回密码也认用户名，避免用户输用户名时拿到假的"已发送"。"""
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            await _register(client, "forgotuser", "forgotuser@example.com")
+
+            with patch(
+                "app.api.v1.auth.send_reset_email", new_callable=AsyncMock
+            ) as mocked:
+                r = await client.post(
+                    "/api/v1/auth/forgot-password", json={"email": "forgotuser"}
+                )
+                assert r.status_code == 200, r.text
+                mocked.assert_awaited_once()
+
+                mocked.reset_mock()
+                r = await client.post(
+                    "/api/v1/auth/forgot-password",
+                    json={"email": "ghost-account@example.com"},
+                )
+                assert r.status_code == 200, r.text
+                mocked.assert_not_awaited()
+                assert "垃圾邮件箱" in r.json()["message"]
+
+    _run(_scenario())
+
+
 def test_register_closed_403():
     async def _scenario():
         from app.config import get_settings

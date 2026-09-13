@@ -50,6 +50,9 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [pendingEmail, setPendingEmail] = useState("");
+  // 重发验证邮件用的标识：可以是邮箱，也可以是用户名（后端两者都认）。
+  // 单独一个 state，避免用户用「用户名」登录失败后重发时把上一次注册的邮箱带过去。
+  const [resendIdent, setResendIdent] = useState("");
   const [showNotice, setShowNotice] = useState(false);
   const [hasWallpaper, setHasWallpaper] = useState(false);
   const [mascotMood, setMascotMood] = useState<MascotMood>("idle");
@@ -86,7 +89,7 @@ export default function LoginPage() {
     try {
       if (mode === "forgot") {
         if (!email.trim()) {
-          setError("请填写注册邮箱");
+          setError("请填写注册时使用的邮箱或用户名");
           return;
         }
         const r = await forgotPassword(email.trim());
@@ -109,6 +112,7 @@ export default function LoginPage() {
         const r = await register(username.trim(), password, email.trim());
         setPendingEmail(r.email);
         setEmail(r.email);
+        setResendIdent(r.email);
         setMode("checkEmail");
         setInfo(r.message);
         return;
@@ -123,12 +127,13 @@ export default function LoginPage() {
       const message = err instanceof ApiError ? err.message : "操作失败，请重试";
       setError(message);
       // 邮箱未验证是最常见的登录失败原因：直接切到「重发验证邮件」并预填，
-      // 省掉用户自己找入口（roadmap 方向 D）。
+      // 省掉用户自己找入口（roadmap 方向 D）。用用户名登录时也要预填用户名，
+      // 否则重发会带着上一次的邮箱去查，静默失败、用户以为"重发也收不到"。
       if (message.includes("邮箱尚未验证")) {
-        const ident = username.trim();
-        if (ident.includes("@")) {
-          setEmail(ident);
-          setPendingEmail(ident);
+        const ident = username.trim() || email.trim();
+        if (ident) {
+          setResendIdent(ident);
+          if (ident.includes("@")) setEmail(ident);
         }
         // checkEmail 就是「重发验证邮件」界面，直接切过去省掉用户找入口。
         setMode("checkEmail");
@@ -140,14 +145,15 @@ export default function LoginPage() {
   }
 
   async function onResendVerify() {
-    if (!pendingEmail && !email.trim()) {
-      setError("请填写邮箱");
+    const ident = (resendIdent || email).trim();
+    if (!ident) {
+      setError("请填写注册时使用的邮箱或用户名");
       return;
     }
     setBusy(true);
     setError("");
     try {
-      const r = await resendVerification(pendingEmail || email.trim());
+      const r = await resendVerification(ident);
       setInfo(r.message);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "发送失败");
@@ -229,8 +235,10 @@ export default function LoginPage() {
               : mode === "register"
                 ? "注册后请验证邮箱，再登录进入。"
                 : mode === "forgot"
-                  ? "我们会向注册邮箱发送重置链接。"
-                  : `已向 ${pendingEmail} 发送验证邮件，请点击链接后再登录。`}
+                  ? "我们会向注册邮箱发送重置链接（也可以直接填用户名）。"
+                  : resendIdent || pendingEmail
+                    ? `已向 ${resendIdent || pendingEmail} 发送验证邮件，请点击链接后再登录。`
+                    : "请输入注册时使用的邮箱或用户名，重新发送验证邮件。"}
           </p>
 
           {(mode === "login" || mode === "register") && (
@@ -269,7 +277,6 @@ export default function LoginPage() {
               className={styles.form}
               onSubmit={(e) => {
                 e.preventDefault();
-                if (email.trim()) setPendingEmail(email.trim());
                 void onResendVerify();
               }}
             >
@@ -280,17 +287,14 @@ export default function LoginPage() {
                 </p>
               )}
               <label htmlFor="vnss-resend-email">
-                邮箱
+                邮箱或用户名
                 <input
                   id="vnss-resend-email"
-                  type="email"
-                  value={email || pendingEmail}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    setPendingEmail(e.target.value);
-                  }}
-                  autoComplete="email"
-                  placeholder="注册时使用的邮箱"
+                  type="text"
+                  value={resendIdent}
+                  onChange={(e) => setResendIdent(e.target.value)}
+                  autoComplete="username"
+                  placeholder="注册时使用的邮箱或用户名"
                 />
               </label>
               <GlowButton type="submit" className={styles.submit} disabled={busy}>
@@ -324,14 +328,18 @@ export default function LoginPage() {
               )}
               {(mode === "register" || mode === "forgot") && (
                 <label htmlFor="vnss-email">
-                  邮箱
+                  {mode === "forgot" ? "邮箱或用户名" : "邮箱"}
                   <input
                     id="vnss-email"
-                    type="email"
+                    type={mode === "forgot" ? "text" : "email"}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="email"
-                    placeholder="用于验证与找回密码"
+                    autoComplete={mode === "forgot" ? "username" : "email"}
+                    placeholder={
+                      mode === "forgot"
+                        ? "注册时使用的邮箱或用户名"
+                        : "用于验证与找回密码"
+                    }
                   />
                 </label>
               )}

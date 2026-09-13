@@ -58,3 +58,7 @@ docs/
 
 # react-bits 临时导出文件(不入库)
 _rb/
+
+# 一次性排查脚本(不入库)
+_tmp_*
+_cert_tmp/

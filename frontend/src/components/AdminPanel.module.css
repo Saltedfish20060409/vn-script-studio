@@ -400,3 +400,26 @@
   color: var(--ink-soft, #4a5568);
   opacity: 0.85;
 }
+
+.diagRow {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.diagInput {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 12px);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--ink);
+  font-size: 0.78rem;
+}
+
+.diagOut {
+  margin-top: 0.6rem;
+  display: grid;
+  gap: 0.2rem;
+}

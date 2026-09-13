@@ -8,7 +8,7 @@ from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import Text, cast, func, select
+from sqlalchemy import Text, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
@@ -59,6 +59,25 @@ class AdminFlagOut(BaseModel):
     username: str
     is_admin: bool
     message: str = ""
+
+
+class EmailDiagOut(BaseModel):
+    """「收不到验证邮件」排查结果（只读，见 /admin/email-diag）。"""
+
+    query: str
+    matched_by: Literal["email", "username", "none"] = "none"
+    username: Optional[str] = None
+    email: Optional[str] = None
+    email_verified: bool = False
+    created_at: Optional[datetime] = None
+    verify_sends: int = 0
+    verify_clicks: int = 0
+    reset_sends: int = 0
+    reset_clicks: int = 0
+    last_verify_sent_at: Optional[datetime] = None
+    last_click_lag_s: Optional[int] = None
+    similar: List[dict] = Field(default_factory=list)
+    hint: str = ""
 
 
 class AdminOverviewOut(BaseModel):
@@ -281,6 +300,121 @@ async def list_users(
         anomalies_only=anomalies_only,
         limit=limit,
     )
+
+
+@router.get("/email-diag", response_model=EmailDiagOut)
+async def email_diag(
+    q: str = Query(..., min_length=3, max_length=255),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+):
+    """用户反馈「收不到验证邮件」时的一句话排查入口（只读）。
+
+    一次给出：账号是否存在、邮箱是否已验证、验证邮件发了几封/点了没、
+    最近一封什么时候发的、同域名还有没有别的待验证账号。省掉翻日志 + 手写 SQL。
+    """
+    from app.models.tables import AuthEmailToken
+
+    ident = q.strip()
+    matched = "none"
+    user: Optional[User] = None
+    if "@" in ident:
+        row = await db.execute(
+            select(User).where(func.lower(User.email) == ident.lower())
+        )
+        user = row.scalar_one_or_none()
+        if user is not None:
+            matched = "email"
+    else:
+        row = await db.execute(select(User).where(User.username == ident))
+        user = row.scalar_one_or_none()
+        if user is not None:
+            matched = "username"
+
+    out = EmailDiagOut(query=ident, matched_by=matched)
+    if user is None:
+        # 近似的账号（用户名/邮箱含关键字），用来兜住"填错一位/域名写错"的情况。
+        # 带 @ 时额外按 @ 前面那段搜，这样把 example.org 写成 example.com 也能找到人。
+        terms = [ident]
+        if "@" in ident:
+            local = ident.split("@")[0].strip()
+            if local and local != ident:
+                terms.append(local)
+        conds = []
+        for term in terms:
+            like = f"%{term}%"
+            conds.append(User.username.ilike(like))
+            conds.append(User.email.ilike(like))
+        rows = await db.execute(
+            select(User.username, User.email, User.email_verified_at)
+            .where(or_(*conds))
+            .limit(8)
+        )
+        out.similar = [
+            {
+                "username": r[0],
+                "email": r[1],
+                "verified": r[2] is not None,
+            }
+            for r in rows.all()
+        ]
+        out.hint = (
+            "没有这个账号：用户很可能是用另一个邮箱/用户名注册的，"
+            "或注册请求本身失败了（看 server 日志里的 register 400）。"
+        )
+        return out
+
+    out.username = user.username
+    out.email = user.email
+    out.email_verified = user.email_verified_at is not None
+    out.created_at = user.created_at
+
+    agg = await db.execute(
+        select(
+            AuthEmailToken.purpose,
+            func.count().label("sends"),
+            func.count(AuthEmailToken.used_at).label("clicks"),
+            func.max(AuthEmailToken.created_at).label("last_sent"),
+        )
+        .where(AuthEmailToken.user_id == user.id)
+        .group_by(AuthEmailToken.purpose)
+    )
+    for purpose, sends, clicks, last_sent in agg.all():
+        if purpose == "verify":
+            out.verify_sends = int(sends)
+            out.verify_clicks = int(clicks)
+            out.last_verify_sent_at = last_sent
+        elif purpose == "reset":
+            out.reset_sends = int(sends)
+            out.reset_clicks = int(clicks)
+
+    last_click = await db.execute(
+        select(AuthEmailToken)
+        .where(AuthEmailToken.user_id == user.id)
+        .where(AuthEmailToken.purpose == "verify")
+        .where(AuthEmailToken.used_at.is_not(None))
+        .order_by(AuthEmailToken.used_at.desc())
+        .limit(1)
+    )
+    token_row = last_click.scalar_one_or_none()
+    if token_row is not None and token_row.used_at is not None:
+        out.last_click_lag_s = int(
+            (token_row.used_at - token_row.created_at).total_seconds()
+        )
+
+    if out.email_verified:
+        out.hint = "邮箱已验证，说明邮件链路是通的（用户可能在重复点重发）。"
+    elif out.verify_sends == 0:
+        out.hint = "账号存在但一封验证邮件都没成功发出，查注册时的 send 报错。"
+    elif out.verify_clicks == 0:
+        dom = (user.email or "").split("@")[-1].lower()
+        out.hint = (
+            f"发出 {out.verify_sends} 封、一次都没点开：大概率在 {dom} 的垃圾邮件箱，"
+            "或用户注册完就离开了。可让用户在邮箱里搜「vnscriptstudio」。"
+        )
+    else:
+        out.hint = "点开过但当前未验证：可能是点了过期/已用过的链接。"
+    return out
 
 
 @router.get("/funnel")

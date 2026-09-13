@@ -3,12 +3,14 @@ import {
   banUser,
   fetchAdminFunnel,
   fetchAdminOverview,
+  fetchEmailDiag,
   grantAdmin,
   revokeAdmin,
   unbanUser,
   type AdminFunnelOut,
   type AdminOverviewOut,
   type AdminUserOut,
+  type EmailDiagOut,
 } from "../api/admin";
 import { ApiError } from "../api/http";
 import styles from "./AdminPanel.module.css";
@@ -25,6 +27,23 @@ export function AdminPanel({ open, onClose }: Props) {
   const [filter, setFilter] = useState<"all" | "anomalies" | "disabled">("all");
   const [acting, setActing] = useState<string | null>(null);
   const [funnel, setFunnel] = useState<AdminFunnelOut | null>(null);
+  const [diagQ, setDiagQ] = useState("");
+  const [diag, setDiag] = useState<EmailDiagOut | null>(null);
+  const [diagBusy, setDiagBusy] = useState(false);
+
+  async function runDiag() {
+    const q = diagQ.trim();
+    if (!q) return;
+    setDiagBusy(true);
+    setDiag(null);
+    try {
+      setDiag(await fetchEmailDiag(q));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "查询失败");
+    } finally {
+      setDiagBusy(false);
+    }
+  }
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -192,6 +211,75 @@ export function AdminPanel({ open, onClose }: Props) {
             {funnel.notes ? <p className={styles.funnelNote}>{funnel.notes}</p> : null}
           </div>
         ) : null}
+
+        <div className={styles.funnelBox} data-testid="admin-email-diag">
+          <p className={styles.funnelTitle}>
+            邮件排查：用户说「收不到验证邮件」时，填邮箱或用户名查一下
+          </p>
+          <div className={styles.diagRow}>
+            <input
+              className={styles.diagInput}
+              value={diagQ}
+              onChange={(e) => setDiagQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void runDiag();
+              }}
+              placeholder="邮箱或用户名"
+              aria-label="邮箱或用户名"
+            />
+            <button
+              type="button"
+              className={styles.refresh}
+              onClick={() => void runDiag()}
+              disabled={diagBusy || !diagQ.trim()}
+            >
+              {diagBusy ? "查询中…" : "查询"}
+            </button>
+          </div>
+          {diag ? (
+            <div className={styles.diagOut}>
+              {diag.matched_by === "none" ? (
+                <>
+                  <p className={styles.funnelNote}>
+                    没有这个账号。用户可能是用另一个邮箱/用户名注册的，或注册请求本身就失败了。
+                  </p>
+                  {diag.similar.length > 0 ? (
+                    <ul className={styles.funnelList}>
+                      {diag.similar.map((s) => (
+                        <li key={s.username}>
+                          <span className={styles.funnelLabel}>
+                            {s.username} · {s.email || "无邮箱"}
+                          </span>
+                          <span className={styles.funnelNum}>
+                            {s.verified ? "已验证" : "未验证"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <p className={styles.funnelNote}>
+                    {diag.username} · {diag.email} ·{" "}
+                    {diag.email_verified ? "邮箱已验证" : "邮箱未验证"} · 验证邮件{" "}
+                    {diag.verify_sends} 封 / 点开 {diag.verify_clicks} 封
+                    {diag.reset_sends > 0
+                      ? ` · 重置邮件 ${diag.reset_sends} 封 / 点开 ${diag.reset_clicks} 封`
+                      : ""}
+                    {diag.last_verify_sent_at
+                      ? ` · 最近一封 ${new Date(diag.last_verify_sent_at).toLocaleString()}`
+                      : ""}
+                    {diag.last_click_lag_s != null
+                      ? ` · 最近一次点开耗时 ${diag.last_click_lag_s}s`
+                      : ""}
+                  </p>
+                  <p className={styles.funnelNote}>{diag.hint}</p>
+                </>
+              )}
+            </div>
+          ) : null}
+        </div>
 
         <div className={styles.toolbar}>
           <div className={styles.filters} role="tablist" aria-label="筛选">

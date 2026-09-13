@@ -69,6 +69,27 @@ export function fetchAdminFunnel(days = 30): Promise<AdminFunnelOut> {
   return apiFetch<AdminFunnelOut>(`/admin/funnel?days=${days}`);
 }
 
+export interface EmailDiagOut {
+  query: string;
+  matched_by: "email" | "username" | "none";
+  username?: string | null;
+  email?: string | null;
+  email_verified: boolean;
+  created_at?: string | null;
+  verify_sends: number;
+  verify_clicks: number;
+  reset_sends: number;
+  reset_clicks: number;
+  last_verify_sent_at?: string | null;
+  last_click_lag_s?: number | null;
+  similar: { username: string; email?: string | null; verified: boolean }[];
+  hint: string;
+}
+
+export function fetchEmailDiag(q: string): Promise<EmailDiagOut> {
+  return apiFetch<EmailDiagOut>(`/admin/email-diag?q=${encodeURIComponent(q)}`);
+}
+
 export function banUser(username: string): Promise<BanOut> {
   return apiFetch<BanOut>(
     `/admin/users/${encodeURIComponent(username)}/ban`,

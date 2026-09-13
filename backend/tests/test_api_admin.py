@@ -120,3 +120,68 @@ def test_ban_blocks_login_unban_restores():
             assert r.status_code == 200, r.text
 
     _run(_scenario())
+
+
+def test_email_diag_reports_unverified_account():
+    """「收不到验证邮件」排查接口：只读，管理员可用，普通用户 403。
+
+    用户反馈收不到验证邮件时，运维要能一眼看出：账号在不在、邮件发了几封、
+    点开没、最近一封什么时候发的。
+    """
+
+    async def _scenario():
+        from unittest.mock import AsyncMock, patch
+
+        async with db_gate.make_client(APP) as client:
+            await _ensure_is_admin_column()
+            admin_headers = await _make_admin(client, "admin_diag1")
+
+            with patch("app.api.v1.auth.send_verify_email", new_callable=AsyncMock):
+                r = await client.post(
+                    "/api/v1/auth/register",
+                    json={
+                        "username": "diaguser",
+                        "email": "diaguser@example.com",
+                        "password": "secret123",
+                    },
+                )
+                assert r.status_code == 200, r.text
+
+            user_headers = await db_gate.register_headers(client, "normal_diag1")
+            r = await client.get(
+                "/api/v1/admin/email-diag?q=diaguser@example.com",
+                headers=user_headers,
+            )
+            assert r.status_code == 403, r.text
+
+            r = await client.get(
+                "/api/v1/admin/email-diag?q=diaguser@example.com",
+                headers=admin_headers,
+            )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["matched_by"] == "email"
+            assert body["username"] == "diaguser"
+            assert body["email_verified"] is False
+            assert body["verify_sends"] == 1
+            assert body["verify_clicks"] == 0
+            assert body["hint"]
+
+            # 用户名同样可查
+            r = await client.get(
+                "/api/v1/admin/email-diag?q=diaguser", headers=admin_headers
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["matched_by"] == "username"
+
+            # 查不到时给出近似账号，方便发现"填错一位"
+            r = await client.get(
+                "/api/v1/admin/email-diag?q=diaguser@example.org",
+                headers=admin_headers,
+            )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["matched_by"] == "none"
+            assert any(s["username"] == "diaguser" for s in body["similar"])
+
+    _run(_scenario())
