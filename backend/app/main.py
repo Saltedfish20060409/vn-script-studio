@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import api_router
 from app.config import get_settings
-from app.core.app_logging import app_logger
+from app.core.app_logging import app_logger, configure_app_loggers
 from app.db import Base, engine
 from app.models import (  # noqa: F401
     AgentSession,
@@ -41,12 +41,13 @@ def _access_logger() -> logging.Logger:
     """返回自带 handler 的 vnss.access logger（幂等，可在多次 create_app 间复用）。
 
     为什么必须自带 handler：`app.main` 在模块导入时（`app = create_app()`）创建
-    vnss.access，而 uvicorn 之后才执行自己的 dictConfig（默认
-    disable_existing_loggers=True）——导入期创建的 logger 会被静默禁用，
-    info() 全部丢弃（本仓库此前线上 40 分钟零访问日志即为实证）。显式挂上
-    StreamHandler + INFO 级别 + 关闭 propagate，不再依赖 root/uvicorn 配置。
+    vnss.access，而**启动时的 alembic 迁移**会读 alembic.ini（带 [loggers] 段）触发
+    logging.config.fileConfig(disable_existing_loggers=True)，把导入期创建的 logger
+    全部静默禁用，info() 丢弃（本仓库此前线上 40 分钟零访问日志即为实证）。
+    显式挂 StreamHandler + INFO + 关闭 propagate 后，再加上中间件每请求重取一次，
+    才不再依赖 root/别人的配置。
 
-    同一坑也吃掉了其它模块的日志（安全审计、验证邮件排查），统一走 app_logger。
+    同一坑也吃掉了其它模块的日志（安全审计、验证邮件排查），统一见 app_logging.py。
     """
     return app_logger("vnss.access")
 
@@ -71,6 +72,12 @@ async def lifespan(_app: FastAPI):
     # alembic (e.g. legacy); it never drops or alters existing columns.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # 必须在上面那步之后：alembic 读 alembic.ini 时会走 logging.config.fileConfig，
+    # 它默认 disable_existing_loggers=True，会把本进程里所有 app.* / vnss.* logger
+    # 直接关掉（root 也被换成 WARN + console）。这就是"线上只有 vnss.access 有日志、
+    # 安全审计和排查日志全丢"的真正原因 —— vnss.access 侥幸活着，是因为中间件每个
+    # 请求都重新取一次 logger。放在这里重新接管，时序上一定晚于 alembic。
+    configure_app_loggers()
     # Cross-worker SSE bridge (no-op without REDIS_URL).
     from app.services import event_bus
 
