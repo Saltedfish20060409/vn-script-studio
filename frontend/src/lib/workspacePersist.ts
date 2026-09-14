@@ -9,7 +9,14 @@ export interface WorkspaceSnapshot {
   writeSub: "script" | "analysis";
   worldSub: "characters" | "bible" | "lore";
   systemSub: "variables" | "sprites";
-  projectSub: "library" | "stats" | "analysis" | "export" | "history" | "members";
+  projectSub:
+    | "library"
+    | "ledger"
+    | "stats"
+    | "analysis"
+    | "export"
+    | "history"
+    | "members";
   sideOpen: boolean;
   agentSize: "mini" | "normal" | "large";
   updatedAt: number;

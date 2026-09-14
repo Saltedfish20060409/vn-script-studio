@@ -1,12 +1,21 @@
-"""Project writing ledger — hard anchors for memory-aware generation."""
+"""Project writing ledger — hard anchors for memory-aware generation.
+
+两条写入路径：
+
+1. ``digest_chapter_into_ledger`` —— 单章入库（手工端点 / 流水线 gate 用，可带 LLM 增强）；
+2. ``auto_digest_ledger`` —— **保存时自动**跑，纯本地、按章节内容指纹增量更新。
+   线上实测：需要用户主动下命令的能力（含账本）几乎没人用，而"保存时自动刷新"的
+   章节摘要 159/159 全覆盖 —— 所以账本也走自动这条线（见 README/roadmap 讨论）。
+"""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from app.core.agent_context import _blocks_to_plain
-from app.core.chapter_digest import make_chapter_digest
+from app.core.chapter_digest import chapter_content_hash, make_chapter_digest
 from app.domain.types import VnProject
 
 
@@ -277,8 +286,8 @@ def digest_chapter_into_ledger(
             )
     ledger["foreshadows"] = fores[-40:]
 
-    # event
-    events = list(ledger.get("events") or [])
+    # event（幂等：同一章只保留一条，重复保存不会把 events 灌满）
+    events = [e for e in (ledger.get("events") or []) if e.get("chapterId") != chapter_id]
     events.append(
         {
             "id": str(uuid4()),
@@ -290,3 +299,82 @@ def digest_chapter_into_ledger(
     ledger["events"] = events[-50:]
     ledger["updatedAt"] = _now()
     return ledger
+
+
+# 单次保存最多为多少章做入库，以及正文总量预算（防止导入几十章时拖慢保存）
+AUTO_DIGEST_MAX_CHAPTERS = 20
+AUTO_DIGEST_MAX_CHARS = 400_000
+
+
+def _stamp_fact_hash(ledger: Dict[str, Any], chapter_id: str, content_hash: str) -> None:
+    for row in ledger.get("chapterFacts") or []:
+        if row.get("chapterId") == chapter_id:
+            row["sourceHash"] = content_hash
+            return
+
+
+def auto_digest_ledger(project: VnProject, *, max_chapters: int = AUTO_DIGEST_MAX_CHAPTERS,
+                       max_chars: int = AUTO_DIGEST_MAX_CHARS) -> VnProject:
+    """保存时自动把"有改动/还没入库"的章节写进账本（纯本地，不调模型）。
+
+    设计要点：
+    - **增量**：用 ``chapter_content_hash`` 与账本里记录的 ``sourceHash`` 比对，
+      内容没变的章节直接跳过，所以重复保存几乎零成本；
+    - **幂等**：章节事实 / 角色状态 / 事件按 chapterId 覆盖，不会越存越多；
+    - **会清理**：章节被删掉后，指向它的锚点（事实/状态/伏笔/事件）一起清掉，
+      避免生成时读到已经不存在的章节；
+    - **有预算**：一次保存最多处理 max_chapters 章、max_chars 字正文，超出的留到
+      下次保存继续（状态仍是"待入库"，不会丢）；
+    - **不抛异常**：任何意外都返回原项目 —— 记账失败绝不能连带保存失败。
+    """
+    try:
+        chapters = list(project.chapters or [])
+        if not chapters:
+            return project
+        live_ids = {c.id for c in chapters}
+        ledger = get_ledger(project)
+
+        # 1) 清理已被删除章节的锚点
+        pruned = False
+        for key, field in (
+            ("chapterFacts", "chapterId"),
+            ("characterStates", "chapterId"),
+            ("foreshadows", "plantedChapter"),
+            ("events", "chapterId"),
+        ):
+            rows = list(ledger.get(key) or [])
+            kept = [r for r in rows if not r.get(field) or r.get(field) in live_ids]
+            if len(kept) != len(rows):
+                ledger[key] = kept
+                pruned = True
+
+        # 2) 找出内容变了或还没入库的章节（按叙事顺序处理）
+        known = {
+            r.get("chapterId"): r.get("sourceHash")
+            for r in (ledger.get("chapterFacts") or [])
+        }
+        pending: List[Tuple[str, str, int]] = []
+        for ch in chapters:
+            h = chapter_content_hash(ch)
+            if known.get(ch.id) == h:
+                continue
+            plain_len = len(_blocks_to_plain(ch.blocks, project.characters) or "")
+            pending.append((ch.id, h, plain_len))
+
+        if not pending and not pruned:
+            return project
+
+        cur = set_ledger(project, ledger) if pruned else project
+        budget = max_chars
+        done = 0
+        for chapter_id, content_hash, plain_len in pending:
+            if done >= max_chapters or budget <= 0:
+                break
+            ledger = digest_chapter_into_ledger(cur, chapter_id)
+            _stamp_fact_hash(ledger, chapter_id, content_hash)
+            cur = set_ledger(cur, ledger)
+            budget -= plain_len
+            done += 1
+        return cur
+    except Exception:  # noqa: BLE001 —— 记账是附带能力，绝不能把保存搞挂
+        return project

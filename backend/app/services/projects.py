@@ -41,6 +41,10 @@ def row_to_vn(row: Project) -> VnProject:
 def sync_row_from_vn(row: Project, vn: VnProject) -> None:
     touched = touch_project(vn)
     touched = refresh_chapter_index(touched)
+    # 写作账本自动入库（纯本地、按章节指纹增量；失败不影响保存）
+    from app.core.pipeline.ledger import auto_digest_ledger
+
+    touched = auto_digest_ledger(touched)
     touched = mark_voice_reports_stale(touched)
     payload = project_to_dict(touched)
     row.title = touched.title
@@ -360,6 +364,11 @@ async def create_project_row(
         project.title = title
 
     project = refresh_chapter_index(normalize_project(project))
+    # 新建即入库：示例/模板项目自带若干章，先攒好账本，用户一进项目就能看到
+    # 锚点（也保证注册后第一次提问时 Agent 拿得到硬锚）。
+    from app.core.pipeline.ledger import auto_digest_ledger
+
+    project = auto_digest_ledger(project)
     project = mark_voice_reports_stale(project)
 
     now = datetime.now(timezone.utc)

@@ -134,6 +134,79 @@ def test_import_rejects_bad_json_400():
     _run(_scenario())
 
 
+def test_save_auto_populates_writing_ledger():
+    """账本走「保存时自动」这条线（用户什么都不用说）。
+
+    依据（2026-09 线上实测）：需要用户主动下命令的能力几乎没人用——agent_jobs
+    累计 2 次、账本 0 个项目有内容；而"保存时自动刷新"的章节摘要 159/159 全覆盖。
+    所以账本也接到保存路径上（services/projects.py::sync_row_from_vn）。
+    """
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "ledger_auto1")
+
+            # 1) 新建（走 create_project_row）就应带账本，不用等第一次保存
+            r = await client.post(
+                "/api/v1/projects", json={"from_demo": True}, headers=headers
+            )
+            assert r.status_code == 200, r.text
+            project = r.json()
+            pid = project["id"]
+            chapter_ids = [c["id"] for c in project["chapters"]]
+            assert chapter_ids
+
+            ledger = project.get("writingLedger") or {}
+            facts = ledger.get("chapterFacts") or []
+            assert facts, "新建示例项目时账本就该有内容"
+            assert {f["chapterId"] for f in facts} == set(chapter_ids)
+            assert all(f.get("sourceHash") for f in facts)
+            assert all(f.get("facts") for f in facts)
+            assert ledger.get("events")
+
+            # 2) 保存一次不改变内容 → 幂等（没有重复行、事件不增长）
+            facts_before = {f["chapterId"]: f["sourceHash"] for f in facts}
+            events_before = len(ledger.get("events") or [])
+            r = await client.put(
+                f"/api/v1/projects/{pid}",
+                json={"data": project},
+                headers=headers,
+            )
+            assert r.status_code == 200, r.text
+            saved = r.json()
+            ledger2 = saved.get("writingLedger") or {}
+            assert len(ledger2.get("chapterFacts") or []) == len(facts)
+            assert len(ledger2.get("events") or []) == events_before
+            assert {
+                f["chapterId"]: f["sourceHash"] for f in ledger2["chapterFacts"]
+            } == facts_before
+
+            # 3) 改一章正文再保存 → 只有这一章的指纹变化，账本被重算
+            target = saved["chapters"][0]
+            blocks = list(target.get("blocks") or [])
+            speaker = (saved.get("characters") or [{}])[0].get("id") or "char1"
+            blocks.append(
+                {"type": "dialogue", "characterId": speaker, "text": "新增的一句台词。"}
+            )
+            saved["chapters"][0] = {**target, "blocks": blocks}
+            r = await client.put(
+                f"/api/v1/projects/{pid}",
+                json={"data": saved, "chapter_ids": [target["id"]]},
+                headers=headers,
+            )
+            assert r.status_code == 200, r.text
+            ledger3 = r.json().get("writingLedger") or {}
+            after = {f["chapterId"]: f["sourceHash"] for f in ledger3["chapterFacts"]}
+            assert after[target["id"]] != facts_before[target["id"]]
+            for cid in chapter_ids:
+                if cid != target["id"]:
+                    assert after[cid] == facts_before[cid]
+            # 幂等依然成立：事件数没有因为重算而膨胀
+            assert len(ledger3.get("events") or []) == events_before
+
+    _run(_scenario())
+
+
 def test_owner_cannot_read_other_users_project_404():
     async def _scenario():
         async with db_gate.make_client(APP) as client:

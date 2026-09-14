@@ -80,10 +80,19 @@ def _hash_str(s: str) -> str:
 
 
 def chapter_content_hash(chapter: SceneChapter) -> str:
-    """Cheap content fingerprint for cache invalidation"""
+    """Cheap content fingerprint for cache invalidation.
+
+    ``sort_keys=True`` 是必须的，不是风格问题：项目 blob 存在 Postgres 的 **jsonb**
+    列里，而 jsonb 不保留对象的键顺序（按 key 长度+字节序重排）。不排序的话，
+    同一章内容在「新建时的内存对象」与「从库里读回来的对象」之间会算出不同指纹
+    ——实测：新建时 stamp 的账本指纹与之后每次保存重算的指纹全部不同，
+    导致每一章都被判定为"内容变了"（见 core/pipeline/ledger.py 的增量入库）。
+    core/snapshots.py::content_hash_for_payload 用的是同一套写法。
+    """
     n = len(chapter.blocks)
     tail = "|".join(
-        json.dumps(b, ensure_ascii=False, separators=(",", ":")) for b in chapter.blocks[-3:]
+        json.dumps(b, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        for b in chapter.blocks[-3:]
     )
     syn = chapter.synopsis or ""
     return f"{chapter.id}:{n}:{len(syn)}:{_hash_str(tail + syn + chapter.title)}"

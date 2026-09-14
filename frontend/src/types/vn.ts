@@ -238,6 +238,58 @@ export interface ChapterIndexEntry {
   closeHook?: string;
 }
 
+/** 章节事实（账本）：保存时自动入库，纯本地抽取，不调模型 */
+export interface LedgerChapterFact {
+  id?: string;
+  chapterId: string;
+  title?: string;
+  facts?: string[];
+  keyQuotes?: string[];
+  /** 入库时的正文内容指纹 —— 变了才会重算 */
+  sourceHash?: string;
+  updatedAt?: string;
+}
+
+/** 角色状态快照（账本）：最近一次情绪 / 动作 / 关系 */
+export interface LedgerCharacterState {
+  id?: string;
+  chapterId?: string;
+  chapterTitle?: string;
+  characterId?: string;
+  characterName?: string;
+  emotion?: string;
+  body?: string;
+  relations?: string;
+  updatedAt?: string;
+}
+
+/** 伏笔（账本）：章末钩子自动记为 open，可在提示词里让续写回收 */
+export interface LedgerForeshadow {
+  id?: string;
+  hook?: string;
+  plantedChapter?: string;
+  /** open | paid */
+  status?: string;
+  note?: string;
+  updatedAt?: string;
+}
+
+export interface LedgerEvent {
+  id?: string;
+  chapterId?: string;
+  summary?: string;
+  updatedAt?: string;
+}
+
+/** 写作账本：保存时由服务端自动维护（见 backend/app/core/pipeline/ledger.py） */
+export interface WritingLedger {
+  chapterFacts?: LedgerChapterFact[];
+  characterStates?: LedgerCharacterState[];
+  foreshadows?: LedgerForeshadow[];
+  events?: LedgerEvent[];
+  updatedAt?: string;
+}
+
 export interface FactEvidence {
   /** script | bible | card | paste | upload | agent */
   source: string;
@@ -312,19 +364,7 @@ export interface VnProject {
   snapshots?: ProjectSnapshot[];
   /** Extractive chapter digests / content hashes (server-refreshed on save) */
   chapterIndex?: ChapterIndexEntry[];
-  writingLedger?: {
-    chapterFacts?: Array<{
-      id?: string;
-      chapterId: string;
-      title?: string;
-      facts?: string[];
-      keyQuotes?: string[];
-    }>;
-    characterStates?: Array<Record<string, unknown>>;
-    foreshadows?: Array<Record<string, unknown>>;
-    events?: Array<Record<string, unknown>>;
-    updatedAt?: string;
-  };
+  writingLedger?: WritingLedger;
   /** Recent harness / pipeline run summaries (capped) */
   harnessRuns?: Array<Record<string, unknown>>;
   /** Active writing mentor packs (methodology; cannot override style_guide) */

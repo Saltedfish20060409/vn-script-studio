@@ -65,6 +65,7 @@ import { CommentsPanel } from "./CommentsPanel";
 import { PwaInstallPrompt } from "./PwaInstallPrompt";
 import { ProjectExportPanel } from "./ProjectExportPanel";
 import { ProjectHistoryPanel } from "./ProjectHistoryPanel";
+import { ProjectLedgerPanel } from "./ProjectLedgerPanel";
 import { WritingStatsPanel } from "./WritingStatsPanel";
 import { StudioBootScreen } from "./StudioBootScreen";
 import { StudioChapterBar } from "./StudioChapterBar";
@@ -109,6 +110,7 @@ import {
   saveWorkspace,
   workspaceDefaults,
   type StudioTab,
+  type WorkspaceSnapshot,
 } from "../lib/workspacePersist";
 import {
   enterFullscreen,
@@ -189,9 +191,10 @@ export function StudioApp() {
   const [systemSub, setSystemSub] = useState<"variables" | "sprites">(
     cachedWs.systemSub || wsDefaults.systemSub
   );
-  const [projectSub, setProjectSub] = useState<
-    "library" | "stats" | "analysis" | "export" | "history" | "members"
-  >(cachedWs.projectSub || wsDefaults.projectSub);
+  // 子页类型直接取自持久化快照，新增子页时不会再出现"改了类型忘了改这里"
+  const [projectSub, setProjectSub] = useState<WorkspaceSnapshot["projectSub"]>(
+    cachedWs.projectSub || wsDefaults.projectSub
+  );
   const [playOpen, setPlayOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(() => !hasSeenTour());
   const [petCheer, setPetCheer] = useState(0);
@@ -1803,6 +1806,7 @@ export function StudioApp() {
                   {(
                     [
                       ["library", "剧本库"],
+                      ["ledger", "账本 / 摘要"],
                       ["stats", "写作统计"],
                       ["analysis", "结构分析"],
                       ["export", "导出"],
@@ -1839,6 +1843,16 @@ export function StudioApp() {
                     onImportClick={() => fileRef.current?.click()}
                     onDuplicate={(id) => void duplicateProjectById(id)}
                     onDelete={(id) => void deleteProjectById(id)}
+                  />
+                )}
+
+                {projectSub === "ledger" && project && (
+                  <ProjectLedgerPanel
+                    project={project}
+                    onOpenChapter={(id) => {
+                      setChapterId(id);
+                      setTab("write");
+                    }}
                   />
                 )}
 
