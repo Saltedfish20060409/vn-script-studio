@@ -176,15 +176,25 @@ def test_stream_proxies_whitelisted_audio():
 
 
 def test_stream_rejects_private_ip_resolution():
-    """白名单域名被 DNS 指向私网 IP → 400（IP 级 SSRF 校验）。"""
+    """白名单域名被 DNS 指向私网 IP → 400（IP 级 SSRF 校验）。
+
+    注意：这里 patch 的是**模块全局** socket.getaddrinfo，进程内任何 DNS 解析都会
+    经过它 —— 包括连数据库（compose 里 DB 主机名是 `postgres`，走的正是 getaddrinfo，
+    而且是 6 个参数的那套签名）。所以假实现必须放行非目标主机，否则测试会以
+    500/ForeignKey 之类的假失败收场。
+    """
 
     async def _scenario():
         from unittest.mock import patch
 
-        def fake_getaddrinfo(host, port):
-            return [
-                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 0)),
-            ]
+        real_getaddrinfo = socket.getaddrinfo
+
+        def fake_getaddrinfo(host, *args, **kwargs):
+            if host == "m701.music.126.net":
+                return [
+                    (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 0)),
+                ]
+            return real_getaddrinfo(host, *args, **kwargs)
 
         with patch(
             "app.api.v1.music.socket.getaddrinfo", side_effect=fake_getaddrinfo
