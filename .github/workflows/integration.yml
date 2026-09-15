@@ -1,16 +1,16 @@
 name: db-integration
 
-# 需要真实 PostgreSQL 的集成测试 —— **手动触发**（不参与日常 CI）。
+# 需要真实 PostgreSQL 的集成测试。
 #
-# 为什么手动：这些用例（API / 迁移 / 行锁 / 快照等）必须连真库才有意义，
-# 而 CI 环境里的库版本、扩展、迁移状态都需要先确认一遍。没配好之前跑它只会
-# 得到"看起来是代码坏了、其实是环境没配"的伪失败，所以改成按需触发。
+# 为什么现在改成自动跑：这些用例才是能抓住真实缺陷的那一层——jsonb 键序导致指纹漂移、
+# 注册/重发验证邮件的静默失败、快照与行锁的并发语义，全都只有连真库才测得出来。
+# 之前在本地用 SSH 隧道跑（又慢又会断），误以为"环境没配好所以先手动"；现在改成
+# GitHub Actions 的 Postgres service（本机回环，秒级），容器内实测全量 ~2.5 分钟。
 #
-# 用法：Actions → db-integration → Run workflow。
-# 本地等价命令（需要本机有 Postgres）：
-#   $env:DATABASE_URL_TEST='postgresql+asyncpg://vnss:vnss@localhost:15432/vnss_test'
-#   python -m pytest tests/ -q
-
+# 触发条件刻意收窄：只在后端代码/工作流本身变化时跑，避免前端改动白白烧掉几分钟 CI。
+# 另外第一步会**显式确认测试库可达**：不可达就直接失败，而不是让用例静默 skip 掉。
+#
+# 用法：push/PR 自动跑；也可以在 Actions → db-integration → Run workflow 手动指定 -k 表达式。
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -22,6 +22,15 @@ on:
         description: "要跑的用例范围（pytest -k 表达式，留空=全部）"
         required: false
         default: ""
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/integration.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/integration.yml"
 
 jobs:
   db-tests:

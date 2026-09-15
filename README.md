@@ -247,7 +247,10 @@ pytest tests/ -q
 
 > API/DB 集成测试（`tests/test_api_*.py`）需要测试库 `vnss_test`：连接串来自
 > `DATABASE_URL_TEST`（默认 `postgresql+asyncpg://vnss:vnss@localhost:54102/vnss_test`）。
-> 连不上时这些用例自动跳过，所以本地不配库也能跑（本机实测 350 passed / 76 skipped）。
+> 连不上时这些用例自动跳过，所以本地不配库也能跑（本机实测 350 passed / 76 skipped）；
+> CI 的 `integration.yml` 自带 Postgres service，会真跑这一层（≈450 用例）。
+> 想在**服务器上**用容器里的 Python 跑全量（比本地隧道稳且快）：
+> `python deploy/run_db_tests.py`（见 `deploy/`，不入库；需要线上有独立测试库）。
 > 前端：`cd frontend && npm test`（vitest，纯函数单测）。
 > 前端 e2e：`cd frontend && npm run build && npm run test:e2e`（需本地 PG 可达，见 playwright.config.ts）。
 
@@ -258,15 +261,19 @@ pytest tests/ -q
 - 后端：`ruff check app/` + `pytest tests/`（不连库 → DB 集成用例自动 skip）
 - 前端：`npm ci` → typecheck → `lint:strict` → `npm test` → `npm run build` → bundle 体积门禁
 
-需要外部条件、在没配好的环境里只会产生"伪失败"的检查，一律改成**手动触发**，不参与日常 CI：
+需要真实数据库、但要密钥 / 外部服务 / 真数据才能跑的检查，走独立工作流：
 
 | 工作流 | 触发 | 需要什么 |
 |---|---|---|
-| `integration.yml` | 手动 | Postgres service（工作流自己起）+ 真库跑 `tests/` |
+| `integration.yml` | **自动（backend/** 变化）+ 可手动** | Postgres service（工作流自己起）+ 真库跑 `tests/`；第一步显式确认测试库可达，避免用例静默 skip |
 | `e2e.yml` | 手动 | Postgres + 后端 + 前端构建 + Playwright 浏览器（注册走 `AUTH_AUTO_VERIFY=true` 免发信） |
 
+> 2026-09 调整：`integration.yml` 从"仅手动"改为**后端改动时自动跑**。原因是本层用例才抓得住
+> 真实缺陷（jsonb 键序导致的指纹漂移、注册/重发邮件的静默失败、并发与行锁语义），而"手动"
+> 等于没人跑。它自带 Postgres service、不依赖任何密钥或外部服务，且容器内实测全量约 2.5 分钟。
+
 **加新检查时的原则**：先在本机把它跑绿，再放进自动 CI；凡是要密钥、要外部服务、要真数据的，
-放进手动工作流，并在文件头注明需要什么环境。
+放进独立工作流，并在文件头注明需要什么环境。
 
 ### 备份 / 恢复
 
