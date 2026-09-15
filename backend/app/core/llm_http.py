@@ -149,14 +149,20 @@ async def chat_completions(
 
                 if res.status_code < 400:
                     # Best-effort per-user usage accounting (fire-and-forget).
+                    # kind 取当前上下文（中间件按路径判定），这样报表能区分
+                    # "审稿/回炉/一致性检查/地图抽取"各花了多少——此前写死 "llm"。
                     try:
-                        from app.core.usage import current_usage_user, record_usage_later
+                        from app.core.usage import (
+                            current_usage_kind,
+                            current_usage_user,
+                            record_usage_later,
+                        )
 
                         uid = current_usage_user()
                         if uid:
                             record_usage_later(
                                 user_id=uid,
-                                kind="llm",
+                                kind=current_usage_kind(),
                                 model=model,
                                 usage=usage_from_response(res),
                             )

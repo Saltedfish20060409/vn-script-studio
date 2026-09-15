@@ -18,6 +18,8 @@ from sqlalchemy import func, select
 logger = logging.getLogger(__name__)
 
 _usage_user: ContextVar[Optional[str]] = ContextVar("usage_user", default=None)
+# 当前请求（或它派生的后台任务）属于哪种 AI 能力，见 app/core/usage_kinds.py
+_usage_kind: ContextVar[str] = ContextVar("usage_kind", default="llm")
 
 
 def set_usage_user(user_id: Optional[str]) -> None:
@@ -26,6 +28,14 @@ def set_usage_user(user_id: Optional[str]) -> None:
 
 def current_usage_user() -> Optional[str]:
     return _usage_user.get()
+
+
+def set_usage_kind(kind: Optional[str]) -> None:
+    _usage_kind.set((kind or "llm").strip() or "llm")
+
+
+def current_usage_kind() -> str:
+    return _usage_kind.get()
 
 
 # ---- 批量写入（写放大优化）----

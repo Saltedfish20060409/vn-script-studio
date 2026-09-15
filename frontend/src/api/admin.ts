@@ -86,6 +86,25 @@ export interface EmailDiagOut {
   hint: string;
 }
 
+export interface AiUsageKind {
+  kind: string;
+  label: string;
+  calls: number;
+  tokens: number;
+  users: number;
+  last_at?: string | null;
+}
+
+export interface AiUsageOut {
+  days: number;
+  totals: { calls: number; tokens: number };
+  byKind: AiUsageKind[];
+}
+
+export function fetchAiUsage(days = 30): Promise<AiUsageOut> {
+  return apiFetch<AiUsageOut>(`/admin/ai-usage?days=${days}`);
+}
+
 export function fetchEmailDiag(q: string): Promise<EmailDiagOut> {
   return apiFetch<EmailDiagOut>(`/admin/email-diag?q=${encodeURIComponent(q)}`);
 }

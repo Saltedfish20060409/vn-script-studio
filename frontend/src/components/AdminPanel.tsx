@@ -3,6 +3,7 @@ import {
   banUser,
   fetchAdminFunnel,
   fetchAdminOverview,
+  fetchAiUsage,
   fetchEmailDiag,
   grantAdmin,
   revokeAdmin,
@@ -10,6 +11,7 @@ import {
   type AdminFunnelOut,
   type AdminOverviewOut,
   type AdminUserOut,
+  type AiUsageOut,
   type EmailDiagOut,
 } from "../api/admin";
 import { ApiError } from "../api/http";
@@ -27,6 +29,7 @@ export function AdminPanel({ open, onClose }: Props) {
   const [filter, setFilter] = useState<"all" | "anomalies" | "disabled">("all");
   const [acting, setActing] = useState<string | null>(null);
   const [funnel, setFunnel] = useState<AdminFunnelOut | null>(null);
+  const [aiUsage, setAiUsage] = useState<AiUsageOut | null>(null);
   const [diagQ, setDiagQ] = useState("");
   const [diag, setDiag] = useState<EmailDiagOut | null>(null);
   const [diagBusy, setDiagBusy] = useState(false);
@@ -59,6 +62,12 @@ export function AdminPanel({ open, onClose }: Props) {
         setFunnel(await fetchAdminFunnel(30));
       } catch {
         setFunnel(null);
+      }
+      // AI 能力用量同样单独取，失败不影响其它卡片
+      try {
+        setAiUsage(await fetchAiUsage(30));
+      } catch {
+        setAiUsage(null);
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "加载失败");
@@ -209,6 +218,44 @@ export function AdminPanel({ open, onClose }: Props) {
               })}
             </ul>
             {funnel.notes ? <p className={styles.funnelNote}>{funnel.notes}</p> : null}
+          </div>
+        ) : null}
+
+        {aiUsage ? (
+          <div className={styles.funnelBox} data-testid="admin-ai-usage">
+            <p className={styles.funnelTitle}>
+              AI 用量按能力拆分（近 {aiUsage.days} 天 · 共{" "}
+              {aiUsage.totals.calls} 次 / {aiUsage.totals.tokens.toLocaleString()}{" "}
+              tokens）
+            </p>
+            {aiUsage.byKind.length === 0 ? (
+              <p className={styles.funnelNote}>
+                这段时间没有 AI 调用记录。分类从本次发布后开始生效，历史记录都是旧标签。
+              </p>
+            ) : (
+              <ul className={styles.funnelList}>
+                {aiUsage.byKind.map((k) => {
+                  const top = aiUsage.byKind[0]?.calls || 1;
+                  const pct = Math.round((k.calls / top) * 100);
+                  return (
+                    <li key={k.kind}>
+                      <span className={styles.funnelLabel}>{k.label}</span>
+                      <span className={styles.funnelBar} aria-hidden>
+                        <span style={{ width: `${Math.max(pct, 2)}%` }} />
+                      </span>
+                      <span className={styles.funnelNum}>
+                        {k.calls} 次 · {k.users} 人 ·{" "}
+                        {k.tokens.toLocaleString()} tok
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <p className={styles.funnelNote}>
+              用途：判断"该把力气投到哪个能力上"。此前 kind 被写死成同一个标签，
+              只能看到总量、看不到结构。
+            </p>
           </div>
         ) : null}
 

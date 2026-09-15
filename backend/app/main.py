@@ -123,7 +123,8 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def usage_context_middleware(request, call_next):
         """Carry usage user id and browser-supplied X-LLM-* credentials."""
-        from app.core.usage import set_usage_user
+        from app.core.usage import set_usage_kind, set_usage_user
+        from app.core.usage_kinds import kind_for_path
 
         user_id: str | None = None
         auth = request.headers.get("Authorization") or ""
@@ -140,6 +141,9 @@ def create_app() -> FastAPI:
                 except Exception:  # noqa: BLE001 - invalid token falls through
                     user_id = None
         set_usage_user(user_id)
+        # 按路径把本次请求归类到具体 AI 能力，用量统计据此分类
+        # （后台任务由 create_task 派生，会继承这份上下文）。
+        set_usage_kind(kind_for_path(request.url.path))
         from app.core.llm_client_override import (
             parse_llm_headers,
             set_client_llm_override,
@@ -150,6 +154,7 @@ def create_app() -> FastAPI:
             return await call_next(request)
         finally:
             set_usage_user(None)
+            set_usage_kind(None)
             set_client_llm_override(None)
 
     @app.middleware("http")

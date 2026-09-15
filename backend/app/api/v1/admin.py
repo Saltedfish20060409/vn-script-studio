@@ -303,6 +303,58 @@ async def list_users(
     )
 
 
+@router.get("/ai-usage")
+async def ai_usage(
+    days: int = Query(30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+):
+    """按「AI 能力」统计调用量、tokens 与使用人数（只读）。
+
+    为什么要有：此前 `llm_usage.kind` 全站写死 `"llm"`，只能看到总量、看不到结构，
+    于是"该把力气投到哪个能力上"只能靠猜。有了分类，就能回答：
+    钱和调用到底花在审稿、回炉、一致性检查还是地图抽取上；每个能力有多少人在用。
+    """
+    from app.core.usage_kinds import KNOWN_KINDS, kind_label
+    from app.models.tables import LlmUsage
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = (
+        await db.execute(
+            select(
+                LlmUsage.kind,
+                func.count().label("calls"),
+                func.coalesce(func.sum(LlmUsage.total_tokens), 0).label("tokens"),
+                func.count(func.distinct(LlmUsage.user_id)).label("users"),
+                func.max(LlmUsage.created_at).label("last_at"),
+            )
+            .where(LlmUsage.created_at >= since)
+            .group_by(LlmUsage.kind)
+        )
+    ).all()
+
+    by_kind = {
+        r.kind or "llm": {
+            "kind": r.kind or "llm",
+            "label": kind_label(r.kind or "llm"),
+            "calls": int(r.calls),
+            "tokens": int(r.tokens),
+            "users": int(r.users),
+            "last_at": r.last_at.isoformat() if r.last_at else None,
+        }
+        for r in rows
+    }
+    # 已知分类按固定顺序补齐（未使用的补 0，方便横向比较），未知分类追加在后面
+    ordered = [by_kind[k] for k in KNOWN_KINDS if k in by_kind]
+    ordered += [v for k, v in sorted(by_kind.items()) if k not in KNOWN_KINDS]
+
+    totals = {
+        "calls": sum(v["calls"] for v in ordered),
+        "tokens": sum(v["tokens"] for v in ordered),
+    }
+    return {"days": days, "totals": totals, "byKind": ordered}
+
+
 @router.get("/email-diag", response_model=EmailDiagOut)
 async def email_diag(
     q: str = Query(..., min_length=3, max_length=255),

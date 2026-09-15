@@ -185,3 +185,70 @@ def test_email_diag_reports_unverified_account():
             assert any(s["username"] == "diaguser" for s in body["similar"])
 
     _run(_scenario())
+
+
+def test_ai_usage_groups_by_capability():
+    """AI 用量按能力分类：能看出"钱花在哪个能力上"，而不是只有一个总量。
+
+    背景：llm_usage.kind 曾经被写死成 "llm"，30 天 448 次调用全是同一个标签，
+    完全无法分析。这个接口是"该往哪投"的决策依据，所以要钉住聚合口径。
+    """
+
+    async def _scenario():
+        from datetime import datetime, timezone
+
+        from app.models.tables import LlmUsage
+
+        async with db_gate.make_client(APP) as client:
+            await _ensure_is_admin_column()
+            admin_headers = await _make_admin(client, "admin_usage1")
+
+            async with db_gate.SessionLocal() as session:
+                session.add_all(
+                    [
+                        LlmUsage(
+                            user_id="u1",
+                            kind="chapter_revise",
+                            model="m",
+                            total_tokens=1000,
+                            created_at=datetime.now(timezone.utc),
+                        ),
+                        LlmUsage(
+                            user_id="u1",
+                            kind="chapter_revise",
+                            model="m",
+                            total_tokens=500,
+                            created_at=datetime.now(timezone.utc),
+                        ),
+                        LlmUsage(
+                            user_id="u2",
+                            kind="facts",
+                            model="m",
+                            total_tokens=300,
+                            created_at=datetime.now(timezone.utc),
+                        ),
+                    ]
+                )
+                await session.commit()
+
+            r = await client.get("/api/v1/admin/ai-usage", headers=admin_headers)
+            assert r.status_code == 200, r.text
+            body = r.json()
+            by = {k["kind"]: k for k in body["byKind"]}
+
+            assert by["chapter_revise"]["calls"] == 2
+            assert by["chapter_revise"]["tokens"] == 1500
+            assert by["chapter_revise"]["users"] == 1
+            assert by["facts"]["calls"] == 1
+            assert by["facts"]["users"] == 1
+            assert body["totals"]["calls"] == 3
+            assert body["totals"]["tokens"] == 1800
+            # 分类带中文标签，便于直接看
+            assert by["chapter_revise"]["label"]
+
+            # 普通用户不能看
+            user_headers = await db_gate.register_headers(client, "normal_usage1")
+            r = await client.get("/api/v1/admin/ai-usage", headers=user_headers)
+            assert r.status_code == 403, r.text
+
+    _run(_scenario())

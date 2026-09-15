@@ -6,6 +6,8 @@ import logging
 import logging.config
 from pathlib import Path
 
+import pytest
+
 from app.core.app_logging import app_logger, configure_app_loggers
 
 
@@ -45,7 +47,10 @@ def test_configure_app_loggers_undoes_alembic_fileconfig():
     线上「只有 vnss.access 有日志、安全审计与验证邮件排查全丢」就是这么来的。
     """
     ini = Path(__file__).resolve().parents[1] / "alembic.ini"
-    assert ini.exists(), ini
+    if not ini.exists():
+        # 在某些非常规布局下（例如只把 tests/app 拷进容器跑）拿不到 ini，
+        # 这属于环境差异而不是行为回归，跳过而不是误报失败。
+        pytest.skip(f"找不到 alembic.ini：{ini}")
 
     _reset("vnss.auth")
     app_logger("vnss.auth")  # 先按模块顶层的方式建好（handler + INFO）
