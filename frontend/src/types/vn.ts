@@ -62,12 +62,35 @@ export type ScriptBlock =
   | { type: "jump"; target: LabelId }
   | { type: "return" }
   | { type: "comment"; text: string }
-  | { type: "raw"; code: string };
+  | { type: "raw"; code: string }
+  // ---- 演出指令（音频 / 等待 / 镜头 / 特效）----
+  | { type: "music"; action: "play" | "stop"; file?: string; fade?: number }
+  | { type: "sound"; action: "play" | "stop"; file?: string; volume?: number }
+  | { type: "voice"; action: "play" | "stop"; file?: string }
+  | { type: "wait"; seconds?: number }
+  | { type: "camera"; zoom?: number; x?: number; y?: number; at?: string }
+  | { type: "effect"; kind: string; duration?: number }
+  // ---- 变量与条件 ----
+  | {
+      type: "set";
+      key: string;
+      op?: "=" | "+=" | "-=";
+      value?: number | boolean | string;
+    }
+  | { type: "if"; branches: IfBranch[] };
+
+export interface IfBranch {
+  /** 空 = 否则分支 */
+  condition?: string;
+  blocks: ScriptBlock[];
+}
 
 export interface MenuChoice {
   text: string;
   jump?: LabelId;
   blocks?: ScriptBlock[];
+  /** 条件选项：只有条件成立时才出现（对应 Ren'Py 的 `"文本" if cond:`） */
+  condition?: string;
 }
 
 export interface SceneChapter {

@@ -78,6 +78,9 @@ import { QPet } from "./QPet";
 import { AdminPanel } from "./AdminPanel";
 import { ClickFx } from "./ClickFx";import { WorldPanel } from "./WorldPanel";
 import { WriteToolbar, type WriteMode } from "./WriteToolbar";
+import { ScriptCommandBar } from "./ScriptCommandBar";
+import { AssetAuditPanel } from "./AssetAuditPanel";
+import { LocalizationPanel } from "./LocalizationPanel";
 import { MusicPlayerBar } from "./MusicPlayerBar";
 import { HelpSheet } from "./HelpSheet";
 import { StudioErrorBoundary } from "./StudioErrorBoundary";
@@ -1708,6 +1711,7 @@ export function StudioApp() {
           chapter={chapter}
           characters={project.characters ?? []}
           projectTitle={project.title}
+          variables={project.variables ?? []}
           onExit={() => setPlayOpen(false)}
         />
       )}
@@ -1809,6 +1813,8 @@ export function StudioApp() {
                       ["ledger", "账本 / 摘要"],
                       ["stats", "写作统计"],
                       ["analysis", "结构分析"],
+                      ["assets", "素材"],
+                      ["localization", "本地化"],
                       ["export", "导出"],
                       ["history", "快照 / 分享"],
                       ["members", "成员"],
@@ -1868,6 +1874,20 @@ export function StudioApp() {
                     onChange={updateActive}
                     onRemoteProject={applyRemoteProject}
                   />
+                )}
+
+                {projectSub === "assets" && project && (
+                  <AssetAuditPanel
+                    projectId={project.id}
+                    onOpenChapter={(id) => {
+                      setChapterId(id);
+                      setTab("write");
+                    }}
+                  />
+                )}
+
+                {projectSub === "localization" && project && (
+                  <LocalizationPanel projectId={project.id} />
                 )}
 
                 {projectSub === "export" && (
@@ -2059,6 +2079,37 @@ export function StudioApp() {
                           setSelection(t.value.slice(t.selectionStart, t.selectionEnd));
                         }}
                       />
+                      {writeMode === "rpy" ? (
+                        <ScriptCommandBar
+                          characters={project.characters ?? []}
+                          sprites={project.sprites ?? []}
+                          variables={project.variables ?? []}
+                          onInsert={(text) => {
+                            // 插入到编辑器光标处；没有光标信息时追加到末尾。
+                            const ta = editorTaRef.current;
+                            const cur = editorRef.current;
+                            let next: string;
+                            if (ta && ta.selectionStart !== null && ta.selectionEnd !== null) {
+                              const pos = ta.selectionStart;
+                              next =
+                                cur.slice(0, pos) + text + cur.slice(ta.selectionEnd);
+                            } else {
+                              next = cur ? `${cur}\n${text}` : text;
+                            }
+                            editorRef.current = next;
+                            setEditor(next);
+                            if (rpyPreview) setRpyStale(true);
+                            scheduleEditorCommit();
+                            const caret = ta ? ta.selectionStart + text.length : next.length;
+                            window.requestAnimationFrame(() => {
+                              const el = editorTaRef.current;
+                              if (!el) return;
+                              el.focus();
+                              el.setSelectionRange(caret, caret);
+                            });
+                          }}
+                        />
+                      ) : null}
                     </StudioErrorBoundary>
                     <CommentsPanel
                       projectId={project.id}

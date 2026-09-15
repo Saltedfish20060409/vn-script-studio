@@ -210,6 +210,139 @@ export async function generateRpyFromProse(
   });
 }
 
+export interface LocalizationEntry {
+  key: string;
+  chapterId: string;
+  kind: string;
+  source: string;
+  sourceHash: string;
+  targets: Record<string, string>;
+  status: Record<string, string>;
+  note?: string;
+}
+
+export interface LocalizationOut {
+  locales: Array<{ code: string; name?: string; status?: string }>;
+  glossary: Array<{ term: string; targets: Record<string, string>; note?: string }>;
+  entries: LocalizationEntry[];
+  stats: {
+    locales: Array<{
+      code: string;
+      name: string;
+      status: string;
+      translated: number;
+      total: number;
+      ratio: number;
+    }>;
+    entries: number;
+    glossary: number;
+    updatedAt?: string | null;
+  };
+}
+
+export async function fetchLocalization(id: string): Promise<LocalizationOut> {
+  return apiFetch<LocalizationOut>(`/projects/${id}/localization`);
+}
+
+export async function saveLocalization(
+  id: string,
+  payload: {
+    locales: Array<{ code: string; name?: string; status?: string }>;
+    entries: LocalizationEntry[];
+    glossary: Array<{ term: string; targets: Record<string, string>; note?: string }>;
+  }
+): Promise<{ ok: boolean; stats: LocalizationOut["stats"] }> {
+  return apiFetch(`/projects/${id}/localization`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function prefillLocalization(
+  id: string,
+  locale: string
+): Promise<{ ok: boolean; filled: number; stats: LocalizationOut["stats"] }> {
+  return apiFetch(`/projects/${id}/localization/prefill?locale=${encodeURIComponent(locale)}`, {
+    method: "POST",
+  });
+}
+
+/** 下载 tl/<lang>/strings.rpy 打包 zip。 */
+export async function downloadLocalizationZip(id: string): Promise<Blob> {
+  const res = await authedRawFetch(`/projects/${id}/export/localization.rpy`);
+  if (!res.ok) throw new ApiError(res.status, "还没有任何译文，先在本地化页填几条");
+  return res.blob();
+}
+
+export interface AssetAuditOut {
+  images: {
+    total: number;
+    items: Array<{ image: string; uses: number; chapters: string[] }>;
+    suspicious: Array<{ image: string; uses: number; chapters: string[] }>;
+  };
+  audio: Record<
+    string,
+    { total: number; items: Array<{ file: string; uses: number }> }
+  >;
+  declaredTags: string[];
+  unusedTags: string[];
+  notes: string[];
+}
+
+export async function fetchAssetAudit(id: string): Promise<AssetAuditOut> {
+  return apiFetch<AssetAuditOut>(`/projects/${id}/assets/audit`);
+}
+
+export interface ScriptReportOut {
+  labels: { total: number; reachable: number; unreachable: string[] };
+  endings: Array<{ chapterId: string; label: string; via: string; reachable: boolean }>;
+  endingsReachable: number;
+  branchPoints: Array<{
+    chapterId: string;
+    menuId: string;
+    choices: number;
+    conditional: number;
+  }>;
+  conditions: Array<{
+    chapterId: string;
+    where: string;
+    text: string;
+    detail: string;
+    error?: string | null;
+  }>;
+  invalidConditions: Array<{ chapterId: string; text: string; error?: string | null }>;
+  danglingJumps: Array<{ chapterId: string; target: string }>;
+  variables: {
+    declared: string[];
+    used: string[];
+    unused: string[];
+    undeclared: string[];
+  };
+  duration: {
+    chars: number;
+    readSeconds: number;
+    waitSeconds: number;
+    totalSeconds: number;
+    minutes: number;
+    assumption: string;
+  };
+  repetition: {
+    totalChars: number;
+    duplicateChars: number;
+    ratio: number;
+    uniqueDuplicated: number;
+    top: Array<{ text: string; count: number; chars: number }>;
+  };
+  counts: Record<string, number>;
+}
+
+/** 剧本工程体检（纯本地计算，不调模型）。 */
+export async function fetchScriptReport(id: string): Promise<ScriptReportOut> {
+  return apiFetch<ScriptReportOut>(`/projects/${id}/analysis/script-report`, {
+    skipAuthRedirect: true,
+  });
+}
+
 /** Full Ren'Py project skeleton (script/options/gui/README) as a zip blob. */
 export async function exportRenpyBundle(id: string): Promise<Blob> {
   const res = await authedRawFetch(`/projects/${id}/export/bundle`);

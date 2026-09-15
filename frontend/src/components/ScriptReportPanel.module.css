@@ -1,0 +1,126 @@
+.wrap {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 12px);
+  background: color-mix(in srgb, var(--accent) 3%, transparent);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.4rem;
+}
+
+.card {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 12px);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+  font-size: 0.68rem;
+  color: var(--ink-soft, #4a5568);
+}
+
+.card strong {
+  font-size: 0.92rem;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.bad {
+  color: #b26a00;
+}
+
+.block {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.blockTitle {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+}
+
+.list li {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  line-height: 1.5;
+}
+
+.list code {
+  font-size: 0.68rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.count {
+  color: #b26a00;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.quote {
+  color: var(--ink-soft, #4a5568);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dim {
+  color: var(--ink-soft, #4a5568);
+  opacity: 0.8;
+}
+
+.ok {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--accent);
+}
+
+.note {
+  margin: 0;
+  font-size: 0.66rem;
+  line-height: 1.6;
+  color: var(--ink-soft, #4a5568);
+  opacity: 0.9;
+}
+
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 0.68rem;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}

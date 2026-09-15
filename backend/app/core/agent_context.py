@@ -174,6 +174,41 @@ def _blocks_to_plain(blocks: List[ScriptBlock], characters: List[Character]) -> 
             line = f"# {b['text']}"
         elif btype == "raw":
             line = b.get("code", "")
+        elif btype == "music":
+            line = (
+                f"[音乐 {b.get('file') or ''}]"
+                if (b.get("action") or "play") == "play"
+                else "[音乐 停]"
+            )
+        elif btype == "sound":
+            line = (
+                f"[音效 {b.get('file') or ''}]"
+                if (b.get("action") or "play") == "play"
+                else "[音效 停]"
+            )
+        elif btype == "voice":
+            line = (
+                f"[语音 {b.get('file') or ''}]"
+                if (b.get("action") or "play") == "play"
+                else "[语音 停]"
+            )
+        elif btype == "wait":
+            line = f"[等待 {b.get('seconds') or 0} 秒]"
+        elif btype == "camera":
+            zoom = b.get("zoom")
+            line = f"[镜头 at {b['at']}]" if b.get("at") else f"[镜头 zoom={zoom or 1}]"
+        elif btype == "effect":
+            line = f"[特效 {b.get('kind') or ''}]"
+        elif btype == "set":
+            line = f"[变量 {b.get('key')} {b.get('op') or '='} {b.get('value')}]"
+        elif btype == "if":
+            # 条件分支：把每个分支的条件与正文都折进行，让 AI 看得到分支结构
+            branch_bits = []
+            for branch in b.get("branches") or []:
+                cond = (branch.get("condition") or "").strip() or "否则"
+                body = _blocks_to_plain(branch.get("blocks") or [], characters)
+                branch_bits.append(f"条件({cond}) {{ {body} }}")
+            line = "[如果 " + " 否则 ".join(branch_bits) + "]" if branch_bits else ""
         else:
             line = ""
         if line:

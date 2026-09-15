@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Character, SceneChapter, ScriptBlock } from "../types/vn";
+import type { Character, GameVariable, SceneChapter, ScriptBlock } from "../types/vn";
 import {
   advance,
   choose,
+  INSTANT,
   MAX_PLAY_STEPS,
-  nextVisible,
   PLAY_START,
   scopeOf,
+  visibleChoices,
   type PlayState,
 } from "../lib/playState";
 import styles from "./ScriptPlayer.module.css";
@@ -15,15 +16,38 @@ type Props = {
   chapter: SceneChapter;
   characters: Character[];
   projectTitle: string;
+  /** 项目「变量」表的初始值（好感度/旗标等），试玩中的 set 只改副本 */
+  variables?: GameVariable[];
   onExit: () => void;
 };
 
+/** 试玩时的演出状态（由途中经过的瞬时指令驱动） */
+type StageState = {
+  bgm: string;
+  sound: string;
+  voice: string;
+  camera: string;
+  variables: Record<string, unknown>;
+};
+
+function initialVariables(vars?: GameVariable[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const v of vars ?? []) {
+    if (v?.key) out[v.key] = v.value;
+  }
+  return out;
+}
+
 /**
  * VN-style script player: walks a chapter's blocks as a playable sequence.
- * Supports labels (jump anchors), scene/show/hide cues, narration, dialogue,
- * menu choices (jump target or inline blocks), jump and return.
+ *
+ * 支持：label / scene / show / hide / 旁白 / 对白 / 选项（可带条件）/
+ * jump（线性跳转会被跟随）/ return / if 条件分支 / 音频（music/sound/voice）/
+ * wait 等待 / camera 镜头 / effect 特效 / set 变量。
+ *
+ * 演出效果（音乐、镜头、变量）由途中经过的瞬时指令驱动，见 lib/playState.ts。
  */
-export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Props) {
+export function ScriptPlayer({ chapter, characters, projectTitle, variables, onExit }: Props) {
   const charMap = useMemo(
     () => new Map(characters.map((c) => [c.id, c])),
     [characters]
@@ -41,6 +65,52 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
   const [phase, setPhase] = useState<"intro" | "playing" | "ended">("intro");
   const [loopStop, setLoopStop] = useState(false);
   const stepRef = useRef(0);
+
+  // 演出状态：由途中经过的瞬时指令（音乐/音效/语音/镜头/特效/变量）驱动
+  const [stage, setStage] = useState<StageState>(() => ({
+    bgm: "",
+    sound: "",
+    voice: "",
+    camera: "",
+    variables: initialVariables(variables),
+  }));
+
+  /** 初始变量值：来自项目「变量」表；试玩中的 set 指令只改这份副本，不写回项目。 */
+  const runtimeVars = useRef<Record<string, unknown>>(initialVariables(variables));
+
+  const applyExecuted = useCallback((executed: ScriptBlock[]) => {
+    if (!executed.length) return;
+    setStage((prev) => {
+      let next = prev;
+      const vars = { ...runtimeVars.current };
+      for (const b of executed) {
+        if (b.type === "music") {
+          next = { ...next, bgm: b.action === "stop" ? "" : b.file || "(未命名)" };
+        } else if (b.type === "sound") {
+          next = { ...next, sound: b.action === "stop" ? "" : b.file || "(未命名)" };
+        } else if (b.type === "voice") {
+          next = { ...next, voice: b.action === "stop" ? "" : b.file || "(未命名)" };
+        } else if (b.type === "camera") {
+          next = {
+            ...next,
+            camera: b.at
+              ? b.at
+              : `zoom ${b.zoom ?? 1}${b.x !== undefined ? ` x${b.x}` : ""}${
+                  b.y !== undefined ? ` y${b.y}` : ""
+                }`,
+          };
+        } else if (b.type === "set") {
+          const cur = vars[b.key];
+          const numeric = typeof b.value === "number" ? b.value : Number(b.value);
+          if (b.op === "+=") vars[b.key] = Number(cur ?? 0) + (Number.isFinite(numeric) ? numeric : 0);
+          else if (b.op === "-=") vars[b.key] = Number(cur ?? 0) - (Number.isFinite(numeric) ? numeric : 0);
+          else vars[b.key] = b.value ?? 0;
+        }
+      }
+      runtimeVars.current = vars;
+      return { ...next, variables: vars };
+    });
+  }, []);
 
   const current = useMemo(() => {
     const scope = scopeOf(cursor, chapter.blocks ?? []);
@@ -62,44 +132,48 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
     if (ended) setPhase("ended");
   }, []);
 
-  // Land on the first playable block when playback starts.
+  // 开演：PLAY_START.index = -1，advance 会从第 0 块开始扫，
+  // 于是开头的音乐/镜头等瞬时指令也能执行（旧版会漏掉）。
   useEffect(() => {
     if (phase !== "playing") return;
     stepRef.current = 0;
-    const idx = nextVisible(chapter.blocks ?? [], 0);
-    if (idx === null) setPhase("ended");
-    else if (idx !== 0) setCursor({ index: idx, stack: [], resume: [] });
+    const out = advance(PLAY_START, chapter.blocks ?? [], {
+      variables: runtimeVars.current,
+    }, labelIndex);
+    applyExecuted(out.executed);
+    if (out.looped) setLoopStop(true);
+    move(out.state, out.ended);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
-  // Seek on jump / end on return.
+  // return 结束本章（jump 现在由 advance 直接跟随，不再需要单独的 effect）
   useEffect(() => {
     if (phase !== "playing" || !current) return;
-    if (current.type === "jump") {
-      const target = labelIndex.get(current.target);
-      if (target !== undefined) {
-        if (bumpStep()) return;
-        setHistory((h) => [...h.slice(-300), cursor]);
-        // 落在 label 之后第一个可见块，避免停在 label 上显示空白页
-        const vi = nextVisible(chapter.blocks ?? [], target);
-        setCursor({
-          index: vi !== null ? vi : target,
-          stack: [],
-          resume: [],
-        });
-      }
-    } else if (current.type === "return") {
-      setPhase("ended");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, phase, labelIndex, bumpStep]);
+    if (current.type === "return") setPhase("ended");
+  }, [current, phase]);
 
   const advanceStep = useCallback(() => {
     if (bumpStep()) return;
     setHistory((h) => [...h.slice(-300), cursor]);
-    const { state, ended } = advance(cursor, chapter.blocks ?? []);
+    const { state, ended, executed, looped } = advance(
+      cursor,
+      chapter.blocks ?? [],
+      { variables: runtimeVars.current },
+      labelIndex
+    );
+    applyExecuted(executed);
+    if (looped) setLoopStop(true);
     move(state, ended);
-  }, [cursor, chapter.blocks, move, bumpStep]);
+  }, [cursor, chapter.blocks, move, bumpStep, applyExecuted, labelIndex]);
+
+  // 「等待 N 秒」自动继续（点一下也能立刻跳过）
+  useEffect(() => {
+    if (phase !== "playing") return;
+    if (current?.type !== "wait") return;
+    const seconds = typeof current.seconds === "number" ? current.seconds : 1;
+    const timer = window.setTimeout(() => advanceStep(), Math.max(0.1, seconds) * 1000);
+    return () => window.clearTimeout(timer);
+  }, [current, phase, advanceStep]);
 
   const goBack = useCallback(() => {
     setHistory((h) => {
@@ -115,22 +189,36 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
   const reset = useCallback(() => {
     stepRef.current = 0;
     setLoopStop(false);
+    const fresh = initialVariables(variables);
+    runtimeVars.current = fresh;
+    setStage({ bgm: "", sound: "", voice: "", camera: "", variables: fresh });
     setCursor(PLAY_START);
     setHistory([]);
     setPhase("playing");
-  }, []);
+  }, [variables]);
 
   const onChoose = (c: { text: string; jump?: string; blocks?: ScriptBlock[] }) => {
     if (bumpStep()) return;
     setHistory((h) => [...h.slice(-300), cursor]);
     const { state, ended } = choose(cursor, chapter.blocks ?? [], c, labelIndex);
     move(state, ended);
+    if (!ended) {
+      // 选项正文开场可能又是瞬时指令 → 立刻应用一次
+      const scope = scopeOf(state, chapter.blocks ?? []);
+      const executed: ScriptBlock[] = [];
+      for (let i = 0; i < state.index; i++) {
+        const b = scope[i];
+        if (b && INSTANT.has(b.type)) executed.push(b);
+      }
+      applyExecuted(executed);
+    }
   };
   // Skip scene/show/hide cues in one go (keyboard "skip").
   const skipCues = useCallback(() => {
     setHistory((h) => [...h.slice(-300), cursor]);
     let s = cursor;
     let ended = false;
+    const collected: ScriptBlock[] = [];
     for (let i = 0; i < 60; i++) {
       const b = scopeOf(s, chapter.blocks ?? [])[s.index];
       if (!b) {
@@ -138,15 +226,19 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
         break;
       }
       if (b.type === "scene" || b.type === "show" || b.type === "hide") {
-        const r = advance(s, chapter.blocks ?? []);
+        const r = advance(s, chapter.blocks ?? [], {
+          variables: runtimeVars.current,
+        }, labelIndex);
         s = r.state;
         ended = r.ended;
+        collected.push(...r.executed);
       } else {
         break;
       }
     }
+    applyExecuted(collected);
     move(s, ended);
-  }, [cursor, chapter.blocks, move]);
+  }, [cursor, chapter.blocks, move, applyExecuted, labelIndex]);
 
   // VN-style keyboard shortcuts while playing.
   useEffect(() => {
@@ -306,28 +398,65 @@ export function ScriptPlayer({ chapter, characters, projectTitle, onExit }: Prop
             <p className={styles.advanceHint}>点击继续 ▾</p>
           </div>
         )}
-        {block?.type === "menu" && (
-          <div className={styles.menuBox}>
-            {block.prompt ? <p className={styles.menuPrompt}>{block.prompt}</p> : null}
-            <div className={styles.choices}>
-              {(block.choices ?? []).map((c, i) => (
-                <button key={i} type="button" className={styles.choice} onClick={() => onChoose(c)}>
-                  {c.text}
-                </button>
-              ))}
-            </div>
+        {block?.type === "wait" && (
+          <div className={styles.sceneCue}>
+            <p>[ 等待 {typeof block.seconds === "number" ? block.seconds : 1} 秒 ]</p>
+            <button type="button" className={styles.continue} onClick={advanceStep}>
+              立即继续 ▶
+            </button>
           </div>
         )}
+        {block?.type === "menu" &&
+          (() => {
+            const shown = visibleChoices(block.choices ?? [], stage.variables);
+            return (
+              <div className={styles.menuBox}>
+                {block.prompt ? <p className={styles.menuPrompt}>{block.prompt}</p> : null}
+                <div className={styles.choices}>
+                  {shown.map((c, i) => (
+                    <button
+                      key={`${c.text}-${i}`}
+                      type="button"
+                      className={styles.choice}
+                      onClick={() => onChoose(c)}
+                    >
+                      {c.text}
+                    </button>
+                  ))}
+                </div>
+                {shown.length === 0 ? (
+                  <p className={styles.advanceHint}>
+                    所有选项的条件都不成立（检查变量初始值与选项条件），已按"没有可选项"处理。
+                  </p>
+                ) : null}
+              </div>
+            );
+          })()}
       </div>
 
+      {/* 演出状态：让作者一眼看出音乐/镜头/变量当前是什么 */}
       <div className={styles.progress}>
         <span>
           第 {cursor.index + 1} / {chapter.blocks?.length ?? 0} 步
+          {stage.bgm ? ` · ♪ ${stage.bgm}` : ""}
+          {stage.sound ? ` · 🔔 ${stage.sound}` : ""}
+          {stage.voice ? ` · 🎙 ${stage.voice}` : ""}
+          {stage.camera ? ` · 🎥 ${stage.camera}` : ""}
         </span>
         <span className={styles.keys}>
           Enter/空格 继续 · ←/Backspace 后退 · Tab 跳过提示 · Esc 退出 · 菜单按数字选择
         </span>
       </div>
+      {Object.keys(stage.variables).length > 0 ? (
+        <div className={styles.progress}>
+          <span>
+            变量：
+            {Object.entries(stage.variables)
+              .map(([k, v]) => `${k}=${String(v)}`)
+              .join(" · ")}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,0 +1,122 @@
+.wrap {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 12px);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-right: auto;
+}
+
+.btn {
+  font-size: 0.68rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.4rem;
+}
+
+.card {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 12px);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+  font-size: 0.68rem;
+  color: var(--ink-soft, #4a5568);
+}
+
+.card strong {
+  font-size: 0.92rem;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.bad {
+  color: #b26a00;
+}
+
+.block {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.blockTitle {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.18rem;
+  font-size: 0.7rem;
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.list li {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+
+.list code {
+  font-size: 0.66rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.dim {
+  color: var(--ink-soft, #4a5568);
+  opacity: 0.8;
+}
+
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 0.66rem;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.note {
+  margin: 0;
+  font-size: 0.66rem;
+  line-height: 1.6;
+  color: var(--ink-soft, #4a5568);
+  opacity: 0.9;
+}

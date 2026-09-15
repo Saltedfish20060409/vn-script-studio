@@ -47,6 +47,22 @@ def new_location_link(
     return LocationLink(id=uid("link"), fromId=from_id, toId=to_id, relation=relation)
 
 
+def _model_field_names() -> set[str]:
+    """VnProject 声明的全部字段名（含别名）。
+
+    为什么需要：normalize_project 之前是**手写枚举**要保留哪些字段，于是任何新加的
+    模型字段只要忘了补一行，就会在每次保存时被静默丢掉。实测后果：`styleMemory`
+    （作者风格记忆）在线上 165 个项目里**全是 null**——功能看着在，数据一次没存住过。
+    这里改成"模型声明了哪些字段就透传哪些"，从根上消除这类漏字段。
+    """
+    names: set[str] = set()
+    for name, field in VnProject.model_fields.items():
+        names.add(name)
+        if field.alias:
+            names.add(field.alias)
+    return names
+
+
 def normalize_project(raw: Any = None) -> VnProject:
     if raw is None:
         raw = {}
@@ -78,37 +94,32 @@ def normalize_project(raw: Any = None) -> VnProject:
         ]
     )
 
-    return VnProject.model_validate(
+    # 先透传模型已声明、且调用方确实给了值的字段（避免上面那种"新字段被丢掉"）。
+    data: dict[str, Any] = {
+        k: v for k, v in raw.items() if k in _model_field_names()
+    }
+    data.update(
         {
-            "id": raw.get("id") or f"proj-{int(time.time() * 1000)}",
-            "title": raw.get("title") or "未命名剧本",
-            "logline": raw.get("logline"),
-            "genre": raw.get("genre"),
-            "characters": raw.get("characters") or [],
+            "id": data.get("id") or f"proj-{int(time.time() * 1000)}",
+            "title": data.get("title") or "未命名剧本",
+            "characters": data.get("characters") or [],
             "chapters": chapters,
             "lore": bible.world,
             "bible": bible,
-            "locations": raw.get("locations") or [],
-            "locationLinks": raw.get("locationLinks") or [],
-            "mapStyle": normalize_map_style(raw.get("mapStyle")),
-            "customMapElements": raw.get("customMapElements") or [],
-            "mapStrokes": raw.get("mapStrokes") or [],
-            "characterLinks": raw.get("characterLinks") or [],
-            "timeline": raw.get("timeline") or [],
-            "variables": raw.get("variables") or [],
-            "sprites": raw.get("sprites") or [],
-            "snapshots": raw.get("snapshots") or [],
-            "chapterIndex": raw.get("chapterIndex"),
-            "writingLedger": raw.get("writingLedger"),
-            "harnessRuns": raw.get("harnessRuns"),
-            "writingMentors": raw.get("writingMentors"),
-            "authorLenses": raw.get("authorLenses"),
-            "analysisMeta": raw.get("analysisMeta"),
-            "voiceReports": raw.get("voiceReports"),
-            "shareId": raw.get("shareId"),
-            "updatedAt": raw.get("updatedAt") or _now_iso(),
+            "locations": data.get("locations") or [],
+            "locationLinks": data.get("locationLinks") or [],
+            "mapStyle": normalize_map_style(data.get("mapStyle")),
+            "customMapElements": data.get("customMapElements") or [],
+            "mapStrokes": data.get("mapStrokes") or [],
+            "characterLinks": data.get("characterLinks") or [],
+            "timeline": data.get("timeline") or [],
+            "variables": data.get("variables") or [],
+            "sprites": data.get("sprites") or [],
+            "snapshots": data.get("snapshots") or [],
+            "updatedAt": data.get("updatedAt") or _now_iso(),
         }
     )
+    return VnProject.model_validate(data)
 
 
 def touch_project(project: VnProject) -> VnProject:

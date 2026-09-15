@@ -14,6 +14,8 @@ export interface WorkspaceSnapshot {
     | "ledger"
     | "stats"
     | "analysis"
+    | "assets"
+    | "localization"
     | "export"
     | "history"
     | "members";

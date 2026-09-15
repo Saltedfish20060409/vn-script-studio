@@ -79,7 +79,10 @@ describe("playState", () => {
 
   it("advance ends the chapter after the last visible block", () => {
     const blocks = [narr("only")];
-    const { ended } = advance(PLAY_START, blocks);
+    // PLAY_START.index = -1 表示还未开演；这里从第 0 块起算，推进后应结束
+    const first = advance(PLAY_START, blocks);
+    expect(first.state.index).toBe(0);
+    const { ended } = advance(first.state, blocks);
     expect(ended).toBe(true);
   });
 

@@ -112,6 +112,8 @@ class MenuChoice(TypedDict):
     text: str
     jump: NotRequired[LabelId]
     blocks: NotRequired[List["ScriptBlock"]]
+    # 条件选项：只有条件成立时才出现（对应 Ren'Py 的 `"文本" if cond:`）
+    condition: NotRequired[str]
 
 
 class MenuBlock(TypedDict):
@@ -140,6 +142,83 @@ class RawBlock(TypedDict):
     code: str
 
 
+# ---- 演出指令（音频 / 等待 / 镜头 / 特效）----
+# 此前完全缺失：作者只能在 raw 里手写 Ren'Py，而且试玩时也演不出来。
+
+
+class MusicBlock(TypedDict):
+    """BGM：play/stop + 淡入淡出秒数。"""
+
+    type: Literal["music"]
+    action: Literal["play", "stop"]
+    file: NotRequired[str]
+    fade: NotRequired[float]
+
+
+class SoundBlock(TypedDict):
+    """音效（短音）：play/stop。"""
+
+    type: Literal["sound"]
+    action: Literal["play", "stop"]
+    file: NotRequired[str]
+    volume: NotRequired[float]
+
+
+class VoiceBlock(TypedDict):
+    """语音：通常紧挨着一句台词；action=stop 表示停止当前语音。"""
+
+    type: Literal["voice"]
+    action: Literal["play", "stop"]
+    file: NotRequired[str]
+
+
+class WaitBlock(TypedDict):
+    """等待若干秒（试玩自动继续；导出 pause）。"""
+
+    type: Literal["wait"]
+    seconds: NotRequired[float]
+
+
+class CameraBlock(TypedDict):
+    """镜头：缩放 / 位移 / 具名 transform（at 优先）。"""
+
+    type: Literal["camera"]
+    zoom: NotRequired[float]
+    x: NotRequired[float]
+    y: NotRequired[float]
+    at: NotRequired[str]
+
+
+class EffectBlock(TypedDict):
+    """画面特效：预置枚举，导出成对应 Ren'Py transition。"""
+
+    type: Literal["effect"]
+    # shake | vshake | flash_white | flash_black | fade_black | fade_white | dissolve
+    kind: str
+    duration: NotRequired[float]
+
+
+class SetVariableBlock(TypedDict):
+    """变量赋值：`set affection += 1` → 导出 `$ affection += 1`。"""
+
+    type: Literal["set"]
+    key: str
+    op: NotRequired[Literal["=", "+=", "-="]]
+    value: NotRequired[Any]
+
+
+class IfBranch(TypedDict):
+    """条件分支：condition 为空表示 else。"""
+
+    condition: NotRequired[str]
+    blocks: List["ScriptBlock"]
+
+
+class IfBlock(TypedDict):
+    type: Literal["if"]
+    branches: List[IfBranch]
+
+
 ScriptBlockTyped = Union[
     LabelBlock,
     SceneBlock,
@@ -152,6 +231,14 @@ ScriptBlockTyped = Union[
     ReturnBlock,
     CommentBlock,
     RawBlock,
+    MusicBlock,
+    SoundBlock,
+    VoiceBlock,
+    WaitBlock,
+    CameraBlock,
+    EffectBlock,
+    SetVariableBlock,
+    IfBlock,
 ]
 
 # Runtime-friendly alias used throughout core/*.py — a plain dict with a
@@ -451,8 +538,10 @@ class VnProject(BaseModel):
     analysisMeta: Optional[AnalysisMeta] = None
     # Persisted voice-check reports (chapterId + fingerprint; may be stale)
     voiceReports: Optional[List[Dict[str, Any]]] = None
-    # Author style memory: LLM-learned writing-style guide from this novel
+    # 作者风格记忆: LLM-learned writing-style guide from this novel
     styleMemory: Optional[Dict[str, Any]] = None
+    # 本地化：locales / entries（源文本 + 各语言译文 + 状态）/ glossary
+    localization: Optional[Dict[str, Any]] = None
     # Local read-only share id
     shareId: Optional[str] = None
     updatedAt: str

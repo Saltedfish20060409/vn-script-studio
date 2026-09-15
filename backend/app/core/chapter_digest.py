@@ -50,6 +50,34 @@ def _line_from_block(b: ScriptBlock, char_map: Dict[str, Character]) -> Optional
         return f"[scene {b['image']}]"
     if btype == "label":
         return f"[label {b['name']}]"
+    # 演出指令也要进摘要：否则"这章演了什么"在摘要与账本里完全缺失
+    if btype == "music":
+        return (
+            f"[音乐 {b.get('file') or ''}]"
+            if (b.get("action") or "play") == "play"
+            else "[音乐 停]"
+        )
+    if btype == "sound":
+        return (
+            f"[音效 {b.get('file') or ''}]"
+            if (b.get("action") or "play") == "play"
+            else "[音效 停]"
+        )
+    if btype == "voice":
+        return "[语音]" if (b.get("action") or "play") == "play" else "[语音 停]"
+    if btype == "wait":
+        return f"[等待 {b.get('seconds') or 0}s]"
+    if btype == "camera":
+        return f"[镜头 {b.get('at') or ('zoom ' + str(b.get('zoom') or 1))}]"
+    if btype == "effect":
+        return f"[特效 {b.get('kind') or ''}]"
+    if btype == "set":
+        return f"[变量 {b.get('key')} {b.get('op') or '='} {b.get('value')}]"
+    if btype == "if":
+        conds = [
+            (br.get("condition") or "否则").strip() for br in (b.get("branches") or [])
+        ]
+        return f"[条件分支 {' / '.join(conds)}]" if conds else None
     return None
 
 

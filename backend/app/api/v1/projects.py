@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from docx import Document
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -700,6 +700,140 @@ def _branch_node_to_dict(node: Any) -> dict:
         "title": node.title,
         "children": [_branch_node_to_dict(c) for c in (node.children or [])],
     }
+
+
+class LocalizationSaveIn(BaseModel):
+    """本地化保存载荷：前端把 GET 拿到的条目（含 sourceHash）连同译文一起回传。"""
+
+    locales: List[Dict[str, Any]] = Field(default_factory=list)
+    entries: List[Dict[str, Any]] = Field(default_factory=list)
+    glossary: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+@router.get("/{project_id}/localization")
+async def get_localization(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """本地化词条（含指纹与进度）。
+
+    源文本永远按当前剧本重新提取；已保存的译文按「键 + 内容指纹」对账后回填。
+    """
+    from app.core.localization import extract_entries, localization_stats
+
+    row = await get_project_readable(db, user, project_id)
+    vn = row_to_vn(row)
+    loc = vn.localization or {}
+    return {
+        "locales": loc.get("locales") or [],
+        "glossary": loc.get("glossary") or [],
+        "entries": extract_entries(vn, loc),
+        "stats": localization_stats(vn),
+    }
+
+
+@router.put("/{project_id}/localization")
+async def put_localization(
+    project_id: str,
+    body: LocalizationSaveIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.core.localization import localization_stats, merge_save
+
+    row = await get_owned_project(db, user, project_id)
+    updated = merge_save(row_to_vn(row), body.model_dump())
+    row.data = project_to_dict(updated)
+    await db.commit()
+    await db.refresh(row)
+    return {"ok": True, "stats": localization_stats(row_to_vn(row))}
+
+
+@router.post("/{project_id}/localization/prefill")
+async def prefill_localization(
+    project_id: str,
+    locale: str = Query(..., min_length=2, max_length=16),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """用术语表预填该语言的空译文（人名/专有名词先替换掉，作者只需补句子）。"""
+    from app.core.localization import localization_stats, suggest_prefill
+
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    filled = suggest_prefill(vn, locale)
+    row.data = project_to_dict(vn)
+    await db.commit()
+    await db.refresh(row)
+    return {"ok": True, "filled": filled, "stats": localization_stats(row_to_vn(row))}
+
+
+@router.get("/{project_id}/export/localization.rpy")
+async def export_localization(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """导出 Ren'Py 字符串翻译文件（每个语言一个 tl/<code>/strings.rpy）。"""
+    import io as _io
+    import zipfile
+
+    from app.core.localization import export_localization_renpy
+
+    row = await get_project_readable(db, user, project_id)
+    files = export_localization_renpy(row_to_vn(row))
+    if not files:
+        raise HTTPException(status_code=404, detail="还没有任何译文，先在「本地化」页填几条")
+    buf = _io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, content in files.items():
+            zf.writestr(name, content)
+        zf.writestr(
+            "README.txt",
+            "把 tl/ 目录整体复制到 Ren'Py 项目的 game/ 下即可生效。\n"
+            "未翻译的条目会自动回落到原文。\n",
+        )
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="localization-tl.zip"'},
+    )
+
+
+@router.get("/{project_id}/assets/audit")
+async def assets_audit(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """素材引用审计：清单 + 疑似写错的图像名（纯本地计算）。
+
+    项目不含素材上传，剧本按名字/路径引用素材；这里给出去准备素材的完整清单，
+    并把"名字对不上任何立绘/角色 imageTag"的可疑条目挑出来（多半是拼错）。
+    """
+    from app.core.asset_audit import audit_assets
+
+    row = await get_project_readable(db, user, project_id)
+    return audit_assets(row_to_vn(row))
+
+
+@router.get("/{project_id}/analysis/script-report")
+async def analysis_script_report(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """剧本工程体检：分支覆盖 / 结局可达性 / 悬空跳转 / 变量使用 / 时长 / 重复率。
+
+    全部纯本地计算（不调模型）。作者最怕的三件事都在这里：
+    分支写歪（死 label、悬空跳转、条件写错）、结局漏了（写了却走不到）、体量估不准。
+    """
+    from app.core.script_analysis import analyze_script
+
+    row = await get_project_readable(db, user, project_id)
+    return analyze_script(row_to_vn(row))
 
 
 @router.post("/{project_id}/analysis/branch-tree")

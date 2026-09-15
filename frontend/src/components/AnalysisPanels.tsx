@@ -25,6 +25,7 @@ import { EmptyStage } from "./EmptyStage";
 import { FactExtractReview } from "./FactExtractReview";
 import { CharacterArcsPanel } from "./CharacterArcsPanel";
 import { StyleMemoryPanel } from "./StyleMemoryPanel";
+import { ScriptReportPanel } from "./ScriptReportPanel";
 import { usePrompt } from "../lib/confirmDialog";
 import styles from "./AnalysisPanels.module.css";
 
@@ -407,6 +408,7 @@ export function AnalysisPanels({
 
       {sub === "branch" && (
         <div className={styles.panel}>
+          <ScriptReportPanel projectId={project.id} />
           <p className={styles.hint}>
             分支路线图：按当前章节里的分支点自动画出结构，直接生成、不需要你确认。
           </p>

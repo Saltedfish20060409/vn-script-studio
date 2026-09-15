@@ -1,0 +1,102 @@
+.wrap {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0.5rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.label {
+  font-size: 0.68rem;
+  color: var(--ink-soft, #4a5568);
+  opacity: 0.85;
+  margin-right: 0.15rem;
+}
+
+.btn,
+.on,
+.ghost,
+.go {
+  font-size: 0.68rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover,
+.ghost:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.on {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.go {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+}
+
+.go:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.panel {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 12px);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+  font-size: 0.7rem;
+}
+
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--ink-soft, #4a5568);
+}
+
+.input,
+.num,
+.op {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 12px);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--ink);
+  font-size: 0.7rem;
+  padding: 0.2rem 0.4rem;
+}
+
+.input {
+  min-width: 11rem;
+}
+
+.num {
+  width: 4rem;
+}
+
+.op {
+  width: 3.6rem;
+}
+
+.hint {
+  font-size: 0.65rem;
+  color: var(--ink-soft, #4a5568);
+  opacity: 0.85;
+}
