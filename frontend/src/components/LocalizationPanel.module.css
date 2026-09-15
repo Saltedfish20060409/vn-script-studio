@@ -1,10 +1,112 @@
 .wrap {
   display: grid;
-  gap: 0.6rem;
-  padding: 0.6rem 0.7rem;
+  gap: 0.7rem;
+  padding: 0.7rem 0.8rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm, 12px);
 }
+
+.lead {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.7;
+  color: var(--ink-soft, #4a5568);
+}
+
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  font-size: 0.7rem;
+}
+
+.stepDone,
+.stepNow,
+.stepIdle {
+  padding: 0.16rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.stepDone {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.stepNow {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.stepIdle {
+  color: var(--ink-soft, #4a5568);
+  opacity: 0.7;
+}
+
+.stepSep {
+  color: var(--ink-soft, #4a5568);
+  opacity: 0.5;
+}
+
+.chipNum {
+  margin-left: 0.3rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.chipAdd {
+  font-size: 0.68rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chipAdd:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.arrow {
+  color: var(--ink-soft, #4a5568);
+  font-size: 0.7rem;
+}
+
+.progressRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.group {
+  display: grid;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+
+.groupTitle {
+  margin: 0.2rem 0 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.groupNum {
+  font-size: 0.66rem;
+  font-weight: 400;
+  color: var(--ink-soft, #4a5568);
+  font-variant-numeric: tabular-nums;
+}
+
 
 .head {
   display: flex;

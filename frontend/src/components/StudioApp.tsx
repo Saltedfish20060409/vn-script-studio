@@ -1888,7 +1888,10 @@ export function StudioApp() {
                 )}
 
                 {projectSub === "localization" && project && (
-                  <LocalizationPanel projectId={project.id} />
+                  <LocalizationPanel
+                    projectId={project.id}
+                    chapters={project.chapters ?? []}
+                  />
                 )}
 
                 {projectSub === "export" && (
