@@ -94,6 +94,7 @@ import {
 import { StatusToast } from "./StatusToast";
 import { classifyStatusToast } from "../lib/statusToast";
 import { blockTextRange, blocksToEditable, editableToBlocks } from "../lib/scriptCodec";
+import { insertCommandAtLine } from "../lib/insertCommand";
 import { chapterProse, proseFingerprint, rpyIsStale } from "../lib/scriptProse";
 import { normalizeProject } from "../lib/vnLocal";
 import { diffProjectAgainst } from "../lib/projectDiff";
@@ -2084,23 +2085,25 @@ export function StudioApp() {
                           characters={project.characters ?? []}
                           sprites={project.sprites ?? []}
                           variables={project.variables ?? []}
-                          onInsert={(text) => {
-                            // 插入到编辑器光标处；没有光标信息时追加到末尾。
+                          onInsert={(payload) => {
+                            // 按**行边界**插入：光标在同一行中间时也不会把指令粘到
+                            // `show ...` 后面（用户反馈过这个 bug）。
                             const ta = editorTaRef.current;
-                            const cur = editorRef.current;
-                            let next: string;
-                            if (ta && ta.selectionStart !== null && ta.selectionEnd !== null) {
-                              const pos = ta.selectionStart;
-                              next =
-                                cur.slice(0, pos) + text + cur.slice(ta.selectionEnd);
-                            } else {
-                              next = cur ? `${cur}\n${text}` : text;
-                            }
+                            const cur = editorRef.current ?? "";
+                            const pos =
+                              ta && ta.selectionStart !== null
+                                ? ta.selectionStart
+                                : cur.length;
+                            const { text: next, caret } = insertCommandAtLine(
+                              cur,
+                              payload,
+                              pos,
+                              ta?.selectionEnd ?? undefined
+                            );
                             editorRef.current = next;
                             setEditor(next);
                             if (rpyPreview) setRpyStale(true);
                             scheduleEditorCommit();
-                            const caret = ta ? ta.selectionStart + text.length : next.length;
                             window.requestAnimationFrame(() => {
                               const el = editorTaRef.current;
                               if (!el) return;
