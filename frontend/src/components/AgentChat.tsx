@@ -1924,7 +1924,7 @@ export function AgentChat({
                             (activeLensIds.length === 1 &&
                               activeLensIds[0] === detailCard.id)
                           ? "设为默认编辑"
-                          : "设为对话对象"}
+                          : "设为本轮的参考视角"}
                     </button>
                   </div>
                 </div>
