@@ -70,45 +70,53 @@ def _jump_targets(project: VnProject) -> List[Tuple[str, str]]:
     return out
 
 
-def reachable_labels(project: VnProject) -> Set[str]:
-    """从 start（或首章第一个 label）出发，顺着 jump / 选项可达的 label 集合。
+def _label_edges(project: VnProject) -> Dict[str, Set[str]]:
+    """label → 它能跳到的 label 集合。
 
-    只做 label 级可达性：菜单选项正文与 if 分支里的正文都算在同一条路径上。
+    必须按**块的实际顺序**跟踪"现在处于哪个 label 段"。之前是按章取第一个 label 当源，
+    结果同一章里所有 jump 都被算成"从该章第一个 label 出发"，可达性被高估——
+    真正走不到的死代码就报不出来了（这是真缺陷，不是简化）。
+    菜单选项正文与 if 分支里的 jump 都算在当前 label 段里。
     """
+    edges: Dict[str, Set[str]] = {}
+    for ch in project.chapters or []:
+        current: Optional[str] = None
+        for b in ch.blocks or []:
+            if not isinstance(b, dict):
+                continue
+            if b.get("type") == "label":
+                name = str(b.get("name") or "")
+                current = name or None
+                continue
+            if current is None:
+                continue
+            for sub in _walk([b]):
+                stype = sub.get("type")
+                if stype == "jump" and sub.get("target"):
+                    edges.setdefault(current, set()).add(str(sub["target"]))
+                elif stype == "menu":
+                    for choice in sub.get("choices") or []:
+                        if isinstance(choice, dict) and choice.get("jump"):
+                            edges.setdefault(current, set()).add(str(choice["jump"]))
+    return edges
+
+
+def reachable_labels(project: VnProject) -> Set[str]:
+    """从 start（或首章第一个 label）出发，顺着 jump / 选项可达的 label 集合。"""
     index = _label_index(project)
     if not index:
         return set()
     root = "start" if "start" in index else next(iter(index))
-    # 每个 label 能跳到哪些 label
-    edges: Dict[str, Set[str]] = {}
-    for cid, target in _jump_targets(project):
-        # 找到该 jump 所在 label（同章内往前找最近的 label）
-        src = _enclosing_label(project, cid, target)
-        edges.setdefault(src, set()).add(target)
+    edges = _label_edges(project)
     seen: Set[str] = {root}
     stack = [root]
     while stack:
         cur = stack.pop()
-        for nxt in edges.get(cur, ()):  # noqa: B007
+        for nxt in edges.get(cur, ()):
             if nxt in index and nxt not in seen:
                 seen.add(nxt)
                 stack.append(nxt)
     return seen
-
-
-def _enclosing_label(project: VnProject, chapter_id: str, _target: str) -> str:
-    """该章最后一个 label（jump 通常写在某个 label 段落里）。
-
-    简化处理：把同一章里所有 jump 都算作"从本章各 label 出发"，因此取本章 label 列表。
-    这里返回章内首个 label：配合 edges 的并集使用，等价于"章内可达"。
-    """
-    for ch in project.chapters or []:
-        if ch.id != chapter_id:
-            continue
-        for b in ch.blocks or []:
-            if b.get("type") == "label" and b.get("name"):
-                return str(b["name"])
-    return "start"
 
 
 def collect_conditions(project: VnProject) -> List[Dict[str, Any]]:

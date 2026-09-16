@@ -33,6 +33,60 @@ def _project(blocks_by_chapter):  # noqa: ANN001
     )
 
 
+def test_reachability_uses_the_label_the_jump_actually_sits_in():
+    """死代码检测必须按"jump 所在的 label 段"算，不能按"本章第一个 label"算。
+
+    反例：a 段里没有 jump，b 段里才 jump 到 c；若把 b 的 jump 算成 a 的出口，
+    c 会被判为可达，而真实玩家从 a 走过去根本到不了 c。
+    """
+    blocks = [
+        {"type": "label", "id": "start", "name": "start"},
+        {"type": "jump", "target": "a"},
+        {"type": "label", "id": "a", "name": "a"},
+        {"type": "narration", "text": "A 线到此为止"},
+        {"type": "return"},
+        {"type": "label", "id": "b", "name": "b"},
+        {"type": "jump", "target": "c"},
+        {"type": "label", "id": "c", "name": "c"},
+        {"type": "narration", "text": "只有 b 能到这里"},
+        {"type": "return"},
+    ]
+    reach = reachable_labels(_project([blocks]))
+    assert {"start", "a"} <= reach
+    # b 没人跳过去 → b 与 c 都不可达（旧实现会把 c 判成可达）
+    assert "b" not in reach
+    assert "c" not in reach
+
+
+def test_reachability_counts_jumps_inside_menu_bodies_and_if_branches():
+    blocks = [
+        {"type": "label", "id": "start", "name": "start"},
+        {
+            "type": "menu",
+            "id": "m",
+            "choices": [
+                {"text": "去 A", "blocks": [{"type": "jump", "target": "a"}]},
+                {"text": "去 B", "blocks": [{"type": "jump", "target": "b"}]},
+            ],
+        },
+        {"type": "label", "id": "a", "name": "a"},
+        {"type": "narration", "text": "A"},
+        {"type": "return"},
+        {"type": "label", "id": "b", "name": "b"},
+        {
+            "type": "if",
+            "branches": [
+                {"condition": "flag", "blocks": [{"type": "jump", "target": "c"}]}
+            ],
+        },
+        {"type": "label", "id": "c", "name": "c"},
+        {"type": "narration", "text": "C"},
+        {"type": "return"},
+    ]
+    reach = reachable_labels(_project([blocks]))
+    assert {"start", "a", "b", "c"} <= reach
+
+
 def test_reachable_labels_follows_jumps_and_choices():
     blocks = [
         {"type": "label", "id": "start", "name": "start"},

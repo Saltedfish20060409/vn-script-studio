@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  aiTranslateLocalization,
   downloadLocalizationZip,
   fetchLocalization,
   prefillLocalization,
@@ -47,6 +48,7 @@ const KIND_LABEL: Record<string, string> = {
 const STATUS_LABEL: Record<string, string> = {
   "": "未翻",
   todo: "未翻",
+  ai: "AI 译·待校对",
   translated: "已翻",
   reviewed: "已校对",
 };
@@ -193,6 +195,34 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "预填失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * AI 代翻：只翻未翻的句子，写成草稿（状态「AI 译·待校对」），由作者逐句校对。
+   * 人工已填的译文不会被覆盖（除非显式勾选"重新翻译"）。
+   */
+  async function aiTranslate(overwrite = false) {
+    if (!active) return;
+    if (dirty && !window.confirm("AI 会基于已保存的剧本翻译。当前有未保存的改动，先保存再翻译？\n\n点「取消」将丢弃本地改动继续翻译。")) {
+      await save();
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const out = await aiTranslateLocalization(projectId, {
+        locale: active,
+        localeName: draft?.locales.find((l) => l.code === active)?.name ?? active,
+        overwrite,
+        limit: 25,
+      });
+      setMsg(out.message);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "AI 翻译失败");
     } finally {
       setBusy(false);
     }
@@ -416,10 +446,29 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
                   跳到下一条未翻
                 </button>
               ) : null}
-              <button type="button" className={styles.btn} onClick={() => void prefill()} disabled={busy}>
+              <button
+                type="button"
+                className={styles.btnPrimary}
+                onClick={() => void aiTranslate(false)}
+                disabled={busy || !hasUntranslated(entries, active)}
+                title="用站点模型把这批还没翻的句子译成草稿，之后你逐句校对"
+              >
+                {busy ? "AI 翻译中…" : "AI 代翻（未翻的句子）"}
+              </button>
+              <button
+                type="button"
+                className={styles.btn}
+                onClick={() => void prefill()}
+                disabled={busy}
+              >
                 用术语表预填
               </button>
             </div>
+            <p className={styles.note}>
+              AI 只会把这批句子译成<strong>草稿</strong>，状态标成「AI 译·待校对」，
+              已有人工译文不会被覆盖；<strong>导出前请逐句过一遍</strong>——
+              机器译文会写错语气、人称和双关，这类错只有你能发现。
+            </p>
             <div className={styles.bar} aria-hidden>
               <span style={{ width: `${Math.max(overall.pct, 1)}%` }} />
             </div>

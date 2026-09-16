@@ -172,6 +172,23 @@
   cursor: not-allowed;
 }
 
+.btnPrimary {
+  font-size: 0.68rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btnPrimary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .link {
   border: 0;
   padding: 0;

@@ -750,6 +750,148 @@ async def put_localization(
     return {"ok": True, "stats": localization_stats(row_to_vn(row))}
 
 
+class LocalizationTranslateIn(BaseModel):
+    """AI 代翻请求：默认只翻未翻的句子，术语表强制一致。"""
+
+    locale: str = Field(min_length=2, max_length=16)
+    locale_name: str = ""
+    overwrite: bool = False
+    limit: int = Field(default=25, ge=1, le=60)
+
+
+@router.post("/{project_id}/localization/translate")
+async def translate_localization(
+    project_id: str,
+    body: LocalizationTranslateIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """用 AI 把还没翻的句子译一遍（**草稿**：状态标记为 ai，请人工校对后再导出）。
+
+    - 术语表整份喂给模型，并要求使用给定译名（人名/专有名词一致）；
+    - 默认不覆盖已有译文（人工填的、之前 AI 译的都不会被冲掉）；
+    - 一次只处理有限句数（条数 + 字符双重预算），可以反复点直到翻完。
+    """
+    from app.core.llm_http import chat_completions
+    from app.core.localization import extract_entries, localization_stats
+    from app.core.localization_ai import (
+        MAX_CHARS_PER_CALL,
+        MAX_ENTRIES_PER_CALL,
+        SYSTEM_PROMPT,
+        apply_translations,
+        build_user_prompt,
+        parse_translation_response,
+        select_batch,
+    )
+    from app.core.rate_limit import require_rate
+    from app.core.usage import ensure_under_quota
+
+    require_rate(
+        user.id,
+        "l10n_translate",
+        60,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+        detail="翻译请求过于频繁，请稍后再试",
+    )
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    loc = vn.localization or {}
+    entries = extract_entries(vn, loc)
+    glossary = loc.get("glossary") or []
+
+    batch = select_batch(
+        entries,
+        only_untranslated=not body.overwrite,
+        locale=body.locale,
+        max_entries=min(body.limit, MAX_ENTRIES_PER_CALL),
+        max_chars=MAX_CHARS_PER_CALL,
+    )
+    if not batch:
+        return {
+            "ok": True,
+            "applied": 0,
+            "remaining": 0,
+            "message": "没有需要翻译的句子了（想覆盖已有译文可以勾选「重新翻译」）",
+            "stats": localization_stats(vn),
+        }
+
+    creds = await resolve_llm_credentials(db, user.id, settings)
+    if not creds.get("api_key"):
+        raise HTTPException(
+            status_code=400,
+            detail="没有可用的模型：请到「设置 → 模型」填入你自己的 API Key",
+        )
+    await ensure_under_quota(db, user.id, settings, creds)
+    cfg = DeepSeekConfig(
+        apiKey=creds["api_key"],
+        baseUrl=creds["base_url"],
+        model=creds["model"],
+    )
+    prompt = build_user_prompt(
+        batch,
+        locale=body.locale,
+        locale_name=body.locale_name,
+        glossary=glossary,
+    )
+    try:
+        res = await chat_completions(
+            cfg,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.3,
+            max_tokens=4000,
+        )
+        text = res.json()["choices"][0]["message"]["content"]
+    except Exception as exc:  # noqa: BLE001 —— 模型失败不能影响已有译文
+        raise HTTPException(status_code=502, detail=f"翻译失败：{exc}") from exc
+
+    mapping = parse_translation_response(text, [str(e.get("key")) for e in batch])
+    if not mapping:
+        raise HTTPException(
+            status_code=502,
+            detail="模型没有返回可解析的译文，请重试或换一个模型",
+        )
+    result = apply_translations(
+        entries,
+        locale=body.locale,
+        mapping=mapping,
+        overwrite=body.overwrite,
+    )
+    base = dict(loc)
+    base["entries"] = result["entries"]
+    updated = vn.model_dump()
+    updated["localization"] = base
+    row.data = project_to_dict(VnProject.model_validate(updated))
+    await db.commit()
+    await db.refresh(row)
+
+    remaining = len(
+        select_batch(
+            result["entries"],
+            only_untranslated=True,
+            locale=body.locale,
+            max_entries=10**6,
+            max_chars=10**9,
+        )
+    )
+    return {
+        "ok": True,
+        "applied": result["applied"],
+        "skipped": result["skipped"],
+        "remaining": remaining,
+        "model": creds.get("model"),
+        "message": (
+            f"AI 译了 {result['applied']} 句，状态是「AI 译·待校对」。"
+            + (f"还剩 {remaining} 句，可以再点一次。" if remaining else "全部翻完了，请逐句校对后再导出。")
+        ),
+        "stats": localization_stats(row_to_vn(row)),
+    }
+
+
 @router.post("/{project_id}/localization/prefill")
 async def prefill_localization(
     project_id: str,

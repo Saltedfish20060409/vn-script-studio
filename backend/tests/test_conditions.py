@@ -103,6 +103,17 @@ def test_render_is_renpy_safe():
     assert condition_source("affection >= 3 and saw") == "affection >= 3 and saw"
 
 
+def test_bare_word_values_render_as_strings_to_match_the_player():
+    """`flag == yes` 在试玩器里按字符串比较；导出也必须是字符串。
+
+    否则 Ren'Py 会把 `yes` 当变量名 → 运行时 NameError：试玩通过、上引擎就炸。
+    """
+    assert condition_source("flag == yes") == 'flag == "yes"'
+    assert condition_source("mood == happy") == 'mood == "happy"'
+    assert evaluate_condition(parse_condition("flag == yes"), {"flag": "yes"}) is True
+    assert evaluate_condition(parse_condition("flag == yes"), {"flag": True}) is False
+
+
 def test_render_escapes_quotes_so_it_cannot_escape_into_code():
     cond = parse_condition('name == "a\\"b"')
     rendered = render_condition(cond)

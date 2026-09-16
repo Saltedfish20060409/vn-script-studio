@@ -156,9 +156,9 @@ def _render_value(value: Any) -> str:
     if isinstance(value, bool):
         return "True" if value else "False"
     if isinstance(value, str):
-        if _IDENT_RE.match(value) and value.lower() not in ("true", "false"):
-            # 裸词当作变量名（作者写 flag == yes 时，yes 在 Ren'Py 里通常也是变量）
-            return value
+        # 裸词也必须渲染成**字符串字面量**：作者写 `flag == yes` 时，前端试玩器按字符串
+        # "yes" 比较；若导出成裸 `yes`，Ren'Py 会把它当变量名 → 运行时 NameError
+        # （试玩通过、上引擎就炸）。两侧行为必须一致。
         return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
     return str(value)
 

@@ -267,6 +267,30 @@ export async function prefillLocalization(
   });
 }
 
+/** AI 代翻（草稿，状态标记为 ai，需人工校对后再导出）。 */
+export async function aiTranslateLocalization(
+  id: string,
+  opts: { locale: string; localeName?: string; overwrite?: boolean; limit?: number }
+): Promise<{
+  ok: boolean;
+  applied: number;
+  skipped: number;
+  remaining: number;
+  model?: string;
+  message: string;
+  stats: LocalizationOut["stats"];
+}> {
+  return apiFetch(`/projects/${id}/localization/translate`, {
+    method: "POST",
+    body: JSON.stringify({
+      locale: opts.locale,
+      locale_name: opts.localeName ?? "",
+      overwrite: Boolean(opts.overwrite),
+      limit: opts.limit ?? 25,
+    }),
+  });
+}
+
 /** 下载 tl/<lang>/strings.rpy 打包 zip。 */
 export async function downloadLocalizationZip(id: string): Promise<Blob> {
   const res = await authedRawFetch(`/projects/${id}/export/localization.rpy`);
