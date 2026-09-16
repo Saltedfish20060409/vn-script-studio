@@ -14,7 +14,7 @@ import {
 import { MascotFigure } from "../components/MascotFigure";
 import { MASCOT_MOODS, type MascotMood } from "../lib/mascotArt";
 import { mascotLine } from "../lib/mascotCopy";
-import { NoticeBanner } from "../components/NoticeBanner";
+import { openNotice } from "../lib/notice";
 import { FilingFooter } from "../components/FilingFooter";
 import { AnimatedText } from "../components/reactbits/AnimatedText";
 import { GlowButton } from "../components/reactbits/GlowButton";
@@ -53,7 +53,6 @@ export default function LoginPage() {
   // 重发验证邮件用的标识：可以是邮箱，也可以是用户名（后端两者都认）。
   // 单独一个 state，避免用户用「用户名」登录失败后重发时把上一次注册的邮箱带过去。
   const [resendIdent, setResendIdent] = useState("");
-  const [showNotice, setShowNotice] = useState(false);
   const [hasWallpaper, setHasWallpaper] = useState(false);
   const [mascotMood, setMascotMood] = useState<MascotMood>("idle");
   const [mascotSpeech, setMascotSpeech] = useState(
@@ -173,16 +172,16 @@ export default function LoginPage() {
 
   return (
     <div className={`vnss-app ${styles.wrap}`}>
-      {/* 公告复看：右上角按钮 → 强制打开公告弹窗（已读也能看） */}
+      {/* 公告复看：右上角按钮 → 让全局那个公告弹窗打开（已读也能看）。
+          这里不再自己渲染一份 —— 否则未读时全局实例会自动弹出，点按钮又弹一个，叠两层。 */}
       <button
         type="button"
         className={styles.reviewBtn}
-        onClick={() => setShowNotice(true)}
+        onClick={() => openNotice()}
         title="查看公告与起步指导"
       >
         📢 公告
       </button>
-      {showNotice && <NoticeBanner forceOpen onClose={() => setShowNotice(false)} />}
       <GlowCursor />
       {hasWallpaper ? (
         <>

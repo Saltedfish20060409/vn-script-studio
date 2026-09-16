@@ -1,4 +1,5 @@
 import type { ChangeEvent, RefObject } from "react";
+import { openNotice } from "../lib/notice";
 import styles from "./StudioApp.module.css";
 
 type Props = {
@@ -117,6 +118,9 @@ export function StudioTopBar({
             </button>
             <button type="button" role="menuitem" onClick={onOpenHelp}>
               帮助 / FAQ
+            </button>
+            <button type="button" role="menuitem" onClick={openNotice}>
+              更新公告
             </button>
             {showAdmin && onOpenAdmin ? (
               <button type="button" role="menuitem" onClick={onOpenAdmin}>
