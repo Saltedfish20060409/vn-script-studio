@@ -9,6 +9,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 import httpx
 
 from app.core.ai import DeepSeekConfig
+from app.core.model_presets import supports_json_mode
 from app.llm_models import DEFAULT_LLM_MODEL, resolve_chat_model
 
 # Retry these transient upstream statuses
@@ -199,6 +200,7 @@ def _chat_body(
     max_tokens: Optional[int],
     stream: bool,
 ) -> tuple[str, Dict[str, Any]]:
+    raw_model = (config.model or "").strip()
     model, thinking = resolve_chat_model(config.model or DEFAULT_LLM_MODEL)
     body: Dict[str, Any] = {
         "model": model,
@@ -208,7 +210,18 @@ def _chat_body(
     }
     if thinking:
         body["thinking"] = {"type": thinking}
-    if response_format is not None:
+    # 有些档位不支持结构化输出，硬发 response_format 会被对方直接拒绝
+    # （Anthropic 的 OpenAI 兼容层就会报错）。判断统一放在这里，调用方不用各自小心：
+    # 提示词里本来就写着"只输出 JSON"，所以拿掉这个参数只是少了服务端约束。
+    #
+    # 两个名字都要看：*-think 这类别名会被 resolve_chat_model 改写成正式名
+    # （deepseek-flash-think → deepseek-flash），只看改写后的名字就会漏掉
+    # "思考模式不支持 JSON 模式"这一条。
+    if (
+        response_format is not None
+        and supports_json_mode(model)
+        and supports_json_mode(raw_model)
+    ):
         body["response_format"] = response_format
     if max_tokens:
         body["max_tokens"] = max_tokens

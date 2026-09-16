@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from app.core.model_presets import MODEL_PRESETS, find_preset, list_model_presets
+from app.core.model_presets import (
+    MODEL_PRESETS,
+    find_preset,
+    json_mode_warning,
+    list_model_presets,
+    supports_json_mode,
+)
 
 
 def test_presets_nonempty_and_unique_ids():
@@ -108,3 +114,41 @@ def test_list_returns_copies():
     # mutating a returned dict must not corrupt the catalogue
     a[0]["model"] = "mutated"
     assert MODEL_PRESETS[0]["model"] != "mutated"
+
+
+def test_supports_json_mode_reads_the_catalogue():
+    """JSON 模式判断必须跟着预设里的 json_mode 走。"""
+    assert supports_json_mode("deepseek-flash") is True
+    assert supports_json_mode("glm-4-flash-250414") is True
+    # 思考模式与 Anthropic 兼容层都不支持 response_format
+    assert supports_json_mode("deepseek-flash-think") is False
+    assert supports_json_mode("claude-opus-5") is False
+    assert supports_json_mode("claude-sonnet-4-8") is False
+    assert supports_json_mode("qwen3:8b") is False
+
+
+def test_supports_json_mode_is_liberal_for_unknown_models():
+    """预设只是帮忙填端点，用户可能手填没收录的模型名 —— 不能擅自把能力判小。"""
+    assert supports_json_mode("some-vendor-model-9") is True
+    assert supports_json_mode("") is True
+    assert supports_json_mode("   ") is True
+
+
+def test_supports_json_mode_tolerates_case_and_shorthand():
+    assert supports_json_mode("Claude-Opus-5") is False
+    assert supports_json_mode("  deepseek-flash  ") is True
+    # 手填简写时按前缀兜底
+    assert supports_json_mode("claude") is False
+
+
+def test_json_mode_warning_only_for_unsupported():
+    assert json_mode_warning("deepseek-flash") == ""
+    warn = json_mode_warning("claude-opus-5")
+    assert "不支持结构化输出" in warn and "建议换一档" in warn
+
+
+def test_every_preset_without_json_mode_is_documented():
+    """标了不支持就要在 note 里说清楚，别让用户在设置页猜。"""
+    for p in MODEL_PRESETS:
+        if p["json_mode"] is False:
+            assert "JSON" in str(p["note"]), f"{p['id']} 标了不支持 JSON 却没写进 note"

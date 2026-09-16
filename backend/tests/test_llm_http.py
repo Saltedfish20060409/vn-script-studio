@@ -285,3 +285,62 @@ def test_non_deepseek_omits_thinking_field():
     body = posts.await_args.kwargs["json"]
     assert body["model"] == "kimi-k2.6"
     assert "thinking" not in body
+
+
+def _post_body_for(model: str, **kwargs):  # noqa: ANN003, ANN202
+    """发一次请求，返回出站 body（用假 httpx 客户端拦下来）。"""
+    posts = AsyncMock(return_value=_ok_response())
+    mock_client = MagicMock()
+    mock_client.post = posts
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    async def _run():
+        with patch("app.core.llm_http.httpx.AsyncClient", return_value=mock_client):
+            await chat_completions(
+                DeepSeekConfig(apiKey="sk-test", baseUrl="https://x.example", model=model),
+                messages=[{"role": "user", "content": "hi"}],
+                **kwargs,
+            )
+
+    asyncio.run(_run())
+    return posts.await_args.kwargs["json"]
+
+
+JSON_FMT = {"type": "json_object"}
+
+
+def test_json_mode_sent_for_supporting_model():
+    """支持结构化输出的档位照旧带上 response_format。"""
+    body = _post_body_for("deepseek-flash", response_format=JSON_FMT)
+    assert body["response_format"] == JSON_FMT
+
+
+def test_json_mode_dropped_for_unsupporting_model():
+    """不支持 JSON 模式的档位不能硬发 response_format —— 对方会直接报错。
+
+    这曾经是个真问题：预设里的 json_mode 只是一个标记，没有任何代码用它，
+    选 Claude / 思考模式时照样把参数发出去。
+    """
+    for model in ("claude-opus-5", "claude-sonnet-4-8", "qwen3:8b"):
+        body = _post_body_for(model, response_format=JSON_FMT)
+        assert "response_format" not in body, f"{model} 仍然带了 response_format"
+
+
+def test_json_mode_dropped_for_think_alias():
+    """思考模式的别名会被改写成正式名，只看改写后的名字就会漏判。"""
+    body = _post_body_for("deepseek-flash-think", response_format=JSON_FMT)
+    assert body["model"] == "deepseek-flash"  # 出站名被改写
+    assert body["thinking"] == {"type": "enabled"}
+    assert "response_format" not in body
+
+
+def test_json_mode_kept_for_unknown_model():
+    """用户手填没收录的模型时保持原行为（不能擅自把参数拿掉）。"""
+    body = _post_body_for("some-vendor-model-9", response_format=JSON_FMT)
+    assert body["response_format"] == JSON_FMT
+
+
+def test_no_response_format_requested_stays_absent():
+    body = _post_body_for("deepseek-flash")
+    assert "response_format" not in body

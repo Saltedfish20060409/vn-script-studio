@@ -17,6 +17,7 @@ import {
   type UsageTotals,
 } from "../api/misc";
 import { t } from "../lib/i18n";
+import { jsonModeWarning } from "../lib/modelCapabilities";
 import {
   loadLlmCredentials,
   loadStorageMode,
@@ -331,6 +332,15 @@ function LlmPane() {
         })}
         {activeHost ? ` @ ${activeHost}` : ""} · {sourceLabel}
       </p>
+      {(() => {
+        // 手填的模型名 / 账号里存的旧档位也可能不支持 JSON 模式，这里再看一眼
+        const warn = activeModel ? jsonModeWarning(presets, activeModel) : "";
+        return warn ? (
+          <p className={styles.warnNote} data-testid="active-json-warning">
+            ⚠️ {warn}
+          </p>
+        ) : null;
+      })()}
       {effectiveSource === "server" ? (
         <p className={styles.note}>
           服务端配置 = 站方提供的免费体验模型（智谱 GLM-4-Flash，每日限额），
@@ -356,6 +366,16 @@ function LlmPane() {
             {presets.find((p) => p.id === presetId)?.note ??
               "选择预设只会帮你填好 Base URL 与模型名，Key 仍需自己输入。"}
           </span>
+          {(() => {
+            const current = presets.find((p) => p.id === presetId);
+            // 不支持 JSON 模式的档位说在前面：续写/审稿/Agent 都依赖模型返回 JSON
+            const warn = current ? jsonModeWarning(presets, String(current.model || "")) : "";
+            return warn ? (
+              <span className={styles.warnNote} data-testid="preset-json-warning">
+                ⚠️ {warn}
+              </span>
+            ) : null;
+          })()}
           {(() => {
             const current = presets.find((p) => p.id === presetId);
             const link = current ? VENDOR_KEY_URL[current.vendor] : undefined;

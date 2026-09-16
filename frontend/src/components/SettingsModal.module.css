@@ -272,6 +272,18 @@
   line-height: 1.5;
 }
 
+/* 能力提醒（如"该档位不支持 JSON 模式"）：比普通说明更需要注意，但不至于像报错 */
+.warnNote {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  border-left: 3px solid var(--accent-hot);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-hot) 8%, transparent);
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
 .error {
   margin: 0;
   color: var(--danger, #e11d48);

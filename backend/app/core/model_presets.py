@@ -177,7 +177,7 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "model": "claude-opus-4-8",
         "json_mode": False,
         "context_k": 200,
-        "note": "上一代旗舰（ID 未在线校验）。若报 model 不存在，按控制台显示的名字改。",
+        "note": "上一代旗舰（ID 未在线校验）。若报 model 不存在，按控制台显示的名字改；不支持 JSON 模式。",
     },
     {
         "id": "claude-sonnet",
@@ -187,7 +187,7 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "model": "claude-sonnet-4-8",
         "json_mode": False,
         "context_k": 200,
-        "note": "轻量档：更快更省，适合日常润色（ID 未在线校验）。国内需自备网络条件。",
+        "note": "轻量档：更快更省，适合日常润色（ID 未在线校验）。国内需自备网络条件；不支持 JSON 模式。",
     },
     # ---------------- Gemini（OpenAI 兼容端点） ----------------
     {
@@ -250,7 +250,7 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "model": "qwen3:8b",
         "json_mode": False,
         "context_k": 32,
-        "note": "免费离线。需在本机运行 Ollama 并已拉取模型（如 qwen3:8b）；模型名可改。",
+        "note": "免费离线。需在本机运行 Ollama 并已拉取模型（如 qwen3:8b）；模型名可改。本地小模型不支持 JSON 模式。",
     },
 ]
 
@@ -265,3 +265,34 @@ def find_preset(preset_id: str) -> Dict[str, object] | None:
         if p["id"] == preset_id:
             return dict(p)
     return None
+
+
+# JSON 模式（structured outputs）在部分档位上不可用：硬发 response_format 会被
+# 对方拒绝（Anthropic 的 OpenAI 兼容层就直接报错），所以出站前要按模型名判断。
+#
+# 认不出来的一律当作**支持**：预设只是帮忙填端点，用户完全可能手填一个我们没收录的
+# 模型名；对未知模型保留原行为，比擅自把参数拿掉安全。
+def supports_json_mode(model: str) -> bool:
+    """该模型名是否支持 ``response_format={"type": "json_object"}``。"""
+    name = (model or "").strip().lower()
+    if not name:
+        return True
+    for p in MODEL_PRESETS:
+        if str(p.get("model") or "").strip().lower() == name:
+            return bool(p.get("json_mode", True))
+    # 别名（如 *-think 后缀、不带日期的短名）也认一下，避免用户手填简写就漏判
+    for p in MODEL_PRESETS:
+        preset_model = str(p.get("model") or "").strip().lower()
+        if preset_model and (name.startswith(preset_model) or preset_model.startswith(name)):
+            return bool(p.get("json_mode", True))
+    return True
+
+
+def json_mode_warning(model: str) -> str:
+    """给界面用的一句话说明；支持时返回空串。"""
+    return (
+        ""
+        if supports_json_mode(model)
+        else "该档位不支持结构化输出（JSON 模式）：续写、审稿等步骤仍会尝试按提示词返回 JSON，"
+        "但稳定性不如其它档位，建议换一档。"
+    )
