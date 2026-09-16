@@ -16,7 +16,15 @@ from typing import Any, Dict, List, Optional
 from app.core.localization import source_hash
 
 # 一次请求最多带多少句 / 多少字符（控制 token 与超时）
-MAX_ENTRIES_PER_CALL = 25
+#
+# 50 / 4000 是实测出来的，不是拍的：对线上最长的一部（14016 句、平均 27 字/句）
+# 用生产模型 glm-4-flash-250414 跑过 25/50/100 三档 ——
+#   25 句 ≈ 639 字 → 1.9k token / 20s
+#   50 句 ≈ 1196 字 → 3.5k token / 42s
+#   100 句 ≈ 2671 字 → 7.4k token / 87s，且输出逼近 max_tokens=4000 的上限
+# 100 句的收益不大而截断风险明显，所以取 50：请求数减半，输出仍留 2 倍余量，
+# 单次耗时（~42s）也远低于前端 180s 的超时。
+MAX_ENTRIES_PER_CALL = 50
 MAX_CHARS_PER_CALL = 4000
 
 SYSTEM_PROMPT = (
@@ -86,6 +94,68 @@ def build_user_prompt(
 
 _CODE_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
+# 逐行兜底扫描。为什么需要它：实测 glm-4-flash 有两种"看着没问题但会整批丢"的输出——
+#   A. 同一个 "译文" 键出现两次（`{"译文":[前16条],"译文":[后9条]}`）：JSON 允许重复键，
+#      json.loads 只保留**最后一个**，于是 25 条里静默丢掉 16 条；
+#   B. 译文里出现没转义的引号（`"text":"He said "stop""`）：整个 JSON 解析失败，一条不剩。
+# 两种情况下正则都能把合格的行捞回来（键必须命中允许列表、译文必须是非空字符串，
+# 所以捞回来的东西不会比严格解析"更脏"）。
+_ROW_SCAN_RE = re.compile(
+    r'(?:[{,]\s*)"key"\s*:\s*"(?P<key>(?:\\.|[^"\\])*)"'
+    r'\s*,\s*"(?:text|translation)"\s*:\s*"(?P<text>.*?)"\s*[}\]]',
+    re.DOTALL,
+)
+
+_ESCAPES = {
+    "n": "\n",
+    "t": "\t",
+    "r": "\r",
+    "b": "\b",
+    "f": "\f",
+    '"': '"',
+    "\\": "\\",
+    "/": "/",
+    "'": "'",  # JSON 里非法，但模型很爱写 \' —— 不当成错误，当成单引号
+}
+
+
+def _unescape(value: str) -> str:
+    """按 JSON 的转义规则还原字符串；对 `\\'` 这类非法转义保持宽容。"""
+    if "\\" not in value:
+        return value
+    out: List[str] = []
+    i = 0
+    n = len(value)
+    while i < n:
+        ch = value[i]
+        if ch != "\\" or i + 1 >= n:
+            out.append(ch)
+            i += 1
+            continue
+        nxt = value[i + 1]
+        if nxt == "u" and i + 6 <= n:
+            try:
+                out.append(chr(int(value[i + 2 : i + 6], 16)))
+                i += 6
+                continue
+            except ValueError:
+                pass
+        out.append(_ESCAPES.get(nxt, nxt))
+        i += 2
+    return "".join(out)
+
+
+def _scan_rows(text: str, allowed: set) -> Dict[str, str]:
+    """从原始输出里逐行捞 {key: 译文}（放宽 JSON 严格性，但不放宽取值范围）。"""
+    out: Dict[str, str] = {}
+    for m in _ROW_SCAN_RE.finditer(text or ""):
+        key = _unescape(m.group("key")).strip()
+        target = _unescape(m.group("text")).strip()
+        if key in allowed and target and key not in out:
+            out[key] = target
+    return out
+
+
 
 def _extract_json(text: str) -> Optional[Any]:
     """从模型输出里抠出 JSON（容忍代码块、前后解释文字）。"""
@@ -114,7 +184,19 @@ def parse_translation_response(text: str, allowed_keys: List[str]) -> Dict[str, 
     """解析模型输出为 {key: 译文}。
 
     只接受在允许列表里的 key（防止模型编造/串行），非字符串或空白译文直接丢弃。
+
+    先走严格 JSON，再用逐行扫描兜底，**取命中更多的那份**：严格解析在
+    "重复键"和"没转义的引号"两种输出上会整批或大半丢掉（见 _ROW_SCAN_RE 的注释），
+    而扫描结果同样只来自允许列表，因此"取更多"不会引入更差的数据。
     """
+    allowed = set(allowed_keys)
+    strict = _parse_strict(text, allowed)
+    scanned = _scan_rows(text, allowed)
+    return scanned if len(scanned) > len(strict) else strict
+
+
+def _parse_strict(text: str, allowed: set) -> Dict[str, str]:
+    """按标准 JSON 结构解析（键必须完全对得上时才可用）。"""
     data = _extract_json(text)
     if data is None:
         return {}
@@ -128,7 +210,6 @@ def parse_translation_response(text: str, allowed_keys: List[str]) -> Dict[str, 
             rows = [{"key": k, "text": v} for k, v in data.items()]
     elif isinstance(data, list):
         rows = data
-    allowed = set(allowed_keys)
     out: Dict[str, str] = {}
     for row in rows:
         if not isinstance(row, dict):

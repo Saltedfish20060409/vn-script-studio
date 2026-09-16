@@ -32,7 +32,10 @@ class _FakeResp:
         self._content = content
 
     def json(self):  # noqa: ANN201
-        return {"choices": [{"message": {"content": self._content}}]}
+        return {
+            "choices": [{"message": {"content": self._content}}],
+            "usage": {"prompt_tokens": 900, "completion_tokens": 334, "total_tokens": 1234},
+        }
 
 
 def _project_blocks():
@@ -127,6 +130,11 @@ def test_ai_translate_creates_reviewable_drafts():
             assert body["applied"] == 1
             assert body["remaining"] == 1  # 第三句还没翻
             assert "待校对" in body["message"]
+            # 用户要知道"这一次烧了多少 token / 今天还剩多少额度"
+            assert body["tokens"] == {"prompt": 900, "completion": 334, "total": 1234}
+            assert body["batch"] == 2  # 这两句是本次交给模型的
+            assert isinstance(body["usedToday"], int)
+            assert isinstance(body["dailyCap"], int)
 
             # 术语表必须进提示词
             assert "你 → you" in seen_prompts[0]

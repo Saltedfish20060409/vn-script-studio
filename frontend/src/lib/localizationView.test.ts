@@ -3,8 +3,10 @@ import type { LocalizationEntry } from "../api/projects";
 import {
   AUTO_L10N_MAX_CALLS,
   autoTranslateMessage,
+  estimateTranslate,
   groupByChapter,
   hasUntranslated,
+  humanTokens,
   nextUntranslated,
   progressFor,
   runAutoTranslate,
@@ -171,24 +173,68 @@ describe("runAutoTranslate", () => {
     expect(AUTO_L10N_MAX_CALLS).toBeGreaterThan(0);
   });
 
-  it("提示语把「全翻完」和「还需要继续」分清楚", () => {
+  it("提示语把「全翻完」和「还需要继续」分清楚，并带上真实 token 消耗", () => {
     const done = autoTranslateMessage({
       calls: 2,
       applied: 30,
       remaining: 0,
       startedWith: 30,
+      tokens: 3510,
       stop: "done",
       progressPct: 100,
     });
     expect(done).toContain("已经全部有译文");
+    expect(done).toContain("3510 token");
     const limited = autoTranslateMessage({
       calls: AUTO_L10N_MAX_CALLS,
       applied: 1000,
       remaining: 13016,
       startedWith: 14016,
+      tokens: 1_050_000,
       stop: "limit",
       progressPct: 7,
     });
     expect(limited).toContain("还剩 13016 句");
+    expect(limited).toContain("105.0 万 token");
+  });
+});
+
+describe("estimateTranslate / humanTokens", () => {
+  it("按未翻句子的字数估算请求数与 token", () => {
+    const entries = [
+      entry({ key: "a", source: "一二三四五", targets: {} }),
+      entry({ key: "b", source: "六七八九十", targets: {} }),
+      entry({ key: "c", source: "已翻", targets: { en: "done" } }),
+    ];
+    const est = estimateTranslate(entries, "en");
+    expect(est.sentences).toBe(2);
+    expect(est.chars).toBe(10);
+    expect(est.calls).toBe(1);
+    // 2.95 token/字（输入 1.7 + 输出 1.25），与线上实测一致
+    expect(est.totalTokens).toBe(30);
+    expect(est.inputTokens).toBe(17);
+    expect(est.outputTokens).toBe(13);
+  });
+
+  it("每轮句数决定请求次数（14016 句 / 每轮 50 句 = 281 次）", () => {
+    const many = Array.from({ length: 14016 }, (_, i) =>
+      entry({ key: `k${i}`, source: "二十七个字的一句旁白文本啊", targets: {} })
+    );
+    const est = estimateTranslate(many, "en");
+    expect(est.sentences).toBe(14016);
+    expect(est.calls).toBe(281);
+  });
+
+  it("全部翻完时估算是 0，不显示没用的数字", () => {
+    const est = estimateTranslate([entry({ targets: { en: "x" } })], "en");
+    expect(est).toMatchObject({ sentences: 0, chars: 0, calls: 0, totalTokens: 0 });
+  });
+
+  it("token 数量按万/千万收敛，别让用户数零", () => {
+    expect(humanTokens(0)).toBe("0");
+    expect(humanTokens(9999)).toBe("9999");
+    expect(humanTokens(10_000)).toBe("1.0 万");
+    expect(humanTokens(1_050_000)).toBe("105.0 万");
+    expect(humanTokens(20_000_000)).toBe("2.0 千万");
   });
 });

@@ -113,6 +113,68 @@ def test_parse_returns_empty_on_garbage():
     assert parse_translation_response("", ["a"]) == {}
 
 
+def test_parse_survives_duplicate_wrapper_key():
+    """真实故障：模型把 "译文" 键写了两遍，json.loads 只保留最后一个 → 静默丢一大半。
+
+    线上实测出现过 `{"译文":[前16条],"译文":[后9条]}`，25 条只回来 9 条。
+    """
+    first = [{"key": f"k{i}", "text": f"T{i}"} for i in range(16)]
+    second = [{"key": f"k{i}", "text": f"T{i}"} for i in range(16, 25)]
+    raw = (
+        '{"译文":'
+        + json.dumps(first, ensure_ascii=False)
+        + ',"译文":'
+        + json.dumps(second, ensure_ascii=False)
+        + "}"
+    )
+    allowed = [f"k{i}" for i in range(25)]
+    got = parse_translation_response(raw, allowed)
+    assert len(got) == 25, f"重复键输出应能捞回全部 25 条，实际 {len(got)}"
+    assert got["k0"] == "T0" and got["k24"] == "T24"
+
+
+def test_parse_survives_unescaped_quotes():
+    """真实故障：译文里有没转义的引号 → 整个 JSON 解析失败 → 一条都不剩。"""
+    raw = (
+        '{"译文":[{"key":"a","text":"He said "Who would dare enter?" loudly"},'
+        '{"key":"b","text":"normal text"}]}'
+    )
+    got = parse_translation_response(raw, ["a", "b"])
+    assert got.get("b") == "normal text", "坏行不该连累后面的好行"
+    assert got.get("a") == 'He said "Who would dare enter?" loudly', "引号应原样保留，不能截断"
+
+
+def test_parse_survives_invalid_single_quote_escape():
+    """模型爱写 \\' —— JSON 里非法，但它是单引号，不该让整行/整批作废。"""
+    raw = r"""{"译文":[{"key":"a","text":"\'Chase!\' he said"},{"key":"b","text":"B"}]}"""
+    got = parse_translation_response(raw, ["a", "b"])
+    assert got.get("a") == "'Chase!' he said"
+    assert got.get("b") == "B"
+
+
+def test_scan_never_truncates_at_comma_after_quote():
+    """值里出现 `",` 时不能被当成行尾（那会把译文截断，比丢一条更糟）。"""
+    raw = '{"译文":[{"key":"a","text":"He said "stop", then left"},{"key":"b","text":"B"}]}'
+    got = parse_translation_response(raw, ["a", "b"])
+    assert got.get("a") == 'He said "stop", then left'
+
+
+def test_scan_still_refuses_unknown_keys_and_non_strings():
+    """兜底扫描不能变成"什么都收"：越界键、空白、非字符串一律不要。"""
+    raw = (
+        '{"译文":[{"key":"编造","text":"X"},{"key":"a","text":"   "},'
+        '{"key":"b","text":66},{"key":"c","text":"C"}]}'
+    )
+    assert parse_translation_response(raw, ["a", "b", "c"]) == {"c": "C"}
+
+
+def test_plain_rows_without_wrapper_are_recovered():
+    raw = '[{"key":"a","text":"A"},{"key":"b","text":"B"}]'
+    assert parse_translation_response(raw, ["a", "b"]) == {"a": "A", "b": "B"}
+    raw2 = '{"译文":[{"key":"a","text":"A"}]} 以上就是全部'
+    assert parse_translation_response(raw2, ["a"]) == {"a": "A"}
+
+
 def test_apply_translations_marks_ai_and_keeps_human_text():
     entries = _entries(3, translated=1)  # ch1#0 已有译文
     result = apply_translations(

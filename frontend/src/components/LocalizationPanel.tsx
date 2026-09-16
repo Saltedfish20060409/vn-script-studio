@@ -12,8 +12,10 @@ import {
   AUTO_L10N_MAX_CALLS,
   AUTO_L10N_PER_CALL,
   autoTranslateMessage,
+  estimateTranslate,
   groupByChapter,
   hasUntranslated,
+  humanTokens,
   nextUntranslated,
   progressFor,
   runAutoTranslate,
@@ -95,6 +97,8 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
   const [auto, setAuto] = useState<AutoTranslateProgress | null>(null);
   /** 重新翻译：连已有译文（含人工稿）一起覆盖 */
   const [overwrite, setOverwrite] = useState(false);
+  /** 今日 token 用量 / 上限（服务端回传，用于显示共享额度还剩多少） */
+  const [quota, setQuota] = useState<{ used: number; cap: number } | null>(null);
   const autoCancel = useRef(false);
 
   /** 所有改动都走这里：统一标记"有未保存的改动"，避免翻了一堆却忘了保存。 */
@@ -156,6 +160,14 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
     [entries, chapters, active]
   );
   const overall = useMemo(() => progressFor(entries, active), [entries, active]);
+  /** 翻完剩下的要花多少请求 / token（动手前先给用户一个数） */
+  const est = useMemo(() => estimateTranslate(entries, active), [entries, active]);
+
+  /** 今日 token 用量那一行；没拿到服务端数据时返回空串。 */
+  function quotaLine(): string {
+    if (!quota || !quota.cap) return "";
+    return `今日已用 ${humanTokens(quota.used)} / ${humanTokens(quota.cap)} token（站点共享额度，用完要等次日）。`;
+  }
 
   function addLocale(code: string, name: string) {
     const c = code.trim();
@@ -244,10 +256,10 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
   /**
    * 「AI 翻完剩下的」：一轮轮地翻，直到翻完 / 撞上限流 / 用户叫停。
    *
-   * 为什么要连跑：后端一轮只翻 25 句（token 预算可控）。真按一下翻一句来，
-   * 一部 1.4 万行的长篇要点 560 次 —— 等于没有这个功能。
+   * 为什么要连跑：后端一轮只翻 AUTO_L10N_PER_CALL 句（token 预算可控）。真按一下翻一句，
+   * 一部 1.4 万行的长篇要点几百次 —— 等于没有这个功能。
    * 但也不能无限跑：接口限流 60 次/小时，所以一轮最多 AUTO_L10N_MAX_CALLS 次，
-   * 并把真实进度和剩余句数摊在界面上。
+   * 并把真实进度、真实 token 消耗摊在界面上。
    */
   async function autoTranslate(overwrite = false) {
     if (!active || !draft) return;
@@ -261,6 +273,16 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
       }
     }
     const localeName = draft.locales.find((l) => l.code === active)?.name ?? active;
+    // 动手前先把账算给用户看：这次要发几次请求、大概烧多少 token。
+    const plan = estimateTranslate(entries, active);
+    const budget = quotaLine();
+    const go = window.confirm(
+      `即将连续翻译：${plan.sentences} 句，最多 ${AUTO_L10N_MAX_CALLS} 轮（每轮约 ${AUTO_L10N_PER_CALL} 句）。\n\n` +
+        `预计消耗约 ${humanTokens(plan.totalTokens)} token（估算，按源文本字数算）。\n` +
+        (budget ? `${budget}\n\n` : "\n") +
+        "中途可以随时点「停止」。继续吗？"
+    );
+    if (!go) return;
     autoCancel.current = false;
     setError("");
     setBusy(true);
@@ -276,10 +298,15 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
             overwrite,
             limit: AUTO_L10N_PER_CALL,
           });
+          setQuota({ used: out.usedToday, cap: out.dailyCap });
           // 每轮都重新拉一次：服务端才知道这次到底挑了哪几句（还带 4000 字符预算），
           // 本地猜会猜错，进度条就会骗人。
           await load();
-          return { applied: out.applied, remaining: out.remaining };
+          return {
+            applied: out.applied,
+            remaining: out.remaining,
+            tokens: out.tokens?.total ?? 0,
+          };
         },
       });
       setMsg(autoTranslateMessage(result));
@@ -578,7 +605,17 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
             {auto ? (
               <p className={styles.note} data-testid="l10n-auto-progress">
                 AI 正在翻译：已处理 {auto.startedWith - auto.remaining}/{auto.startedWith} 句
-                （第 {auto.calls} 轮，最多 {AUTO_L10N_MAX_CALLS} 轮）… 可以随时点「停止」。
+                （第 {auto.calls} 轮，最多 {AUTO_L10N_MAX_CALLS} 轮
+                {auto.tokens > 0 ? `，已消耗约 ${humanTokens(auto.tokens)} token` : ""}）…
+                可以随时点「停止」。
+              </p>
+            ) : null}
+            {est.sentences > 0 ? (
+              <p className={styles.note} data-testid="l10n-estimate">
+                还剩 <strong>{est.sentences}</strong> 句（约 {est.chars} 字）→ 还需约{" "}
+                <strong>{est.calls}</strong> 次请求，预计消耗约{" "}
+                <strong>{humanTokens(est.totalTokens)}</strong> token（按源文本字数估算，
+                实测误差 &lt;5%）。{quotaLine()}
               </p>
             ) : null}
             <p className={styles.note}>

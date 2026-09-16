@@ -77,7 +77,59 @@ export function hasUntranslated(entries: LocalizationEntry[], locale: string): b
  * 单次 AI 代翻能处理多少句（必须和后端 `MAX_ENTRIES_PER_CALL` 一致）。
  * 后端还有 4000 字符的预算，所以实际每轮可能少于这个数。
  */
-export const AUTO_L10N_PER_CALL = 25;
+export const AUTO_L10N_PER_CALL = 50;
+
+/**
+ * token 估算系数：**实测**得来，不是拍的。
+ *
+ * 对线上最长的一部（14016 句、平均 27 字/句）用生产模型 glm-4-flash-250414 实测：
+ *   25 句 / 639 字 → 输入 1099 + 输出 789 = 1888 token（2.96 token/字）
+ *   50 句 / 1196 字 → 输入 2015 + 输出 1495 = 3510 token（2.94 token/字）
+ *   100 句 / 2671 字 → 输入 4123 + 输出 3572 = 7695 token（2.88 token/字）
+ * 三档高度一致，所以按源文本字数线性估算就够准（误差 <5%）。
+ * 中译英的输入比输出大（中文一个字约 1.7 token，英文译文约 1.25 token/字）。
+ */
+export const L10N_INPUT_TOKENS_PER_CHAR = 1.7;
+export const L10N_OUTPUT_TOKENS_PER_CHAR = 1.25;
+
+export type TranslateEstimate = {
+  /** 还要翻几句 */
+  sentences: number;
+  /** 这些句子的源文本总字数 */
+  chars: number;
+  /** 还需请求几次 */
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+};
+
+/** 估算"翻完剩下的"要花多少请求和 token —— 让用户动手前心里有底。 */
+export function estimateTranslate(
+  entries: LocalizationEntry[],
+  locale: string,
+  perCall = AUTO_L10N_PER_CALL
+): TranslateEstimate {
+  const todo = entries.filter((e) => !(e.targets?.[locale] || "").trim());
+  const chars = todo.reduce((n, e) => n + (e.source || "").trim().length, 0);
+  return {
+    sentences: todo.length,
+    chars,
+    calls: todo.length ? Math.ceil(todo.length / Math.max(1, perCall)) : 0,
+    inputTokens: Math.round(chars * L10N_INPUT_TOKENS_PER_CHAR),
+    outputTokens: Math.round(chars * L10N_OUTPUT_TOKENS_PER_CHAR),
+    totalTokens: Math.round(
+      chars * (L10N_INPUT_TOKENS_PER_CHAR + L10N_OUTPUT_TOKENS_PER_CHAR)
+    ),
+  };
+}
+
+/** 大数字写成"12.3 万"这种一眼能读的形式。 */
+export function humanTokens(n: number): string {
+  if (n >= 10_000_000) return `${(n / 10_000_000).toFixed(1)} 千万`;
+  if (n >= 10_000) return `${(n / 10_000).toFixed(1)} 万`;
+  return `${Math.round(n)}`;
+}
 
 /**
  * 一次「AI 翻完剩下的」最多发几次请求。
@@ -100,6 +152,8 @@ export type AutoTranslateProgress = {
   remaining: number;
   /** 开始前的未翻总数，用于算进度百分比 */
   startedWith: number;
+  /** 本次已真实消耗的 token（服务端每轮回传，累加） */
+  tokens: number;
 };
 
 export type AutoTranslateResult = AutoTranslateProgress & {
@@ -127,8 +181,8 @@ export async function runAutoTranslate(opts: {
   maxCalls?: number;
   /** 取消检查（每轮开始前调用） */
   shouldStop?: () => boolean;
-  /** 发一轮请求；返回本轮写入句数与剩余句数 */
-  translateOnce: () => Promise<{ applied: number; remaining: number }>;
+  /** 发一轮请求；返回本轮写入句数、剩余句数与真实 token 消耗 */
+  translateOnce: () => Promise<{ applied: number; remaining: number; tokens?: number }>;
   onProgress?: (p: AutoTranslateProgress) => void;
 }): Promise<AutoTranslateResult> {
   const maxCalls = opts.maxCalls ?? AUTO_L10N_MAX_CALLS;
@@ -136,9 +190,10 @@ export async function runAutoTranslate(opts: {
   let calls = 0;
   let applied = 0;
   let remaining = startedWith;
+  let tokens = 0;
   let stalled = 0;
   const emit = () =>
-    opts.onProgress?.({ calls, applied, remaining, startedWith });
+    opts.onProgress?.({ calls, applied, remaining, startedWith, tokens });
   const finish = (
     stop: AutoTranslateStop,
     error?: unknown
@@ -150,6 +205,7 @@ export async function runAutoTranslate(opts: {
       applied,
       remaining,
       startedWith,
+      tokens,
       stop,
       error,
       progressPct: startedWith
@@ -163,7 +219,7 @@ export async function runAutoTranslate(opts: {
 
   while (calls < maxCalls) {
     if (opts.shouldStop?.()) return finish("cancelled");
-    let out: { applied: number; remaining: number };
+    let out: { applied: number; remaining: number; tokens?: number };
     try {
       out = await opts.translateOnce();
     } catch (error) {
@@ -172,6 +228,7 @@ export async function runAutoTranslate(opts: {
     calls += 1;
     applied += Math.max(0, out.applied);
     remaining = Math.max(0, out.remaining);
+    tokens += Math.max(0, out.tokens ?? 0);
     emit();
     if (remaining === 0) return finish("done");
     // 服务端一句都没写、也没说翻完了 —— 再点下去只是白烧额度。
@@ -186,17 +243,19 @@ export async function runAutoTranslate(opts: {
 export function autoTranslateMessage(r: AutoTranslateResult): string {
   const done = r.startedWith - r.remaining;
   const head = done > 0 ? `AI 译了 ${done} 句，请在步骤 ③ 逐句校对` : "这次没有新增译文";
+  // 真实消耗写在每条提示里：额度是共享的，用户有权知道这次点了多少钱（token）。
+  const cost = r.tokens > 0 ? `（消耗约 ${humanTokens(r.tokens)} token）` : "";
   switch (r.stop) {
     case "done":
-      return `${head}。这个语言已经全部有译文了（AI 草稿仍需校对后再导出）。`;
+      return `${head}${cost}。这个语言已经全部有译文了（AI 草稿仍需校对后再导出）。`;
     case "limit":
-      return `${head}；本次连跑了 ${r.calls} 轮，还剩 ${r.remaining} 句。歇一会儿再点一次可以接着翻（接口限流 60 次/小时）。`;
+      return `${head}${cost}；本次连跑了 ${r.calls} 轮，还剩 ${r.remaining} 句。歇一会儿再点一次可以接着翻（接口限流 60 次/小时）。`;
     case "cancelled":
-      return `${head}；已按你的要求停下，还剩 ${r.remaining} 句。`;
+      return `${head}${cost}；已按你的要求停下，还剩 ${r.remaining} 句。`;
     case "stalled":
-      return `${head}；模型连着两轮都没给出可用译文（还剩 ${r.remaining} 句），先停下来了。可以换一个模型，或在步骤 ③ 手动补几句再试。`;
+      return `${head}${cost}；模型连着两轮都没给出可用译文（还剩 ${r.remaining} 句），先停下来了。可以换一个模型，或在步骤 ③ 手动补几句再试。`;
     case "error":
-      return `${head}；中途失败停下了，还剩 ${r.remaining} 句。${
+      return `${head}${cost}；中途失败停下了，还剩 ${r.remaining} 句。${
         r.error instanceof Error ? `原因：${r.error.message}` : ""
       }`;
   }

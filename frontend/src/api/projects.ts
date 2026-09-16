@@ -276,7 +276,14 @@ export async function aiTranslateLocalization(
   applied: number;
   skipped: number;
   remaining: number;
+  /** 这一次实际交给模型的句数 */
+  batch: number;
   model?: string;
+  /** 这一次真实消耗的 token（服务端从模型响应里取） */
+  tokens: { prompt: number; completion: number; total: number };
+  /** 今日已消耗 / 每日上限（0 表示不限）——让用户看到共享额度还剩多少 */
+  usedToday: number;
+  dailyCap: number;
   message: string;
   stats: LocalizationOut["stats"];
 }> {

@@ -845,7 +845,9 @@ async def translate_localization(
             temperature=0.3,
             max_tokens=4000,
         )
-        text = res.json()["choices"][0]["message"]["content"]
+        payload = res.json()
+        text = payload["choices"][0]["message"]["content"]
+        usage = payload.get("usage") or {}
     except Exception as exc:  # noqa: BLE001 —— 模型失败不能影响已有译文
         raise HTTPException(status_code=502, detail=f"翻译失败：{exc}") from exc
 
@@ -878,12 +880,25 @@ async def translate_localization(
             max_chars=10**9,
         )
     )
+    # 把这次真实消耗和今日额度一起回给界面：用户点"翻完剩下的"之前，
+    # 应该先知道要烧掉多少 token（免费额度是共享的，见 llm_shared_key_daily_cap）。
+    from app.core.usage import effective_daily_cap, today_usage
+
+    used = await today_usage(db, user.id)
     return {
         "ok": True,
         "applied": result["applied"],
         "skipped": result["skipped"],
         "remaining": remaining,
+        "batch": len(batch),
         "model": creds.get("model"),
+        "tokens": {
+            "prompt": int(usage.get("prompt_tokens") or 0),
+            "completion": int(usage.get("completion_tokens") or 0),
+            "total": int(usage.get("total_tokens") or 0),
+        },
+        "usedToday": int(used.get("totalTokens") or 0),
+        "dailyCap": effective_daily_cap(settings, creds),
         "message": (
             f"AI 译了 {result['applied']} 句，状态是「AI 译·待校对」。"
             + (f"还剩 {remaining} 句，可以再点一次。" if remaining else "全部翻完了，请逐句校对后再导出。")
