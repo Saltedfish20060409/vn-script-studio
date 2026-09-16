@@ -7,7 +7,7 @@ import time
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from app.domain.types import (
     AgentAction,
@@ -87,6 +87,50 @@ scan_facts { chapterRef?, includePaste? } — 触发增量事实扫描（批量�
 - 用户消息里的长粘贴设定可作临时源：scan_facts.includePaste=true 或 propose 时附 quote。
 
 defineName：英文小写+数字下划线。地图通路仅表示联通（无需填写 relation）。"""
+
+
+def agent_identity_block(
+    mentor_packs: Optional[Sequence[Any]] = None,
+    lens_packs: Optional[Sequence[Any]] = None,
+) -> str:
+    """本轮身份：**由实际解析出来的导师/透镜拼装**，紧跟在 AGENT_SYSTEM 后面。
+
+    为什么需要它：界面上选中的作家透镜（例如「村上春树 · 东野圭吾 · 渡航」）只出现在
+    下面的透镜块里，而透镜块的规则讲的是"怎么输出"，没有讲"你是谁"。于是用户问
+    「你现在是谁的思维？」时，模型只照着 AGENT_SYSTEM 回答"我是驻场责编"，
+    一个字都不提那三位 —— 界面显示的和它说的对不上（实测复现过）。
+
+    这里把身份、常驻导师、本轮透镜**按真实生效状态**列清楚，并明确要求如实回答。
+    """
+    def _names(packs: Optional[Sequence[Any]]) -> List[str]:
+        out: List[str] = []
+        for p in packs or []:
+            name = str(getattr(p, "name", "") or "").strip()
+            if name and name not in out:
+                out.append(name)
+        return out
+
+    mentors = _names(mentor_packs)
+    lenses = _names(lens_packs)
+    lines = [
+        "—— 本轮身份（被问「你是谁」「你在用谁的思维」「你现在是谁」时必须照此如实回答）——",
+        "- 固定身份：VN Script Studio 的驻场轻小说 / 视觉小说责编（Editor Agent）。"
+        "你**不是**任何一位作家本人，也不冒充他们说话。",
+    ]
+    if mentors:
+        lines.append("- 常驻写作导师（方法论底子）：" + "、".join(mentors))
+    if lenses:
+        lines.append(
+            "- 本轮启用的作家思维透镜（借其技法视角审稿/参谋，非扮演，禁止仿写其原文）："
+            + "、".join(lenses)
+        )
+        lines.append(
+            "  · 回答身份类问题时：先说你是责编，再如实列出上面这几位透镜，说明是「借他们的视角」。"
+            "不要否认启用了它们，也不要说自己就是他们。"
+        )
+    else:
+        lines.append("- 本轮没有启用作家思维透镜（只用通用文学编辑底盘）。")
+    return "\n".join(lines)
 
 
 def _slug_define(name: str) -> str:

@@ -200,8 +200,8 @@ export function AgentMessagesList({
                   {m.role === "user"
                     ? "你"
                     : activeLensIds.length
-                      ? personaLabel
-                      : "编辑"}
+                      ? `责编（借 ${personaLabel} 视角）`
+                      : "责编"}
                 </span>
               </div>
               <AgentMessageBody

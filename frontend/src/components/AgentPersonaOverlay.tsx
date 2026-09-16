@@ -46,6 +46,9 @@ export function AgentPersonaOverlay({
       </header>
       <p className={styles.personaPanelLead}>
         点开档案选用作家参谋。默认是通用文学编辑；多选可组队头脑风暴。
+        <br />
+        <strong>回答始终由「责编」给出</strong>，选中作家只是<b>借他们的技法视角</b>
+        （不是扮演他们本人，也不会仿写他们的原文）。
       </p>
       <label className={styles.multiToggle}>
         <input
@@ -123,7 +126,7 @@ export function AgentPersonaOverlay({
               <strong className={styles.personaCardName}>{card.name}</strong>
               {selected ? (
                 <span className={styles.personaCardCheck}>
-                  {multiSelect ? "入队" : "对话中"}
+                  {multiSelect ? "入队" : "参考中"}
                 </span>
               ) : null}
             </button>

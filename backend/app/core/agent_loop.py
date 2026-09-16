@@ -11,6 +11,7 @@ from app.core.agent import (
     ApplyAgentResult,
     _normalize_agent_actions,
     _parse_agent_json,
+    agent_identity_block,
     apply_agent_actions,
 )
 from app.core.agent_context import (
@@ -324,6 +325,48 @@ async def _agent_steps(
     return working, accumulated, trace, final_message, messages, last_tool_text
 
 
+def compose_agent_system(
+    *,
+    identity_block: str,
+    task: str,
+    craft_block: str = "",
+    mentor_block: str = "",
+    lens_block: str = "",
+    has_reference_docs: bool = False,
+    context_text: str = "",
+    chat_memory_block: str = "",
+) -> str:
+    """拼装 Agent 的 system 提示（顺序即优先级）。
+
+    单独抽出来是因为"谁的身份在最前面"曾经出过线上问题：界面选中了作家透镜，
+    而 system 里只有固定身份、没有说明本轮借了谁的视角，于是问「你是谁」时
+    模型答的和界面显示的完全对不上。这里保证 `AGENT_SYSTEM` 之后**紧跟**
+    `identity_block`，并且测试/探针可以复用同一个函数来验证真实顺序。
+    """
+    parts = [
+        AGENT_SYSTEM,
+        identity_block,
+        task_hint(task),
+        craft_block,
+        mentor_block,
+        lens_block,
+        _LOOP_PROTOCOL,
+        tool_catalog_for_prompt(),
+    ]
+    if has_reference_docs:
+        parts.append(
+            "本轮含用户上传参考资料。若用户要求写入/更新设定页：请用 update_bible "
+            "以及必要时 update_meta、add_character/update_character；不要只口头复述。"
+        )
+    text = "\n\n".join(p for p in parts if p and str(p).strip())
+    text = f"{text}\n\n—— 作品上下文（检索拼装；人设/设定为内部参考）——\n{context_text}"
+    if chat_memory_block:
+        text += (
+            f"\n\n## 对话记忆归档（更早轮次，非正式剧情）\n{_clip(chat_memory_block, 2800)}"
+        )
+    return text
+
+
 async def run_agent_loop(
     config: DeepSeekConfig,
     request: AgentRequest,
@@ -423,19 +466,24 @@ async def run_agent_loop(
             temperature = 0.78
 
         craft_block = build_writing_craft_prompt(task, craft.mode)
+        # 解析出来的**包对象**要留着：身份块要按真实生效的名字拼，不能只拿 id。
+        mentor_packs = resolve_project_mentors(
+            request.project, override_ids=request.mentorIds
+        )
         mentor_block = build_mentor_prompt_for_project(
             request.project, task=task, override_ids=request.mentorIds
         )
-        mentor_ids = [
-            p.id for p in resolve_project_mentors(request.project, override_ids=request.mentorIds)
-        ]
+        mentor_ids = [p.id for p in mentor_packs]
         lens_intent = infer_lens_intent(last_user or "")
+        lens_packs = resolve_project_lenses(
+            request.project, override_ids=request.lensIds
+        )
         lens_block = build_lens_prompt_for_project(
             request.project, override_ids=request.lensIds, intent=lens_intent
         )
-        lens_ids = [
-            p.id for p in resolve_project_lenses(request.project, override_ids=request.lensIds)
-        ]
+        lens_ids = [p.id for p in lens_packs]
+        # 界面上选了哪几位透镜，模型就得知道是哪几位（否则问「你是谁」会答不上来）
+        identity_block = agent_identity_block(mentor_packs, lens_packs)
 
         # 对话记忆：超过阈值时，早期轮次用 LLM 结构化摘要（防长对话失忆），
         # 最近轮次保留原文。摘要失败自动回退抽取式，不阻塞。
@@ -455,29 +503,18 @@ async def run_agent_loop(
             except Exception:  # noqa: BLE001 - memory summary must never break the loop
                 chat_memory_block = ""
 
-        system_parts = [
-            AGENT_SYSTEM,
-            task_hint(task),
-            craft_block,
-            mentor_block,
-            lens_block,
-            _LOOP_PROTOCOL,
-            tool_catalog_for_prompt(),
-        ]
-        if request.referenceDocs and request.referenceDocs.strip():
-            system_parts.append(
-                "本轮含用户上传参考资料。若用户要求写入/更新设定页：请用 update_bible "
-                "以及必要时 update_meta、add_character/update_character；不要只口头复述。"
-            )
-        system_content = "\n\n".join(p for p in system_parts if p and str(p).strip())
-        system_content = (
-            f"{system_content}\n\n"
-            f"—— 作品上下文（检索拼装；人设/设定为内部参考）——\n{ctx.text}"
+        system_content = compose_agent_system(
+            identity_block=identity_block,
+            task=task,
+            craft_block=craft_block,
+            mentor_block=mentor_block,
+            lens_block=lens_block,
+            has_reference_docs=bool(
+                request.referenceDocs and request.referenceDocs.strip()
+            ),
+            context_text=ctx.text,
+            chat_memory_block=chat_memory_block,
         )
-        if chat_memory_block:
-            system_content += (
-                f"\n\n## 对话记忆归档（更早轮次，非正式剧情）\n{_clip(chat_memory_block, 2800)}"
-            )
 
         history: List[Dict[str, str]] = [
             {"role": m.role, "content": m.content} for m in recent_msgs

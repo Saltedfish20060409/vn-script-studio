@@ -1058,10 +1058,12 @@ export function AgentChat({
       setActiveLensIds(res.activeIds || next);
       if (res.project) onProjectChange(res.project);
       if (!next.length) {
-        setLastContext("对话对象 · 通用文学编辑");
+        setLastContext("思维透镜 · 未启用（通用文学编辑底盘）");
       } else {
         const names = (res.active || []).map((p) => p.name).join("、");
-        setLastContext(`对话对象 · ${names || next.join(",")}`);
+        // 说清"是谁在回答、借了谁的视角"：回答本身始终来自责编，
+        // 透镜只是参考视角（旧文案写「对话对象 · 村上春树…」会让人以为在跟作家本人对话）。
+        setLastContext(`思维透镜 · ${names || next.join(",")}（责编借其视角，非扮演）`);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "切换作家失败");

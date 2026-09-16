@@ -67,7 +67,7 @@ export function AgentArchiveCard({
                     (activeLensIds.length === 1 &&
                       activeLensIds[0] === card.id)
                   ? "设为默认编辑"
-                  : "设为对话对象"}
+                  : "本轮的参考视角"}
             </button>
           </div>
         </div>
