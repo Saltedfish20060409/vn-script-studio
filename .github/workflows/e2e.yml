@@ -48,7 +48,7 @@ jobs:
       SECRET_KEY: e2e-test-secret-key-0123456789abcdef0123456789abcdef
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
