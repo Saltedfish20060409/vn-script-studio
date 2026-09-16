@@ -448,16 +448,7 @@ html[data-theme="night"] .slash {
   font-size: 0.85rem;
   font-weight: 600;
   line-height: 1.45;
-}
-
-.auxLinks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  justify-content: space-between;
-}
-
-.ghostLink {
+}.ghostLink {
   margin: 0;
   padding: 0;
   border: none;

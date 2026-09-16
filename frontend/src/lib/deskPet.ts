@@ -11,7 +11,7 @@ export interface DeskPetPos {
 const KEY = "vnss-deskpet-v1";
 const DEFAULT_POS: DeskPetPos = { x: 0, y: 0 }; // 0,0 → 右下角默认停靠
 
-export function loadDeskPet(): { enabled: boolean; pos: DeskPetPos } {
+function loadDeskPet(): { enabled: boolean; pos: DeskPetPos } {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return { enabled: false, pos: DEFAULT_POS };

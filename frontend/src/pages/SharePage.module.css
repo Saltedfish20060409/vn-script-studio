@@ -206,30 +206,7 @@
 
 .list li {
   margin: 0.2rem 0;
-}
-
-.fileBtn {
-  display: inline-block;
-  margin-top: 1rem;
-  padding: 0.65rem 1.1rem;
-  min-height: 44px;
-  border-radius: var(--radius-sm);
-  border: 2px solid var(--line);
-  cursor: pointer;
-  background: var(--accent);
-  color: var(--on-accent, #fff);
-  font-family: var(--font-display);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-decoration: none;
-  box-shadow: 3px 3px 0 color-mix(in srgb, var(--accent) 30%, transparent);
-}
-
-.fileBtn:hover {
-  background: color-mix(in srgb, var(--accent) 88%, #000);
-}
-
-.statusMsg {
+}.statusMsg {
   margin: 0.75rem 0 0;
   padding: 0.85rem 1rem;
   border: 2px solid var(--line);
@@ -318,5 +295,4 @@
     transform: none;
   }
 }
-
 

@@ -1,6 +1,6 @@
 import type { Location, SceneChapter, ScriptBlock } from "../types/vn";
 
-export type OccurrenceHitKind = "scene" | "text";
+type OccurrenceHitKind = "scene" | "text";
 
 export interface LocationOccurrenceHit {
   blockIndex: number;

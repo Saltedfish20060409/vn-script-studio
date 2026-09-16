@@ -237,11 +237,6 @@ def load_builtin_packs() -> Dict[str, MentorPack]:
     return out
 
 
-def reload_builtin_packs() -> Dict[str, MentorPack]:
-    load_builtin_packs.cache_clear()
-    return load_builtin_packs()
-
-
 def list_builtin_meta() -> List[Dict[str, Any]]:
     return [p.meta() for p in load_builtin_packs().values()]
 

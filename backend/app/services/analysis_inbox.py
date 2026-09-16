@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Sequence, Set
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.fact_extract import FactCandidate, candidate_to_dict
+from app.core.fact_extract import FactCandidate
 from app.models.tables import AnalysisInboxItem
 
 
@@ -31,11 +31,6 @@ async def list_inbox(
     q = q.order_by(AnalysisInboxItem.created_at.desc())
     res = await db.execute(q)
     return list(res.scalars().all())
-
-
-async def pending_dedupe_keys(db: AsyncSession, project_id: str) -> Set[str]:
-    rows = await list_inbox(db, project_id, status="pending")
-    return {r.dedupe_key for r in rows if r.dedupe_key}
 
 
 async def blocked_dedupe_keys(db: AsyncSession, project_id: str) -> Set[str]:
@@ -149,11 +144,3 @@ def proposals_from_agent(raw: Sequence[Dict[str, Any]]) -> List[FactCandidate]:
         )
     return out
 
-
-def summarize_candidates(cands: Sequence[FactCandidate]) -> Dict[str, Any]:
-    return {
-        "added": len(cands),
-        "characterLinks": sum(1 for c in cands if c.kind == "character_link"),
-        "timelineEvents": sum(1 for c in cands if c.kind == "timeline_event"),
-        "items": [candidate_to_dict(c) for c in cands],
-    }

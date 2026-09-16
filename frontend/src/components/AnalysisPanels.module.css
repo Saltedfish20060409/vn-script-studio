@@ -71,73 +71,7 @@
   color: var(--ink-soft);
   font-size: 0.9rem;
   margin: 0 0 0.75rem;
-}
-
-.goalList {
-  margin: 0 0 0.75rem;
-  padding-left: 1.1rem;
-  color: var(--ink-soft);
-  font-size: 0.82rem;
-}
-
-.roleRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-bottom: 0.75rem;
-}
-
-.instruct {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  margin-bottom: 0.75rem;
-  font-size: 0.82rem;
-  color: var(--ink-soft);
-}
-
-.instruct textarea {
-  width: 100%;
-  border: 2px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 0.55rem 0.65rem;
-  background: var(--field-bg);
-  color: var(--ink);
-  resize: vertical;
-}
-
-.skills {
-  margin: 0.5rem 0 0.85rem;
-  font-size: 0.82rem;
-  color: var(--ink-soft);
-}
-
-.skills summary {
-  cursor: pointer;
-  color: var(--ink);
-  margin-bottom: 0.35rem;
-}
-
-.skills ul {
-  margin: 0;
-  padding-left: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-}
-
-.skills li {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.skills strong {
-  font-size: 0.78rem;
-  color: var(--accent);
-}
-
-.toolbar {
+}.toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
@@ -190,26 +124,7 @@
   border-radius: var(--radius-sm);
   border: 2px solid var(--line);
   box-shadow: var(--shadow-sm);
-}
-
-.edge {
-  stroke: var(--accent);
-  stroke-width: 1.5;
-}
-
-.edgeLabel,
-.nodeLabel {
-  font-size: 12px;
-  fill: var(--ink);
-  font-family: var(--font-ui);
-}
-
-.edgeLabel {
-  text-anchor: middle;
-  fill: var(--ink-soft);
-}
-
-.list {
+}.list {
   list-style: none;
   margin: 0.75rem 0 0;
   padding: 0;
@@ -243,35 +158,7 @@
   border-radius: var(--radius-sm);
   background: var(--field-bg);
   box-shadow: var(--shadow-sm);
-}
-
-.tlDot {
-  position: absolute;
-  left: -1.35rem;
-  top: 1rem;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--accent);
-  z-index: 1;
-}
-
-.tlLine {
-  position: absolute;
-  left: -1.15rem;
-  top: 1.4rem;
-  bottom: -0.9rem;
-  width: 2px;
-  background: color-mix(in srgb, var(--accent) 40%, transparent);
-}
-
-.tlWhen {
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  max-width: 200px;
-}
-
-.report .summary {
+}.report .summary {
   font-family: var(--font-display);
   font-size: 1.05rem;
   margin: 0 0 0.75rem;

@@ -281,34 +281,6 @@ async def sync_chapter_rows_from_vn(
     await record_activity(db, row.id, previous_words=prev_words, current_words=current_words)
 
 
-async def load_chapter_rows(
-    db: AsyncSession,
-    project_id: str,
-) -> list[dict]:
-    """Read chapters from project_chapter_rows (ordered), None-safe.
-
-    NOTE: the blob remains the authoritative chapter source until stage 2
-    migrates every read path to this table — callers must keep the two in
-    sync via upsert_chapter_rows on every chapter write.
-    """
-    from app.models import ProjectChapterRow
-
-    res = await db.execute(
-        select(ProjectChapterRow)
-        .where(ProjectChapterRow.project_id == project_id)
-        .order_by(ProjectChapterRow.sort_order.asc())
-    )
-    return [
-        {
-            "id": row.chapter_id,
-            "title": row.title,
-            "synopsis": row.synopsis or None,
-            "blocks": row.blocks or [],
-        }
-        for row in res.scalars().all()
-    ]
-
-
 async def member_role(db: AsyncSession, project_id: str, user_id: str) -> Optional[str]:
     """Return the member role for (project, user) or None."""
     from app.models import ProjectMember

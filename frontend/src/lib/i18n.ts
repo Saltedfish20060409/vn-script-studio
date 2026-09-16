@@ -6,8 +6,6 @@
  * 保证任何语言下都不会出现空文案。
  */
 
-import { useSyncExternalStore } from "react";
-
 export type Locale = "zh" | "en";
 
 const LOCALE_KEY = "vnss-lang";
@@ -109,7 +107,7 @@ export function enCoversZh(): boolean {
   return zhKeys.every((k) => Object.prototype.hasOwnProperty.call(en, k));
 }
 
-export function detectLocale(): Locale {
+function detectLocale(): Locale {
   try {
     const saved = localStorage.getItem(LOCALE_KEY);
     if (saved === "zh" || saved === "en") return saved;
@@ -124,7 +122,7 @@ export function detectLocale(): Locale {
   }
 }
 
-export function setLocale(locale: Locale): void {
+function setLocale(locale: Locale): void {
   try {
     localStorage.setItem(LOCALE_KEY, locale);
   } catch {
@@ -139,22 +137,11 @@ export function getLocale(): Locale {
   return currentLocale;
 }
 
-/** Subscribe to locale changes; returns an unsubscribe function. */
-export function subscribeLocale(fn: () => void): () => void {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
-}
-
 export function changeLocale(locale: Locale): void {
   if (locale === currentLocale) return;
   currentLocale = locale;
   setLocale(locale);
   listeners.forEach((fn) => fn());
-}
-
-/** Reactive locale for React components (re-renders on change). */
-export function useLocale(): Locale {
-  return useSyncExternalStore(subscribeLocale, getLocale, getLocale);
 }
 
 /** Translate a key with {param} substitution; falls back to zh on missing key. */

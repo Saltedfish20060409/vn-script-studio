@@ -42,17 +42,6 @@ async def is_vector_available(db: AsyncSession) -> bool:
         return False
 
 
-async def ensure_vector_extension(db: AsyncSession) -> bool:
-    """Try to CREATE EXTENSION IF NOT EXISTS vector; return success."""
-    try:
-        await db.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        await db.commit()
-        return True
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("pgvector extension unavailable: %s", exc)
-        return False
-
-
 async def embed_texts(
     texts: List[str],
     *,

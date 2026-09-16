@@ -10,22 +10,7 @@ export interface MapElementPreset {
 }
 
 /** Sole Persona LOC_MAP board — genre skins were removed. */
-export const DEFAULT_MAP_STYLE: MapStyleId = "default";
-
-/** @deprecated Multi-skin list retired; kept for any stray imports. */
-export const MAP_STYLES: {
-  id: MapStyleId;
-  name: string;
-  genre: string;
-  desc: string;
-}[] = [
-  {
-    id: "default",
-    name: "作战图",
-    genre: "Persona",
-    desc: "统一 LOC_MAP 底板",
-  },
-];
+const DEFAULT_MAP_STYLE: MapStyleId = "default";
 
 /** Collapse any legacy / unknown style id to the single board. */
 export function normalizeMapStyle(_style?: string | null): MapStyleId {

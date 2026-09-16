@@ -22,7 +22,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -129,17 +129,3 @@ async def record_first_event(
         return
     await record_event(db, user_id, name, props)
 
-
-async def record_events(
-    db: AsyncSession,
-    user_id: Optional[str],
-    events: Iterable[tuple[str, Optional[Dict[str, Any]]]],
-) -> int:
-    """批量写入；返回实际写入条数。"""
-    written = 0
-    for name, props in events:
-        if name not in EVENT_NAMES:
-            continue
-        await record_event(db, user_id, name, props)
-        written += 1
-    return written

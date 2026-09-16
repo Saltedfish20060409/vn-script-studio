@@ -5,7 +5,6 @@ No shell / filesystem — only in-memory VnProject data.
 
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.agent_context import _blocks_to_plain
@@ -305,9 +304,3 @@ def format_tool_result_message(name: str, ok: bool, preview: str) -> str:
     body = _clip(preview, 6000)
     return f"[tool_result name={name} status={status}]\n{body}"
 
-
-def dumps_tool_args(arguments: Any) -> str:
-    try:
-        return json.dumps(arguments or {}, ensure_ascii=False)[:500]
-    except Exception:
-        return "{}"

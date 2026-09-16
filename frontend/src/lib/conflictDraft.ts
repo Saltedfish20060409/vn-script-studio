@@ -42,11 +42,6 @@ export function stashConflictDraft(project: VnProject, reason = "save_409"): voi
   writeStore(store);
 }
 
-export function getConflictDraft(projectId: string): VnProject | null {
-  const row = readStore()[projectId];
-  return row?.project ?? null;
-}
-
 export function clearConflictDraft(projectId: string): void {
   const store = readStore();
   if (!store[projectId]) return;

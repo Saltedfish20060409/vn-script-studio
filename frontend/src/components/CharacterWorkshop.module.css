@@ -331,35 +331,7 @@
 .charStat {
   font-size: 0.72rem;
   color: var(--ink-soft);
-}
-
-.seed {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--line);
-}
-
-.seedLine {
-  margin: 0;
-  font-size: 0.8rem;
-  line-height: 1.4;
-  color: var(--ink-soft);
-}
-
-.seedLine em {
-  display: block;
-  font-style: normal;
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  margin-bottom: 0.1rem;
-  color: var(--ink-soft);
-  opacity: 0.85;
-}
-
-.stage {
+}.stage {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
@@ -514,37 +486,7 @@
   border-bottom-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   clip-path: polygon(0 0, 100% 0, 100% 100%, 8px 100%, 0 calc(100% - 8px));
-}
-
-.statsLine {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.2rem 0.65rem;
-  margin: 0;
-  padding: 0.55rem 0.35rem 0.25rem;
-  font-size: 0.76rem;
-  letter-spacing: 0.02em;
-  color: var(--ink-soft);
-  border: none;
-  border-top: 1px dashed color-mix(in srgb, var(--line) 85%, transparent);
-  border-radius: 0;
-  background: transparent;
-}
-
-.statsLine span {
-  display: contents;
-}
-
-.statsLine span em {
-  font-style: normal;
-  color: var(--ink);
-  font-weight: 650;
-  font-family: var(--font-display);
-  font-size: 0.82rem;
-  text-align: right;
-}
-
-.shapeModes {
+}.shapeModes {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
@@ -667,15 +609,7 @@
   font-size: 1.02rem !important;
   line-height: 1.45 !important;
   color: var(--ink) !important;
-}
-
-.heroFlow {
-  margin: 0 !important;
-  font-size: 0.84rem !important;
-  color: var(--ink-soft) !important;
-}
-
-.ghostLink {
+}.ghostLink {
   margin-top: 0.25rem;
   padding: 0;
   border: none;
@@ -1243,30 +1177,7 @@
   margin-bottom: 0.2rem;
   opacity: 0.92;
   filter: saturate(0.92);
-}
-
-.emptyArc {
-  width: min(42vw, 132px);
-  height: min(42vw, 132px);
-  margin-bottom: 0.35rem;
-  border: 3px solid var(--line);
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  opacity: 0.9;
-}
-
-.emptyArc span {
-  font-family: var(--font-display);
-  font-size: 1.4rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  color: var(--accent);
-  transform: rotate(-14deg);
-  max-width: none;
-}
-
-.emptyStage .primary {
+}.emptyStage .primary {
   justify-self: center;
   margin-top: 0.35rem;
   min-height: 44px;
@@ -1329,8 +1240,6 @@
     opacity: 1;
   }
 }
-
-
 
 .variantGrid {
   display: grid;

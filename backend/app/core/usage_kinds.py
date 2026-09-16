@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Tuple
+from typing import Tuple
 
 # 顺序敏感：先匹配更具体的路径。默认 "llm" 表示"其它/未分类"。
 _RULES: Tuple[Tuple[str, str], ...] = (
@@ -86,7 +86,3 @@ def kind_for_path(path: str) -> str:
             return kind
     return DEFAULT_KIND
 
-
-def rules() -> Iterable[Tuple[str, str]]:
-    """调试/测试用：暴露当前规则。"""
-    return _RULES

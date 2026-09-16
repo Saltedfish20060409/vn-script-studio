@@ -20,7 +20,7 @@ export const EMPTY_LLM_CREDENTIALS: LlmCredentials = {
 
 export const LLM_CREDENTIALS_KEY = "vnss-llm-credentials-v1";
 /** "local" = browser localStorage (X-LLM headers); "account" = server-encrypted. */
-export const LLM_STORAGE_KEY = "vnss-llm-storage-mode";
+const LLM_STORAGE_KEY = "vnss-llm-storage-mode";
 
 export type LlmStorageMode = "local" | "account";
 

@@ -5,11 +5,6 @@
 import type { TokenOut } from "./auth";
 import { applyLlmHeaders } from "../lib/llmCredentials";
 
-// SECURITY (M-4): the refresh token lives ONLY in an HttpOnly cookie set by
-// the backend (JS cannot read it → XSS can't exfiltrate it). The access token
-// is kept in memory only (not localStorage) so a script-injection also can't
-// steal a long-lived credential; a page reload simply triggers one refresh.
-export const TOKEN_KEY = "vnss-token";
 export const API_BASE = "/api/v1";
 
 let accessToken: string | null = null;
@@ -26,16 +21,7 @@ export function clearToken() {
   accessToken = null;
 }
 
-export function getRefreshToken(): string | null {
-  // No longer stored client-side — the refresh token is an HttpOnly cookie.
-  return null;
-}
-
-export function setRefreshToken(_token: string) {
-  // No-op: refresh token is server-managed (HttpOnly cookie).
-}
-
-export function clearRefreshToken() {
+function clearRefreshToken() {
   // No-op: cookie is cleared via POST /auth/logout.
 }
 
@@ -89,7 +75,7 @@ export async function readErrorPayload(
   return { message: res.statusText || `请求失败 (${res.status})` };
 }
 
-export function redirectToLogin() {
+function redirectToLogin() {
   if (typeof window === "undefined") return;
   if (window.location.pathname === "/login") return;
   window.location.href = "/login";

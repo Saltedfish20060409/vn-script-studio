@@ -1,6 +1,6 @@
 /** Writer portrait art for Agent lens cards (not the studio mascot). */
 
-export type WriterPortraitMeta = {
+type WriterPortraitMeta = {
   /** File under /writers/ */
   file: string;
   /** Accent for fallback / frame */
@@ -10,13 +10,13 @@ export type WriterPortraitMeta = {
 };
 
 /** Default LN/VN editor (not a named author, not the studio mascot). */
-export const EDITOR_PORTRAIT: WriterPortraitMeta = {
+const EDITOR_PORTRAIT: WriterPortraitMeta = {
   file: "editor.png",
   accent: "#002fa7",
   cue: "neutral desk editor silhouette, slate blue",
 };
 
-export const WRITER_PORTRAITS: Record<string, WriterPortraitMeta> = {
+const WRITER_PORTRAITS: Record<string, WriterPortraitMeta> = {
   "author-murakami": {
     file: "murakami.png",
     accent: "#3d5a6c",

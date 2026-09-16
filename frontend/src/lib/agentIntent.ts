@@ -3,7 +3,7 @@
  * Buttons are optional shortcuts; normal speech should hit the same pipelines.
  */
 
-export type AgentIntentKind =
+type AgentIntentKind =
   | "chapter_revise"
   | "chapter_polish"
   | "chapter_lock_name"

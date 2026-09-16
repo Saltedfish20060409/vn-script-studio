@@ -13,8 +13,6 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
-from app.core.localization import source_hash
-
 # 一次请求最多带多少句 / 多少字符（控制 token 与超时）
 #
 # 50 / 4000 是实测出来的，不是拍的：对线上最长的一部（14016 句、平均 27 字/句）
@@ -265,6 +263,3 @@ def apply_translations(
     unknown = len([k for k in (mapping or {}) if k not in known_keys])
     return {"entries": out, "applied": applied, "skipped": skipped, "unknown": unknown}
 
-
-def entry_source_hash(entry: Dict[str, Any]) -> str:
-    return source_hash(str(entry.get("source") or ""))

@@ -175,11 +175,6 @@ def load_builtin_lenses() -> Dict[str, MentorPack]:
     return out
 
 
-def reload_builtin_lenses() -> Dict[str, MentorPack]:
-    load_builtin_lenses.cache_clear()
-    return load_builtin_lenses()
-
-
 def list_builtin_lens_meta() -> List[Dict[str, Any]]:
     return [p.meta() for p in load_builtin_lenses().values()]
 
@@ -326,10 +321,6 @@ LENS_ALIASES: Dict[str, str] = {
     "kai": "author-kai",
     "author-kai": "author-kai",
 }
-
-
-def lens_family(pack_id: str) -> str:
-    return "author"
 
 
 def match_lens_ids_from_text(text: str) -> List[str]:

@@ -11,7 +11,7 @@
  *     value := 数字 | "字符串" | true | false
  */
 
-export type Comparison = {
+type Comparison = {
   key: string;
   op?: "==" | "!=" | ">=" | "<=" | ">" | "<";
   value?: number | boolean | string;
@@ -23,7 +23,7 @@ const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const OPS = ["==", "!=", ">=", "<=", ">", "<"] as const;
 const NUMBER_RE = /^-?\d+(?:\.\d+)?$/;
 
-export class ConditionError extends Error {}
+class ConditionError extends Error {}
 
 function parseValue(raw: string): number | boolean | string {
   const t = raw.trim();
@@ -63,12 +63,6 @@ export function parseCondition(text?: string | null): Condition {
     .split(/\s*(?:&&|\band\b|并且)\s*/i)
     .filter((p) => p.trim())
     .map(parseTerm);
-}
-
-export function conditionKeys(cond: Condition): string[] {
-  const seen: string[] = [];
-  for (const c of cond) if (!seen.includes(c.key)) seen.push(c.key);
-  return seen;
 }
 
 function coerce(left: unknown, right: unknown): { lhs: unknown; rhs: unknown; ok: boolean } {

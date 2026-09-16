@@ -45,13 +45,7 @@
     opacity: 1;
     transform: none;
   }
-}
-
-.mascot {
-  align-self: start;
-}
-
-.body {
+}.body {
   min-width: 0;
   display: flex;
   flex-direction: column;

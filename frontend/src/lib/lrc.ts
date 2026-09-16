@@ -11,7 +11,7 @@ export interface LrcLine {
   text: string;
 }
 
-export interface LrcMeta {
+interface LrcMeta {
   title?: string;
   artist?: string;
   album?: string;

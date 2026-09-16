@@ -52,21 +52,6 @@ export interface PipelineRunResult {
   }>;
 }
 
-export function pipelineMeta(): Promise<{
-  layers: string[];
-  styleSkill: Record<string, unknown>;
-  styleConfirm: string;
-  defaultStages: string[];
-  defaults?: {
-    maxReviseRounds?: number;
-    voiceCheck?: boolean;
-    semanticBeats?: boolean;
-    enrichLedgerOnFinalize?: boolean;
-  };
-}> {
-  return apiFetch("/pipeline/meta");
-}
-
 export function pipelineRun(
   id: string,
   body: {
@@ -171,7 +156,7 @@ export type JobStatus = {
   updatedAt?: string;
 };
 
-export function getProjectJob(projectId: string, jobId: string): Promise<JobStatus> {
+function getProjectJob(projectId: string, jobId: string): Promise<JobStatus> {
   return apiFetch(`/projects/${projectId}/jobs/${jobId}`);
 }
 
@@ -227,13 +212,6 @@ export function pipelineGate(
     timeoutMs: 180000,
     body: JSON.stringify(body),
   });
-}
-
-export function pipelineRuns(
-  id: string,
-  limit = 12
-): Promise<{ runs: Array<Record<string, unknown>> }> {
-  return apiFetch(`/projects/${id}/pipeline/runs?limit=${limit}`);
 }
 
 export function pipelineLedgerDigest(

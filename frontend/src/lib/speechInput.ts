@@ -3,7 +3,7 @@
  * 纯前端：识别在浏览器本地进行，无需后端。
  */
 
-export interface SpeechResultEvent {
+interface SpeechResultEvent {
   resultIndex: number;
   results: ArrayLike<{
     isFinal: boolean;

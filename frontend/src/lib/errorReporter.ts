@@ -121,7 +121,7 @@ export function shouldReloadForChunkError(
   return now - lastReloadAt >= cooldownMs;
 }
 
-export function installChunkReloadGuard(): void {
+function installChunkReloadGuard(): void {
   window.addEventListener("vite:preloadError", (event) => {
     let last: number;
     try {

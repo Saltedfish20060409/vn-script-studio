@@ -104,33 +104,6 @@ export function harnessLint(id: string, draft: string): Promise<HarnessLintResul
   });
 }
 
-export interface HarnessMeta {
-  roles: string[];
-  goals: string[];
-  otakuSkills: string[];
-}
-
-export function harnessMeta(): Promise<HarnessMeta> {
-  return apiFetch("/harness/meta");
-}
-
-export function harnessRun(
-  id: string,
-  body: {
-    role: "architect" | "writer" | "editor";
-    instruction?: string;
-    draft?: string;
-    selection?: string;
-    chapter_id?: string;
-    mode?: "generate" | "audit" | "audit_and_fix";
-  }
-): Promise<Record<string, unknown>> {
-  return apiFetch(`/projects/${id}/harness/run`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Writing mentors
 // ---------------------------------------------------------------------------
@@ -145,14 +118,6 @@ export interface MentorPackMeta {
   source?: string;
 }
 
-export function listMentors(): Promise<{
-  packs: MentorPackMeta[];
-  defaultActiveIds: string[];
-  note?: string;
-}> {
-  return apiFetch("/mentors");
-}
-
 export function getProjectMentors(id: string): Promise<{
   activeIds: string[];
   customPacks: Array<{ id?: string; name?: string; updatedAt?: string }>;
@@ -161,28 +126,6 @@ export function getProjectMentors(id: string): Promise<{
   defaultActiveIds: string[];
 }> {
   return apiFetch(`/projects/${id}/mentors`);
-}
-
-export function putProjectMentors(
-  id: string,
-  body: {
-    activeIds: string[];
-    customPacks?: Array<{
-      id: string;
-      name: string;
-      markdown: string;
-      updatedAt?: string;
-    }>;
-  }
-): Promise<{
-  activeIds: string[];
-  active: MentorPackMeta[];
-  project: VnProject;
-}> {
-  return apiFetch(`/projects/${id}/mentors`, {
-    method: "PUT",
-    body: JSON.stringify(body),
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -230,7 +173,7 @@ export function putProjectLenses(
   });
 }
 
-export interface BrainstormPerspective {
+interface BrainstormPerspective {
   id: string;
   name: string;
   content: string;

@@ -107,24 +107,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-
 .head {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
-}
-
-.title {
-  font-family: var(--font-display);
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--accent);
-  margin-right: auto;
-}
-
-.blocks {
+}.blocks {
   display: grid;
   gap: 0.3rem;
 }
@@ -244,16 +232,7 @@
   gap: 0.4rem;
   font-size: 0.66rem;
   color: var(--ink-soft, #4a5568);
-}
-
-.key {
-  font-size: 0.64rem;
-  padding: 0.05rem 0.3rem;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
-}
-
-.kind,
+}.kind,
 .status {
   opacity: 0.85;
 }

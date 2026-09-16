@@ -33,7 +33,7 @@ export type WritingActivityDay = {
   edits: number;
 };
 
-export type ChapterStats = {
+type ChapterStats = {
   index: number;
   id: string;
   title: string;
@@ -135,28 +135,6 @@ export function duplicateProject(id: string): Promise<VnProject> {
 export function importProjectFile(file: File, title?: string): Promise<VnProject> {
   const form = new FormData();
   form.append("file", file);
-  if (title) form.append("title", title);
-  return apiFetch<VnProject>("/projects/import", {
-    method: "POST",
-    timeoutMs: 180000,
-    body: form,
-  });
-}
-
-export function importProjectJson(obj: unknown, title?: string): Promise<VnProject> {
-  const form = new FormData();
-  form.append("json_body", JSON.stringify(obj));
-  if (title) form.append("title", title);
-  return apiFetch<VnProject>("/projects/import", {
-    method: "POST",
-    timeoutMs: 180000,
-    body: form,
-  });
-}
-
-export function importProjectText(text: string, title?: string): Promise<VnProject> {
-  const form = new FormData();
-  form.append("text", text);
   if (title) form.append("title", title);
   return apiFetch<VnProject>("/projects/import", {
     method: "POST",
@@ -432,28 +410,6 @@ export function mapExtractAccept(
   });
 }
 
-export interface BranchNodeDto {
-  id: string;
-  kind: "label" | "menu" | "choice" | "jump" | "end";
-  title: string;
-  children: BranchNodeDto[];
-}
-
-export function branchTree(id: string): Promise<{ nodes: BranchNodeDto[] }> {
-  return apiFetch(`/projects/${id}/analysis/branch-tree`, { method: "POST" });
-}
-
-export function lint(
-  id: string,
-  draft: string
-): Promise<{ issues: Record<string, unknown>[] }> {
-  return apiFetch(`/projects/${id}/analysis/lint`, {
-    method: "POST",
-    timeoutMs: 180000,
-    body: JSON.stringify({ draft }),
-  });
-}
-
 export interface SnapshotSummary {
   id: string;
   label: string;
@@ -488,7 +444,7 @@ export function deleteSnapshot(
   });
 }
 
-export interface SnapshotChapterDiff {
+interface SnapshotChapterDiff {
   chapterId: string;
   title: string;
   status: "added" | "removed" | "changed" | "same";
@@ -498,7 +454,7 @@ export interface SnapshotChapterDiff {
   linesTo: number;
 }
 
-export interface SnapshotCharacterDiff {
+interface SnapshotCharacterDiff {
   id: string;
   name: string;
   status: "added" | "removed" | "same";
@@ -682,14 +638,6 @@ export interface AgentRunOut {
   trace?: import("../types/vn").AgentTraceEvent[];
 }
 
-export function runAgent(id: string, body: AgentRunInBody): Promise<AgentRunOut> {
-  return apiFetch(`/projects/${id}/agent`, {
-    method: "POST",
-    timeoutMs: 180000,
-    body: JSON.stringify(body),
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Agent streaming (SSE)
 // ---------------------------------------------------------------------------
@@ -855,30 +803,6 @@ export function deleteAgentConversation(
   });
 }
 
-/** @deprecated prefer conversation APIs */
-export type AgentSessionOut = AgentConversationOut;
-
-/** @deprecated prefer putAgentConversation */
-export function getAgentSession(id: string): Promise<AgentSessionOut> {
-  return apiFetch(`/projects/${id}/agent/session`);
-}
-
-/** @deprecated prefer putAgentConversation */
-export function putAgentSession(
-  id: string,
-  body: {
-    messages?: AgentChatMessage[];
-    chat_memory?: string;
-    undo_stack?: unknown[];
-    title?: string;
-  }
-): Promise<AgentSessionOut> {
-  return apiFetch(`/projects/${id}/agent/session`, {
-    method: "PUT",
-    body: JSON.stringify(body),
-  });
-}
-
 export function voiceCheck(
   id: string,
   body: { chapter_id?: string; draft?: string }
@@ -890,7 +814,7 @@ export function voiceCheck(
   });
 }
 
-export interface ConsistencyIssue {
+interface ConsistencyIssue {
   category: "character" | "timeline" | "location" | "bible" | "plot" | "style";
   severity: "high" | "medium" | "low";
   chapterIds: string[];

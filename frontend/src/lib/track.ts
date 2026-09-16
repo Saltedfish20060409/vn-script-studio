@@ -28,7 +28,6 @@ const FLUSH_DELAY_MS = 1500;
 let queue: Array<{ name: string; props?: Props }> = [];
 let sent = 0;
 let timer: number | null = null;
-const onceSeen = new Set<string>();
 const sessionSeen = new Set<string>();
 
 function flush(useKeepalive = false) {
@@ -98,16 +97,4 @@ if (typeof window !== "undefined") {
   };
   document.addEventListener("visibilitychange", onHide);
   window.addEventListener("pagehide", () => flush(true));
-}
-
-/** 仅测试用：清空内部状态。 */
-export function __resetTrackForTest(): void {
-  queue = [];
-  sent = 0;
-  if (timer !== null) {
-    window.clearTimeout(timer);
-    timer = null;
-  }
-  onceSeen.clear();
-  sessionSeen.clear();
 }

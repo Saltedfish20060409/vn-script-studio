@@ -185,7 +185,7 @@ export function deleteProjectComment(
   });
 }
 
-export interface PresenceEntry {
+interface PresenceEntry {
   userId: string;
   username: string;
   role: string;

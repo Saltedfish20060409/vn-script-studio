@@ -19,7 +19,7 @@ _MENU_CHOICE = re.compile(r'^"([^"]+)"\s*:\s*$')
 _MENU_CHOICE_CN = re.compile(r"^[「『]([^」』]+)[」』]\s*[:：]\s*$")
 _OPTIONS_LINE = re.compile(r"^选项\s*[:：]\s*(.+)$")
 _OPTION_BULLET = re.compile(r"^\s*[-*•]\s+(.+)$")
-# App-native manuscript markers (blocks_to_prose / scriptProse) — the
+# App-native manuscript markers (前端 scriptProse 的写法) — the
 # deterministic parser must round-trip them, otherwise the fallback output
 # for a manuscript written in the editor's own prose format is garbage.
 _BRACKET_SCENE = re.compile(r"^\[场景\s*[:：]?\s*(.+?)\]\s*$")
@@ -293,10 +293,9 @@ def plain_text_to_script_blocks(
             i += 1
             continue
 
-        # Bare bullet run with no 选项 prefix = prompt-less menu (the app's
-        # blocks_to_prose serializes a prompt-less menu as just `- choice`
-        # lines). Require ≥2 consecutive bullets so a stray dash narration
-        # line is not turned into a one-option menu.
+        # Bare bullet run with no 选项 prefix = prompt-less menu (导出正文时，
+        # 没有提示语的菜单就是几行 `- 选项`). Require ≥2 consecutive bullets so a
+        # stray dash narration line is not turned into a one-option menu.
         if _OPTION_BULLET.match(s):
             run: List[str] = []
             j = i

@@ -2,7 +2,7 @@ import { mascotArtSrc, type MascotMood } from "../lib/mascotArt";
 import styles from "./MascotFigure.module.css";
 
 export type { MascotMood };
-export type MascotSize = "xs" | "sm" | "md" | "lg" | "xl" | "fill";
+type MascotSize = "xs" | "sm" | "md" | "lg" | "xl" | "fill";
 
 type Props = {
   mood?: MascotMood;

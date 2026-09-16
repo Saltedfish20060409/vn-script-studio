@@ -36,17 +36,17 @@ const APPEARANCE_CACHE_KEY = "vnss-appearance-cache-v1";
 
 export type AppearanceCache = AppSettings;
 
-export function normalizePanelGlass(v: unknown): PanelGlass {
+function normalizePanelGlass(v: unknown): PanelGlass {
   if (v === "mist" || v === "ink" || v === "auto") return v;
   return "auto";
 }
 
-export function clampScrim(n: number): number {
+function clampScrim(n: number): number {
   if (!Number.isFinite(n)) return 0.42;
   return Math.min(0.85, Math.max(0, n));
 }
 
-export function resolvePanelGlass(s: AppSettings): "mist" | "ink" {
+function resolvePanelGlass(s: AppSettings): "mist" | "ink" {
   if (s.panelGlass === "mist") return "mist";
   if (s.panelGlass === "ink") return "ink";
   // auto: follow day/night so theme switch keeps meaning with wallpaper

@@ -89,8 +89,8 @@ export const AUTO_L10N_PER_CALL = 50;
  * 三档高度一致，所以按源文本字数线性估算就够准（误差 <5%）。
  * 中译英的输入比输出大（中文一个字约 1.7 token，英文译文约 1.25 token/字）。
  */
-export const L10N_INPUT_TOKENS_PER_CHAR = 1.7;
-export const L10N_OUTPUT_TOKENS_PER_CHAR = 1.25;
+const L10N_INPUT_TOKENS_PER_CHAR = 1.7;
+const L10N_OUTPUT_TOKENS_PER_CHAR = 1.25;
 
 export type TranslateEstimate = {
   /** 还要翻几句 */
@@ -139,7 +139,7 @@ export function humanTokens(n: number): string {
  */
 export const AUTO_L10N_MAX_CALLS = 40;
 
-export type AutoTranslateStop =
+type AutoTranslateStop =
   | "done"
   | "limit"
   | "cancelled"

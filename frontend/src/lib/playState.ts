@@ -2,7 +2,7 @@ import type { IfBranch, MenuChoice, ScriptBlock } from "../types/vn";
 import { evaluateCondition, parseCondition } from "./conditions";
 
 /** Blocks that produce a visible step (others are anchors/code). */
-export const VISIBLE = new Set([
+const VISIBLE = new Set([
   "scene",
   "narration",
   "dialogue",
@@ -57,8 +57,6 @@ export const MAX_PLAY_STEPS = 2000;
  * （这样才能执行开头的音乐/镜头等瞬时指令，也不会漏掉第一句台词）。
  */
 export const PLAY_START: PlayState = { index: -1, stack: [], resume: [] };
-
-export type StepCount = { steps: number };
 
 export function scopeOf(state: PlayState, blocks: ScriptBlock[]): ScriptBlock[] {
   return state.stack.length ? state.stack[state.stack.length - 1] : blocks;

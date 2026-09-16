@@ -259,11 +259,6 @@ def _names_soft_match(a: str, b: str) -> bool:
     )
 
 
-def _pretty_tag(image: str) -> str:
-    name = re.sub(r"^bg[_\s]+", "", image, flags=re.IGNORECASE)
-    return name.replace("_", " ").strip() or image
-
-
 def _infer_kind(text: str, fallback: str = "landmark") -> str:
     s = (text or "").lower()
     table = [

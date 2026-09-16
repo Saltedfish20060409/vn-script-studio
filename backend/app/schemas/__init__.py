@@ -11,10 +11,6 @@ class TokenOut(BaseModel):
     expires_in: Optional[int] = None
 
 
-class RefreshIn(BaseModel):
-    refresh_token: str
-
-
 class RegisterIn(BaseModel):
     username: str = Field(min_length=2, max_length=64)
     # 72 = bcrypt 输入上限；超过会被截断，造成"不同密码验证通过"的假象

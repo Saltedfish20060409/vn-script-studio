@@ -700,15 +700,3 @@ def clear_stale_flags(
         else:
             events.append(t)
     return next_p.model_copy(update={"characterLinks": links, "timeline": events})
-
-
-def candidate_to_dict(c: FactCandidate) -> Dict[str, Any]:
-    out = {
-        "kind": c.kind,
-        "payload": c.payload,
-        "evidence": c.evidence,
-        "dedupeKey": c.dedupe_key,
-    }
-    if c.confidence is not None:
-        out["confidence"] = c.confidence
-    return out

@@ -1,7 +1,7 @@
 import type { ScriptBlock, VnProject } from "../types/vn";
 
 /** One chapter's dialogue activity for a single character. */
-export interface ArcChapterPoint {
+interface ArcChapterPoint {
   chapterId: string;
   title: string;
   /** dialogue lines by this character in this chapter (incl. menu inline blocks) */

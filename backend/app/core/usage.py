@@ -105,42 +105,6 @@ async def _flush_queue() -> int:
         return 0
 
 
-async def record_usage(
-    *,
-    user_id: str,
-    kind: str = "llm",
-    model: str = "",
-    prompt_tokens: int = 0,
-    completion_tokens: int = 0,
-    total_tokens: int = 0,
-    project_id: Optional[str] = None,
-) -> None:
-    """Append one usage row. Never raises — accounting must not break requests."""
-    try:
-        from uuid import uuid4
-
-        from app.db import AsyncSessionLocal
-        from app.models.tables import LlmUsage
-
-        async with AsyncSessionLocal() as session:
-            session.add(
-                LlmUsage(
-                    id=str(uuid4()),
-                    user_id=user_id,
-                    project_id=project_id,
-                    kind=kind,
-                    model=model or "",
-                    prompt_tokens=max(0, int(prompt_tokens)),
-                    completion_tokens=max(0, int(completion_tokens)),
-                    total_tokens=max(0, int(total_tokens)),
-                    created_at=datetime.now(timezone.utc),
-                )
-            )
-            await session.commit()
-    except Exception:  # noqa: BLE001 - accounting is best-effort
-        logger.warning("usage record failed (ignored)", exc_info=True)
-
-
 def record_usage_later(
     *,
     user_id: str,

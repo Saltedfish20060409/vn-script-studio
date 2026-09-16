@@ -38,10 +38,6 @@ export interface VoiceCorpusStats {
   confirmedAxes?: string[];
 }
 
-export function getVoiceAxisTags(): Promise<{ tags: VoiceAxisTag[] }> {
-  return apiFetch("/voice/axis-tags");
-}
-
 export function getCharacterVoiceState(
   projectId: string,
   characterId: string

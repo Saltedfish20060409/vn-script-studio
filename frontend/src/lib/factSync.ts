@@ -2,11 +2,11 @@
 
 const WEAK_LINK_LABELS = new Set(["同场", "设定共现", "粘贴共现"]);
 
-export function shouldWeakSyncLabel(label: string): boolean {
+function shouldWeakSyncLabel(label: string): boolean {
   return !WEAK_LINK_LABELS.has((label || "").trim());
 }
 
-export function appendRelationshipClause(
+function appendRelationshipClause(
   rel: string | undefined,
   clause: string
 ): string {

@@ -1,7 +1,7 @@
 import { WriterPortrait } from "./WriterPortrait";
 import styles from "./AgentChat.module.css";
 
-export type PartyCard = { id: string | null; name: string };
+type PartyCard = { id: string | null; name: string };
 
 type Props = {
   multiSelect: boolean;

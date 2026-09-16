@@ -10,29 +10,10 @@ from app.core.pipeline.apply_draft import apply_draft_to_chapter
 from app.core.pipeline.ledger import digest_chapter_into_ledger, get_ledger, set_ledger
 from app.core.pipeline.orchestrator import (
     quality_gate_from_check,
-    stage_check,
     stage_check_async,
 )
 from app.core.pipeline.run_history import append_harness_run
 from app.domain.types import VnProject
-
-
-def run_quality_gate(
-    draft: str,
-    *,
-    require_zero_warn: bool = False,
-    beat_sheet: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """Sync gate (keyword beats only). Prefer run_quality_gate_async."""
-    check = stage_check(draft, beat_sheet=beat_sheet)
-    gate = quality_gate_from_check(check)
-    if require_zero_warn and gate["pass"] and int(check.get("warnCount") or 0) > 0:
-        gate = {
-            **gate,
-            "pass": False,
-            "message": f"严格门禁：仍有 {check.get('warnCount')} 条警告须处理",
-        }
-    return {"check": check, "gate": gate}
 
 
 async def run_quality_gate_async(
@@ -65,38 +46,6 @@ async def run_quality_gate_async(
             "message": f"严格门禁：仍有 {check.get('warnCount')} 条警告须处理",
         }
     return {"check": check, "gate": gate}
-
-
-def finalize_chapter(
-    project: VnProject,
-    chapter_id: str,
-    *,
-    draft_override: Optional[str] = None,
-    require_zero_warn: bool = False,
-    update_ledger: bool = True,
-    apply_draft: bool = True,
-) -> Dict[str, Any]:
-    """
-    Sync finalize (keyword gate + heuristic ledger). Prefer finalize_chapter_async.
-    """
-    ch = next((c for c in project.chapters if c.id == chapter_id), None)
-    if not ch:
-        raise ValueError("章节不存在")
-    text = (draft_override or "").strip()
-    if not text:
-        text = _blocks_to_plain(ch.blocks, project.characters) or ""
-    result = run_quality_gate(text, require_zero_warn=require_zero_warn)
-    return _finalize_body(
-        project,
-        chapter_id,
-        text=text,
-        draft_override=draft_override,
-        result=result,
-        apply_draft=apply_draft,
-        update_ledger=update_ledger,
-        enrich_meta=None,
-        persist_run=True,
-    )
 
 
 async def finalize_chapter_async(

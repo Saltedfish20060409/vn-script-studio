@@ -1,8 +1,8 @@
-export type CharacterId = string;
-export type LabelId = string;
-export type LocationId = string;
+type CharacterId = string;
+type LabelId = string;
+type LocationId = string;
 
-export interface VoiceCorpusLine {
+interface VoiceCorpusLine {
   speaker: string;
   text: string;
 }
@@ -118,7 +118,7 @@ export interface StoryBible {
   notes?: string;
 }
 
-export type LocationRelation =
+type LocationRelation =
   | "adjacent"
   | "contains"
   | "inside"
@@ -127,17 +127,6 @@ export type LocationRelation =
   | "leads_to"
   | "visible_from"
   | "other";
-
-export const LOCATION_RELATION_LABELS: Record<LocationRelation, string> = {
-  adjacent: "相邻",
-  contains: "包含",
-  inside: "位于其内",
-  above: "上方",
-  below: "下方",
-  leads_to: "通往",
-  visible_from: "可见于",
-  other: "其他",
-};
 
 export type MapStyleId = "default";
 
@@ -225,7 +214,7 @@ export interface GameVariable {
   note?: string;
 }
 
-export interface SpriteExpression {
+interface SpriteExpression {
   id: string;
   name: string;
   /** Ren'Py image tag suffix, e.g. sad */
@@ -242,7 +231,7 @@ export interface SpriteDef {
   expressions: SpriteExpression[];
 }
 
-export interface ProjectSnapshot {
+interface ProjectSnapshot {
   id: string;
   label: string;
   createdAt: string;
@@ -297,7 +286,7 @@ export interface LedgerForeshadow {
   updatedAt?: string;
 }
 
-export interface LedgerEvent {
+interface LedgerEvent {
   id?: string;
   chapterId?: string;
   summary?: string;
@@ -305,7 +294,7 @@ export interface LedgerEvent {
 }
 
 /** 写作账本：保存时由服务端自动维护（见 backend/app/core/pipeline/ledger.py） */
-export interface WritingLedger {
+interface WritingLedger {
   chapterFacts?: LedgerChapterFact[];
   characterStates?: LedgerCharacterState[];
   foreshadows?: LedgerForeshadow[];
@@ -313,7 +302,7 @@ export interface WritingLedger {
   updatedAt?: string;
 }
 
-export interface FactEvidence {
+interface FactEvidence {
   /** script | bible | card | paste | upload | agent */
   source: string;
   chapterId?: string;
@@ -347,7 +336,7 @@ export interface TimelineEvent {
   acceptedAt?: string;
 }
 
-export interface AnalysisMeta {
+interface AnalysisMeta {
   chapterFingerprints?: Record<string, string>;
   bibleFingerprint?: string;
   characterFingerprints?: Record<string, string>;
@@ -422,22 +411,6 @@ export interface VnProject {
   /** Local read-only share id */
   shareId?: string;
   updatedAt: string;
-}
-
-export type AiAction =
-  "continue" | "rewrite" | "choices" | "polish" | "outline" | "character_voice";
-
-export interface AiRequest {
-  action: AiAction;
-  project: VnProject;
-  selection?: string;
-  instruction?: string;
-  format?: "renpy" | "blocks-json";
-}
-
-export interface AiResponse {
-  content: string;
-  model: string;
 }
 
 /** Structured operations the studio Agent may return */
@@ -602,15 +575,7 @@ export interface AgentContextMeta {
   selfReview?: string;
 }
 
-export interface AgentResponse {
-  message: string;
-  actions: AgentAction[];
-  model: string;
-  /** What context slices were injected (transparency for long-form) */
-  contextMeta?: AgentContextMeta;
-}
-
-export interface VoiceIssue {
+interface VoiceIssue {
   character: string;
   severity: string;
   quote: string;

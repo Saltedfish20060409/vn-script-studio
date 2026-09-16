@@ -1,6 +1,6 @@
 import { apiFetch } from "./http";
 
-export type AdminSeverity = "ok" | "warn" | "danger";
+type AdminSeverity = "ok" | "warn" | "danger";
 
 export interface AdminUserOut {
   id: string;
@@ -41,7 +41,7 @@ export interface AdminFlagOut {
   message: string;
 }
 
-export interface AdminFunnelStep {
+interface AdminFunnelStep {
   key: string;
   label: string;
   users: number;
@@ -86,7 +86,7 @@ export interface EmailDiagOut {
   hint: string;
 }
 
-export interface AiUsageKind {
+interface AiUsageKind {
   kind: string;
   label: string;
   calls: number;

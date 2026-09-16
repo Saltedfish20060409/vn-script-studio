@@ -33,9 +33,7 @@ def __getattr__(name: str):
 
         return getattr(_orch, name)
     if name in {
-        "run_quality_gate",
         "run_quality_gate_async",
-        "finalize_chapter",
         "finalize_chapter_async",
     }:
         from app.core.pipeline import gate as _gate

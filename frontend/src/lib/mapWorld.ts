@@ -20,7 +20,7 @@ export function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-export function distToSegment(
+function distToSegment(
   px: number,
   py: number,
   ax: number,

@@ -40,55 +40,6 @@ def prose_fingerprint(text: str) -> str:
     return hashlib.sha1(s).hexdigest()[:12]
 
 
-def blocks_to_prose(
-    blocks: Sequence[ScriptBlock],
-    characters: Sequence[Character] | None = None,
-) -> str:
-    names = {}
-    for c in characters or []:
-        names[c.id] = c.displayName or c.defineName or c.id
-    lines: List[str] = []
-    _walk(list(blocks or []), names, lines)
-    return "\n\n".join(lines)
-
-
-def _walk(blocks: List[ScriptBlock], names: dict, lines: List[str]) -> None:
-    for b in blocks:
-        btype = b.get("type")
-        if btype == "scene":
-            lines.append(f"[场景：{b.get('image') or ''}]")
-        elif btype == "show":
-            lines.append(f"[出现：{b.get('image') or ''}]")
-        elif btype == "hide":
-            lines.append(f"[消失：{b.get('image') or ''}]")
-        elif btype == "narration":
-            t = str(b.get("text") or "").strip()
-            if t:
-                lines.append(t)
-        elif btype == "dialogue":
-            t = str(b.get("text") or "").strip()
-            if t:
-                who = names.get(str(b.get("characterId") or "")) or "——"
-                lines.append(f"{who}：{t}")
-        elif btype == "menu":
-            prompt = str(b.get("prompt") or "").strip()
-            if prompt:
-                lines.append(f"选项：{prompt}")
-            for choice in b.get("choices") or []:
-                if not isinstance(choice, dict):
-                    continue
-                ct = str(choice.get("text") or "").strip()
-                if ct:
-                    lines.append(f"- {ct}")
-                child = choice.get("blocks") or []
-                if child:
-                    _walk(list(child), names, lines)
-        elif btype == "raw":
-            code = str(b.get("code") or "").strip()
-            if code:
-                lines.append(code)
-
-
 def blocks_to_rpy_text(
     blocks: Sequence[ScriptBlock],
     characters: Sequence[Character],

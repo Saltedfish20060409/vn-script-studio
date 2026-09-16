@@ -182,11 +182,6 @@ def load_style_skill() -> StyleSkill:
     )
 
 
-def reload_style_skill() -> StyleSkill:
-    load_style_skill.cache_clear()
-    return load_style_skill()
-
-
 def lint_style_skill(draft: str) -> List[HarnessIssue]:
     """Deterministic checks against banned phrase list."""
     skill = load_style_skill()
