@@ -136,11 +136,21 @@ def merge_llm_credentials(
 ) -> dict[str, str]:
     """Merge client / user / server layers. Missing fields fall through.
 
-    base_url is layer-bound to the api_key:
-      - client base_url honored ONLY if client also sent its own api_key
-      - user base_url honored ONLY if user DB creds have their own api_key
-      - otherwise server base_url (server key → server URL)
-    All candidate base_urls pass the https/non-private SSRF guard.
+    整个凭据组（key + base_url + model）**绑定在同一层**上，先决定用谁的 key，
+    就只用那一层的地址和模型名：
+
+      - 浏览器带了 key → 用它自己的 url/model（缺了才回落）
+      - 账号里有 key   → 用账号的 url/model
+      - 都没有         → 服务端 key + **服务端** url/model
+
+    为什么 model 也必须绑定（线上真实踩到过）：用户清掉自己的 Key、但浏览器
+    localStorage 里还留着上次选预设时的模型名，于是站方的智谱 Key 配上
+    "deepseek-v4-flash" 去请求智谱 → 模型不存在 → 免费档看起来"坏了"，
+    用户会以为 Key 清了就回不去免费档。同时 source 也被标成 client，
+    共享额度因此不被计入（配额绕过）。base_url 早就有这层绑定，
+    model 当时漏了。
+
+    所有候选 base_url 都要过 https/非内网 的 SSRF 守卫。
     """
     o = override or {}
     u = user_creds or {}
@@ -153,20 +163,32 @@ def merge_llm_credentials(
     user_key = _pick(u.get("api_key"))
     user_url = _pick(u.get("base_url"))
 
-    # Pick api_key first (client > user > server)
-    api_key = _pick(client_key, user_key, server_key)
-    # Layer-bind base_url: only the layer that supplied the key may set the URL
-    if api_key == client_key and client_key:
-        base_url = _safe_or_blank(client_url)
-    elif api_key == user_key and user_key:
-        base_url = _safe_or_blank(user_url)
+    # 先定 key（client > user > server），后面一切都跟着这一层走
+    if client_key:
+        api_key, key_layer = client_key, "client"
+    elif user_key:
+        api_key, key_layer = user_key, "user"
     else:
+        api_key, key_layer = server_key, "server"
+
+    if key_layer == "client":
+        base_url = _safe_or_blank(client_url)
+        model = _pick(o.get("model"), u.get("model"), server.get("model"))
+        critic_model = _pick(
+            o.get("critic_model"), u.get("critic_model"), server.get("critic_model"), model
+        )
+    elif key_layer == "user":
+        base_url = _safe_or_blank(user_url)
+        model = _pick(u.get("model"), server.get("model"))
+        critic_model = _pick(u.get("critic_model"), server.get("critic_model"), model)
+    else:
+        # 用站方的 key：模型名只能由站方决定，否则就是把站方额度花在别人的模型上
         base_url = ""
+        model = _pick(server.get("model"))
+        critic_model = _pick(server.get("critic_model"), model)
     # Fall through to server URL (server key's trusted endpoint)
     if not base_url:
         base_url = server_url
-
-    model = _pick(o.get("model"), u.get("model"), server.get("model"))
 
     critic_key = _pick(o.get("critic_api_key"), u.get("critic_api_key"), api_key)
     critic_url = _pick(o.get("critic_base_url"))
@@ -186,16 +208,10 @@ def merge_llm_credentials(
     critic_base_url = _pick(
         critic_url or "", user_critic_url, server.get("critic_base_url"), base_url
     )
-    critic_model = _pick(
-        o.get("critic_model"), u.get("critic_model"), server.get("critic_model"), model
-    )
 
-    if client_key or client_url or o.get("model"):
-        source = "client"
-    elif user_key:
-        source = "user"
-    else:
-        source = "server"
+    # source 表示"这通调用花的是谁的账户"——决定要不要计入共享额度，
+    # 所以只看 key 来自哪一层，不能被"浏览器凑巧带了模型名"带偏。
+    source = key_layer
     return {
         "api_key": api_key,
         "base_url": base_url,

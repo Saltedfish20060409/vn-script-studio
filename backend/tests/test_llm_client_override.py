@@ -72,6 +72,9 @@ def test_client_url_without_client_key_is_rejected():
     Old behaviour routed server/user key to the client-supplied URL (credential
     exfiltration). Now the URL falls through to the user layer (their key's
     endpoint), never to a client URL the client has no key for.
+
+    同理，客户端带的**模型名**也必须被忽略：这一层的 key 是账号的，
+    模型名就该听账号的（否则就是把账号/站方的 key 配上别人的模型名）。
     """
     out = merge_llm_credentials(
         override={"base_url": "https://attacker.example", "model": "moonshot-v1-32k"},
@@ -79,9 +82,49 @@ def test_client_url_without_client_key_is_rejected():
         server=SERVER,
     )
     assert out["api_key"] == "sk-u"
-    # client URL rejected (no client key) → falls to user URL
+    # client URL rejected (no client key) → never the client's URL
+    # （u.example 解析不出来，SSRF 守卫会把它清空再回落服务端 URL —— 两种结果都算通过）
     assert out["base_url"] != "https://attacker.example"
-    assert out["model"] == "moonshot-v1-32k"
+    assert out["model"] == "u-model", "key 是账号的，模型名不能被浏览器带偏"
+    assert out["source"] == "user"
+
+
+def test_cleared_key_with_leftover_model_still_uses_free_tier():
+    """线上真实故障：清掉自带 Key 后，浏览器里还留着上次选的模型名。
+
+    旧行为：站方的智谱 Key 配上 "deepseek-v4-flash" 去请求智谱 → 模型不存在 →
+    免费档看起来"坏了"；而且 source 被标成 client，共享额度不计入（配额绕过）。
+    现在：用站方的 key 就用站方的模型名，source 也如实是 server。
+    """
+    out = merge_llm_credentials(
+        override={"model": "deepseek-v4-flash"}, user_creds=None, server=SERVER
+    )
+    assert out["api_key"] == "sk-s"
+    assert out["model"] == "s-model", "站方的 key 必须配站方的模型名"
+    assert out["base_url"] == "https://api.deepseek.com"
+    assert out["source"] == "server", "source 决定是否计入共享额度，不能被残留模型名带偏"
+
+    # 只残留 Base URL 也一样
+    out2 = merge_llm_credentials(
+        override={"base_url": "https://api.deepseek.com"}, user_creds=None, server=SERVER
+    )
+    assert out2["source"] == "server"
+    assert out2["model"] == "s-model"
+
+
+def test_client_key_still_controls_its_own_model():
+    """自带 Key 时，浏览器选的模型名照旧生效（这层 key 是用户自己的）。"""
+    out = merge_llm_credentials(
+        override={
+            "api_key": "sk-c",
+            "base_url": "https://api.deepseek.com",
+            "model": "c-model",
+        },
+        user_creds={"api_key": "sk-u", "model": "u-model"},
+        server=SERVER,
+    )
+    assert out["api_key"] == "sk-c"
+    assert out["model"] == "c-model"
     assert out["source"] == "client"
 
 

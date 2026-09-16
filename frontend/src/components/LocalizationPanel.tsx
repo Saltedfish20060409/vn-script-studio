@@ -567,9 +567,9 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
                   className={styles.btn}
                   onClick={() => void autoTranslate(overwrite)}
                   disabled={busy || (!hasUntranslated(entries, active) && !overwrite)}
-                  title={`连续翻到没有剩余为止（一次最多 ${AUTO_L10N_MAX_CALLS} 轮，中途可以停）`}
+                  title={`一次连跑到没有剩余为止（最多 ${AUTO_L10N_MAX_CALLS} 轮，中途可以停）`}
                 >
-                  AI 翻完剩下的
+                  一次翻完剩下的
                 </button>
               )}
               <button
@@ -581,6 +581,12 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
                 用术语表预填
               </button>
             </div>
+            <p className={styles.note}>
+              两种翻法，随你挑：左边「AI 代翻 {AUTO_L10N_PER_CALL} 句」<strong>每点一次只翻 {AUTO_L10N_PER_CALL} 句</strong>，
+              不满意可以一直点（看一眼再决定要不要继续）；
+              右边「一次翻完剩下的」一口气连跑，最多 {AUTO_L10N_MAX_CALLS} 轮（约 {AUTO_L10N_PER_CALL * AUTO_L10N_MAX_CALLS} 句），
+              中途随时可以「停止」——已经翻好的都会留着。
+            </p>
             <label className={styles.note}>
               <input
                 type="checkbox"
