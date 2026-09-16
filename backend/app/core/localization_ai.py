@@ -134,7 +134,16 @@ def parse_translation_response(text: str, allowed_keys: List[str]) -> Dict[str, 
         if not isinstance(row, dict):
             continue
         key = str(row.get("key") or "").strip()
-        target = str(row.get("text") or row.get("translation") or "").strip()
+        # 只收字符串：模型偶尔会吐数字/布尔/嵌套结构，str() 一兜就会把 "66"、
+        # "True"、"['a']" 这种垃圾当成译文写进剧本（还会跟着导出到 .rpy）。
+        raw_target = row.get("text")
+        if not (isinstance(raw_target, str) and raw_target.strip()):
+            alt = row.get("translation")
+            if isinstance(alt, str) and alt.strip():
+                raw_target = alt
+        if not isinstance(raw_target, str):
+            continue
+        target = raw_target.strip()
         if key in allowed and target:
             out[key] = target
     return out

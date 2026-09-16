@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   aiTranslateLocalization,
   downloadLocalizationZip,
@@ -9,10 +9,15 @@ import {
 } from "../api/projects";
 import { ApiError } from "../api/http";
 import {
+  AUTO_L10N_MAX_CALLS,
+  AUTO_L10N_PER_CALL,
+  autoTranslateMessage,
   groupByChapter,
   hasUntranslated,
   nextUntranslated,
   progressFor,
+  runAutoTranslate,
+  type AutoTranslateProgress,
   type ChapterLike,
 } from "../lib/localizationView";
 import styles from "./LocalizationPanel.module.css";
@@ -86,6 +91,11 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
   const [onlyChapter, setOnlyChapter] = useState("");
   const [showWhy, setShowWhy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  /** 「AI 翻完剩下的」进度；null = 没在跑 */
+  const [auto, setAuto] = useState<AutoTranslateProgress | null>(null);
+  /** 重新翻译：连已有译文（含人工稿）一起覆盖 */
+  const [overwrite, setOverwrite] = useState(false);
+  const autoCancel = useRef(false);
 
   /** 所有改动都走这里：统一标记"有未保存的改动"，避免翻了一堆却忘了保存。 */
   const mutate = useCallback((fn: (d: Draft) => Draft) => {
@@ -161,8 +171,8 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
     setMsg(`已添加 ${name.trim() || c}，下面开始逐句翻译`);
   }
 
-  async function save() {
-    if (!draft) return;
+  async function save(): Promise<boolean> {
+    if (!draft) return false;
     setBusy(true);
     setError("");
     try {
@@ -174,8 +184,10 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
       setDirty(false);
       setMsg(`已保存（共 ${out.stats.entries} 句）`);
       onSaved?.();
+      return true;
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "保存失败");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -207,8 +219,9 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
   async function aiTranslate(overwrite = false) {
     if (!active) return;
     if (dirty && !window.confirm("AI 会基于已保存的剧本翻译。当前有未保存的改动，先保存再翻译？\n\n点「取消」将丢弃本地改动继续翻译。")) {
-      await save();
-      return;
+      // 确认"先保存"：保存失败（比如没权限）就不要再往下翻，否则翻的是旧剧本。
+      const saved = await save();
+      if (!saved) return;
     }
     setBusy(true);
     setError("");
@@ -224,6 +237,57 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "AI 翻译失败");
     } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * 「AI 翻完剩下的」：一轮轮地翻，直到翻完 / 撞上限流 / 用户叫停。
+   *
+   * 为什么要连跑：后端一轮只翻 25 句（token 预算可控）。真按一下翻一句来，
+   * 一部 1.4 万行的长篇要点 560 次 —— 等于没有这个功能。
+   * 但也不能无限跑：接口限流 60 次/小时，所以一轮最多 AUTO_L10N_MAX_CALLS 次，
+   * 并把真实进度和剩余句数摊在界面上。
+   */
+  async function autoTranslate(overwrite = false) {
+    if (!active || !draft) return;
+    if (dirty) {
+      const ok = window.confirm(
+        "AI 会基于已保存的剧本翻译。当前有未保存的改动，先保存再翻译？\n\n点「取消」将丢弃本地改动继续翻译。"
+      );
+      if (ok) {
+        const saved = await save();
+        if (!saved) return;
+      }
+    }
+    const localeName = draft.locales.find((l) => l.code === active)?.name ?? active;
+    autoCancel.current = false;
+    setError("");
+    setBusy(true);
+    try {
+      const result = await runAutoTranslate({
+        remaining: entries.filter((e) => !(e.targets?.[active] || "").trim()).length,
+        shouldStop: () => autoCancel.current,
+        onProgress: setAuto,
+        translateOnce: async () => {
+          const out = await aiTranslateLocalization(projectId, {
+            locale: active,
+            localeName,
+            overwrite,
+            limit: AUTO_L10N_PER_CALL,
+          });
+          // 每轮都重新拉一次：服务端才知道这次到底挑了哪几句（还带 4000 字符预算），
+          // 本地猜会猜错，进度条就会骗人。
+          await load();
+          return { applied: out.applied, remaining: out.remaining };
+        },
+      });
+      setMsg(autoTranslateMessage(result));
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "AI 翻译失败");
+    } finally {
+      setAuto(null);
       setBusy(false);
     }
   }
@@ -449,12 +513,38 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
               <button
                 type="button"
                 className={styles.btnPrimary}
-                onClick={() => void aiTranslate(false)}
-                disabled={busy || !hasUntranslated(entries, active)}
+                onClick={() => void aiTranslate(overwrite)}
+                disabled={busy || (!hasUntranslated(entries, active) && !overwrite)}
                 title="用站点模型把这批还没翻的句子译成草稿，之后你逐句校对"
               >
-                {busy ? "AI 翻译中…" : "AI 代翻（未翻的句子）"}
+                {busy && !auto
+                  ? "AI 翻译中…"
+                  : overwrite
+                    ? `重新翻译 ${AUTO_L10N_PER_CALL} 句`
+                    : `AI 代翻 ${AUTO_L10N_PER_CALL} 句`}
               </button>
+              {auto ? (
+                <button
+                  type="button"
+                  className={styles.btn}
+                  onClick={() => {
+                    autoCancel.current = true;
+                    setMsg("已请求停止，正在收尾…");
+                  }}
+                >
+                  停止
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.btn}
+                  onClick={() => void autoTranslate(overwrite)}
+                  disabled={busy || (!hasUntranslated(entries, active) && !overwrite)}
+                  title={`连续翻到没有剩余为止（一次最多 ${AUTO_L10N_MAX_CALLS} 轮，中途可以停）`}
+                >
+                  AI 翻完剩下的
+                </button>
+              )}
               <button
                 type="button"
                 className={styles.btn}
@@ -464,6 +554,33 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
                 用术语表预填
               </button>
             </div>
+            <label className={styles.note}>
+              <input
+                type="checkbox"
+                checked={overwrite}
+                disabled={busy}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  // 覆盖是破坏性动作：人工写过的译文会被 AI 顶掉，必须问一次。
+                  if (
+                    on &&
+                    !window.confirm(
+                      "勾选后会连已翻好的句子一起重译，包括你自己人工写的译文——会被 AI 草稿覆盖。\n\n确定要重新翻译吗？"
+                    )
+                  ) {
+                    return;
+                  }
+                  setOverwrite(on);
+                }}
+              />{" "}
+              重新翻译（连已翻的也重来，会覆盖人工译文）
+            </label>
+            {auto ? (
+              <p className={styles.note} data-testid="l10n-auto-progress">
+                AI 正在翻译：已处理 {auto.startedWith - auto.remaining}/{auto.startedWith} 句
+                （第 {auto.calls} 轮，最多 {AUTO_L10N_MAX_CALLS} 轮）… 可以随时点「停止」。
+              </p>
+            ) : null}
             <p className={styles.note}>
               AI 只会把这批句子译成<strong>草稿</strong>，状态标成「AI 译·待校对」，
               已有人工译文不会被覆盖；<strong>导出前请逐句过一遍</strong>——

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from app.core.localization_ai import (
     MAX_ENTRIES_PER_CALL,
     apply_translations,
@@ -82,6 +84,28 @@ def test_parse_drops_unknown_keys_and_empty_values():
         allowed,
     )
     assert out == {"a": "A"}
+
+
+def test_parse_drops_non_string_targets():
+    """模型返回数字/布尔/嵌套结构时不能 str() 一兜就当译文写进剧本。"""
+    allowed = ["a", "b", "c", "d"]
+    raw = json.dumps(
+        {
+            "译文": [
+                {"key": "a", "text": 66},
+                {"key": "b", "text": True},
+                {"key": "c", "text": ["x"]},
+                {"key": "d", "text": None},
+            ]
+        },
+        ensure_ascii=False,
+    )
+    assert parse_translation_response(raw, allowed) == {}
+    # text 缺失/为空时仍可回落到 translation，但同样必须是字符串
+    assert parse_translation_response('{"译文":[{"key":"a","translation":"A"}]}', allowed) == {"a": "A"}
+    assert parse_translation_response('{"译文":[{"key":"a","text":"","translation":"A"}]}', allowed) == {"a": "A"}
+    assert parse_translation_response('{"译文":[{"key":"a","text":0,"translation":"A"}]}', allowed) == {"a": "A"}
+    assert parse_translation_response('{"译文":[{"key":"a","translation":7}]}', allowed) == {}
 
 
 def test_parse_returns_empty_on_garbage():

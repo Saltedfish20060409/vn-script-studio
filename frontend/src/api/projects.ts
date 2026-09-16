@@ -288,6 +288,9 @@ export async function aiTranslateLocalization(
       overwrite: Boolean(opts.overwrite),
       limit: opts.limit ?? 25,
     }),
+    // 这是一次真实的模型调用，默认 30s 太短：超时会让用户以为失败，
+    // 而服务端其实已经写完并提交了译文（进度显示与实际不符）。
+    timeoutMs: 180000,
   });
 }
 

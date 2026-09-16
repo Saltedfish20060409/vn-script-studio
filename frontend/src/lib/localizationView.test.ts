@@ -1,10 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { LocalizationEntry } from "../api/projects";
 import {
+  AUTO_L10N_MAX_CALLS,
+  autoTranslateMessage,
   groupByChapter,
   hasUntranslated,
   nextUntranslated,
   progressFor,
+  runAutoTranslate,
 } from "./localizationView";
 
 function entry(over: Partial<LocalizationEntry>): LocalizationEntry {
@@ -75,5 +78,117 @@ describe("nextUntranslated / hasUntranslated", () => {
     const all = ENTRIES.map((e) => ({ ...e, targets: { en: "x" } }));
     expect(nextUntranslated(all, "en")).toBeNull();
     expect(hasUntranslated(all, "en")).toBe(false);
+  });
+});
+
+describe("runAutoTranslate", () => {
+  it("一轮轮翻到没有剩余", async () => {
+    let remaining = 60;
+    const seen: number[] = [];
+    const r = await runAutoTranslate({
+      remaining,
+      translateOnce: async () => {
+        const applied = Math.min(25, remaining);
+        remaining -= applied;
+        return { applied, remaining };
+      },
+      onProgress: (p) => seen.push(p.remaining),
+    });
+    expect(r.stop).toBe("done");
+    expect(r.calls).toBe(3);
+    expect(r.applied).toBe(60);
+    expect(r.remaining).toBe(0);
+    expect(r.progressPct).toBe(100);
+    expect(seen[seen.length - 1]).toBe(0);
+  });
+
+  it("没有待翻句子时一次请求都不发", async () => {
+    const translateOnce = vi.fn();
+    const r = await runAutoTranslate({ remaining: 0, translateOnce });
+    expect(r.stop).toBe("done");
+    expect(r.calls).toBe(0);
+    expect(translateOnce).not.toHaveBeenCalled();
+  });
+
+  it("撞到 maxCalls 就停下，不会无限翻", async () => {
+    let remaining = 100000;
+    const r = await runAutoTranslate({
+      remaining,
+      maxCalls: 3,
+      translateOnce: async () => {
+        remaining -= 25;
+        return { applied: 25, remaining };
+      },
+    });
+    expect(r.stop).toBe("limit");
+    expect(r.calls).toBe(3);
+    expect(r.remaining).toBe(100000 - 75);
+  });
+
+  it("模型连着两轮没产出就停下（否则会一直转圈烧额度）", async () => {
+    const translateOnce = vi.fn(async () => ({ applied: 0, remaining: 40 }));
+    const r = await runAutoTranslate({ remaining: 40, translateOnce });
+    expect(r.stop).toBe("stalled");
+    expect(translateOnce).toHaveBeenCalledTimes(2);
+  });
+
+  it("中途失败时保留已经翻好的进度并带上原因", async () => {
+    let remaining = 100;
+    const r = await runAutoTranslate({
+      remaining,
+      translateOnce: async () => {
+        if (remaining <= 50) throw new Error("翻译请求过于频繁");
+        remaining -= 50;
+        return { applied: 50, remaining };
+      },
+    });
+    expect(r.stop).toBe("error");
+    expect(r.applied).toBe(50);
+    expect(r.remaining).toBe(50);
+    expect(r.error).toBeInstanceOf(Error);
+    expect(autoTranslateMessage(r)).toContain("翻译请求过于频繁");
+  });
+
+  it("用户可以随时叫停", async () => {
+    let stop = false;
+    let remaining = 100;
+    const r = await runAutoTranslate({
+      remaining,
+      shouldStop: () => stop,
+      translateOnce: async () => {
+        remaining -= 25;
+        stop = true;
+        return { applied: 25, remaining };
+      },
+    });
+    expect(r.stop).toBe("cancelled");
+    expect(r.calls).toBe(1);
+    expect(autoTranslateMessage(r)).toContain("还剩 75 句");
+  });
+
+  it("默认上限与后端限流（60 次/小时）留出余量", () => {
+    expect(AUTO_L10N_MAX_CALLS).toBeLessThan(60);
+    expect(AUTO_L10N_MAX_CALLS).toBeGreaterThan(0);
+  });
+
+  it("提示语把「全翻完」和「还需要继续」分清楚", () => {
+    const done = autoTranslateMessage({
+      calls: 2,
+      applied: 30,
+      remaining: 0,
+      startedWith: 30,
+      stop: "done",
+      progressPct: 100,
+    });
+    expect(done).toContain("已经全部有译文");
+    const limited = autoTranslateMessage({
+      calls: AUTO_L10N_MAX_CALLS,
+      applied: 1000,
+      remaining: 13016,
+      startedWith: 14016,
+      stop: "limit",
+      progressPct: 7,
+    });
+    expect(limited).toContain("还剩 13016 句");
   });
 });
