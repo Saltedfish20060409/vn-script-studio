@@ -49,6 +49,8 @@ export interface Character {
   voiceRejectNotes?: string[];
   /** Why a pick felt right */
   voicePreferNotes?: string[];
+  /** 其它叫法：绰号、旧名、英文 id —— AI 检索时一并命中 */
+  aliases?: string[];
 }
 
 export type ScriptBlock =
@@ -184,6 +186,28 @@ export interface Location {
   color?: string;
   scale?: number;
   rotation?: number;
+  /** 其它叫法：别称、俗称 —— AI 检索时一并命中 */
+  aliases?: string[];
+}
+
+/**
+ * 设定条目：一条可被 AI 检索的设定（门派 / 系统 / 规则 / 组织 / 历史事件…）。
+ *
+ * 为什么需要它：`bible` 那五个字段各有几百字预算，装不下大体量设定。
+ * 条目可以堆很多条，每条自带**触发词**；提问命中哪条就带哪条进上下文，
+ * 所以设定再大，单次进去的也只有相关的那几条。
+ */
+export interface LoreEntry {
+  id: string;
+  title: string;
+  body: string;
+  /** 触发词 / 别名：提问里出现就命中（比正文里恰好撞词可靠得多） */
+  keywords?: string[];
+  tags?: string[];
+  /** 钉住：不管问什么，每轮都带上（"绝不能写错"的那几条） */
+  pinned?: boolean;
+  /** 同分时排序权重，大的优先 */
+  priority?: number;
 }
 
 export interface CustomMapElementDef {
@@ -370,6 +394,8 @@ export interface VnProject {
   customMapElements?: CustomMapElementDef[];
   mapStrokes?: MapStroke[];
   characterLinks?: CharacterLink[];
+  /** 设定条目：可无上限地堆，AI 按触发词/正文检索，只有命中的进上下文 */
+  loreEntries?: LoreEntry[];
   timeline?: TimelineEvent[];
   variables?: GameVariable[];
   sprites?: SpriteDef[];

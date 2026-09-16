@@ -7,7 +7,7 @@ export interface WorkspaceSnapshot {
   chapterId: string;
   tab: StudioTab;
   writeSub: "script" | "analysis";
-  worldSub: "characters" | "bible" | "lore";
+  worldSub: "characters" | "bible" | "lore" | "entries";
   systemSub: "variables" | "sprites";
   projectSub:
     | "library"

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from app.domain.types import Character, Location, SceneChapter, ScriptBlock, VnProject
 
@@ -253,6 +253,94 @@ def _score_haystack(hay: str, tokens: List[str]) -> int:
     return score
 
 
+def _ask_text(userMessage: Optional[str], selection: Optional[str]) -> str:
+    """提问原文（小写）。名字类命中要按"整串出现在提问里"判断，不能只看分词。"""
+    return "\n".join([userMessage or "", selection or ""]).lower()
+
+
+def _names_of(obj: Any, *field_names: str) -> List[str]:
+    """取一个条目的所有叫法：主名字段 + aliases 列表。"""
+    out: List[str] = []
+    for f in field_names:
+        v = getattr(obj, f, None)
+        if isinstance(v, str) and v.strip():
+            out.append(v.strip())
+    aliases = getattr(obj, "aliases", None)
+    if isinstance(aliases, (list, tuple)):
+        for a in aliases:
+            if isinstance(a, str) and a.strip():
+                out.append(a.strip())
+    # 去重但保序
+    seen: set = set()
+    uniq: List[str] = []
+    for n in out:
+        low = n.lower()
+        if low not in seen:
+            seen.add(low)
+            uniq.append(n)
+    return uniq
+
+
+def _name_hit_bonus(names: Sequence[str], ask: str) -> int:
+    """名字/别名**整串**出现在提问里 = 强信号。
+
+    为什么单独算：只靠分词的话，"雪见" 这种两字名字只值 2 分，而正文里随便一个
+    常见词也可能值 2~4 分——命中名字反而被淹没。名字命中应该明显压过正文里的巧合。
+    """
+    if not ask:
+        return 0
+    bonus = 0
+    for n in names:
+        low = n.strip().lower()
+        if len(low) >= 2 and low in ask:
+            bonus += 10
+    return min(bonus, 20)
+
+
+def _entry_text(e: Any) -> str:
+    return str(getattr(e, "body", "") or "")
+
+
+def _entry_keywords(e: Any) -> List[str]:
+    raw = getattr(e, "keywords", None)
+    if not isinstance(raw, (list, tuple)):
+        return []
+    return [str(k).strip() for k in raw if str(k).strip()]
+
+
+def _entry_score(e: Any, ask: str, tokens: List[str]) -> int:
+    """设定条目的相关度：触发词 > 标题 > 正文（正文封顶，防止长文里凑巧撞词）。
+
+    标题命中按"标签级"计入（每个命中词 5 分），因为标题通常就是条目的名字
+    （"镜湖封印推演"里的"镜湖"），比正文里恰好出现同一个字可靠得多。
+    """
+    keys = _entry_keywords(e)
+    title = str(getattr(e, "title", "") or "")
+    title_low = title.lower()
+    score = 0
+    for k in keys:
+        low = k.lower()
+        if len(low) >= 2 and low in ask:
+            score += 12
+    if len(title) >= 2 and title_low in ask:
+        score += 8
+    score += _score_haystack(" ".join(keys), tokens)
+    title_hits = sum(1 for tok in tokens if len(tok) >= 2 and tok in title_low)
+    score += min(title_hits * 5, 15)
+    # 正文命中只算很弱的信号，并且封顶（长正文里撞到常见词太容易了）
+    score += min(_score_haystack(_entry_text(e), tokens), 6)
+    return score
+
+
+# 非钉住的条目至少要过这条线才进上下文。
+#
+# 取值依据（用 80 条目的评测语料量过）：正文命中两个词 ≈ 4 分，是"这条确实相关"的
+# 最低可信信号（例如问"白砚的妹妹去哪了"命中正文里的"白砚/妹妹"）；只撞上一个两字词
+# （2 分）多半是巧合，滤掉。而没进来的条目仍会以标题形式出现在末尾的可点名提示里，
+# 所以这里收紧的是**精度**，不是召回。
+_ENTRY_MIN_SCORE = 4
+
+
 def _clip(text: str, max_len: int) -> str:
     if len(text) <= max_len:
         return text
@@ -340,6 +428,7 @@ def build_agent_context(
         return cached
 
     ask_tokens = _tokenize("\n".join([userMessage or "", selection or ""]))
+    ask_lower = _ask_text(userMessage, selection)
     # Only score against the user ask / selection — never seed with every name
     # (that would make every character card match itself).
     effective_tokens = ask_tokens
@@ -399,15 +488,16 @@ def build_agent_context(
     # Score characters
     ranked_chars: List[Tuple[Character, int]] = []
     for c in project.characters:
-        hay = f"{c.displayName} {c.defineName} {_js(c.voice)} {_js(c.bio)} {_js(c.relationships)} {_js(getattr(c, 'voiceMind', None))}"
-        score = _score_haystack(hay, effective_tokens)
+        names = _names_of(c, "displayName", "defineName")
+        # 别名也要进 haystack：正文里提到"阿雪"这种别称时同样该命中
+        hay = (
+            f"{' '.join(names)} {_js(c.voice)} {_js(c.bio)} "
+            f"{_js(c.relationships)} {_js(getattr(c, 'voiceMind', None))}"
+        )
+        score = _score_haystack(hay, effective_tokens) + _name_hit_bonus(names, ask_lower)
         if focus_chapter:
             plain = plain_of(focus_chapter)
-            if (
-                c.displayName in plain
-                or c.defineName in plain
-                or c.defineName.lower() in plain.lower()
-            ):
+            if any(n in plain for n in names):
                 score += 8
         if resolved_task in ("voice", "consistency"):
             score += 2
@@ -426,8 +516,9 @@ def build_agent_context(
     locs = project.locations or []
     ranked_locs: List[Tuple[Location, int]] = []
     for l in locs:
-        hay = f"{l.name} {l.imageTag or ''} {l.description or ''} {' '.join(l.tags or [])}"
-        score = _score_haystack(hay, effective_tokens)
+        names = _names_of(l, "name", "imageTag")
+        hay = f"{' '.join(names)} {l.description or ''} {' '.join(l.tags or [])}"
+        score = _score_haystack(hay, effective_tokens) + _name_hit_bonus(names, ask_lower)
         if resolved_task in ("scene", "consistency"):
             score += 1
         ranked_locs.append((l, score))
@@ -439,15 +530,34 @@ def build_agent_context(
 
     link_lines: List[str] = []
     links = project.locationLinks or []
+    related_loc_lines: List[str] = []
     if links and picked_locs:
         by_id = {l.id: l.name for l in locs}
         id_set = {r[0].id for r in picked_locs}
+        loc_by_id = {l.id: l for l in locs}
         for link in links:
             if link.fromId in id_set or link.toId in id_set:
                 link_lines.append(
                     f"- {by_id.get(link.fromId, link.fromId)} --{link.relation}--> "
                     f"{by_id.get(link.toId, link.toId)}" + (f" ({link.note})" if link.note else "")
                 )
+        # 链接扩展：命中地点的直接邻居也带进来（只列一行要点，不占整张卡）
+        for link in links:
+            for near, far in ((link.fromId, link.toId), (link.toId, link.fromId)):
+                if near not in id_set or far in id_set:
+                    continue
+                other = loc_by_id.get(far)
+                if other is None:
+                    continue
+                brief = _clip((other.description or "").strip(), 60)
+                related_loc_lines.append(
+                    f"- {other.name}" + (f"：{brief}" if brief else "")
+                )
+        # 去重、限量
+        seen_rel: set = set()
+        related_loc_lines = [
+            ln for ln in related_loc_lines if not (ln in seen_rel or seen_rel.add(ln))
+        ][:6]
 
     import json as _json
 
@@ -463,6 +573,89 @@ def build_agent_context(
         + f" exprs=[{', '.join(e.tag for e in s.expressions)}]"
         for s in (project.sprites or [])
     ]
+
+    # ── 设定条目：按触发词/标题/正文检索，只有命中的进上下文 ──────────────
+    # 这是"设定很大也用得动"的关键：条目可以无上限地堆，而每次调用只带相关的几条。
+    # 钉住的条目（pinned）永远带上——作者认为"绝不能写错"的那几条。
+    entries = [e for e in (getattr(project, "loreEntries", None) or []) if e is not None]
+    entry_blocks: List[str] = []
+    entry_titles_all: List[str] = []
+    pinned_entries: List[Any] = []
+    scored_entries: List[Tuple[Any, int]] = []
+    for e in entries:
+        title = str(getattr(e, "title", "") or "").strip()
+        if title:
+            entry_titles_all.append(title)
+        if bool(getattr(e, "pinned", None)):
+            pinned_entries.append(e)
+            continue
+        scored_entries.append((e, _entry_score(e, ask_lower, effective_tokens)))
+    scored_entries.sort(
+        key=lambda pair: (pair[1], int(getattr(pair[0], "priority", 0) or 0)), reverse=True
+    )
+
+    entry_budget = 3200 if resolved_task in ("outline", "consistency", "scene") else 2400
+    used_entry = 0
+    picked_entry_titles: List[str] = []
+
+    def _entry_block(e: Any, tag: str) -> str:
+        title = str(getattr(e, "title", "") or "（无标题）").strip() or "（无标题）"
+        body = _entry_text(e).strip()
+        keys = _entry_keywords(e)
+        head = f"### {title}" + (f"　[{'/'.join(keys)}]" if keys else "")
+        return f"{head}\n{_clip(body, 700)}" if body else head + f"（{tag}）"
+
+    for e in pinned_entries[:6]:
+        block = _entry_block(e, "钉住")
+        if used_entry + len(block) > entry_budget and entry_blocks:
+            break
+        entry_blocks.append(block)
+        used_entry += len(block)
+        picked_entry_titles.append(str(getattr(e, "title", "") or ""))
+
+    for e, score in scored_entries:
+        if score < _ENTRY_MIN_SCORE:
+            break
+        block = _entry_block(e, f"score={score}")
+        if used_entry + len(block) > entry_budget:
+            break
+        entry_blocks.append(block)
+        used_entry += len(block)
+        picked_entry_titles.append(str(getattr(e, "title", "") or ""))
+
+    # 没进上下文的条目只列标题：让模型（和用户）知道"还有哪些设定可点名"
+    rest_titles = [t for t in entry_titles_all if t and t not in picked_entry_titles]
+    entry_index_note = ""
+    if rest_titles:
+        entry_index_note = (
+            f"\n（另有 {len(rest_titles)} 条设定未进上下文，需要时可让用户点名："
+            f"{_clip('、'.join(rest_titles), 300)}）"
+        )
+
+    # ── 角色关系：命中角色的直接关系带出来，避免写错立场 ────────────────
+    relation_lines: List[str] = []
+    char_links = getattr(project, "characterLinks", None) or []
+    if char_links and picked_chars:
+        picked_ids = {r[0].id for r in picked_chars}
+        char_by_id = {c.id: c for c in project.characters}
+        for link in char_links:
+            if link.fromId in picked_ids or link.toId in picked_ids:
+                a = char_by_id.get(link.fromId)
+                b = char_by_id.get(link.toId)
+                an = a.displayName if a else str(link.fromId)
+                bn = b.displayName if b else str(link.toId)
+                line = f"- {an} --{link.label}--> {bn}"
+                # 对面没进上下文时，附一行要点（立场判断往往就靠这句）
+                far = b if link.fromId in picked_ids else a
+                if far is not None and far.id not in picked_ids:
+                    brief = _clip((far.bio or far.voice or "").strip(), 60)
+                    if brief:
+                        line += f"（{far.displayName}：{brief}）"
+                relation_lines.append(line)
+        seen_rel2: set = set()
+        relation_lines = [
+            ln for ln in relation_lines if not (ln in seen_rel2 or seen_rel2.add(ln))
+        ][:8]
 
     # Other chapters: prefer extractive digests; raw excerpt only if high score + short
     other_chapter_blocks: List[str] = list(digest_fmt.relatedBlocks)
@@ -508,6 +701,12 @@ def build_agent_context(
         included.append(f"角色×{len(picked_chars)}")
     if picked_locs:
         included.append(f"地点×{len(picked_locs)}")
+    if entry_blocks:
+        included.append(f"设定条目×{len(entry_blocks)}")
+    if relation_lines:
+        included.append(f"角色关系×{len(relation_lines)}")
+    if related_loc_lines:
+        included.append(f"相邻地点×{len(related_loc_lines)}")
     if var_lines:
         included.append(f"变量×{len(var_lines)}")
     if selection:
@@ -546,6 +745,13 @@ def build_agent_context(
         "\n".join(meta_lines),
         f"\n## Story Bible（内部参考，禁止整段搬进正文）\n{bible_block}" if bible_block else "",
         (
+            "\n## 设定条目（按触发词/正文检索命中；内部参考，禁止整段搬进正文）\n"
+            + "\n\n".join(entry_blocks)
+            + entry_index_note
+            if entry_blocks
+            else ""
+        ),
+        (
             f"\n{_clip(longChapterMemory.strip(), 3200)}"
             if longChapterMemory and longChapterMemory.strip()
             else ""
@@ -573,9 +779,16 @@ def build_agent_context(
             else ""
         ),
         (
+            "\n## 角色关系（命中角色的直接关系；用来避免写错立场）\n"
+            + "\n".join(relation_lines)
+            if relation_lines
+            else ""
+        ),
+        (
             "\n## Locations（内部参考：氛围与走位，勿念地名百科）\n"
             + "\n".join(_loc_card(r[0]) for r in picked_locs)
             + ("\n通路:\n" + "\n".join(link_lines) if link_lines else "")
+            + ("\n相邻地点:\n" + "\n".join(related_loc_lines) if related_loc_lines else "")
             if picked_locs
             else ""
         ),

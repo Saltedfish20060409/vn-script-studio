@@ -67,6 +67,8 @@ class Character(BaseModel):
     voiceRejectNotes: Optional[List[str]] = None
     # Why a pick felt right (preference chips / free text)
     voicePreferNotes: Optional[List[str]] = None
+    # 其它叫法：绰号、旧名、英文 id、称呼（检索时一并命中，避免"换个说法就搜不到"）
+    aliases: Optional[List[str]] = None
 
 
 # --- ScriptBlock ------------------------------------------------------------
@@ -367,6 +369,31 @@ class Location(BaseModel):
     color: Optional[str] = None
     scale: Optional[float] = None
     rotation: Optional[float] = None
+    # 其它叫法：别称、俗称、英文 id（检索时一并命中）
+    aliases: Optional[List[str]] = None
+
+
+class LoreEntry(BaseModel):
+    """设定条目：一条可被检索的设定（门派 / 系统 / 规则 / 组织 / 历史事件…）。
+
+    存在的理由：`bible` 那五个字段每个都有几百字的预算，装不下大体量设定；
+    而"上百万字设定用不动"的根因不在模型窗口，在于没有"按需取一条"的载体。
+    条目可以无上限地堆，每条自带**触发词**（keywords），检索命中的进上下文，
+    没命中的不进——所以设定再大，单次进去的仍然只有相关的那几条。
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    title: str = ""
+    body: str = ""
+    # 触发词 / 别名：提问里出现这些词就命中（比正文里恰好出现某个字可靠得多）
+    keywords: Optional[List[str]] = None
+    tags: Optional[List[str]] = None
+    # 钉住：不管提问是什么，每轮都带上（作者认为"永远不能写错"的那几条）
+    pinned: Optional[bool] = None
+    # 同分时的排序权重（越大越优先），默认 0
+    priority: Optional[int] = None
 
 
 class CustomMapElementDef(BaseModel):
@@ -520,6 +547,8 @@ class VnProject(BaseModel):
     customMapElements: Optional[List[CustomMapElementDef]] = None
     mapStrokes: Optional[List[MapStroke]] = None
     characterLinks: Optional[List[CharacterLink]] = None
+    # 设定条目（可无上限地堆；按触发词/正文检索，只有命中的进上下文）
+    loreEntries: Optional[List[LoreEntry]] = None
     timeline: Optional[List[TimelineEvent]] = None
     variables: Optional[List[GameVariable]] = None
     sprites: Optional[List[SpriteDef]] = None

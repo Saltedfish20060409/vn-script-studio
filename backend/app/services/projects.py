@@ -73,6 +73,7 @@ MERGE_SECTIONS = [
     "customMapElements",
     "mapStrokes",
     "characterLinks",
+    "loreEntries",
     "timeline",
     "variables",
     "sprites",

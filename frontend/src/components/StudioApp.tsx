@@ -189,7 +189,7 @@ export function StudioApp() {
   const [writeSub, setWriteSub] = useState<"script" | "analysis">(
     cachedWs.writeSub || wsDefaults.writeSub
   );
-  const [worldSub, setWorldSub] = useState<"characters" | "bible" | "lore">(
+  const [worldSub, setWorldSub] = useState<"characters" | "bible" | "lore" | "entries">(
     cachedWs.worldSub || wsDefaults.worldSub
   );
   const [systemSub, setSystemSub] = useState<"variables" | "sprites">(
@@ -2181,12 +2181,17 @@ export function StudioApp() {
                 logline={project.logline ?? ""}
                 genre={project.genre ?? ""}
                 bible={bible}
+                loreEntries={project.loreEntries ?? []}
                 onSelectCharacters={() => setWorldSub("characters")}
                 onSelectBible={() => setWorldSub("bible")}
                 onSelectLore={() => setWorldSub("lore")}
+                onSelectEntries={() => setWorldSub("entries")}
                 onAddCharacter={addCharacter}
                 onDeleteCharacter={(id) => void deleteCharacter(id)}
                 onUpdateCharacter={updateCharacter}
+                onLoreEntriesChange={(next) =>
+                  updateActive((p) => ({ ...p, loreEntries: next }))
+                }
                 onLoglineChange={(value) =>
                   updateActive((p) => ({ ...p, logline: value }))
                 }

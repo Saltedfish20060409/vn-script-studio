@@ -1,9 +1,10 @@
 import { ColorPicker } from "./ColorPicker";
 import { LorePanel } from "./LorePanel";
-import type { Character, StoryBible } from "../types/vn";
+import { LoreEntriesPanel } from "./LoreEntriesPanel";
+import type { Character, LoreEntry, StoryBible } from "../types/vn";
 import styles from "./StudioApp.module.css";
 
-type WorldSub = "characters" | "bible" | "lore";
+type WorldSub = "characters" | "bible" | "lore" | "entries";
 
 type Props = {
   worldSub: WorldSub;
@@ -12,19 +13,23 @@ type Props = {
   logline: string;
   genre: string;
   bible: StoryBible;
+  /** 设定条目：可堆很多条，AI 按触发词检索 */
+  loreEntries: LoreEntry[];
   onSelectCharacters: () => void;
   onSelectBible: () => void;
   onSelectLore: () => void;
+  onSelectEntries: () => void;
   onAddCharacter: () => void;
   onDeleteCharacter: (id: string) => void;
   onUpdateCharacter: (id: string, patch: Partial<Character>) => void;
   onLoglineChange: (value: string) => void;
   onGenreChange: (value: string) => void;
   onBibleChange: (patch: Partial<StoryBible>) => void;
+  onLoreEntriesChange: (next: LoreEntry[]) => void;
 };
 
 /**
- * 设定 tab: 角色卡 / 世界观 · 大纲 / 设定卡 secondary nav plus panels.
+ * 设定 tab: 角色卡 / 世界观 · 大纲 / 设定卡 / 设定条目 secondary nav plus panels.
  * Pure presentational — update/delete logic stays in StudioApp.
  */
 export function WorldPanel({
@@ -34,16 +39,20 @@ export function WorldPanel({
   logline,
   genre,
   bible,
+  loreEntries,
   onSelectCharacters,
   onSelectBible,
   onSelectLore,
+  onSelectEntries,
   onAddCharacter,
   onDeleteCharacter,
   onUpdateCharacter,
   onLoglineChange,
   onGenreChange,
   onBibleChange,
+  onLoreEntriesChange,
 }: Props) {
+  const entriesBadge = loreEntries.length ? String(loreEntries.length) : "";
   return (
     <>
       <div className={styles.subNav} style={{ padding: "0.75rem 1.1rem 0" }}>
@@ -67,6 +76,13 @@ export function WorldPanel({
           onClick={onSelectLore}
         >
           设定卡
+        </button>
+        <button
+          type="button"
+          className={worldSub === "entries" ? styles.subActive : styles.subTab}
+          onClick={onSelectEntries}
+        >
+          设定条目{entriesBadge ? `（${entriesBadge}）` : ""}
         </button>
       </div>
       {worldSub === "characters" && (
@@ -153,6 +169,26 @@ export function WorldPanel({
                     }
                   />
                 </label>
+                <label>
+                  <span>
+                    别的叫法
+                    <small style={{ fontWeight: 400, opacity: 0.75 }}>
+                      （绰号、旧名、称呼；逗号分隔。AI 检索会一并命中——设定里换了叫法也能找到）
+                    </small>
+                  </span>
+                  <input
+                    value={(c.aliases ?? []).join("、")}
+                    onChange={(e) =>
+                      onUpdateCharacter(c.id, {
+                        aliases: e.target.value
+                          .split(/[、,，;；\s]+/)
+                          .map((s) => s.trim())
+                          .filter(Boolean),
+                      })
+                    }
+                    placeholder="如 阿雪、雪师姐"
+                  />
+                </label>
               </article>
             ))}
           </div>
@@ -161,7 +197,7 @@ export function WorldPanel({
       {worldSub === "bible" && (
         <section className={styles.panel}>
           <div className={styles.toolbar}>
-            <span>世界观、大纲等设定会单独保存，AI 写作 / 审稿时按需参考，不会直接混入正文。单次可参考的内容有长度上限，超出会被截断——建议只写关键设定，不必堆长文。</span>
+            <span>世界观、大纲等设定会单独保存，AI 写作 / 审稿时按需参考，不会直接混入正文。这几格有长度上限（超出会被截断），请放最关键的几段；**设定体量大就用「设定条目」**——那里可以堆很多条，AI 按触发词检索，问什么带什么。</span>
           </div>
           <div className={styles.bibleGrid}>
             <label>
@@ -224,6 +260,11 @@ export function WorldPanel({
       {worldSub === "lore" && (
         <section className={styles.panel} style={{ padding: 0 }}>
           <LorePanel projectId={projectId} />
+        </section>
+      )}
+      {worldSub === "entries" && (
+        <section className={styles.panel} style={{ padding: 0 }}>
+          <LoreEntriesPanel entries={loreEntries} onChange={onLoreEntriesChange} />
         </section>
       )}
     </>

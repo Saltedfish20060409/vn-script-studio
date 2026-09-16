@@ -14,6 +14,7 @@ const SECTION_KEYS = [
   "customMapElements",
   "mapStrokes",
   "characterLinks",
+  "loreEntries",
   "timeline",
   "variables",
   "sprites",

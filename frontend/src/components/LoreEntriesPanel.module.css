@@ -1,0 +1,203 @@
+/* 设定条目编辑器：条目卡片列表 + 批量导入 */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem 1.1rem 1.2rem;
+  min-height: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.count {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.filter {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+}
+
+.primary,
+.ghost,
+.danger {
+  padding: 0.42rem 0.8rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter 150ms var(--ease-out), background 150ms var(--ease-out);
+}
+
+.primary {
+  border: none;
+  background: var(--grad-accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.primary:hover {
+  filter: brightness(1.08);
+}
+
+.ghost {
+  border: 1px solid var(--rail-border);
+  background: transparent;
+  color: var(--ink);
+}
+
+.ghost:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.danger {
+  border: 1px solid color-mix(in srgb, var(--accent-hot) 45%, transparent);
+  background: transparent;
+  color: var(--accent-hot);
+}
+
+.danger:hover {
+  background: color-mix(in srgb, var(--accent-hot) 10%, transparent);
+}
+
+.lead {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+
+.notice {
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.importBox {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem;
+  border: 1px dashed var(--rail-border);
+  border-radius: var(--radius-md);
+}
+
+.importBox textarea {
+  width: 100%;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82rem;
+}
+
+.importActions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.hint {
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  opacity: 0.85;
+}
+
+.empty {
+  margin: 0;
+  padding: 1.2rem 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 0.7rem;
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 0.2rem;
+  scrollbar-width: thin;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--rail-border);
+  border-radius: var(--radius-md);
+  background: var(--panel-bg);
+}
+
+.cardPinned {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pin {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.pinOn {
+  color: var(--accent);
+}
+
+.title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.field small {
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  font-size: 0.84rem;
+}
+
+@media (max-width: 640px) {
+  .list {
+    grid-template-columns: 1fr;
+  }
+
+  .filter {
+    flex: 1 1 100%;
+  }
+}
