@@ -25,11 +25,13 @@ async function dismissTour(page: Page) {
 }
 
 /** 公告横幅 + 新手引导 + Agent 面板：页面加载前注入标记，
- *  让弹层/悬浮面板不干扰（Agent 预设为 docked 收起在右缘） */
+ *  让弹层/悬浮面板不干扰（Agent 预设为 docked 收起在右缘）
+ *  公告的已读标记是 `vnss-notice-read-v<版本>`，版本号每次发公告都会 +1，
+ *  所以这里把所有版本一次性标成已读（以前只标了 v3，公告升到 v6 后弹窗又开始挡路）。 */
 function seedLocalStorage(page: Page) {
   page.addInitScript(() => {
     try {
-      localStorage.setItem("vnss-notice-read-v3", "1");
+      for (let v = 1; v <= 30; v += 1) localStorage.setItem(`vnss-notice-read-v${v}`, "1");
       localStorage.setItem("vnss-tour-v1", "1");
       localStorage.setItem(
         "vnss-agent-float-v6",
@@ -62,10 +64,18 @@ async function register(page: Page, username: string) {
   await page.getByRole("button", { name: "开始创作" }).click();
 }
 
-/** New users land on the empty library — create a blank project to reach the editor. */
+/** 新账号现在会自带一个示例剧本（不再是空剧本库），所以：
+ *  先看空库里有没有「空白剧本」入口，没有就走 项目 → 剧本库 再新建。 */
 async function createBlankProject(page: Page) {
   await dismissTour(page);
-  await page.getByRole("button", { name: "空白剧本" }).click();
+  const blank = page.getByRole("button", { name: "空白剧本" });
+  if (!(await blank.isVisible().catch(() => false))) {
+    const rail = page.locator('nav[aria-label="剧本篇章"]');
+    await rail.getByRole("button", { name: /项目/ }).click();
+    await page.getByRole("button", { name: "剧本库", exact: true }).first().click();
+    await blank.waitFor({ state: "visible", timeout: 15_000 });
+  }
+  await blank.click();
   await page.getByRole("textbox", { name: "新剧本标题" }).fill("E2E 测试剧本");
   await page.getByRole("button", { name: "创建" }).click();
   await dismissTour(page);

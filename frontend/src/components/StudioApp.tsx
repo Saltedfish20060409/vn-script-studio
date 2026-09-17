@@ -2549,7 +2549,11 @@ export function StudioApp() {
           </StudioErrorBoundary>
         ) : null}
 
-        {!focusMode ? <SettingsGear onClick={() => setSettingsOpen(true)} /> : null}
+        {/* 悬浮设置齿轮：桌面视角里不画 —— 开始菜单里就有「系统设置」，
+            而且它固定浮在左下角会压在任务栏上方挡着工作台（用户反馈过"底下的设置"）。 */}
+        {!focusMode && !showDesktop ? (
+          <SettingsGear onClick={() => setSettingsOpen(true)} />
+        ) : null}
         {settings && (
           <SettingsModal
             open={settingsOpen}

@@ -86,9 +86,13 @@
   display: none;
 }
 
-/* 桌面视图里工作台就是这个剧本的"窗口内容"：正好占住标题栏与任务栏之间的工作区。
-   必须是**定高**（fixed + 上下内缩），否则 min-height:100vh 会让整页高度多出 76px：
-   滚轮滚的是整个文档，就把工作台推到标题栏下面去了。改成让工作台自己滚。 */
+/* 桌面视图里工作台就是这个剧本的"窗口内容"：正好占住标题栏与任务栏之间的工作区，
+   并且**由它自己滚**（不再让整页滚，否则工作台会被推到标题栏/任务栏下面去）。
+
+   注意下面那条 flex-shrink: 0 —— 这里是定高的，如果还允许内部 flex 收缩，
+   .layout/.main 会被压扁，而里面 overflow:auto 的行（篇章标签栏、章节条）的自动最小尺寸
+   是 0，会直接塌成 1px；它们的内容接着溢出，被后面的兄弟节点（"三步上手"引导条）盖住，
+   表现就是"写作页的剧本/分析切不了、章节也点不动"（2026-09-17 实测复现并定位）。 */
 .shell.shellUnderDesktop {
   position: fixed;
   top: 30px;
@@ -99,6 +103,16 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.shell.shellUnderDesktop .layout,
+.shell.shellUnderDesktop .main {
+  flex-shrink: 0;
+}
+
+/* 桌面里不渲染底部音乐条（音乐是"应用窗口"），工作台不用给那条留位置 */
+.shell.shellUnderDesktop .layout {
+  padding-bottom: 0;
 }
 
 /* 窗口里的空态说明（比如还没打开剧本时的 AI 责编） */

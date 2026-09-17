@@ -16,6 +16,10 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./e2e",
+  // 组件台那几条（*.harness.spec.ts）跑的是 vite dev 上的 /e2e/harness.html，
+  // 由 playwright.harness.config.ts 负责（npm run test:harness）；这里必须排除，
+  // 否则 preview 服务器上没有那个页面、必然全挂。
+  testIgnore: "**/*.harness.spec.ts",
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 2 : 0,
