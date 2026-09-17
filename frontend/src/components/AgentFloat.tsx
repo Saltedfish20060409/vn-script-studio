@@ -1,4 +1,16 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import {
+  MIN_H,
+  MIN_W,
+  PANEL_H,
+  PANEL_W,
+  alongForEdge,
+  clamp,
+  clampDrag,
+  clampFree,
+  detectEdge,
+  type Edge,
+} from "../lib/agentFloat";
 import type { VnProject } from "../types/vn";
 import styles from "./AgentFloat.module.css";
 
@@ -10,7 +22,6 @@ const AgentChat = lazy(() =>
 );
 
 type SizeMode = "normal" | "large";
-type Edge = "left" | "right" | "top" | "bottom";
 
 type Props = {
   project: VnProject;
@@ -26,57 +37,11 @@ type Props = {
 
 /** v6：可拉伸面板 + 对话侧栏 */
 const POS_KEY = "vnss-agent-float-v6";
-const EDGE_SNAP = 56;
-const PANEL_W = 560;
-const PANEL_H = 560;
-const MIN_W = 420;
-const MIN_H = 360;
 
 type PosState =
   | { mode: "corner" }
   | { mode: "free"; x: number; y: number }
   | { mode: "docked"; edge: Edge; along: number };
-
-function clamp(n: number, min: number, max: number) {
-  return Math.min(Math.max(min, n), max);
-}
-
-function clampFree(x: number, y: number, w: number, _h: number) {
-  return {
-    x: clamp(x, 8, Math.max(8, window.innerWidth - Math.min(w, 120))),
-    y: clamp(y, 8, Math.max(8, window.innerHeight - 56)),
-  };
-}
-
-/** During drag allow hugging the edge so snap can trigger */
-function clampDrag(x: number, y: number, w: number, h: number) {
-  return {
-    x: clamp(x, -w + 40, window.innerWidth - 40),
-    y: clamp(y, -h + 40, window.innerHeight - 40),
-  };
-}
-
-function detectEdge(x: number, y: number, w: number, h: number): Edge | null {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const distR = vw - (x + w);
-  const distL = x;
-  const distT = y;
-  const distB = vh - (y + h);
-  const nearest = Math.min(distR, distL, distT, distB);
-  if (nearest > EDGE_SNAP) return null;
-  if (nearest === distR) return "right";
-  if (nearest === distL) return "left";
-  if (nearest === distT) return "top";
-  return "bottom";
-}
-
-function alongForEdge(edge: Edge, x: number, y: number, _w: number, _h: number) {
-  if (edge === "left" || edge === "right") {
-    return clamp(y, 8, Math.max(8, window.innerHeight - 140));
-  }
-  return clamp(x, 8, Math.max(8, window.innerWidth - 140));
-}
 
 export function AgentFloat(props: Props) {
   const { openRequest = 0 } = props;
@@ -396,6 +361,7 @@ export function AgentFloat(props: Props) {
   const large = size === "large";
   const corner = pos.mode === "corner";
   const docked = pos.mode === "docked";
+  // 拖动中已经越界（松手就会收起成标签）时给个高亮，作为"松手就收"的提示
   const nearEdgeHint =
     pos.mode === "free" &&
     detectEdge(

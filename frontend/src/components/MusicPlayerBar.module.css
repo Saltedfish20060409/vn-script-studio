@@ -27,19 +27,20 @@
 .mini {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.45rem 0.9rem;
+  gap: 0.4rem;
+  /* 音乐条贴底常驻，越薄越不挡写作：按钮 30px + 这点上下留白 ≈ 43px 总高（原来是 54px） */
+  padding: 0.22rem 0.8rem;
 }
 
 .keyBtn {
   flex-shrink: 0;
-  min-width: 38px;
-  height: 38px;
+  min-width: 32px;
+  height: 30px;
   border: 2px solid var(--line);
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--ink);
-  font-size: 1rem;
+  font-size: 0.95rem;
   cursor: pointer;
   transition:
     transform 140ms var(--ease-out),

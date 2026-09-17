@@ -5,6 +5,7 @@
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DesktopView, type DesktopApp } from "../src/components/DesktopView";
+import { MusicPlayerBar } from "../src/components/MusicPlayerBar";
 import "../src/styles/globals.css";
 
 /**
@@ -71,7 +72,7 @@ const APPS: DesktopApp[] = [
  * 假工作台：模仿真实 shell 的几何（正好占住标题栏与任务栏之间的工作区、自己滚）。
  * 关键测试点是那个按钮 —— 桌面层如果没做"事件穿透"，它就是点不动的。
  */
-function FakeWorkbench({ title }: { title: string }) {
+function FakeWorkbench({ title, tab }: { title: string; tab: string }) {
   const [hits, setHits] = useState(0);
   return (
     <div
@@ -88,6 +89,7 @@ function FakeWorkbench({ title }: { title: string }) {
       }}
     >
       <p style={{ margin: "0 0 0.6rem" }}>工作台：{title}</p>
+      <p data-testid="wb-tab">当前篇章：{tab}</p>
       <button type="button" data-testid="wb-button" onClick={() => setHits((n) => n + 1)}>
         工作台按钮（点了应是 {hits + 1}）
       </button>
@@ -102,6 +104,7 @@ function FakeWorkbench({ title }: { title: string }) {
 function Harness({ projects = PROJECTS }: { projects?: Array<{ id: string; title: string }> }) {
   const [scriptOpen, setScriptOpen] = useState(false);
   const [activeId, setActiveId] = useState(projects[0].id);
+  const [tab, setTab] = useState("write");
   const [log, setLog] = useState<string[]>([]);
 
   return (
@@ -124,11 +127,24 @@ function Harness({ projects = PROJECTS }: { projects?: Array<{ id: string; title
         onRenameProject={(id) => setLog((cur) => [...cur, `rename:${id}`])}
         onDuplicateProject={(id) => setLog((cur) => [...cur, `duplicate:${id}`])}
         onDeleteProject={(id) => setLog((cur) => [...cur, `delete:${id}`])}
+        scriptTabs={[
+          { id: "write", label: "写作" },
+          { id: "world", label: "设定" },
+          { id: "voice", label: "角色工坊" },
+          { id: "map", label: "地图" },
+          { id: "system", label: "剧情状态" },
+          { id: "project", label: "项目" },
+        ]}
+        onOpenScriptTab={(id) => {
+          setTab(id);
+          setScriptOpen(true);
+          setLog((cur) => [...cur, `tab:${id}`]);
+        }}
         onSwitchToStudioView={() => setLog((cur) => [...cur, "studio"])}
         onLogout={() => setLog((cur) => [...cur, "logout"])}
       />
       {scriptOpen ? (
-        <FakeWorkbench title={projects.find((p) => p.id === activeId)?.title ?? ""} />
+        <FakeWorkbench title={projects.find((p) => p.id === activeId)?.title ?? ""} tab={tab} />
       ) : null}
       <pre data-testid="harness-log" style={{ display: "none" }}>
         {log.join("\n")}
@@ -138,8 +154,15 @@ function Harness({ projects = PROJECTS }: { projects?: Array<{ id: string; title
 }
 
 const params = new URLSearchParams(window.location.search);
+const withMusic = params.get("music") === "1";
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <Harness projects={params.get("many") === "1" ? MANY_PROJECTS : PROJECTS} />
+    <>
+      {withMusic ? null : (
+        <Harness projects={params.get("many") === "1" ? MANY_PROJECTS : PROJECTS} />
+      )}
+      {/* ?music=1：单独量底部音乐条的高度（它固定在底部，跟着桌面一起渲染会挡任务栏） */}
+      {withMusic ? <MusicPlayerBar contextLabel="组件台" /> : null}
+    </>
   </StrictMode>
 );

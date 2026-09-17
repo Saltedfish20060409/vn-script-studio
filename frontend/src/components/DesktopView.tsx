@@ -54,6 +54,13 @@ type Props = {
   onRenameProject?: (id: string) => void;
   onDuplicateProject?: (id: string) => void;
   onDeleteProject?: (id: string) => void;
+  /**
+   * 开始菜单里的"跳到这个剧本的某一页"（写作/设定/角色工坊/地图/剧情状态/项目）。
+   * 跟 Windows 任务栏的跳转列表一个意思：桌面视角下这些页在剧本窗口里，
+   * 但入口不该只有"双击图标再找标签"一条路。
+   */
+  scriptTabs?: Array<{ id: string; label: string }>;
+  onOpenScriptTab?: (id: string) => void;
   /** 切回工作台视图（非桌面形态） */
   onSwitchToStudioView: () => void;
   /** 注销：回到登录页（会重新走过开机画面） */
@@ -110,6 +117,8 @@ export function DesktopView({
   onRenameProject,
   onDuplicateProject,
   onDeleteProject,
+  scriptTabs,
+  onOpenScriptTab,
   onSwitchToStudioView,
   onLogout,
 }: Props) {
@@ -477,6 +486,28 @@ export function DesktopView({
 
         {menuOpen ? (
           <div className={styles.menu} role="menu" data-desktop-menu="1">
+            {/* 当前剧本的各个篇章：一键打开剧本窗口并跳到那一页（不用先进去再找标签） */}
+            {scriptTabs && scriptTabs.length > 0 && activeProjectTitle ? (
+              <>
+                <p className={styles.menuGroup}>
+                  当前剧本《{activeProjectTitle}》
+                </p>
+                {scriptTabs.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onOpenScriptTab?.(t.id);
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </>
+            ) : null}
+
             <p className={styles.menuGroup}>应用</p>
             {apps.map((app) => (
               <button

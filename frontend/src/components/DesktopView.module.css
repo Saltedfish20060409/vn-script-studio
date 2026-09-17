@@ -156,7 +156,8 @@
   display: flex;
   flex-direction: column;
   min-width: 12rem;
-  max-height: min(70vh, 30rem);
+  /* 现在菜单里有"当前剧本的六个篇章 + 应用 + 系统"三组，给足高度，尽量不用滚动 */
+  max-height: min(82vh, 34rem);
   overflow-y: auto;
   padding: 0.35rem;
   border: 1px solid color-mix(in srgb, #7fd1ff 30%, transparent);
@@ -176,7 +177,7 @@
 }
 
 .menu button {
-  padding: 0.45rem 0.6rem;
+  padding: 0.36rem 0.6rem;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;

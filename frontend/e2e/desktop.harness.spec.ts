@@ -151,6 +151,34 @@ test("剧本多于 6 个时出现「更多剧本」，双击打开剧本库", as
   await expect(page.getByTestId("library-window")).toBeVisible();
 });
 
+test("开始菜单里能直接跳到这个剧本的设定 / 角色工坊 / 地图 / 剧情状态", async ({ page }) => {
+  await openHarness(page);
+
+  await page.getByRole("button", { name: "开始" }).click();
+  const menu = page.getByRole("menu");
+  // 桌面视角下这些篇章在剧本窗口里，开始菜单给一条直达路（不用先双击再找标签）
+  await expect(menu.getByRole("menuitem", { name: "设定" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "角色工坊" })).toBeVisible();
+
+  await menu.getByRole("menuitem", { name: "地图" }).click();
+  // 剧本窗口被打开，并且停在地图那一页
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
+  await expect(page.getByTestId("wb-tab")).toHaveText("当前篇章：map");
+  await expect(page.getByTestId("harness-log")).toContainText("tab:map");
+});
+
+test("底部音乐条足够薄（贴底常驻，越薄越不挡写作）", async ({ page }) => {
+  await page.goto(HARNESS + "?music=1");
+  const bar = page.getByTestId("music-bar");
+  await expect(bar).toBeVisible();
+  const box = await bar.boundingBox();
+  // 之前是 38px 按钮 + 0.45rem 内边距 ≈ 54px，现在 32px 按钮 + 0.28rem ≈ 43px
+  expect(box?.height ?? 999).toBeLessThanOrEqual(48);
+  // 但按钮仍然点得着（别为了薄把点击目标做没了）
+  const play = await bar.locator('button[title="播放"], button[title="暂停"]').boundingBox();
+  expect(play?.height ?? 0).toBeGreaterThanOrEqual(30);
+});
+
 test("开始菜单：系统项里有整理图标，点了回到自动排列", async ({ page }) => {
   await openHarness(page);
 

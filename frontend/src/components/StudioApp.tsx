@@ -69,6 +69,7 @@ import { ProjectLedgerPanel } from "./ProjectLedgerPanel";
 import { WritingStatsPanel } from "./WritingStatsPanel";
 import { StudioBootScreen } from "./StudioBootScreen";
 import { StudioChapterBar } from "./StudioChapterBar";
+import { STUDIO_TABS } from "../lib/studioTabs";
 import { StudioTabs } from "./StudioTabs";
 import { StudioTopBar } from "./StudioTopBar";
 import { TemplatePicker } from "./TemplatePicker";
@@ -1927,6 +1928,13 @@ export function StudioApp() {
           }}
           onDuplicateProject={(id) => void duplicateProjectById(id)}
           onDeleteProject={(id) => void deleteProjectById(id)}
+          scriptTabs={STUDIO_TABS.map(([id, , label]) => ({ id, label }))}
+          onOpenScriptTab={(id) => {
+            // 从桌面直接进这个剧本的某一页（设定 / 角色工坊 / 地图 / 剧情状态…）
+            if (id !== "write" || writeSub !== "script") commitEditor();
+            setTab(id as Tab);
+            setDesktopScriptOpen(true);
+          }}
           apps={desktopApps}
         />
       ) : null}

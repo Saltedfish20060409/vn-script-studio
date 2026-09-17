@@ -454,8 +454,8 @@
   flex: 1;
   min-height: 0;
   background: transparent;
-  /* 底部固定音乐条：给所有页预留不被遮挡的空间 */
-  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  /* 底部固定音乐条：给所有页预留不被遮挡的空间（条高约 43px + 余量） */
+  padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
 }
 
 .chapterBar {

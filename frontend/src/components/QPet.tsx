@@ -21,8 +21,8 @@ type PetMode = "dock" | "corner" | "free" | "edge-left" | "edge-right";
 const PET_W = 120;
 const PET_H = 168;
 const DOCK_GAP = 10;
-/** 底部固定音乐条的高度预留：桌宠角落/游走不上遮挡区 */
-const BAR_RESERVE = 64;
+/** 底部固定音乐条的高度预留：桌宠角落/游走不上遮挡区（条高约 43px，这里留点余量） */
+const BAR_RESERVE = 50;
 /** 无交互多久触发打瞌睡（至少 3 分钟） */
 const SLEEP_AFTER_MS = 3 * 60 * 1000;
 
