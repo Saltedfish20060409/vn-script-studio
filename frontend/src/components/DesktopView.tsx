@@ -50,6 +50,10 @@ type Props = {
   activeProjectTitle?: string;
   onCloseScript: () => void;
   onScriptMinimize?: () => void;
+  /** 右键剧本图标：重命名 / 复制 / 删除（跟 Windows 的桌面右键一致） */
+  onRenameProject?: (id: string) => void;
+  onDuplicateProject?: (id: string) => void;
+  onDeleteProject?: (id: string) => void;
   /** 切回工作台视图（非桌面形态） */
   onSwitchToStudioView: () => void;
   /** 注销：回到登录页（会重新走过开机画面） */
@@ -65,11 +69,27 @@ type DragInfo = { id: string; x: number; y: number; dx: number; dy: number };
 type PendingDrag = DragInfo & { startX: number; startY: number };
 
 /**
+ * 点到的是"桌面空白"吗？
+ *
+ * 注意别用"target 就是桌面根节点"来判断：图标区是 inset:0 的一整层，
+ * 空白处的 target 永远是它，那样判断的话"点空白取消选中/弹桌面菜单"永远不会触发。
+ * 所以反过来问：这个 target 是不是图标/窗口/任务栏的一部分。
+ */
+function isBlankSpot(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return true;
+  return !el.closest(
+    "button, [data-desktop-menu], [data-testid^='desktop-window-'], [data-testid='desktop-script-window']"
+  );
+}
+
+/**
  * 桌面视图：图标有固定座位（拖动=换座，松手自动对齐）、应用开成窗口、任务栏管窗口。
  *
  * 桌面上**没有"剧本编辑器"这个软件**：剧本自己就是入口 —— 双击某个剧本图标，
  * 打开的是这个剧本自己的工作台窗口（写作页 / 设定 / 角色工坊 / 地图 / 剧情状态，
- * 以及只读这个剧本的 AI 责编）。
+ * 以及只读这个剧本的 AI 责编）。剧本的常用操作（重命名/复制/删除）在图标右键菜单里，
+ * 跟 Windows 桌面一致；导入/模板这类"管理全部剧本"的事在开始菜单的「剧本库」窗口里。
  *
  * 窗口是**自己的形态**而不是跳回原界面；桌面只放"快捷方式"，系统设置/帮助/公告进开始菜单；
  * 图标座位与窗口位置会被记住（跨刷新）。
@@ -87,6 +107,9 @@ export function DesktopView({
   activeProjectTitle,
   onCloseScript,
   onScriptMinimize,
+  onRenameProject,
+  onDuplicateProject,
+  onDeleteProject,
   onSwitchToStudioView,
   onLogout,
 }: Props) {
@@ -94,6 +117,10 @@ export function DesktopView({
   const [selected, setSelected] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [menuOpen, setMenuOpen] = useState(false);
+  /** 右键菜单：图标菜单带 id，空白处菜单只有位置 */
+  const [ctxMenu, setCtxMenu] = useState<{ id: string | null; x: number; y: number } | null>(
+    null
+  );
   const lastClick = useRef<{ id: string; at: number }>({ id: "", at: 0 });
   /** 按下时记下的拖动信息（含偏移与起点，用来判定"到底算不算拖动"） */
   const pendingDrag = useRef<PendingDrag | null>(null);
@@ -134,6 +161,32 @@ export function DesktopView({
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  /**
+   * 关掉开始菜单/右键菜单：点任务栏外面、按 ESC、或者点了别处都算。
+   * 必须挂在 document 上：剧本窗口打开时桌面层是"事件穿透"的，点在面板上收不到桌面的事件。
+   */
+  useEffect(() => {
+    if (!menuOpen && !ctxMenu) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest("[data-desktop-menu]")) return;
+      setMenuOpen(false);
+      setCtxMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        setCtxMenu(null);
+      }
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen, ctxMenu]);
 
   // 图标拖动：跟手移动，松手才"落座"到最近的座位（桌面有固定座位表，不是随便放）。
   // 越过 DRAG_THRESHOLD 那一小段位移才算拖动 —— 否则单纯点一下图标也会"浮起来"闪一下。
@@ -192,6 +245,11 @@ export function DesktopView({
       onNewProject();
       return;
     }
+    if (appId === "more") {
+      // 「更多剧本」= 打开剧本库窗口（全部剧本的管理入口）
+      openApp("library");
+      return;
+    }
     openApp(appId);
   }
 
@@ -204,17 +262,45 @@ export function DesktopView({
   }
 
   const selectedHint =
-    icons.find((i) => i.id === selected)?.hint ?? "双击图标打开；拖动可以换座位（松手自动对齐）";
+    icons.find((i) => i.id === selected)?.hint ??
+    "双击打开；右键有菜单；拖动可以换座位（松手自动对齐）";
+
+  /** 右键菜单的项目（按图标类型给不同的项） */
+  function menuItemsFor(icon: DesktopIcon): Array<{ label: string; run: () => void }> {
+    const id = icon.id.startsWith("project:") ? icon.id.slice("project:".length) : null;
+    const items: Array<{ label: string; run: () => void }> = [
+      { label: "打开", run: () => openIcon(icon) },
+    ];
+    if (id) {
+      if (onRenameProject) items.push({ label: "重命名…", run: () => onRenameProject(id) });
+      if (onDuplicateProject) items.push({ label: "复制一份", run: () => onDuplicateProject(id) });
+      if (onDeleteProject) items.push({ label: "删除…", run: () => onDeleteProject(id) });
+    }
+    return items;
+  }
+
+  const ctxIcon = ctxMenu?.id
+    ? icons.find((i) => i.id === ctxMenu.id) ?? null
+    : null;
 
   return (
     <div
-      className={styles.desktop}
+      className={`${styles.desktop} ${scriptOpen ? styles.desktopPassThrough : ""}`}
       data-testid="desktop-view"
       onPointerDown={(e) => {
-        if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.blank === "1") {
+        if (isBlankSpot(e.target)) {
           setMenuOpen(false);
+          setCtxMenu(null);
           setSelected(null);
         }
+      }}
+      onContextMenu={(e) => {
+        // 右键空白处 = 桌面自己的菜单（新建剧本 / 整理图标 / 打开剧本库），跟 Windows 一致
+        if (!isBlankSpot(e.target)) return;
+        e.preventDefault();
+        setMenuOpen(false);
+        setSelected(null);
+        setCtxMenu({ id: null, x: e.clientX, y: e.clientY });
       }}
     >
       {/* 图标与暗角只在"没有打开剧本窗口"时出现 —— 否则会浮在工作台上面 */}
@@ -247,6 +333,13 @@ export function DesktopView({
                 }
                 onClick={() => handleIconClick(icon)}
                 onDoubleClick={() => openIcon(icon)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setMenuOpen(false);
+                  setSelected(icon.id);
+                  setCtxMenu({ id: icon.id, x: e.clientX, y: e.clientY });
+                }}
                 onPointerDown={(e) => {
                   const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
                   pendingDrag.current = {
@@ -321,9 +414,59 @@ export function DesktopView({
         );
       })}
 
+      {/* 右键菜单：图标上（打开/重命名/复制/删除）或空白处（新建/整理图标） */}
+      {ctxMenu ? (
+        <div
+          className={styles.ctx}
+          role="menu"
+          data-desktop-menu="1"
+          data-testid="desktop-context-menu"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+        >
+          {ctxIcon
+            ? menuItemsFor(ctxIcon).map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const run = item.run;
+                    setCtxMenu(null);
+                    run();
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))
+            : [
+                { label: "📄 新建剧本", run: onNewProject },
+                {
+                  label: "🧹 整理图标（自动排列）",
+                  run: () => setLayout((cur) => ({ ...cur, icons: {} })),
+                },
+                { label: "🗄️ 打开剧本库", run: () => openApp("library") },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const run = item.run;
+                    setCtxMenu(null);
+                    run();
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+        </div>
+      ) : null}
+
       {/* 任务栏 */}
-      <div className={styles.taskbar}>        <button
+      <div className={styles.taskbar}>
+        <button
           type="button"
+          data-desktop-menu="1"
           className={menuOpen ? `${styles.start} ${styles.startOn}` : styles.start}
           onClick={() => setMenuOpen((v) => !v)}
           aria-expanded={menuOpen}
@@ -333,7 +476,7 @@ export function DesktopView({
         </button>
 
         {menuOpen ? (
-          <div className={styles.menu} role="menu">
+          <div className={styles.menu} role="menu" data-desktop-menu="1">
             <p className={styles.menuGroup}>应用</p>
             {apps.map((app) => (
               <button

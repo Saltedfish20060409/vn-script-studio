@@ -37,8 +37,10 @@ describe("buildDesktopIcons", () => {
     { id: "p2", title: "异界快递" },
     { id: "p3", title: "" },
   ];
+  // 与 StudioApp 的 desktopApps 保持一致：只有「AI 责编」这类常用应用声明 onDesktop，
+  // 剧本库 / 系统设置 / 帮助 / 公告都只在开始菜单里。
   const apps = [
-    { id: "library", label: "剧本库", glyph: "🗂️", onDesktop: true },
+    { id: "library", label: "剧本库", glyph: "🗂️" },
     { id: "agent", label: "AI 责编", glyph: "🧠", onDesktop: true },
     { id: "settings", label: "系统设置", glyph: "⚙️" },
     { id: "help", label: "帮助 / FAQ", glyph: "❓" },
@@ -52,18 +54,28 @@ describe("buildDesktopIcons", () => {
     expect(icons[0].kind).toBe("project");
   });
 
-  it("项目很多时只取前 N 个，避免图标铺满桌面", () => {
+  it("项目很多时只取前 N 个，并补一个「更多剧本」入口（不能有剧本没入口）", () => {
     const many = Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, title: `T${i}` }));
-    expect(buildDesktopIcons({ projects: many, apps: [], maxProjects: 4 })).toHaveLength(4 + 1);
+    const icons = buildDesktopIcons({ projects: many, apps: [], maxProjects: 4 });
+    expect(icons).toHaveLength(4 + 1 + 1); // 前 4 个 + 新建 + 更多剧本
+    expect(icons[4].id).toBe("action:new");
+    const more = icons[5];
+    expect(more.id).toBe("action:more");
+    expect(more.label).toContain("30");
   });
 
-  it("系统设置 / 帮助 / 公告不进桌面（只放开始菜单，跟 Windows 一致）", () => {
+  it("剧本没超过上限时不出现「更多剧本」", () => {
+    const labels = buildDesktopIcons({ projects, apps }).map((i) => i.id);
+    expect(labels).not.toContain("action:more");
+  });
+
+  it("只有声明 onDesktop 的应用上桌面（剧本库/设置/帮助/公告都只在开始菜单）", () => {
     const labels = buildDesktopIcons({ projects, apps }).map((i) => i.label);
+    expect(labels).not.toContain("剧本库");
     expect(labels).not.toContain("系统设置");
     expect(labels).not.toContain("帮助 / FAQ");
     expect(labels).not.toContain("更新公告");
     // 声明了 onDesktop 的应用才上桌面
-    expect(labels).toContain("剧本库");
     expect(labels).toContain("AI 责编");
   });
 

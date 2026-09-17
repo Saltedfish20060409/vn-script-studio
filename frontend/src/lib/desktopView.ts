@@ -40,10 +40,13 @@ export type DesktopAppLike = {
 };
 
 /**
- * 桌面图标：最近项目在前，然后是新建 + 声明了 onDesktop 的应用。
+ * 桌面图标：最近项目在前，然后是新建（+ 剧本太多时的「更多剧本」），再是应用快捷方式。
  *
- * 「系统设置 / 帮助 / 更新公告」这类**不进桌面**，只放开始菜单 —— 跟 Windows 一致：
- * 桌面是自己的东西（文档、常用程序），系统功能在开始里。
+ * 「系统设置 / 帮助 / 更新公告 / 剧本库」这类**不进桌面**，只放开始菜单 —— 跟 Windows 一致：
+ * 桌面放自己的东西（剧本、常用程序），"管理全部剧本"这种系统功能在开始里，
+ * 剧本自己的重命名/复制/删除走图标右键菜单。
+ *
+ * 剧本超过 `maxProjects` 时补一个「更多剧本」，不然多出来的剧本在桌面上就没有入口了。
  */
 export function buildDesktopIcons(opts: {
   projects: Array<{ id: string; title: string }>;
@@ -56,7 +59,7 @@ export function buildDesktopIcons(opts: {
     label: p.title || "未命名剧本",
     glyph: "📁",
     kind: "project" as const,
-    hint: "双击打开这个剧本（写作页 / 设定 / 角色 / 地图 / 剧情状态都只属于它）",
+    hint: "双击打开这个剧本（写作页 / 设定 / 角色 / 地图 / 剧情状态都只属于它）；右键更多操作",
   }));
   const appIcons = (opts.apps ?? [])
     .filter((a) => a.onDesktop)
@@ -67,6 +70,18 @@ export function buildDesktopIcons(opts: {
       kind: "action" as const,
       hint: `双击打开${a.label}`,
     }));
+  const more: DesktopIcon[] =
+    opts.projects.length > recent.length
+      ? [
+          {
+            id: "action:more",
+            label: `更多剧本（${opts.projects.length}）`,
+            glyph: "🗄️",
+            kind: "action",
+            hint: "双击打开剧本库，查看 / 搜索 / 导入全部剧本",
+          },
+        ]
+      : [];
   return [
     ...recent,
     {
@@ -76,6 +91,7 @@ export function buildDesktopIcons(opts: {
       kind: "action",
       hint: "双击新建一个空白剧本",
     },
+    ...more,
     ...appIcons,
   ];
 }

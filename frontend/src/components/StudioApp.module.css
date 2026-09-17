@@ -86,11 +86,19 @@
   display: none;
 }
 
-/* 桌面视图里工作台以"最大化窗口"出现：上让标题栏、下让任务栏 */
-.shellUnderDesktop {
-  position: relative;
-  padding-top: 30px;
-  padding-bottom: 46px;
+/* 桌面视图里工作台就是这个剧本的"窗口内容"：正好占住标题栏与任务栏之间的工作区。
+   必须是**定高**（fixed + 上下内缩），否则 min-height:100vh 会让整页高度多出 76px：
+   滚轮滚的是整个文档，就把工作台推到标题栏下面去了。改成让工作台自己滚。 */
+.shell.shellUnderDesktop {
+  position: fixed;
+  top: 30px;
+  left: 0;
+  right: 0;
+  bottom: 46px;
+  z-index: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* 窗口里的空态说明（比如还没打开剧本时的 AI 责编） */

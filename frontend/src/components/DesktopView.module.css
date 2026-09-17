@@ -14,6 +14,20 @@
   overflow: hidden;
 }
 
+/*
+ * 剧本窗口打开时：桌面这一层只剩"自己的东西"（标题栏 / 任务栏 / 应用窗口），
+ * 其余空白区域必须把鼠标事件**让给下面的工作台**。
+ * 桌面层是 fixed + inset:0，默认会把整块屏幕的点击都吃掉 —— 那样工作台里的
+ * 按钮就全点不动了（滚轮还能滚，因为滚的是文档，这也是"只能滚不能点"的由来）。
+ */
+.desktopPassThrough {
+  pointer-events: none;
+}
+
+.desktopPassThrough > * {
+  pointer-events: auto;
+}
+
 /* 图标压一层暗角，保证白字在任何壁纸上都读得清（不动全局壁纸设置） */
 .dim {
   position: absolute;
@@ -174,6 +188,37 @@
 
 .menu button:hover {
   background: color-mix(in srgb, #7fd1ff 18%, transparent);
+}
+
+/* 右键菜单（图标上 / 桌面空白处）：贴着鼠标弹出来，样式跟开始菜单一致 */
+.ctx {
+  position: absolute;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-width: 10rem;
+  padding: 0.3rem;
+  border: 1px solid color-mix(in srgb, #7fd1ff 30%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, #0a0e1a 95%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-lg);
+}
+
+.ctx button {
+  padding: 0.42rem 0.6rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: #e7eefb;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ctx button:hover {
+  background: color-mix(in srgb, #7fd1ff 20%, transparent);
 }
 
 .tasks {

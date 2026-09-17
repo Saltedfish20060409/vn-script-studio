@@ -1135,11 +1135,9 @@ export function StudioApp() {
     requestAnimationFrame(() => renameInputRef.current?.focus());
   }
 
-  async function commitRename() {
-    if (!renamingId) return;
-    const title = renameDraft.trim() || "未命名剧本";
-    const id = renamingId;
-    setRenamingId(null);
+  /** 改标题（列表页的内联重命名与桌面右键重命名共用这一处，避免两份逻辑走偏） */
+  async function renameProjectById(id: string, raw: string) {
+    const title = raw.trim() || "未命名剧本";
     try {
       const updated = await patchProject(id, { title });
       setProjectsList((prev) =>
@@ -1152,6 +1150,14 @@ export function StudioApp() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "重命名失败");
     }
+  }
+
+  async function commitRename() {
+    if (!renamingId) return;
+    const title = renameDraft;
+    const id = renamingId;
+    setRenamingId(null);
+    await renameProjectById(id, title);
   }
 
   function cancelRename() {
@@ -1734,7 +1740,8 @@ export function StudioApp() {
       id: "library",
       label: "剧本库",
       glyph: "🗂️",
-      onDesktop: true,
+      // 不放桌面：桌面本身列的就是剧本，这个窗口是"管理全部剧本"的工具（导入/模板/搜索），
+      // 跟 Windows 把资源管理器放在开始菜单里一样。
       defaultRect: { x: 120, y: 90, w: 620, h: 460 },
       render: () => (
         <ProjectLibraryPanel
@@ -1908,6 +1915,18 @@ export function StudioApp() {
             void createBlank();
             setDesktopScriptOpen(true);
           }}
+          onRenameProject={(id) => {
+            const target = projectsList.find((p) => p.id === id);
+            void prompt({
+              title: "重命名剧本",
+              defaultValue: target?.title ?? "",
+              confirmLabel: "保存",
+            }).then((next) => {
+              if (next !== null) void renameProjectById(id, next);
+            });
+          }}
+          onDuplicateProject={(id) => void duplicateProjectById(id)}
+          onDeleteProject={(id) => void deleteProjectById(id)}
           apps={desktopApps}
         />
       ) : null}
@@ -1948,7 +1967,7 @@ export function StudioApp() {
         } ${tab !== "write" ? styles.menuStage : ""} ${
           showDesktop && !desktopScriptOpen ? styles.shellHidden : ""
         } ${showDesktop && desktopScriptOpen ? styles.shellUnderDesktop : ""}`}
-        aria-hidden={showDesktop || undefined}
+        aria-hidden={showDesktop && !desktopScriptOpen ? true : undefined}
       >
         <FocusChrome
           setupOpen={focusSetupOpen}
@@ -2031,7 +2050,11 @@ export function StudioApp() {
                       ["history", "快照 / 分享"],
                       ["members", "成员"],
                     ] as const
-                  ).map(([id, label]) => (
+                  )
+                    // 桌面视图里这个窗口只属于当前剧本，"剧本库"（列出全部剧本、切来切去）
+                    // 不该出现在这里：桌面上双击哪个就是哪个，右键能重命名/复制/删除。
+                    .filter(([id]) => !(showDesktop && id === "library"))
+                    .map(([id, label]) => (
                     <button
                       key={id}
                       type="button"
@@ -2043,7 +2066,15 @@ export function StudioApp() {
                   ))}
                 </div>
 
-                {projectSub === "library" && project && (
+                {projectSub === "library" && showDesktop && (
+                  <p className={styles.panelNote}>
+                    桌面视图里不再重复"剧本库"这一页 —— 剧本就在桌面上：双击打开，
+                    右键可以重命名 / 复制 / 删除。要导入、用模板或管理全部剧本，
+                    从开始菜单打开「剧本库」窗口。
+                  </p>
+                )}
+
+                {projectSub === "library" && !showDesktop && project && (
                   <ProjectLibraryPanel
                     projectsList={projectsList}
                     activeId={project.id}
