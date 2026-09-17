@@ -12,7 +12,7 @@ export type WinState = WinRect & {
   id: string;
   z: number;
   minimized: boolean;
-  /** 最大化：铺满工作区（剧本编辑器就用这一档） */
+  /** 最大化：铺满工作区（剧本工作台窗口就用这一档） */
   maximized: boolean;
 };
 

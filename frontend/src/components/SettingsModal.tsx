@@ -749,7 +749,8 @@ export function SettingsModal({ open, onClose, settings, onChange, view, onViewC
                   <div className={styles.form}>
                     <p className={styles.note}>
                       界面形态：<strong>写作工作台</strong>是章节树 / 编辑器 / AI 责编同屏的三栏布局；
-                      <strong>桌面</strong>是"像操作系统"的入口——图标双击打开，进剧本后仍是同一个工作台。
+                      <strong>桌面</strong>是"像操作系统"的入口——图标有固定座位（拖动换座），
+                      双击某个剧本就打开它自己的工作台窗口，只显示这个剧本的内容。
                       （窄屏会自动用工作台。）
                     </p>
                     <div className={styles.themeRow}>
