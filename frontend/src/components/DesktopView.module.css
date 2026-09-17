@@ -1,13 +1,16 @@
-/* 桌面视图：壁纸 + 图标网格 + 底部任务栏（外壳只负责"像桌面"，点开仍是原来的工作台） */
+/* 桌面视图：壁纸 + 可拖动图标 + 应用窗口 + 底部任务栏 */
 
-/* 音乐条是全站固定的（bottom:0, z-index:60），任务栏要坐在它上面，
-   否则会被整条盖住 —— 64px 与 QPet 里的 BAR_RESERVE 是同一个约定。 */
+/*
+ * 层级说明（改这里之前先看懂这几层）：
+ *   shell（工作台，无 z-index）= 0  →  桌面层 z-index:5（图标/窗口/任务栏/标题栏）
+ *   弹窗（设置未嵌入时、公告、确认框）在根层用 z-index:100+ → 仍然盖在桌面之上。
+ * 所以桌面层整体压在工作台上面，而"最大化窗口"的标题栏与任务栏恰好压在它的边距上。
+ */
 .desktop {
-  --bar-reserve: 64px;
+  --bar-reserve: 0px;
   position: fixed;
   inset: 0;
-  display: flex;
-  flex-direction: column;
+  z-index: 5;
   overflow: hidden;
 }
 
@@ -16,34 +19,34 @@
   position: absolute;
   inset: 0;
   z-index: 0;
-  background: linear-gradient(160deg, rgba(6, 10, 20, 0.42) 0%, rgba(6, 10, 20, 0.22) 55%, rgba(6, 10, 20, 0.5) 100%);
-  pointer-events: none;
+  background: linear-gradient(
+    160deg,
+    rgba(6, 10, 20, 0.42) 0%,
+    rgba(6, 10, 20, 0.22) 55%,
+    rgba(6, 10, 20, 0.5) 100%
+  );
 }
 
+/* 图标是绝对定位的（用户可以把它们拖到任意位置），位置存在本地布局里 */
 .iconArea {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 1;
-  flex: 1 1 auto;
-  align-content: flex-start;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, 92px);
-  grid-auto-rows: min-content;
-  gap: 0.35rem;
-  padding: 1.1rem 1.2rem calc(var(--bar-reserve) + 3.4rem);
-  overflow-y: auto;
-  scrollbar-width: thin;
 }
 
 .icon {
+  position: absolute;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.2rem;
+  width: 92px;
   padding: 0.5rem 0.25rem;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
-  cursor: pointer;
+  cursor: default;
+  touch-action: none;
   transition: background 140ms var(--ease-out), border-color 140ms var(--ease-out);
 }
 
@@ -54,6 +57,11 @@
 .iconOn {
   border-color: color-mix(in srgb, #7fd1ff 55%, transparent);
   background: color-mix(in srgb, #7fd1ff 22%, transparent);
+}
+
+/* 当前打开的剧本：图标上留个记号 */
+.iconActive .label {
+  font-weight: 700;
 }
 
 .icon:focus-visible {
@@ -74,27 +82,26 @@
   text-align: center;
   color: #f2f6ff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
-  /* 桌面图标标签：长名字截两行，不然会互相压住 */
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-/* 桌宠与音乐条是全站固定的（StudioApp 根上渲染），这里只需要给任务栏让位 */
+/* 任务栏：开始 + 已打开窗口 + 时钟 + 用户名 */
 .taskbar {
   position: absolute;
   left: 0;
   right: 0;
   bottom: var(--bar-reserve);
-  z-index: 4;
+  z-index: 50;
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.5rem;
   height: 2.9rem;
   padding: 0 0.7rem;
   border-top: 1px solid color-mix(in srgb, #7fd1ff 22%, transparent);
-  background: color-mix(in srgb, #0a0e1a 72%, transparent);
+  background: color-mix(in srgb, #0a0e1a 74%, transparent);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   color: #e7eefb;
@@ -126,14 +133,24 @@
   bottom: calc(var(--bar-reserve) + 3.1rem);
   display: flex;
   flex-direction: column;
-  min-width: 11rem;
+  min-width: 12rem;
+  max-height: min(70vh, 30rem);
+  overflow-y: auto;
   padding: 0.35rem;
   border: 1px solid color-mix(in srgb, #7fd1ff 30%, transparent);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, #0a0e1a 92%, transparent);
+  background: color-mix(in srgb, #0a0e1a 94%, transparent);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   box-shadow: var(--shadow-lg);
+}
+
+.menuGroup {
+  margin: 0.35rem 0.5rem 0.15rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.6;
 }
 
 .menu button {
@@ -151,20 +168,42 @@
   background: color-mix(in srgb, #7fd1ff 18%, transparent);
 }
 
-.hint {
+.tasks {
   flex: 1 1 auto;
-  font-size: 0.74rem;
-  opacity: 0.72;
-  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.task {
+  padding: 0.28rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, #7fd1ff 8%, transparent);
+  color: #e7eefb;
+  font-size: 0.78rem;
   white-space: nowrap;
-  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.task:hover {
+  background: color-mix(in srgb, #7fd1ff 20%, transparent);
+}
+
+.taskOn {
+  border-color: color-mix(in srgb, #7fd1ff 45%, transparent);
+  background: color-mix(in srgb, #7fd1ff 24%, transparent);
 }
 
 .clock {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.4rem;
+  gap: 0.35rem;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .clock strong {
@@ -186,15 +225,79 @@
   text-overflow: ellipsis;
 }
 
+/* 剧本编辑器：只画标题栏，工作台本体在它下面（StudioApp 渲染） */
+.editorFrame {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 45;
+  height: 30px;
+}
+
+.editorBar {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  height: 30px;
+  padding: 0 0.5rem 0 0.7rem;
+  border-bottom: 1px solid color-mix(in srgb, #7fd1ff 26%, transparent);
+  background: linear-gradient(180deg, rgba(127, 209, 255, 0.26), rgba(10, 14, 26, 0.92));
+  color: #e7eefb;
+  font-size: 0.78rem;
+}
+
+.editorTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.editorButtons {
+  display: flex;
+  gap: 0.2rem;
+}
+
+.editorButtons button {
+  width: 24px;
+  height: 20px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: #cfe2f5;
+  cursor: pointer;
+}
+
+.editorButtons button:hover {
+  background: color-mix(in srgb, var(--accent-hot) 22%, transparent);
+  color: #fff;
+}
+
+/* 屏幕底部一条操作提示（选中图标时显示"双击打开"） */
+.hintBar {
+  position: absolute;
+  left: 0.9rem;
+  bottom: calc(var(--bar-reserve) + 3.1rem);
+  z-index: 2;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, #0a0e1a 62%, transparent);
+  color: #dbe7f7;
+  font-size: 0.74rem;
+  pointer-events: none;
+}
+
 @media (max-width: 860px) {
-  /* 窄屏（一般是手机）不会走到这里——shouldShowDesktop 已经挡掉；
-     万一渲染到，图标排一列、别横着溢出 */
-  .iconArea {
-    grid-template-columns: repeat(auto-fill, 76px);
-    padding: 0.8rem 0.8rem calc(var(--bar-reserve) + 3.2rem);
+  /* 窄屏一般不会走到这里（shouldShowDesktop 已挡掉），兜底别横溢出 */
+  .icon {
+    width: 76px;
   }
 
-  .hint {
+  .hintBar,
+  .user {
     display: none;
   }
 }

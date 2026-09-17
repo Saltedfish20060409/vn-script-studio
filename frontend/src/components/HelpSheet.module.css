@@ -19,6 +19,16 @@
   }
 }
 
+/* 嵌进桌面窗口时：弹窗的遮罩/尺寸/边框/动画都交给窗口，这里只留内容排版 */
+.sheetEmbedded {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  padding: 1rem 1.1rem;
+  color: var(--ink);
+}
+
 .sheet {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

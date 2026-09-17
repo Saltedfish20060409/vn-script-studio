@@ -28,6 +28,11 @@ export interface SearchItem {
 type Props = {
   /** 可选：当前写作章节标题，显示在迷你条 */
   contextLabel?: string;
+  /**
+   * 嵌进桌面窗口里用：不固定到底部，改成普通容器。
+   * 全站底部播放条是默认形态（所有页面常驻）；桌面视图里它同时是一个"应用窗口"。
+   */
+  embedded?: boolean;
 };
 
 const STORE_KEY = "vnss-music-v1";
@@ -114,7 +119,7 @@ function parseTrackSource(id: string): { platform: string; songId: string } | nu
 type Panel = "list" | "lrc" | "search" | null;
 
 /** 全局底部播放条：播放模式 / 列表弹出 / 歌词居中滚动 / 搜索添加。 */
-export function MusicPlayerBar({ contextLabel }: Props) {
+export function MusicPlayerBar({ contextLabel, embedded = false }: Props) {
   const initial = useRef(loadState());
   const [list, setList] = useState<MusicTrack[]>(initial.current.list);
   const [index, setIndex] = useState(initial.current.index);
@@ -398,7 +403,10 @@ export function MusicPlayerBar({ contextLabel }: Props) {
   if (!barOn) return null;
 
   return (
-    <div className={styles.bar} data-testid="music-bar">
+    <div
+      className={embedded ? styles.barEmbedded : styles.bar}
+      data-testid="music-bar"
+    >
       <audio
         ref={audioRef}
         onPlay={() => setPlaying(true)}

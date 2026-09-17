@@ -31,9 +31,23 @@ export type DesktopIcon = {
   hint: string;
 };
 
-/** 桌面图标：最近项目排在前面（Windows 也是先看到自己常用的东西）。 */
+/** 桌面只放"快捷方式"：项目、新建、以及应用自己声明要放桌面的那些。 */
+export type DesktopAppLike = {
+  id: string;
+  label: string;
+  glyph: string;
+  onDesktop?: boolean;
+};
+
+/**
+ * 桌面图标：最近项目在前，然后是新建 + 声明了 onDesktop 的应用。
+ *
+ * 「系统设置 / 帮助 / 更新公告」这类**不进桌面**，只放开始菜单 —— 跟 Windows 一致：
+ * 桌面是自己的东西（文档、常用程序），系统功能在开始里。
+ */
 export function buildDesktopIcons(opts: {
   projects: Array<{ id: string; title: string }>;
+  apps?: DesktopAppLike[];
   maxProjects?: number;
 }): DesktopIcon[] {
   const max = opts.maxProjects ?? 6;
@@ -44,6 +58,15 @@ export function buildDesktopIcons(opts: {
     kind: "project" as const,
     hint: "双击打开这个剧本",
   }));
+  const appIcons = (opts.apps ?? [])
+    .filter((a) => a.onDesktop)
+    .map((a) => ({
+      id: `action:${a.id}`,
+      label: a.label,
+      glyph: a.glyph,
+      kind: "action" as const,
+      hint: `双击打开${a.label}`,
+    }));
   return [
     ...recent,
     {
@@ -53,41 +76,7 @@ export function buildDesktopIcons(opts: {
       kind: "action",
       hint: "双击新建一个空白剧本",
     },
-    {
-      id: "action:library",
-      label: "剧本库",
-      glyph: "🗂️",
-      kind: "action",
-      hint: "双击查看全部剧本",
-    },
-    {
-      id: "action:settings",
-      label: "系统设置",
-      glyph: "⚙️",
-      kind: "action",
-      hint: "双击打开系统设置",
-    },
-    {
-      id: "action:help",
-      label: "帮助 / FAQ",
-      glyph: "❓",
-      kind: "action",
-      hint: "双击查看使用说明",
-    },
-    {
-      id: "action:notice",
-      label: "更新公告",
-      glyph: "📢",
-      kind: "action",
-      hint: "双击查看更新公告",
-    },
-    {
-      id: "action:studio",
-      label: "写作工作台",
-      glyph: "✍️",
-      kind: "action",
-      hint: "双击回到三栏写作台",
-    },
+    ...appIcons,
   ];
 }
 
@@ -121,6 +110,23 @@ export function shouldPlayBoot(opts: {
     return true;
   } catch {
     return true;
+  }
+}
+
+/** 注销时重新武装开机画面：让"注销 → 重新开机"这件事成立。 */
+export function rearmBoot(storage?: Pick<Storage, "removeItem"> | null): void {
+  let store = storage ?? null;
+  if (!storage) {
+    try {
+      store = window.sessionStorage;
+    } catch {
+      store = null;
+    }
+  }
+  try {
+    store?.removeItem(BOOT_SEEN_KEY);
+  } catch {
+    /* 忽略 */
   }
 }
 

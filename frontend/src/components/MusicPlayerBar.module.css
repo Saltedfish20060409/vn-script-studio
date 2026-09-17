@@ -1,3 +1,12 @@
+/* 嵌进桌面窗口时：不再固定到底部，改成填满窗口的普通容器 */
+.barEmbedded {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: transparent;
+}
+
 .bar {
   position: fixed;
   left: 0;

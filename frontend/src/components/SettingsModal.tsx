@@ -52,6 +52,8 @@ type Props = {
   /** 界面形态（工作台 / 桌面）。属于本地布局偏好，不进服务端设置。 */
   view?: "studio" | "desktop";
   onViewChange?: (v: "studio" | "desktop") => void;
+  /** 嵌进桌面窗口里用：不画遮罩、不显示关闭按钮（窗口自己有） */
+  embedded?: boolean;
 };
 
 type Pane = "theme" | "bg" | "usage" | "llm";
@@ -601,7 +603,7 @@ function BgPanPreview({  image,
   );
 }
 
-export function SettingsModal({ open, onClose, settings, onChange, view, onViewChange }: Props) {
+export function SettingsModal({ open, onClose, settings, onChange, view, onViewChange, embedded = false }: Props) {
   const [pane, setPane] = useState<Pane>("theme");
   const deskPetOn = useSyncExternalStore(
     subscribeDeskPet,
@@ -662,26 +664,27 @@ export function SettingsModal({ open, onClose, settings, onChange, view, onViewC
     reader.readAsDataURL(file);
   }
 
-  return (
-    <div className={styles.backdrop} onClick={onClose} role="presentation">
-      <div
-        className={styles.modal}
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-label="设置"
-      >
-        <header className={styles.head}>
-          <div className={styles.headBanner} aria-hidden />
-          <h2>
-            <span className={styles.headIdx} aria-hidden>
-              CFG
-            </span>
-            设置
-          </h2>
+  const body = (
+    <div
+      className={embedded ? styles.modalEmbedded : styles.modal}
+      onClick={(e) => e.stopPropagation()}
+      role="dialog"
+      aria-label="设置"
+    >
+      <header className={styles.head}>
+        <div className={styles.headBanner} aria-hidden />
+        <h2>
+          <span className={styles.headIdx} aria-hidden>
+            CFG
+          </span>
+          设置
+        </h2>
+        {!embedded ? (
           <button type="button" className={styles.close} onClick={onClose}>
             ×
           </button>
-        </header>
+        ) : null}
+      </header>
         <div className={styles.body}>
           <nav className={styles.nav}>
             {(
@@ -977,6 +980,13 @@ export function SettingsModal({ open, onClose, settings, onChange, view, onViewC
           </div>
         </div>
       </div>
+  );
+
+  // 嵌进桌面窗口时不画遮罩：窗口自己有标题栏与关闭按钮
+  if (embedded) return body;
+  return (
+    <div className={styles.backdrop} onClick={onClose} role="presentation">
+      {body}
     </div>
   );
 }

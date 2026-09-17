@@ -37,9 +37,16 @@ describe("buildDesktopIcons", () => {
     { id: "p2", title: "异界快递" },
     { id: "p3", title: "" },
   ];
+  const apps = [
+    { id: "library", label: "剧本库", glyph: "🗂️", onDesktop: true },
+    { id: "agent", label: "AI 责编", glyph: "🧠", onDesktop: true },
+    { id: "settings", label: "系统设置", glyph: "⚙️" },
+    { id: "help", label: "帮助 / FAQ", glyph: "❓" },
+    { id: "notice", label: "更新公告", glyph: "📢" },
+  ];
 
   it("最近项目在前，标题为空时给个兜底名字", () => {
-    const icons = buildDesktopIcons({ projects });
+    const icons = buildDesktopIcons({ projects, apps });
     expect(icons.slice(0, 3).map((i) => i.label)).toEqual(["雨夜车站", "异界快递", "未命名剧本"]);
     expect(icons[0].id).toBe("project:p1");
     expect(icons[0].kind).toBe("project");
@@ -47,25 +54,26 @@ describe("buildDesktopIcons", () => {
 
   it("项目很多时只取前 N 个，避免图标铺满桌面", () => {
     const many = Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, title: `T${i}` }));
-    expect(buildDesktopIcons({ projects: many, maxProjects: 4 })).toHaveLength(4 + 6);
+    expect(buildDesktopIcons({ projects: many, apps: [], maxProjects: 4 })).toHaveLength(4 + 1);
   });
 
-  it("固定动作图标齐全（含回到工作台这条出口）", () => {
-    const ids = buildDesktopIcons({ projects: [] }).map((i) => i.id);
-    for (const need of [
-      "action:new",
-      "action:library",
-      "action:settings",
-      "action:help",
-      "action:notice",
-      "action:studio",
-    ]) {
-      expect(ids).toContain(need);
-    }
+  it("系统设置 / 帮助 / 公告不进桌面（只放开始菜单，跟 Windows 一致）", () => {
+    const labels = buildDesktopIcons({ projects, apps }).map((i) => i.label);
+    expect(labels).not.toContain("系统设置");
+    expect(labels).not.toContain("帮助 / FAQ");
+    expect(labels).not.toContain("更新公告");
+    // 声明了 onDesktop 的应用才上桌面
+    expect(labels).toContain("剧本库");
+    expect(labels).toContain("AI 责编");
+  });
+
+  it("新建剧本始终在桌面上", () => {
+    const ids = buildDesktopIcons({ projects: [], apps: [] }).map((i) => i.id);
+    expect(ids).toContain("action:new");
   });
 
   it("每个图标都有提示文案（任务栏要显示「双击某某」）", () => {
-    for (const icon of buildDesktopIcons({ projects })) {
+    for (const icon of buildDesktopIcons({ projects, apps })) {
       expect(icon.hint).toContain("双击");
     }
   });

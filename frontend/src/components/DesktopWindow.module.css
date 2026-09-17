@@ -1,0 +1,97 @@
+/* 桌面窗口：标题栏 + 内容区 + 右下角缩放把手 */
+.win {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  min-width: 320px;
+  min-height: 220px;
+  border: 1px solid color-mix(in srgb, #7fd1ff 34%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--rail-grad, var(--panel-bg));
+  box-shadow: 0 18px 44px -14px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  animation: winIn 160ms var(--ease-out);
+}
+
+.titleBar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+  padding: 0.3rem 0.35rem 0.3rem 0.6rem;
+  background: linear-gradient(180deg, rgba(127, 209, 255, 0.22), rgba(127, 209, 255, 0.08));
+  border-bottom: 1px solid color-mix(in srgb, #7fd1ff 26%, transparent);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.glyph {
+  font-size: 0.9rem;
+}
+
+.title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink, #0a0e1a);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.buttons {
+  display: flex;
+  gap: 0.2rem;
+}
+
+.buttons button {
+  width: 26px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.buttons button:hover {
+  background: color-mix(in srgb, var(--accent-hot) 18%, transparent);
+  color: var(--accent-hot);
+}
+
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.resizer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  background: linear-gradient(
+    135deg,
+    transparent 0 50%,
+    color-mix(in srgb, var(--ink-soft) 55%, transparent) 50% 100%
+  );
+  touch-action: none;
+}
+
+@keyframes winIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

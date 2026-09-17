@@ -86,6 +86,22 @@
   display: none;
 }
 
+/* 桌面视图里工作台以"最大化窗口"出现：上让标题栏、下让任务栏 */
+.shellUnderDesktop {
+  position: relative;
+  padding-top: 30px;
+  padding-bottom: 46px;
+}
+
+/* 窗口里的空态说明（比如还没打开剧本时的 AI 责编） */
+.panelNote {
+  margin: 0;
+  padding: 1.2rem 1.1rem;
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+
 .top {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

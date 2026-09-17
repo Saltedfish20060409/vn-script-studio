@@ -77,8 +77,10 @@ import { hasSeenTour } from "../lib/onboarding";
 import { QPet } from "./QPet";
 import { AdminPanel } from "./AdminPanel";
 import { ClickFx } from "./ClickFx";import { WorldPanel } from "./WorldPanel";
-import { DesktopView } from "./DesktopView";
-import { shouldShowDesktop } from "../lib/desktopView";
+import { DesktopView, type DesktopApp } from "./DesktopView";
+import { AgentChat } from "./AgentChat";
+import { DeskPetApp } from "./DeskPetApp";
+import { shouldShowDesktop, rearmBoot } from "../lib/desktopView";
 import { openNotice } from "../lib/notice";
 import { WriteToolbar, type WriteMode } from "./WriteToolbar";
 import { ScriptCommandBar } from "./ScriptCommandBar";
@@ -198,6 +200,8 @@ export function StudioApp() {
   const [tab, setTab] = useState<Tab>((cachedWs.tab as Tab) || wsDefaults.tab);
   /** 视图：三栏工作台 / 桌面。默认 studio（老用户习惯不变），可在系统设置里切换。 */
   const [view, setView] = useState<"studio" | "desktop">(cachedWs.view || wsDefaults.view);
+  /** 桌面视图里"剧本编辑器"窗口是否打开（工作台以最大化窗口形式出现） */
+  const [desktopEditorOpen, setDesktopEditorOpen] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === "undefined" ? 1280 : window.innerWidth
   );
@@ -1714,7 +1718,148 @@ export function StudioApp() {
   /** 桌面视图：只在用户选了它、且屏幕够宽时显示（窄屏自动回工作台）。 */
   const showDesktop = shouldShowDesktop({ view, width: viewportWidth });
 
-  /** 从桌面进入某个工作台页签，并记住"以后就用工作台"。 */
+  /**
+   * 桌面上的"应用"：每个都是**自己的窗口形态**，不是跳回原界面。
+   * 系统设置 / 帮助 / 公告按 Windows 习惯只进开始菜单（onDesktop 不设）。
+   */
+  const desktopApps: DesktopApp[] = [
+    {
+      id: "library",
+      label: "剧本库",
+      glyph: "🗂️",
+      onDesktop: true,
+      defaultRect: { x: 120, y: 90, w: 620, h: 460 },
+      render: () => (
+        <ProjectLibraryPanel
+          projectsList={projectsList}
+          activeId={project?.id ?? ""}
+          renamingId={renamingId}
+          renameDraft={renameDraft}
+          renameInputRef={renameInputRef}
+          onRenameDraftChange={setRenameDraft}
+          onStartRename={startRename}
+          onCommitRename={() => void commitRename()}
+          onCancelRename={cancelRename}
+          onOpen={(id) => {
+            setDesktopEditorOpen(true);
+            if (id !== project?.id) void switchProject(id);
+          }}
+          onCreateBlank={() => {
+            void createBlank();
+            setDesktopEditorOpen(true);
+          }}
+          onCreateDemo={() => void createDemo()}
+          onPickTemplate={(tid) => void createFromTemplate(tid)}
+          onImportClick={() => fileRef.current?.click()}
+          onDuplicate={(id) => void duplicateProjectById(id)}
+          onDelete={(id) => void deleteProjectById(id)}
+        />
+      ),
+    },
+    {
+      id: "agent",
+      label: "AI 责编",
+      glyph: "🧠",
+      onDesktop: true,
+      defaultRect: { x: 200, y: 70, w: 620, h: 560 },
+      render: () =>
+        project ? (
+          <AgentChat
+            project={project}
+            chapterId={chapterId}
+            selection={selection}
+            draft={editor}
+            prepareProject={() => buildLatestProject() ?? project}
+            onProjectChange={(next) => {
+              applyRemoteProject(next);
+              const ch = next.chapters.find((c) => c.id === chapterId) ?? next.chapters[0];
+              if (ch) {
+                setChapterId(ch.id);
+                loadEditorFromChapter(ch, next.characters, writeModeRef.current);
+              }
+            }}
+            onChapterFocus={(id) => {
+              setChapterId(id);
+              setTab("write");
+              setWriteSub("script");
+            }}
+          />
+        ) : (
+          <p className={styles.panelNote}>先打开一个剧本，AI 责编才能看到它的上下文。</p>
+        ),
+    },
+    {
+      id: "music",
+      label: "音乐播放器",
+      glyph: "🎵",
+      onDesktop: true,
+      defaultRect: { x: 320, y: 420, w: 520, h: 260 },
+      render: () => <MusicPlayerBar contextLabel={chapter?.title ?? ""} embedded />,
+    },
+    {
+      id: "pet",
+      label: "桌宠",
+      glyph: "🐾",
+      onDesktop: true,
+      defaultRect: { x: 420, y: 160, w: 380, h: 240 },
+      render: () => <DeskPetApp />,
+    },
+    {
+      id: "editor",
+      label: "剧本编辑器",
+      glyph: "✍️",
+      onDesktop: true,
+      run: () => setDesktopEditorOpen(true),
+    },
+    {
+      id: "settings",
+      label: "系统设置",
+      glyph: "⚙️",
+      defaultRect: { x: 160, y: 60, w: 720, h: 560 },
+      render: () =>
+        settings ? (
+          <SettingsModal
+            embedded
+            open
+            onClose={() => {}}
+            settings={settings}
+            onChange={setSettings}
+            view={view}
+            onViewChange={(next) => {
+              setView(next);
+              saveWorkspace({ view: next });
+            }}
+          />
+        ) : null,
+    },
+    {
+      id: "help",
+      label: "帮助 / FAQ",
+      glyph: "❓",
+      defaultRect: { x: 220, y: 80, w: 680, h: 520 },
+      render: () => <HelpSheet embedded open onClose={() => {}} />,
+    },
+    {
+      id: "notice",
+      label: "更新公告",
+      glyph: "📢",
+      run: () => openNotice(),
+    },
+    {
+      id: "assets",
+      label: "素材与体检",
+      glyph: "🧩",
+      defaultRect: { x: 260, y: 110, w: 680, h: 520 },
+      render: () =>
+        project ? (
+          <AssetAuditPanel projectId={project.id} />
+        ) : (
+          <p className={styles.panelNote}>先打开一个剧本才能体检素材。</p>
+        ),
+    },
+  ];
+
+  /** 从桌面进入某个工作台页签（只有"切换为工作台视图"用得上）。 */
   function exitDesktopTo(nextTab?: Tab, sub?: WorkspaceSnapshot["projectSub"]) {
     setView("studio");
     saveWorkspace({ view: "studio" });
@@ -1733,35 +1878,33 @@ export function StudioApp() {
         <DesktopView
           username={user?.username}
           projects={projectsList.map((p) => ({ id: p.id, title: p.title }))}
+          activeProjectId={project?.id}
+          activeProjectTitle={project?.title}
+          editorOpen={desktopEditorOpen}
+          onCloseEditor={() => setDesktopEditorOpen(false)}
+          onEditorMinimize={() => setDesktopEditorOpen(false)}
+          onSwitchToStudioView={() => exitDesktopTo()}
+          onLogout={() => {
+            // 注销回登录页，并重新武装开机画面（"重启"的感觉）
+            rearmBoot();
+            handleLogout();
+          }}
           onOpenProject={(id: string) => {
-            // 桌面只是入口：点开剧本就进三栏工作台（当前项目则直接切视图）
-            exitDesktopTo();
+            // 双击剧本 = 在桌面上打开"剧本编辑器"窗口，而不是跳走
+            setDesktopEditorOpen(true);
             if (id !== project?.id) void switchProject(id);
           }}
           onNewProject={() => {
             void createBlank();
+            setDesktopEditorOpen(true);
           }}
-          onOpenLibrary={() => {
-            exitDesktopTo("project", "library");
-          }}
-          onOpenSettings={() => {
-            setSettingsOpen(true);
-          }}
-          onOpenHelp={() => {
-            setHelpOpen(true);
-          }}
-          onOpenNotice={() => {
-            openNotice();
-          }}
-          onExitDesktop={() => {
-            exitDesktopTo();
-          }}
+          apps={desktopApps}
         />
       ) : null}
       <QPet editorRef={editorTaRef} cheerSignal={petCheer} />
       <ClickFx />
-      {/* 全局底部音乐条：所有页面常驻；专注模式被 FocusChrome(90) 遮住但音乐继续 */}
-      <MusicPlayerBar contextLabel={chapter?.title ?? ""} />
+      {/* 全局底部音乐条：工作台里常驻；桌面视图里音乐是"应用窗口"，就不再叠一条 */}
+      {!showDesktop ? <MusicPlayerBar contextLabel={chapter?.title ?? ""} /> : null}
       {playOpen && project && chapter && (
         <ScriptPlayer
           chapter={chapter}
@@ -1792,7 +1935,9 @@ export function StudioApp() {
           tab === "write" && writeSub === "script" ? styles.writeQuiet : ""
         } ${
           tab === "write" && writeSub === "script" && focusMode ? styles.focusMode : ""
-        } ${tab !== "write" ? styles.menuStage : ""} ${showDesktop ? styles.shellHidden : ""}`}
+        } ${tab !== "write" ? styles.menuStage : ""} ${
+          showDesktop && !desktopEditorOpen ? styles.shellHidden : ""
+        } ${showDesktop && desktopEditorOpen ? styles.shellUnderDesktop : ""}`}
         aria-hidden={showDesktop || undefined}
       >
         <FocusChrome
