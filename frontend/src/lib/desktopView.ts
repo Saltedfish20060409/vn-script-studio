@@ -146,6 +146,61 @@ export function rearmBoot(storage?: Pick<Storage, "removeItem"> | null): void {
   }
 }
 
+const TIPS_SEEN_KEY = "vnss-desktop-tips-v1";
+
+/** 首次进入桌面视角时的小抄内容（一次讲清四条，不再出现）。 */
+export const DESKTOP_TIPS: ReadonlyArray<string> = [
+  "双击剧本图标 → 打开这个剧本自己的工作台（写作 / 设定 / 角色工坊 / 地图 / 剧情状态）",
+  "右键图标 → 重命名 / 复制 / 删除；右键空白处 → 新建剧本 / 整理图标",
+  "「开始」里是全部应用与系统设置，也能直接跳到当前剧本的某一页",
+  "图标拖到想放的位置就会自动对齐；开始菜单里「整理图标 / 重置桌面布局」能一键恢复",
+];
+
+/**
+ * 桌面小抄要不要显示：只显示一次（localStorage 记住），
+ * 且只有当桌面空着（没打开剧本窗口）时才出 —— 那时用户才需要认识这个界面，
+ * 打开窗口后再弹只会挡住刚要在工作台里干的事。
+ */
+export function shouldShowDesktopTips(opts: {
+  storage?: Pick<Storage, "getItem"> | null;
+  scriptOpen?: boolean;
+}): boolean {
+  if (opts.scriptOpen) return false;
+  let store = opts.storage ?? null;
+  if (!opts.storage) {
+    try {
+      store = window.localStorage;
+    } catch {
+      store = null;
+    }
+  }
+  if (!store) return false;
+  try {
+    return store.getItem(TIPS_SEEN_KEY) !== "1";
+  } catch {
+    return false;
+  }
+}
+
+/** 关掉小抄就永久关掉（同一个浏览器不再出现）。 */
+export function markDesktopTipsSeen(
+  storage?: Pick<Storage, "setItem"> | null
+): void {
+  let store = storage ?? null;
+  if (!storage) {
+    try {
+      store = window.localStorage;
+    } catch {
+      store = null;
+    }
+  }
+  try {
+    store?.setItem(TIPS_SEEN_KEY, "1");
+  } catch {
+    /* 隐私模式下写不进去也不该崩 */
+  }
+}
+
 /** 开机动画时长：桌面比喻要像，但不能真的让人等开机。 */
 export const BOOT_TOTAL_MS = 1500;
 export const BOOT_REDUCED_MS = 0;

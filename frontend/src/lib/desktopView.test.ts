@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   BOOT_TOTAL_MS,
+  DESKTOP_TIPS,
   buildDesktopIcons,
   formatClock,
   formatClockDate,
   isDesktopViewport,
+  markDesktopTipsSeen,
   shouldPlayBoot,
   shouldShowDesktop,
+  shouldShowDesktopTips,
 } from "./desktopView";
 
 function fakeStorage(initial: Record<string, string> = {}) {
@@ -121,5 +124,32 @@ describe("shouldPlayBoot", () => {
 
   it("开机时长要短——比喻要像，但不能真让人等", () => {
     expect(BOOT_TOTAL_MS).toBeLessThanOrEqual(2000);
+  });
+});
+
+describe("桌面小抄（一次性引导）", () => {
+  it("没看过就显示，看过就不再显示", () => {
+    const store = fakeStorage();
+    expect(shouldShowDesktopTips({ storage: store })).toBe(true);
+    markDesktopTipsSeen(store);
+    expect(shouldShowDesktopTips({ storage: store })).toBe(false);
+  });
+
+  it("打开剧本窗口时不显示（那时用户要用工作台，别挡着）", () => {
+    const store = fakeStorage();
+    expect(shouldShowDesktopTips({ storage: store, scriptOpen: true })).toBe(false);
+  });
+
+  it("storage 不可用时安静地不显示（隐私模式）", () => {
+    expect(shouldShowDesktopTips({ storage: null })).toBe(false);
+    expect(() => markDesktopTipsSeen(null)).not.toThrow();
+  });
+
+  it("四条要点要讲清：双击打开 / 右键菜单 / 开始菜单 / 座位与复位", () => {
+    expect(DESKTOP_TIPS).toHaveLength(4);
+    expect(DESKTOP_TIPS.join("\n")).toContain("双击");
+    expect(DESKTOP_TIPS.join("\n")).toContain("右键");
+    expect(DESKTOP_TIPS.join("\n")).toContain("开始");
+    expect(DESKTOP_TIPS.join("\n")).toContain("重置桌面布局");
   });
 });

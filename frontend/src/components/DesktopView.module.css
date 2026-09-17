@@ -110,6 +110,80 @@
   overflow: hidden;
 }
 
+/* 首次进入桌面视角的一次性小抄：靠右放（图标在左列，右边通常是空的），点任意处即关 */
+.tips {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  z-index: 40;
+  width: min(340px, calc(100vw - 48px));
+  padding: 0.85rem 0.95rem 0.7rem;
+  border: 1px solid color-mix(in srgb, #7fd1ff 34%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, #0a0e1a 92%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-lg);
+  color: #e7eefb;
+  animation: tipsIn 260ms var(--ease-out, ease) both;
+}
+
+@keyframes tipsIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tipsTitle {
+  margin: 0 0 0.45rem;
+  font-family: var(--font-display, inherit);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.tipsList {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: #dbe7f7;
+}
+
+.tipsFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid color-mix(in srgb, #7fd1ff 18%, transparent);
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
+.tipsFoot button {
+  flex-shrink: 0;
+  padding: 0.28rem 0.7rem;
+  border: 1px solid color-mix(in srgb, #7fd1ff 40%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, #7fd1ff 20%, transparent);
+  color: #eaf3ff;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.tipsFoot button:hover {
+  background: color-mix(in srgb, #7fd1ff 32%, transparent);
+}
+
 /* 任务栏：开始 + 已打开窗口 + 时钟 + 用户名 */
 .taskbar {
   position: absolute;

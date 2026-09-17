@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { buildDesktopIcons, formatClock, formatClockDate, type DesktopIcon } from "../lib/desktopView";
+import {
+  DESKTOP_TIPS,
+  buildDesktopIcons,
+  formatClock,
+  formatClockDate,
+  markDesktopTipsSeen,
+  shouldShowDesktopTips,
+  type DesktopIcon,
+} from "../lib/desktopView";
 import {
   assignIconSlot,
   closeWindow,
@@ -8,8 +16,10 @@ import {
   minimizeWindow,
   moveWindow,
   nearestSlot,
+  nextIconInDirection,
   openWindow,
   pruneIconPositions,
+  resetLayout,
   resizeWindow,
   resolveIconSlots,
   saveLayout,
@@ -61,6 +71,11 @@ type Props = {
    */
   scriptTabs?: Array<{ id: string; label: string }>;
   onOpenScriptTab?: (id: string) => void;
+  /**
+   * 外部请求开某个应用窗口（例如工作台顶栏的「审稿」按钮在桌面视角下不该弹浮窗，
+   * 而应该打开桌面上的「AI 责编」窗口）。改 nonce 即触发一次。
+   */
+  openAppRequest?: { id: string; nonce: number };
   /** 切回工作台视图（非桌面形态） */
   onSwitchToStudioView: () => void;
   /** 注销：回到登录页（会重新走过开机画面） */
@@ -119,6 +134,7 @@ export function DesktopView({
   onDeleteProject,
   scriptTabs,
   onOpenScriptTab,
+  openAppRequest,
   onSwitchToStudioView,
   onLogout,
 }: Props) {
@@ -126,6 +142,10 @@ export function DesktopView({
   const [selected, setSelected] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [menuOpen, setMenuOpen] = useState(false);
+  /** 首次进入桌面视角的一次性小抄（讲清四条操作，关掉就永久不再出现） */
+  const [tipsOpen, setTipsOpen] = useState(() =>
+    shouldShowDesktopTips({ scriptOpen: false })
+  );
   /** 右键菜单：图标菜单带 id，空白处菜单只有位置 */
   const [ctxMenu, setCtxMenu] = useState<{ id: string | null; x: number; y: number } | null>(
     null
@@ -136,6 +156,8 @@ export function DesktopView({
   /** 已经越过阈值、真的开始拖了（单击不该触发"浮起来"的样式） */
   const dragActive = useRef(false);
   const iconIdsRef = useRef<string[]>([]);
+  /** 图标按钮 ref：键盘方向键在它们之间移动焦点 */
+  const iconRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const icons = useMemo(() => buildDesktopIcons({ projects, apps }), [projects, apps]);
   const openWins = taskbarWindows(layout);
@@ -171,12 +193,30 @@ export function DesktopView({
     return () => window.clearInterval(timer);
   }, []);
 
+  // 小抄只在"桌面空着"时出现；一旦打开剧本窗口就自动收掉（别挡着要干的活）
+  useEffect(() => {
+    if (scriptOpen && tipsOpen) setTipsOpen(false);
+  }, [scriptOpen, tipsOpen]);
+
+  // 外部请求开窗口（例如工作台顶栏的「审稿」→ 桌面上的「AI 责编」窗口）
+  const lastOpenRequest = useRef(openAppRequest?.nonce ?? 0);
+  useEffect(() => {
+    if (!openAppRequest) return;
+    if (openAppRequest.nonce === lastOpenRequest.current) return;
+    lastOpenRequest.current = openAppRequest.nonce;
+    const app = apps.find((a) => a.id === openAppRequest.id);
+    if (!app?.render) return;
+    setLayout((cur) =>
+      openWindow(cur, app.id, app.defaultRect ?? { x: 90, y: 70, w: 520, h: 420 })
+    );
+  }, [openAppRequest, apps]);
+
   /**
    * 关掉开始菜单/右键菜单：点任务栏外面、按 ESC、或者点了别处都算。
    * 必须挂在 document 上：剧本窗口打开时桌面层是"事件穿透"的，点在面板上收不到桌面的事件。
    */
   useEffect(() => {
-    if (!menuOpen && !ctxMenu) return;
+    if (!menuOpen && !ctxMenu && !tipsOpen) return;
     const onDown = (e: PointerEvent) => {
       const t = e.target as HTMLElement | null;
       if (t?.closest("[data-desktop-menu]")) return;
@@ -187,6 +227,10 @@ export function DesktopView({
       if (e.key === "Escape") {
         setMenuOpen(false);
         setCtxMenu(null);
+        setTipsOpen((open) => {
+          if (open) markDesktopTipsSeen();
+          return false;
+        });
       }
     };
     document.addEventListener("pointerdown", onDown, true);
@@ -195,7 +239,7 @@ export function DesktopView({
       document.removeEventListener("pointerdown", onDown, true);
       document.removeEventListener("keydown", onKey);
     };
-  }, [menuOpen, ctxMenu]);
+  }, [menuOpen, ctxMenu, tipsOpen]);
 
   // 图标拖动：跟手移动，松手才"落座"到最近的座位（桌面有固定座位表，不是随便放）。
   // 越过 DRAG_THRESHOLD 那一小段位移才算拖动 —— 否则单纯点一下图标也会"浮起来"闪一下。
@@ -270,6 +314,53 @@ export function DesktopView({
     if (isDouble) openIcon(icon);
   }
 
+  /** 关掉一次性小抄（记住，以后不再出现） */
+  function closeTips() {
+    setTipsOpen(false);
+    markDesktopTipsSeen();
+  }
+
+  /**
+   * 键盘操作（桌面比喻该有的那几件）：方向键在座位间移动、Enter 打开、
+   * F2 重命名、Delete 删除。焦点跟着走，选中态同步，底部提示条会显示这个图标能干什么。
+   */
+  function handleIconKey(e: React.KeyboardEvent<HTMLButtonElement>, icon: DesktopIcon) {
+    const dir =
+      e.key === "ArrowUp"
+        ? "up"
+        : e.key === "ArrowDown"
+          ? "down"
+          : e.key === "ArrowLeft"
+            ? "left"
+            : e.key === "ArrowRight"
+              ? "right"
+              : null;
+    if (dir) {
+      e.preventDefault();
+      const next = nextIconInDirection(slots, icon.id, dir);
+      if (next) {
+        setSelected(next);
+        iconRefs.current[next]?.focus();
+      }
+      return;
+    }
+    const projectId = icon.id.startsWith("project:") ? icon.id.slice("project:".length) : null;
+    if (e.key === "F2" && projectId && onRenameProject) {
+      e.preventDefault();
+      onRenameProject(projectId);
+      return;
+    }
+    if (e.key === "Delete" && projectId && onDeleteProject) {
+      e.preventDefault();
+      onDeleteProject(projectId);
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      openIcon(icon);
+    }
+  }
+
   const selectedHint =
     icons.find((i) => i.id === selected)?.hint ??
     "双击打开；右键有菜单；拖动可以换座位（松手自动对齐）";
@@ -297,6 +388,8 @@ export function DesktopView({
       className={`${styles.desktop} ${scriptOpen ? styles.desktopPassThrough : ""}`}
       data-testid="desktop-view"
       onPointerDown={(e) => {
+        // 任何一次点击都算"看懂了"，小抄让路
+        if (tipsOpen) closeTips();
         if (isBlankSpot(e.target)) {
           setMenuOpen(false);
           setCtxMenu(null);
@@ -314,6 +407,28 @@ export function DesktopView({
     >
       {/* 图标与暗角只在"没有打开剧本窗口"时出现 —— 否则会浮在工作台上面 */}
       {!scriptOpen ? <div className={styles.dim} aria-hidden data-blank="1" /> : null}
+
+      {/* 首次进入桌面视角的一次性小抄：放在右侧空白区，不挡图标；点任意处或「知道了」即关闭 */}
+      {!scriptOpen && tipsOpen ? (
+        <aside
+          className={styles.tips}
+          data-testid="desktop-tips"
+          aria-label="桌面视角怎么用"
+        >
+          <p className={styles.tipsTitle}>桌面视角怎么用</p>
+          <ul className={styles.tipsList}>
+            {DESKTOP_TIPS.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          <div className={styles.tipsFoot}>
+            <span>按 Esc 或点任意处也能关掉</span>
+            <button type="button" data-testid="desktop-tips-close" onClick={closeTips}>
+              知道了
+            </button>
+          </div>
+        </aside>
+      ) : null}
 
       {/* 桌面图标：剧本（文件夹）+ 放上桌面的应用快捷方式。位置=座位号，吸附对齐 */}
       {!scriptOpen ? (
@@ -361,12 +476,11 @@ export function DesktopView({
                     startY: e.clientY,
                   };
                 }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    openIcon(icon);
-                  }
+                ref={(el) => {
+                  iconRefs.current[icon.id] = el;
                 }}
+                onFocus={() => setSelected(icon.id)}
+                onKeyDown={(e) => handleIconKey(e, icon)}
                 title={icon.hint}
               >
                 <span className={styles.glyph} aria-hidden>
@@ -540,6 +654,17 @@ export function DesktopView({
               role="menuitem"
               onClick={() => {
                 setMenuOpen(false);
+                // 重置桌面布局：图标座位 + 窗口位置都清掉（窗口被拖到看不见时用它找回来）
+                setLayout((cur) => resetLayout(cur));
+              }}
+            >
+              🧩 重置桌面布局（图标 + 窗口）
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
                 onSwitchToStudioView();
               }}
             >
@@ -589,6 +714,17 @@ export function DesktopView({
             );
           })}
         </div>
+
+        {/* 迷路时的出口：任务栏常驻一个"回工作台视图"（开始菜单里也有，但那里要两步） */}
+        <button
+          type="button"
+          className={styles.task}
+          data-testid="desktop-to-studio"
+          onClick={onSwitchToStudioView}
+          title="切换为工作台视图（三栏布局，设置里可以切回来）"
+        >
+          🖥️ 工作台
+        </button>
 
         <span className={styles.clock}>
           <strong>{formatClock(now)}</strong>

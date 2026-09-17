@@ -292,6 +292,8 @@ export function StudioApp() {
   const [focusMode, setFocusMode] = useState(false);
   // 顶栏"审稿"按钮的展开信号：每次 +1 让 AgentFloat 把面板拉出来
   const [agentOpenTick, setAgentOpenTick] = useState(0);
+  // 桌面视角下没有浮窗：这个计数改成打开桌面上的「AI 责编」窗口
+  const [desktopAppTick, setDesktopAppTick] = useState(0);
   const [focusSetupOpen, setFocusSetupOpen] = useState(false);
   const [focusPrefs, setFocusPrefs] = useState<FocusTimerPrefs | null>(null);
   // 之前每次渲染都调 loadFocusTimerPrefs()（localStorage.getItem + JSON.parse），
@@ -1945,6 +1947,7 @@ export function StudioApp() {
             setTab(id as Tab);
             setDesktopScriptOpen(true);
           }}
+          openAppRequest={{ id: "agent", nonce: desktopAppTick }}
           apps={desktopApps}
         />
       ) : null}
@@ -2010,7 +2013,11 @@ export function StudioApp() {
           username={user?.username}
           showFocusToggle={tab === "write" && writeSub === "script" && !focusMode}
           showAgent={!focusMode}
-          onOpenAgent={() => setAgentOpenTick((t) => t + 1)}
+          onOpenAgent={() => {
+            // 桌面视角没有浮窗：顶栏「审稿」改成打开桌面上的「AI 责编」窗口
+            if (showDesktop) setDesktopAppTick((t) => t + 1);
+            else setAgentOpenTick((t) => t + 1);
+          }}
           fileInputRef={fileRef}
           onTitleChange={(value) => updateActive((p) => ({ ...p, title: value }))}
           onFocusToggle={requestFocusSession}
@@ -2252,7 +2259,10 @@ export function StudioApp() {
                 {writeSub === "script" && (
                   <FirstRunChecklist
                     hasContent={Boolean((chapter?.prose || editor || "").trim().length > 20)}
-                    onOpenAgent={() => setAgentOpenTick((t) => t + 1)}
+                    onOpenAgent={() => {
+                      if (showDesktop) setDesktopAppTick((t) => t + 1);
+                      else setAgentOpenTick((t) => t + 1);
+                    }}
                     onGenerateRpy={() => {
                       setTab("project");
                       setProjectSub("export");
@@ -2533,7 +2543,9 @@ export function StudioApp() {
           </main>
         </div>
 
-        {!focusMode ? (
+        {/* AI 责编：桌面视角下它已经是桌面上的一个"应用窗口"，就不再叠一个浮动面板
+            （同一功能两套 UI 只会让人不知道该点哪个，浮窗还会压住编辑器）。 */}
+        {!focusMode && !showDesktop ? (
           <StudioErrorBoundary label="审稿 Agent">
             <AgentFloat
               project={project}

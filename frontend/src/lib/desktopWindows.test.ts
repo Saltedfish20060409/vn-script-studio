@@ -15,8 +15,10 @@ import {
   minimizeWindow,
   moveWindow,
   nearestSlot,
+  nextIconInDirection,
   openWindow,
   pruneIconPositions,
+  resetLayout,
   resolveIconSlots,
   saveLayout,
   setIconSlot,
@@ -144,6 +146,55 @@ describe("图标座位", () => {
   it("座位号是排过序的，坏值（负数/小数）被规整", () => {
     const layout = setIconSlot(EMPTY_LAYOUT, "a", -4.7);
     expect(layout.icons.a).toBe(0);
+  });
+});
+
+describe("键盘在图标间移动", () => {
+  // 一列 6 个座位（ICON_ROWS=6）：a0..a5 在第一列，b0 在第二列第一个
+  const slots: Record<string, number> = {
+    a0: 0,
+    a1: 1,
+    a2: 2,
+    a3: 3,
+    a4: 4,
+    a5: 5,
+    b0: 6,
+    b1: 7,
+  };
+
+  it("上下在同一列内走，不会跨列", () => {
+    expect(nextIconInDirection(slots, "a0", "down")).toBe("a1");
+    expect(nextIconInDirection(slots, "a1", "up")).toBe("a0");
+    // 该列最后一个再往下 → 没有下一个（不该跳到下一列第一行）
+    expect(nextIconInDirection(slots, "a5", "down")).toBeNull();
+  });
+
+  it("左右换列", () => {
+    expect(nextIconInDirection(slots, "a0", "right")).toBe("b0");
+    expect(nextIconInDirection(slots, "b0", "left")).toBe("a0");
+    // 最左列再往左 → 没有
+    expect(nextIconInDirection(slots, "a0", "left")).toBeNull();
+  });
+
+  it("目标座位空着时，继续往那个方向找最近的图标（用户摆乱了也不卡住）", () => {
+    const sparse: Record<string, number> = { x: 0, y: 3 }; // 0 和 3 都在第一列
+    expect(nextIconInDirection(sparse, "x", "down")).toBe("y");
+    expect(nextIconInDirection(sparse, "y", "up")).toBe("x");
+  });
+
+  it("当前图标没有座位记录 → 不动（返回 null）", () => {
+    expect(nextIconInDirection(slots, "nope", "down")).toBeNull();
+  });
+});
+
+describe("重置桌面布局", () => {
+  it("图标座位与窗口位置一起清掉，层级计数器保留", () => {
+    let layout = openWindow(EMPTY_LAYOUT, "music", RECT);
+    layout = setIconSlot(layout, "project:p1", 3);
+    const reset = resetLayout(layout);
+    expect(reset.icons).toEqual({});
+    expect(reset.windows).toEqual({});
+    expect(reset.topZ).toBeGreaterThanOrEqual(EMPTY_LAYOUT.topZ);
   });
 });
 

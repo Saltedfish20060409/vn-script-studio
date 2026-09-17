@@ -86,6 +86,37 @@ export function setIconSlot(layout: DesktopLayout, iconId: string, slot: number)
   return { ...layout, icons: { ...layout.icons, [iconId]: Math.max(0, Math.floor(slot)) } };
 }
 
+export type MoveDirection = "up" | "down" | "left" | "right";
+
+/**
+ * 键盘方向键在图标之间移动：按座位表算"上下左右应该是谁"。
+ *
+ * 座位是列优先（一列 6 个），所以：上/下 = 座位 ±1（同一列内），左/右 = 座位 ±6（换列）。
+ * 目标座位空着时，往那个方向继续找最近的**有图标的座位**（用户摆乱后也不会"卡住"）。
+ * 找不到（到边界了）就返回 null，由调用方保持焦点不动。
+ */
+export function nextIconInDirection(
+  slots: Record<string, number>,
+  currentId: string,
+  direction: MoveDirection,
+  rows: number = ICON_ROWS
+): string | null {
+  const current = slots[currentId];
+  if (typeof current !== "number") return null;
+  const total = Math.max(...Object.values(slots), current);
+  const step =
+    direction === "up" ? -1 : direction === "down" ? 1 : direction === "left" ? -rows : rows;
+  const sameColumn = (a: number, b: number) => Math.floor(a / rows) === Math.floor(b / rows);
+
+  for (let slot = current + step; slot >= 0 && slot <= total + rows; slot += step) {
+    // 上下移动不能跨列（第 5 行再往下应该是"没有下一个"，不是跳到下一列第 0 行）
+    if ((direction === "up" || direction === "down") && !sameColumn(slot, current)) break;
+    const found = Object.keys(slots).find((id) => id !== currentId && slots[id] === slot);
+    if (found) return found;
+  }
+  return null;
+}
+
 /** 把坐标夹在工作区内，避免拖出屏幕后找不回来。 */
 export function clampToViewport(
   x: number,
@@ -236,6 +267,14 @@ export function pruneIconPositions(layout: DesktopLayout, liveIds: string[]): De
     if (live.has(id)) icons[id] = slot;
   }
   return { ...layout, icons };
+}
+
+/**
+ * 重置桌面布局：图标座位与窗口位置一起清掉（保留层级计数器）。
+ * 「整理图标」只复位图标；这个更彻底 —— 窗口被拖到看不见的地方时用它找回来。
+ */
+export function resetLayout(layout: DesktopLayout): DesktopLayout {
+  return { windows: {}, icons: {}, topZ: layout.topZ + 1 };
 }
 
 /**

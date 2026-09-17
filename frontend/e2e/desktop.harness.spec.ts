@@ -10,11 +10,17 @@ import { expect, test, type Page } from "@playwright/test";
  * 3. 双击剧本 → 打开的是**这个剧本**的工作台窗口，标题是剧本名（桌面没有"剧本编辑器"软件）；
  * 4. 右键菜单：剧本图标上是"打开/重命名/复制/删除"，空白处是"新建/整理/剧本库"；
  * 5. 剧本多于 6 个时有「更多剧本」入口，点了打开剧本库；
- * 6. 开始菜单里有"整理图标"，点了回到自动排列。
+ * 6. 开始菜单里有"整理图标"，点了回到自动排列；
+ * 7. 键盘可操作（方向键移动、Enter 打开、F2 重命名、Delete 删除）；
+ * 8. 一次性小抄：第一次进桌面出现、关掉不再出现、打开剧本窗口时不出现。
  */
 
 const HARNESS = "/e2e/harness.html";
 
+/**
+ * 打开组件台。默认状态就是"第一次进来"：小抄会出现（它在右上角，不挡左列的图标），
+ * 需要它已读的用例自己点「知道了」或往 localStorage 写标记。
+ */
 async function openHarness(page: Page, query = "") {
   await page.goto(HARNESS + query);
   await expect(page.getByTestId("desktop-view")).toBeVisible();
@@ -194,6 +200,101 @@ test("开始菜单：系统项里有整理图标，点了回到自动排列", as
   await page.getByRole("menuitem", { name: /整理图标/ }).click();
 
   // 回到默认座位：第 3 个剧本图标回到第一列第三个
+  const tidy = await iconBox(page, "夏日回声");
+  const first = await iconBox(page, "雨夜站台");
+  expect(Math.round(tidy.x)).toBe(Math.round(first.x));
+  expect(tidy.y).toBeGreaterThan(first.y);
+});
+
+test("键盘就能操作桌面：方向键移动、Enter 打开、F2 重命名、Delete 删除", async ({ page }) => {
+  await openHarness(page, "?many=1");
+
+  // 焦点落到第一个剧本图标（长篇1 = 第 0 个座位）
+  await page.getByRole("listitem", { name: "长篇1" }).focus();
+  // ↓ 走到同一列的第二个
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("listitem", { name: "长篇2" })).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(page.getByRole("listitem", { name: "长篇1" })).toBeFocused();
+  // → 换列：6 个座位一列，第 0 个 → 第 6 个（第二列第一行 = 新建剧本）
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("listitem", { name: "新建剧本" })).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByRole("listitem", { name: "长篇1" })).toBeFocused();
+
+  // F2 = 重命名，Delete = 删除（都打到 StudioApp 的回调上）
+  await page.keyboard.press("F2");
+  await expect(page.getByTestId("harness-log")).toContainText("rename:q0");
+  await page.keyboard.press("Delete");
+  await expect(page.getByTestId("harness-log")).toContainText("delete:q0");
+
+  // Enter = 打开这个剧本
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
+  await expect(page.getByTestId("harness-log")).toContainText("open:q0");
+});
+
+test("键盘上下不跨列（单列布局里按 → 不会乱跳）", async ({ page }) => {
+  await openHarness(page);
+  await page.getByRole("listitem", { name: "夏日回声" }).focus();
+  // 只有一个剧本列，右边没有座位 → 焦点不动
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("listitem", { name: "夏日回声" })).toBeFocused();
+});
+
+test("一次性小抄：第一次进桌面出现，点「知道了」后不再出现", async ({ page }) => {
+  await openHarness(page);
+
+  const tips = page.getByTestId("desktop-tips");
+  await expect(tips).toBeVisible();
+  await expect(tips).toContainText("双击");
+  await expect(tips).toContainText("右键");
+  await expect(tips).toContainText("重置桌面布局");
+
+  await page.getByTestId("desktop-tips-close").click();
+  await expect(tips).toHaveCount(0);
+
+  // 关掉 = 记住，刷新后不再出现
+  await page.reload();
+  await expect(page.getByTestId("desktop-view")).toBeVisible();
+  await expect(page.getByTestId("desktop-tips")).toHaveCount(0);
+});
+
+test("小抄不挡刚打开的剧本窗口（打开窗口时自动收起）", async ({ page }) => {
+  await openHarness(page);
+  await expect(page.getByTestId("desktop-tips")).toBeVisible();
+
+  await page.getByRole("listitem", { name: "九幽诀" }).dblclick();
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
+  await expect(page.getByTestId("desktop-tips")).toHaveCount(0);
+});
+
+test("任务栏常驻「工作台」出口（迷路了不用翻开始菜单）", async ({ page }) => {
+  await openHarness(page);
+  const exit = page.getByTestId("desktop-to-studio");
+  await expect(exit).toBeVisible();
+  await exit.click();
+  await expect(page.getByTestId("harness-log")).toContainText("studio");
+});
+
+test("开始菜单里的「重置桌面布局」把图标和窗口位置一起清掉", async ({ page }) => {
+  await openHarness(page);
+
+  // 先开一个应用窗口（位置会被记住），再摆乱一个图标
+  await page.getByRole("listitem", { name: "AI 责编" }).dblclick();
+  await expect(page.getByTestId("desktop-window-agent")).toBeVisible();
+  const before = await iconBox(page, "夏日回声");
+  const target = await iconBox(page, "新建剧本");
+  await page.mouse.move(before.x + before.width / 2, before.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(target.x + target.width / 2, target.y + 20, { steps: 10 });
+  await page.mouse.up();
+
+  await page.getByRole("button", { name: "开始" }).click();
+  await page.getByRole("menuitem", { name: /重置桌面布局/ }).click();
+
+  // 窗口被关掉、图标回到自动排列
+  await expect(page.getByTestId("desktop-window-agent")).toHaveCount(0);
   const tidy = await iconBox(page, "夏日回声");
   const first = await iconBox(page, "雨夜站台");
   expect(Math.round(tidy.x)).toBe(Math.round(first.x));

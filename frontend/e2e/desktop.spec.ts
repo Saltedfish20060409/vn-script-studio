@@ -23,6 +23,11 @@ function seedLocalStorage(page: Page) {
       for (let v = 1; v <= 30; v += 1) localStorage.setItem(`vnss-notice-read-v${v}`, "1");
       localStorage.setItem("vnss-tour-v1", "1");
       localStorage.setItem("vnss-music-bar", "0");
+      // AI 责编浮窗预设成"贴边收起"，用来验证桌面视角下它不再渲染
+      localStorage.setItem(
+        "vnss-agent-float-v6",
+        JSON.stringify({ mode: "docked", edge: "right", along: 96, size: "mini" })
+      );
     } catch {
       /* ignore */
     }
@@ -59,6 +64,8 @@ test("桌面视角：篇章标签栏没被压扁、剧本/分析与章节都能�
   // 新账号自带一个可写的示例剧本；先加一章，方便验证章节切换
   const title = await page.getByLabel("作品标题").inputValue();
   await page.getByRole("button", { name: "+ 章" }).click();
+  // 加章会先问标题（有默认值），确认即可
+  await page.getByRole("button", { name: "添加" }).click();
   await expect(page.getByRole("option")).toHaveCount(5, { timeout: 20_000 });
   await page.waitForTimeout(1500);
 
@@ -160,8 +167,7 @@ test("桌面视角：往下滚工作台时顶栏仍贴在标题栏下面（不�
   expect(titleInput?.width ?? 0).toBeGreaterThan(80);
 });
 
-test("工作台视图：页脚（使用指南 / 备案号）在页面最底部，没被音乐条压住", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 860 });
+test("工作台视图：页脚（使用指南 / 备案号）在页面最底部，没被音乐条压住", async ({ page }) => {  await page.setViewportSize({ width: 1440, height: 860 });
   const username = randomName("e2e_footer_");
   await registerAndLogin(page, username);
 
@@ -190,4 +196,44 @@ test("工作台视图：页脚（使用指南 / 备案号）在页面最底部�
     return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === link;
   });
   expect(linkOnTop, "页脚被别的东西盖住了").toBe(true);
+});
+
+test("桌面视角：一次性小抄、任务栏出口，以及不再叠一个 AI 浮窗", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 860 });
+  const username = randomName("e2e_desktop_tips_");
+  await registerAndLogin(page, username);
+  const title = await page.getByLabel("作品标题").inputValue();
+
+  // 模拟"第一次进桌面视角"：清掉小抄已读标记
+  await page.evaluate(() => {
+    localStorage.setItem("vnss-workspace-v1", JSON.stringify({ view: "desktop" }));
+    localStorage.removeItem("vnss-desktop-tips-v1");
+  });
+  await page.reload();
+  await expect(page.getByTestId("desktop-view")).toBeVisible({ timeout: 30_000 });
+
+  // ① 小抄出现，四条要点都在，点「知道了」之后刷新也不再出现
+  const tips = page.getByTestId("desktop-tips");
+  await expect(tips).toBeVisible();
+  await expect(tips).toContainText("双击剧本图标");
+  await expect(tips).toContainText("右键");
+  await page.getByTestId("desktop-tips-close").click();
+  await expect(tips).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId("desktop-view")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("desktop-tips")).toHaveCount(0);
+
+  // ② 桌面视角下不渲染 AI 责编的浮动面板（同一功能只留"应用窗口"一套 UI）
+  await expect(page.locator('button[title^="AI 责编"]')).toHaveCount(0);
+
+  // ③ 双击剧本 → 顶栏「审稿」应该打开桌面上的 AI 责编窗口，而不是浮窗
+  await page.getByRole("listitem", { name: title }).dblclick();
+  await expect(page.getByTestId("script-editor")).toBeVisible();
+  await page.getByRole("button", { name: "审稿" }).click();
+  await expect(page.getByTestId("desktop-window-agent")).toBeVisible();
+
+  // ④ 任务栏常驻「工作台」出口：一键回三栏视图
+  await page.getByTestId("desktop-to-studio").click();
+  await expect(page.getByTestId("desktop-view")).toHaveCount(0);
+  await expect(page.getByTestId("script-editor")).toBeVisible();
 });
