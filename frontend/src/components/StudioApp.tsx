@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ApiError,
@@ -99,6 +106,7 @@ import {
 } from "../lib/conflictDraft";
 import { StatusToast } from "./StatusToast";
 import { classifyStatusToast } from "../lib/statusToast";
+import { loadMusicBar, subscribeMusicBar } from "../lib/musicBar";
 import { blockTextRange, blocksToEditable, editableToBlocks } from "../lib/scriptCodec";
 import { insertCommandAtLine } from "../lib/insertCommand";
 import { chapterProse, proseFingerprint, rpyIsStale } from "../lib/scriptProse";
@@ -178,6 +186,8 @@ export function StudioApp() {
   const { logout, user } = useAuth();
   const navigate = useNavigate();
   const confirm = useConfirm();
+  /** 底部固定音乐条开着时会把页脚（使用指南 / 备案号）压在下面，页脚要往上让 */
+  const musicBarOn = useSyncExternalStore(subscribeMusicBar, loadMusicBar, loadMusicBar);
   const prompt = usePrompt();
   const cachedWs = useMemo(() => loadWorkspace(), []);
   const wsDefaults = workspaceDefaults();
@@ -2587,7 +2597,11 @@ export function StudioApp() {
             }}
           />
         ) : null}
-        <FilingFooter />
+        {/* 页脚（使用指南 / 备案号）：工作台视图里底部音乐条是 fixed 的，会盖住它，
+            所以这里给它让出音乐条的高度；桌面视角没有音乐条，也就不要那段空白。 */}
+        <div className={!showDesktop && musicBarOn ? styles.footerLift : undefined}>
+          <FilingFooter />
+        </div>
       </div>
     </>
   );

@@ -105,14 +105,23 @@
   overflow-x: hidden;
 }
 
-.shell.shellUnderDesktop .layout,
 .shell.shellUnderDesktop .main {
   flex-shrink: 0;
 }
 
-/* 桌面里不渲染底部音乐条（音乐是"应用窗口"），工作台不用给那条留位置 */
+/* 桌面里不渲染底部音乐条（音乐是"应用窗口"），工作台不用给那条留位置。
+   注意 flex 要用 `1 0 auto` 而不是默认的 `1 0 0%`：basis 0% 会让 .layout 的高度等于
+   外壳高度，内容比它高时就溢出，紧跟在后面的页脚（使用指南 / 备案号）就会被"溢出的编辑器"
+   盖住 —— 表现是页脚跑到写作页文本框里去了。basis:auto 才能"内容多高就多高，够高才撑满"，
+   多出来的交给外壳滚动。 */
 .shell.shellUnderDesktop .layout {
+  flex: 1 0 auto;
   padding-bottom: 0;
+}
+
+/* 工作台视图里页脚要躲开底部固定的音乐条（否则"使用指南 / 备案号"会被压在条下面点不到） */
+.footerLift {
+  padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
 }
 
 /* 窗口里的空态说明（比如还没打开剧本时的 AI 责编） */

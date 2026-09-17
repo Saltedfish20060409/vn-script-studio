@@ -108,6 +108,29 @@ test("桌面视角：篇章标签栏没被压扁、剧本/分析与章节都能�
   expect(Math.round((box?.y ?? 0) + (box?.height ?? 0))).toBe(860 - 46);
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
   expect(await shell.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+
+  // ⑥ 页脚（使用指南 / 备案号）必须在工作台内容的最下面，而不是被溢出的编辑器盖在框里
+  const footer = page.locator("footer");
+  await expect(footer).toHaveCount(1);
+  const footerBox = await footer.boundingBox();
+  const mainBox = await page.locator("main").boundingBox();
+  expect(footerBox?.y ?? 0).toBeGreaterThanOrEqual(
+    Math.round((mainBox?.y ?? 0) + (mainBox?.height ?? 0)) - 2
+  );
+
+  // 滚到工作台底部：页脚要露出来，而且点得到（被编辑器盖住时这里会点到别的元素）
+  await shell.evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  await page.waitForTimeout(400);
+  await expect(footer).toBeInViewport();
+  const footerOnTop = await footer.evaluate((el) => {
+    const link = el.querySelector("a");
+    if (!link) return false;
+    const r = link.getBoundingClientRect();
+    return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === link;
+  });
+  expect(footerOnTop, "页脚被别的内容盖住了").toBe(true);
 });
 
 test("桌面视角：往下滚工作台时顶栏仍贴在标题栏下面（不会被压住）", async ({ page }) => {
@@ -135,4 +158,36 @@ test("桌面视角：往下滚工作台时顶栏仍贴在标题栏下面（不�
   expect(titleInput?.y ?? 0).toBeGreaterThanOrEqual(30);
   expect(titleInput?.y ?? 0).toBeLessThan(120);
   expect(titleInput?.width ?? 0).toBeGreaterThan(80);
+});
+
+test("工作台视图：页脚（使用指南 / 备案号）在页面最底部，没被音乐条压住", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 860 });
+  const username = randomName("e2e_footer_");
+  await registerAndLogin(page, username);
+
+  // 滚到页面底部（页脚在内容最后）
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(500);
+
+  const footer = page.locator("footer");
+  await expect(footer).toBeInViewport();
+  await expect(footer).toContainText("使用指南");
+
+  // 底部固定的音乐条不能盖住它（以前会被压在条下面点不到）
+  const bar = page.getByTestId("music-bar");
+  if (await bar.count()) {
+    const barBox = await bar.boundingBox();
+    const footerBox = await footer.boundingBox();
+    expect(footerBox?.y ?? 0).toBeGreaterThanOrEqual(0);
+    expect((footerBox?.y ?? 0) + (footerBox?.height ?? 0)).toBeLessThanOrEqual(barBox?.y ?? 0);
+  }
+
+  // 页脚里的"使用指南"真的点得到（elementFromPoint 命中的就是它）
+  const linkOnTop = await footer.evaluate((el) => {
+    const link = el.querySelector("a");
+    if (!link) return false;
+    const r = link.getBoundingClientRect();
+    return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === link;
+  });
+  expect(linkOnTop, "页脚被别的东西盖住了").toBe(true);
 });
