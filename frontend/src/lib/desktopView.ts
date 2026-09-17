@@ -56,7 +56,7 @@ export function buildDesktopIcons(opts: {
     label: p.title || "未命名剧本",
     glyph: "📁",
     kind: "project" as const,
-    hint: "双击打开这个剧本",
+    hint: "双击打开这个剧本（写作页 / 设定 / 角色 / 地图 / 剧情状态都只属于它）",
   }));
   const appIcons = (opts.apps ?? [])
     .filter((a) => a.onDesktop)

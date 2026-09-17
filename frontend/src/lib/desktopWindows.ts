@@ -18,18 +18,72 @@ export type WinState = WinRect & {
 
 export type DesktopLayout = {
   windows: Record<string, WinState>;
-  /** 图标 id → 自由位置（未记录则按默认网格排列） */
-  icons: Record<string, { x: number; y: number }>;
+  /** 图标 id → 座位号（不是自由坐标：桌面图标有固定座位，跟 Windows 一样） */
+  icons: Record<string, number>;
   topZ: number;
 };
 
 export const EMPTY_LAYOUT: DesktopLayout = { windows: {}, icons: {}, topZ: 10 };
 
-/** 图标网格：拖动后吸附到网格（Windows 也是这样，看起来才不凌乱） */
-export const ICON_GRID = 8;
+/* ── 图标座位 ────────────────────────────────────────────────────────────
+ * 桌面图标不是"随便放"，而是占一个个**固定座位**：先竖着排满一列再排下一列
+ * （跟 Windows 的自动排列一致）。拖动只是"换座位"，松手吸附到最近的空位，
+ * 这样桌面永远不会乱，也不会出现两个图标叠在一起。
+ */
+export const ICON_W = 92;
+export const ICON_H = 96;
+export const ICON_GAP = 4;
+export const ICON_ROWS = 6; // 每列几个座位
+export const ICON_MARGIN_X = 16;
+export const ICON_MARGIN_Y = 16;
 
-export function snapToGrid(value: number, grid: number = ICON_GRID): number {
-  return Math.round(value / grid) * grid;
+/** 座位号 → 落点（列优先：先往下排满一列，再排右边一列）。 */
+export function slotToPosition(
+  slot: number,
+  rows: number = ICON_ROWS
+): { x: number; y: number } {
+  const safe = Math.max(0, Math.floor(slot));
+  const col = Math.floor(safe / Math.max(1, rows));
+  const row = safe % Math.max(1, rows);
+  return {
+    x: ICON_MARGIN_X + col * (ICON_W + ICON_GAP),
+    y: ICON_MARGIN_Y + row * (ICON_H + ICON_GAP),
+  };
+}
+
+/** 落点 → 最近的座位号（拖动松手时用）。 */
+export function nearestSlot(
+  x: number,
+  y: number,
+  rows: number = ICON_ROWS
+): number {
+  const col = Math.max(0, Math.round((x - ICON_MARGIN_X) / (ICON_W + ICON_GAP)));
+  const row = Math.max(0, Math.min(rows - 1, Math.round((y - ICON_MARGIN_Y) / (ICON_H + ICON_GAP))));
+  return col * rows + row;
+}
+
+/**
+ * 把一个图标放到指定座位。座位上原本有别的图标（不管是手工摆过的还是自动补位的）
+ * 就**互相换座**：谁都不会被挤没，桌面也不会出现两个图标叠在一起。
+ */
+export function assignIconSlot(
+  layout: DesktopLayout,
+  iconId: string,
+  slot: number,
+  orderedIds: string[]
+): DesktopLayout {
+  const target = Math.max(0, Math.floor(slot));
+  const resolved = resolveIconSlots(layout, orderedIds);
+  const current = resolved[iconId];
+  if (current === undefined || current === target) return layout;
+  const occupant = orderedIds.find((id) => id !== iconId && resolved[id] === target);
+  const icons: Record<string, number> = { ...layout.icons, [iconId]: target };
+  if (occupant) icons[occupant] = current;
+  return { ...layout, icons };
+}
+
+export function setIconSlot(layout: DesktopLayout, iconId: string, slot: number): DesktopLayout {
+  return { ...layout, icons: { ...layout.icons, [iconId]: Math.max(0, Math.floor(slot)) } };
 }
 
 /** 把坐标夹在工作区内，避免拖出屏幕后找不回来。 */
@@ -103,18 +157,6 @@ export function toggleMaximize(layout: DesktopLayout, id: string): DesktopLayout
   };
 }
 
-export function setIconPosition(
-  layout: DesktopLayout,
-  iconId: string,
-  x: number,
-  y: number
-): DesktopLayout {
-  return {
-    ...layout,
-    icons: { ...layout.icons, [iconId]: { x: snapToGrid(x), y: snapToGrid(y) } },
-  };
-}
-
 /** 任务栏上要显示的窗口按钮：按 z 从高到低（最近用的在最前）。 */
 export function taskbarWindows(layout: DesktopLayout): WinState[] {
   return Object.values(layout.windows).sort((a, b) => b.z - a.z);
@@ -125,7 +167,42 @@ export function topWindow(layout: DesktopLayout): WinState | null {
   return taskbarWindows(layout).find((w) => !w.minimized) ?? null;
 }
 
-const LAYOUT_KEY = "vnss-desktop-layout-v1";
+// v2：图标从"自由坐标"改成"固定座位"。旧键直接不用（这个桌面视图刚上线，
+// 没有值得迁移的历史布局），换键名比写迁移代码更省事、也不会读出坏数据。
+const LAYOUT_KEY = "vnss-desktop-layout-v2";
+
+function sanitizeWindows(raw: unknown): Record<string, WinState> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, WinState> = {};
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    const w = value as Partial<WinState>;
+    if (!w || typeof w !== "object") continue;
+    if (typeof w.x !== "number" || typeof w.y !== "number") continue;
+    out[id] = {
+      id,
+      x: w.x,
+      y: w.y,
+      w: typeof w.w === "number" && w.w > 0 ? w.w : 520,
+      h: typeof w.h === "number" && w.h > 0 ? w.h : 420,
+      z: typeof w.z === "number" ? w.z : EMPTY_LAYOUT.topZ,
+      minimized: Boolean(w.minimized),
+      maximized: Boolean(w.maximized),
+    };
+  }
+  return out;
+}
+
+function sanitizeIconSlots(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, number> = {};
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    // 只认座位号（旧版的 {x,y} 会被丢掉，等价于"回到默认座位"）
+    if (typeof value === "number" && Number.isFinite(value)) {
+      out[id] = Math.max(0, Math.floor(value));
+    }
+  }
+  return out;
+}
 
 export function loadLayout(): DesktopLayout {
   try {
@@ -134,8 +211,8 @@ export function loadLayout(): DesktopLayout {
     const parsed = JSON.parse(raw) as Partial<DesktopLayout>;
     if (!parsed || typeof parsed !== "object") return EMPTY_LAYOUT;
     return {
-      windows: parsed.windows && typeof parsed.windows === "object" ? parsed.windows : {},
-      icons: parsed.icons && typeof parsed.icons === "object" ? parsed.icons : {},
+      windows: sanitizeWindows(parsed.windows),
+      icons: sanitizeIconSlots(parsed.icons),
       topZ: typeof parsed.topZ === "number" ? parsed.topZ : EMPTY_LAYOUT.topZ,
     };
   } catch {
@@ -151,12 +228,40 @@ export function saveLayout(layout: DesktopLayout): void {
   }
 }
 
-/** 删掉已经不存在的图标位置（项目被删掉后别留垃圾）。 */
+/** 删掉已经不存在的图标座位（项目被删掉后别留垃圾）。 */
 export function pruneIconPositions(layout: DesktopLayout, liveIds: string[]): DesktopLayout {
   const live = new Set(liveIds);
   const icons: DesktopLayout["icons"] = {};
-  for (const [id, pos] of Object.entries(layout.icons)) {
-    if (live.has(id)) icons[id] = pos;
+  for (const [id, slot] of Object.entries(layout.icons)) {
+    if (live.has(id)) icons[id] = slot;
   }
   return { ...layout, icons };
+}
+
+/**
+ * 把自动排列的图标与手工摆过的座位**合到一起**：没记录座位的按清单顺序找空位。
+ * 这样"用户摆过的"不会被自动排列覆盖，新出现的图标也会自动补进空位。
+ */
+export function resolveIconSlots(
+  layout: DesktopLayout,
+  orderedIds: string[]
+): Record<string, number> {
+  const taken = new Set<number>();
+  const out: Record<string, number> = {};
+  for (const id of orderedIds) {
+    const slot = layout.icons[id];
+    if (typeof slot === "number" && !taken.has(slot)) {
+      out[id] = slot;
+      taken.add(slot);
+    }
+  }
+  let cursor = 0;
+  for (const id of orderedIds) {
+    if (out[id] !== undefined) continue;
+    while (taken.has(cursor)) cursor += 1;
+    out[id] = cursor;
+    taken.add(cursor);
+    cursor += 1;
+  }
+  return out;
 }

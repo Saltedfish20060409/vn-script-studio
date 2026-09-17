@@ -27,7 +27,8 @@
   );
 }
 
-/* 图标是绝对定位的（用户可以把它们拖到任意位置），位置存在本地布局里 */
+/* 图标是绝对定位的，但位置不是自由坐标 —— 桌面有一张固定的"座位表"（见 desktopWindows.ts），
+   拖到哪儿都会吸附到最近的座位，跟 Windows 桌面网格一样对齐 */
 .iconArea {
   position: absolute;
   inset: 0;
@@ -67,6 +68,13 @@
 .icon:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+/* 拖动中：跟手浮起来一点（松手后才吸附到座位） */
+.iconDragging {
+  opacity: 0.9;
+  transform: scale(1.06);
+  transition: none;
 }
 
 .glyph {
@@ -225,7 +233,7 @@
   text-overflow: ellipsis;
 }
 
-/* 剧本编辑器：只画标题栏，工作台本体在它下面（StudioApp 渲染） */
+/* 剧本窗口：只画标题栏，工作台本体在它下面（StudioApp 渲染）——一个剧本一个窗口 */
 .editorFrame {
   position: absolute;
   left: 0;
@@ -235,14 +243,17 @@
   height: 30px;
 }
 
+/* 标题栏固定用深色玻璃：壁纸有深有浅（用户可以换），白字必须始终读得清 */
 .editorBar {
   display: flex;
   align-items: center;
   gap: 0.45rem;
   height: 30px;
   padding: 0 0.5rem 0 0.7rem;
-  border-bottom: 1px solid color-mix(in srgb, #7fd1ff 26%, transparent);
-  background: linear-gradient(180deg, rgba(127, 209, 255, 0.26), rgba(10, 14, 26, 0.92));
+  border-bottom: 1px solid color-mix(in srgb, #7fd1ff 30%, transparent);
+  background: linear-gradient(180deg, rgba(16, 22, 38, 0.9), rgba(8, 12, 24, 0.95));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: #e7eefb;
   font-size: 0.78rem;
 }
@@ -259,6 +270,16 @@
 .editorButtons {
   display: flex;
   gap: 0.2rem;
+}
+
+/* 「仅此剧本」：提醒这个窗口里的 Agent 只读当前剧本 */
+.editorSub {
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, #7fd1ff 18%, transparent);
+  font-size: 0.68rem;
+  opacity: 0.85;
+  white-space: nowrap;
 }
 
 .editorButtons button {

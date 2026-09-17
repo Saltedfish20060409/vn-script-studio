@@ -200,8 +200,12 @@ export function StudioApp() {
   const [tab, setTab] = useState<Tab>((cachedWs.tab as Tab) || wsDefaults.tab);
   /** 视图：三栏工作台 / 桌面。默认 studio（老用户习惯不变），可在系统设置里切换。 */
   const [view, setView] = useState<"studio" | "desktop">(cachedWs.view || wsDefaults.view);
-  /** 桌面视图里"剧本编辑器"窗口是否打开（工作台以最大化窗口形式出现） */
-  const [desktopEditorOpen, setDesktopEditorOpen] = useState(false);
+  /**
+   * 桌面视图里"当前打开的剧本窗口"是否开着。
+   * 一个剧本一个窗口：这个窗口里的工作台（写作页/设定/角色工坊/地图/剧情状态）和 AI 责编
+   * 都只属于 `project`，切换剧本时整块内容（含对话）跟着换，不存在"共用一套界面"的情况。
+   */
+  const [desktopScriptOpen, setDesktopScriptOpen] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === "undefined" ? 1280 : window.innerWidth
   );
@@ -471,7 +475,10 @@ export function StudioApp() {
   }, [project?.id, chapterId, tab, writeSub, worldSub, systemSub, projectSub]);
 
   // Sync editor text whenever project or chapter switches (not on every save).
+  // 顺便清掉"选中文本"：剧本/章节换了之后，上一段选中的文字已经不属于当前文本，
+  // 留着会被当成"当前选区"发给 AI 责编（跨剧本串味）。
   useEffect(() => {
+    setSelection("");
     if (!project || !chapterId) return;
     const ch = project.chapters.find((c) => c.id === chapterId);
     if (!ch) return;
@@ -1741,12 +1748,12 @@ export function StudioApp() {
           onCommitRename={() => void commitRename()}
           onCancelRename={cancelRename}
           onOpen={(id) => {
-            setDesktopEditorOpen(true);
+            setDesktopScriptOpen(true);
             if (id !== project?.id) void switchProject(id);
           }}
           onCreateBlank={() => {
             void createBlank();
-            setDesktopEditorOpen(true);
+            setDesktopScriptOpen(true);
           }}
           onCreateDemo={() => void createDemo()}
           onPickTemplate={(tid) => void createFromTemplate(tid)}
@@ -1764,26 +1771,36 @@ export function StudioApp() {
       defaultRect: { x: 200, y: 70, w: 620, h: 560 },
       render: () =>
         project ? (
-          <AgentChat
-            project={project}
-            chapterId={chapterId}
-            selection={selection}
-            draft={editor}
-            prepareProject={() => buildLatestProject() ?? project}
-            onProjectChange={(next) => {
-              applyRemoteProject(next);
-              const ch = next.chapters.find((c) => c.id === chapterId) ?? next.chapters[0];
-              if (ch) {
-                setChapterId(ch.id);
-                loadEditorFromChapter(ch, next.characters, writeModeRef.current);
-              }
-            }}
-            onChapterFocus={(id) => {
-              setChapterId(id);
-              setTab("write");
-              setWriteSub("script");
-            }}
-          />
+          // 标题写明"正在读哪个剧本"：上下文是后端按当前剧本组装的，
+          // 换个剧本就是另一套设定/角色/章节，对话也各自独立（不共享记忆）。
+          <div className={styles.scopeWrap}>
+            <p className={styles.scopeNote}>
+              正在读《{project.title}》· {(project.chapters ?? []).length} 章 ·
+              只依据这个剧本的内容回答
+            </p>
+            <div className={styles.scopeBody}>
+              <AgentChat
+                project={project}
+                chapterId={chapterId}
+                selection={selection}
+                draft={editor}
+                prepareProject={() => buildLatestProject() ?? project}
+                onProjectChange={(next) => {
+                  applyRemoteProject(next);
+                  const ch = next.chapters.find((c) => c.id === chapterId) ?? next.chapters[0];
+                  if (ch) {
+                    setChapterId(ch.id);
+                    loadEditorFromChapter(ch, next.characters, writeModeRef.current);
+                  }
+                }}
+                onChapterFocus={(id) => {
+                  setChapterId(id);
+                  setTab("write");
+                  setWriteSub("script");
+                }}
+              />
+            </div>
+          </div>
         ) : (
           <p className={styles.panelNote}>先打开一个剧本，AI 责编才能看到它的上下文。</p>
         ),
@@ -1803,13 +1820,6 @@ export function StudioApp() {
       onDesktop: true,
       defaultRect: { x: 420, y: 160, w: 380, h: 240 },
       render: () => <DeskPetApp />,
-    },
-    {
-      id: "editor",
-      label: "剧本编辑器",
-      glyph: "✍️",
-      onDesktop: true,
-      run: () => setDesktopEditorOpen(true),
     },
     {
       id: "settings",
@@ -1873,16 +1883,16 @@ export function StudioApp() {
       {tourOpen && project && (
         <OnboardingOverlay onDone={() => setTourOpen(false)} />
       )}
-      {/* 桌面视图：只换外壳，点开剧本仍然进下面的三栏工作台 */}
+      {/* 桌面视图：图标是"快捷方式"，双击剧本 = 打开**这个剧本自己的窗口**（不是跳走） */}
       {showDesktop ? (
         <DesktopView
           username={user?.username}
           projects={projectsList.map((p) => ({ id: p.id, title: p.title }))}
           activeProjectId={project?.id}
           activeProjectTitle={project?.title}
-          editorOpen={desktopEditorOpen}
-          onCloseEditor={() => setDesktopEditorOpen(false)}
-          onEditorMinimize={() => setDesktopEditorOpen(false)}
+          scriptOpen={desktopScriptOpen}
+          onCloseScript={() => setDesktopScriptOpen(false)}
+          onScriptMinimize={() => setDesktopScriptOpen(false)}
           onSwitchToStudioView={() => exitDesktopTo()}
           onLogout={() => {
             // 注销回登录页，并重新武装开机画面（"重启"的感觉）
@@ -1890,13 +1900,13 @@ export function StudioApp() {
             handleLogout();
           }}
           onOpenProject={(id: string) => {
-            // 双击剧本 = 在桌面上打开"剧本编辑器"窗口，而不是跳走
-            setDesktopEditorOpen(true);
+            // 双击剧本 = 在桌面上打开这个剧本的工作台窗口（写作页/设定/角色/地图/剧情状态）
+            setDesktopScriptOpen(true);
             if (id !== project?.id) void switchProject(id);
           }}
           onNewProject={() => {
             void createBlank();
-            setDesktopEditorOpen(true);
+            setDesktopScriptOpen(true);
           }}
           apps={desktopApps}
         />
@@ -1936,8 +1946,8 @@ export function StudioApp() {
         } ${
           tab === "write" && writeSub === "script" && focusMode ? styles.focusMode : ""
         } ${tab !== "write" ? styles.menuStage : ""} ${
-          showDesktop && !desktopEditorOpen ? styles.shellHidden : ""
-        } ${showDesktop && desktopEditorOpen ? styles.shellUnderDesktop : ""}`}
+          showDesktop && !desktopScriptOpen ? styles.shellHidden : ""
+        } ${showDesktop && desktopScriptOpen ? styles.shellUnderDesktop : ""}`}
         aria-hidden={showDesktop || undefined}
       >
         <FocusChrome

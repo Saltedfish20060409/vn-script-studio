@@ -432,6 +432,9 @@ export function AgentChat({
     setInput("");
     setError("");
     setLastContext("");
+    // 换了剧本就连"待发送的附件"一起清掉：那是上一个剧本排队要喂进来的素材，
+    // 留着会被当成新剧本的资料发出去（剧本之间不该串味）。
+    setAttachments([]);
 
     (async () => {
       try {

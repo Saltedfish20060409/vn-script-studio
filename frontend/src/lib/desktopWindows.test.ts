@@ -1,17 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   EMPTY_LAYOUT,
+  ICON_GAP,
+  ICON_H,
+  ICON_MARGIN_X,
+  ICON_MARGIN_Y,
+  ICON_ROWS,
+  ICON_W,
+  assignIconSlot,
   clampToViewport,
   closeWindow,
   focusWindow,
   loadLayout,
   minimizeWindow,
   moveWindow,
+  nearestSlot,
   openWindow,
   pruneIconPositions,
+  resolveIconSlots,
   saveLayout,
-  setIconPosition,
-  snapToGrid,
+  setIconSlot,
+  slotToPosition,
   taskbarWindows,
   toggleMaximize,
   topWindow,
@@ -80,29 +89,75 @@ describe("任务栏", () => {
 
 describe("最大化", () => {
   it("来回切换都保留原位置（还原后不跳到别处）", () => {
-    let layout = openWindow(EMPTY_LAYOUT, "editor", { x: 88, y: 64, w: 900, h: 600 });
-    layout = toggleMaximize(layout, "editor");
-    expect(layout.windows.editor.maximized).toBe(true);
-    expect(layout.windows.editor.x).toBe(88);
-    layout = toggleMaximize(layout, "editor");
-    expect(layout.windows.editor.maximized).toBe(false);
-    expect(layout.windows.editor.x).toBe(88);
+    let layout = openWindow(EMPTY_LAYOUT, "script", { x: 88, y: 64, w: 900, h: 600 });
+    layout = toggleMaximize(layout, "script");
+    expect(layout.windows.script.maximized).toBe(true);
+    expect(layout.windows.script.x).toBe(88);
+    layout = toggleMaximize(layout, "script");
+    expect(layout.windows.script.maximized).toBe(false);
+    expect(layout.windows.script.x).toBe(88);
   });
 });
 
-describe("坐标", () => {
-  it("吸附到网格（拖完不凌乱）", () => {
-    expect(snapToGrid(37, 8)).toBe(40);
-    expect(snapToGrid(35, 8)).toBe(32);
-    expect(setIconPosition(EMPTY_LAYOUT, "project:p1", 37, 101).icons["project:p1"]).toEqual({
-      x: 40,
-      y: 104,
+describe("图标座位", () => {
+  it("座位是固定网格：先往下排满一列，再排下一列", () => {
+    expect(slotToPosition(0)).toEqual({ x: ICON_MARGIN_X, y: ICON_MARGIN_Y });
+    expect(slotToPosition(1)).toEqual({ x: ICON_MARGIN_X, y: ICON_MARGIN_Y + ICON_H + ICON_GAP });
+    expect(slotToPosition(ICON_ROWS)).toEqual({
+      x: ICON_MARGIN_X + ICON_W + ICON_GAP,
+      y: ICON_MARGIN_Y,
     });
   });
 
+  it("落点吸回最近的座位，并且行号被夹在座位表内（不会排到任务栏下面）", () => {
+    expect(nearestSlot(ICON_MARGIN_X + 3, ICON_MARGIN_Y + 3)).toBe(0);
+    // 行 2 偏下一点 → 仍然是行 2
+    expect(nearestSlot(ICON_MARGIN_X, ICON_MARGIN_Y + 2 * (ICON_H + ICON_GAP) + 10)).toBe(2);
+    // 拖到很下面也不会得到第 99 行，而是最后一行的某个座位
+    const far = nearestSlot(ICON_MARGIN_X, 99_999);
+    expect(far % ICON_ROWS).toBe(ICON_ROWS - 1);
+  });
+
+  it("手工摆过的座位优先，其余按清单顺序补空位（不会两个图标叠在一起）", () => {
+    const layout = setIconSlot(EMPTY_LAYOUT, "b", 2);
+    const slots = resolveIconSlots(layout, ["a", "b", "c"]);
+    expect(slots.b).toBe(2);
+    expect(slots.a).toBe(0);
+    expect(slots.c).toBe(1); // 跳过被 b 占掉的 2
+    expect(new Set(Object.values(slots)).size).toBe(3);
+  });
+
+  it("拖到别人的座位上 = 换座（占位方不会被挤没）", () => {
+    const layout = setIconSlot(EMPTY_LAYOUT, "a", 0);
+    const swapped = assignIconSlot(layout, "a", 2, ["a", "b", "c"]);
+    const slots = resolveIconSlots(swapped, ["a", "b", "c"]);
+    expect(slots.a).toBe(2);
+    expect(slots.c).toBe(0); // 原来在 2 的 c 挪到 a 腾出来的 0
+    expect(new Set(Object.values(slots)).size).toBe(3);
+  });
+
+  it("拖回自己的座位不算移动（布局对象不变）", () => {
+    const layout = setIconSlot(EMPTY_LAYOUT, "a", 3);
+    expect(assignIconSlot(layout, "a", 3, ["a", "b"])).toBe(layout);
+  });
+
+  it("座位号是排过序的，坏值（负数/小数）被规整", () => {
+    const layout = setIconSlot(EMPTY_LAYOUT, "a", -4.7);
+    expect(layout.icons.a).toBe(0);
+  });
+});
+
+describe("窗口贴边", () => {
   it("拖出屏幕会被拉回来（含底部任务栏预留）", () => {
-    expect(clampToViewport(9999, 9999, { width: 1000, height: 800, winWidth: 300, winHeight: 200, reserveBottom: 64 }))
-      .toEqual({ x: 700, y: 536 });
+    expect(
+      clampToViewport(9999, 9999, {
+        width: 1000,
+        height: 800,
+        winWidth: 300,
+        winHeight: 200,
+        reserveBottom: 64,
+      })
+    ).toEqual({ x: 700, y: 536 });
     expect(clampToViewport(-50, -50, { width: 1000, height: 800 })).toEqual({ x: 0, y: 0 });
   });
 });
@@ -117,25 +172,33 @@ describe("持久化", () => {
     });
   });
 
-  it("布局能存能读（窗口位置 + 图标位置 + 层级）", () => {
+  it("布局能存能读（窗口位置 + 图标座位 + 层级）", () => {
     let layout = openWindow(EMPTY_LAYOUT, "music", RECT);
     layout = moveWindow(layout, "music", 120, 200);
-    layout = setIconPosition(layout, "project:p1", 24, 48);
+    layout = setIconSlot(layout, "project:p1", 4);
     saveLayout(layout);
     const back = loadLayout();
     expect(back.windows.music.x).toBe(120);
-    expect(back.icons["project:p1"]).toEqual({ x: 24, y: 48 });
+    expect(back.icons["project:p1"]).toBe(4);
     expect(back.topZ).toBe(layout.topZ);
   });
 
+  it("旧版的坐标式图标位置读不进来（v2 只认座位号），等价于回到默认排列", () => {
+    localStorage.setItem(
+      "vnss-desktop-layout-v2",
+      JSON.stringify({ windows: {}, topZ: 10, icons: { "project:p1": { x: 24, y: 48 } } })
+    );
+    expect(loadLayout().icons).toEqual({});
+  });
+
   it("坏数据不炸，退回空布局", () => {
-    localStorage.setItem("vnss-desktop-layout-v1", "{不是 JSON");
+    localStorage.setItem("vnss-desktop-layout-v2", "{不是 JSON");
     expect(loadLayout()).toEqual(EMPTY_LAYOUT);
   });
 
-  it("项目删掉后不留下孤立的图标位置", () => {
-    let layout = setIconPosition(EMPTY_LAYOUT, "project:gone", 8, 8);
-    layout = setIconPosition(layout, "project:live", 16, 16);
+  it("项目删掉后不留下孤立的图标座位", () => {
+    let layout = setIconSlot(EMPTY_LAYOUT, "project:gone", 1);
+    layout = setIconSlot(layout, "project:live", 2);
     const pruned = pruneIconPositions(layout, ["project:live"]);
     expect(Object.keys(pruned.icons)).toEqual(["project:live"]);
   });

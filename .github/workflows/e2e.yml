@@ -69,5 +69,7 @@ jobs:
         run: npm run build
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
+      - name: Desktop harness tests (no backend needed)
+        run: npm run test:harness
       - name: E2E smoke tests
         run: npm run test:e2e

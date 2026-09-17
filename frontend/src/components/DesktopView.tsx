@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { buildDesktopIcons, formatClock, formatClockDate, type DesktopIcon } from "../lib/desktopView";
 import {
-  clampToViewport,
+  assignIconSlot,
   closeWindow,
   focusWindow,
   loadLayout,
   minimizeWindow,
   moveWindow,
+  nearestSlot,
   openWindow,
   pruneIconPositions,
   resizeWindow,
+  resolveIconSlots,
   saveLayout,
-  setIconPosition,
+  slotToPosition,
   taskbarWindows,
   type DesktopLayout,
   type WinRect,
@@ -39,15 +41,15 @@ type Props = {
   /** 剧本（桌面上的"文件夹"） */
   projects: Array<{ id: string; title: string }>;
   activeProjectId?: string;
-  /** 打开某个剧本：切到"剧本编辑器"窗口（最大化），不是跳走 */
+  /** 打开某个剧本：在桌面上打开**这个剧本自己的工作台窗口**（最大化），不是跳走 */
   onOpenProject: (id: string) => void;
   onNewProject: () => void;
   apps: DesktopApp[];
-  /** 剧本编辑器窗口是否打开（工作台以"最大化窗口"形式出现） */
-  editorOpen: boolean;
+  /** 当前剧本的工作台窗口是否打开（打开时工作台以"最大化窗口"形式出现在桌面上） */
+  scriptOpen: boolean;
   activeProjectTitle?: string;
-  onCloseEditor: () => void;
-  onEditorMinimize?: () => void;
+  onCloseScript: () => void;
+  onScriptMinimize?: () => void;
   /** 切回工作台视图（非桌面形态） */
   onSwitchToStudioView: () => void;
   /** 注销：回到登录页（会重新走过开机画面） */
@@ -55,12 +57,22 @@ type Props = {
 };
 
 const RESERVE_BOTTOM = 46; // 任务栏高度（桌面视图里底部音乐条由「音乐播放器」窗口提供）
+const DRAG_THRESHOLD = 4; // 位移超过这么多像素才算"拖动"，避免单击时图标抖一下
+
+/** 拖动中的图标：跟手位置 + 按下时的偏移（保证图标不会"跳"到指针中心） */
+type DragInfo = { id: string; x: number; y: number; dx: number; dy: number };
+/** 按下时就记下起点，用来区分"单击"和"拖动" */
+type PendingDrag = DragInfo & { startX: number; startY: number };
 
 /**
- * 桌面视图：图标可拖动、应用开成窗口、任务栏管窗口，剧本编辑器是"最大化窗口"。
+ * 桌面视图：图标有固定座位（拖动=换座，松手自动对齐）、应用开成窗口、任务栏管窗口。
  *
- * 与上一版的区别（都是按反馈改的）：窗口是**自己的形态**而不是跳回原界面；
- * 桌面只放"快捷方式"，系统设置/帮助/公告这些进开始菜单；图标与窗口位置会被记住。
+ * 桌面上**没有"剧本编辑器"这个软件**：剧本自己就是入口 —— 双击某个剧本图标，
+ * 打开的是这个剧本自己的工作台窗口（写作页 / 设定 / 角色工坊 / 地图 / 剧情状态，
+ * 以及只读这个剧本的 AI 责编）。
+ *
+ * 窗口是**自己的形态**而不是跳回原界面；桌面只放"快捷方式"，系统设置/帮助/公告进开始菜单；
+ * 图标座位与窗口位置会被记住（跨刷新）。
  *
  * 边界仍然没变：窄屏自动回工作台（见 shouldShowDesktop），数据模型/编辑器逻辑一行没动。
  */
@@ -71,10 +83,10 @@ export function DesktopView({
   onOpenProject,
   onNewProject,
   apps,
-  editorOpen,
+  scriptOpen,
   activeProjectTitle,
-  onCloseEditor,
-  onEditorMinimize,
+  onCloseScript,
+  onScriptMinimize,
   onSwitchToStudioView,
   onLogout,
 }: Props) {
@@ -82,11 +94,27 @@ export function DesktopView({
   const [selected, setSelected] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [menuOpen, setMenuOpen] = useState(false);
-  const dragIcon = useRef<{ id: string; dx: number; dy: number } | null>(null);
   const lastClick = useRef<{ id: string; at: number }>({ id: "", at: 0 });
+  /** 按下时记下的拖动信息（含偏移与起点，用来判定"到底算不算拖动"） */
+  const pendingDrag = useRef<PendingDrag | null>(null);
+  /** 已经越过阈值、真的开始拖了（单击不该触发"浮起来"的样式） */
+  const dragActive = useRef(false);
+  const iconIdsRef = useRef<string[]>([]);
 
   const icons = useMemo(() => buildDesktopIcons({ projects, apps }), [projects, apps]);
   const openWins = taskbarWindows(layout);
+  /** 每个图标当前的座位（手工摆过的优先，其余按清单顺序补空位） */
+  const slots = useMemo(
+    () => resolveIconSlots(layout, icons.map((i) => i.id)),
+    [layout, icons]
+  );
+  /** 正在拖的图标：跟手位置，松手才真的换座位 */
+  const [dragging, setDragging] = useState<DragInfo | null>(null);
+
+  // 最新图标清单：松手落座时要按它算"换座"（用 ref 避免读到事件绑定那一刻的旧值）
+  useEffect(() => {
+    iconIdsRef.current = icons.map((i) => i.id);
+  }, [icons]);
 
   // 布局变了就落盘（图标/窗口位置跨刷新保留）
   useEffect(() => {
@@ -107,22 +135,28 @@ export function DesktopView({
     return () => window.clearInterval(timer);
   }, []);
 
-  // 图标拖动：跟窗口一样用 pointer 事件，松手吸附到网格
+  // 图标拖动：跟手移动，松手才"落座"到最近的座位（桌面有固定座位表，不是随便放）。
+  // 越过 DRAG_THRESHOLD 那一小段位移才算拖动 —— 否则单纯点一下图标也会"浮起来"闪一下。
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
-      const d = dragIcon.current;
-      if (!d) return;
-      const pos = clampToViewport(e.clientX - d.dx, e.clientY - d.dy, {
-        width: window.innerWidth,
-        height: window.innerHeight,
-        winWidth: 92,
-        winHeight: 92,
-        reserveBottom: RESERVE_BOTTOM,
-      });
-      setLayout((cur) => setIconPosition(cur, d.id, pos.x, pos.y));
+      const p = pendingDrag.current;
+      if (!p) return;
+      if (!dragActive.current) {
+        if (Math.hypot(e.clientX - p.startX, e.clientY - p.startY) < DRAG_THRESHOLD) return;
+        dragActive.current = true;
+      }
+      setDragging({ id: p.id, dx: p.dx, dy: p.dy, x: e.clientX - p.dx, y: e.clientY - p.dy });
     };
-    const stop = () => {
-      dragIcon.current = null;
+    const stop = (e: PointerEvent) => {
+      const p = pendingDrag.current;
+      pendingDrag.current = null;
+      if (p && dragActive.current) {
+        // 松手位置 → 最近的座位号；座位上原来有图标就换座
+        const target = nearestSlot(e.clientX - p.dx, e.clientY - p.dy);
+        setLayout((cur) => assignIconSlot(cur, p.id, target, iconIdsRef.current));
+      }
+      dragActive.current = false;
+      setDragging(null);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", stop);
@@ -169,7 +203,8 @@ export function DesktopView({
     if (isDouble) openIcon(icon);
   }
 
-  const selectedHint = icons.find((i) => i.id === selected)?.hint ?? "双击图标打开；拖动可以摆放位置";
+  const selectedHint =
+    icons.find((i) => i.id === selected)?.hint ?? "双击图标打开；拖动可以换座位（松手自动对齐）";
 
   return (
     <div
@@ -182,36 +217,47 @@ export function DesktopView({
         }
       }}
     >
-      {/* 图标与暗角只在"没有最大化窗口"时出现 —— 否则会浮在工作台上面 */}
-      {!editorOpen ? <div className={styles.dim} aria-hidden data-blank="1" /> : null}
+      {/* 图标与暗角只在"没有打开剧本窗口"时出现 —— 否则会浮在工作台上面 */}
+      {!scriptOpen ? <div className={styles.dim} aria-hidden data-blank="1" /> : null}
 
-      {/* 桌面图标：项目（文件夹）+ 用户放上来的应用快捷方式 */}
-      {!editorOpen ? (
+      {/* 桌面图标：剧本（文件夹）+ 放上桌面的应用快捷方式。位置=座位号，吸附对齐 */}
+      {!scriptOpen ? (
         <div
           className={styles.iconArea}
           role="list"
           aria-label="桌面图标"
           style={{ paddingBottom: RESERVE_BOTTOM + 3.4 * 16 }}
         >
-          {icons.map((icon, index) => {
-            const saved = layout.icons[icon.id];
-            // 没记录位置的按默认网格排：一行几个，向下增长
-            const fallback = { x: 16 + Math.floor(index / 6) * 100, y: 16 + (index % 6) * 96 };
-            const pos = saved ?? fallback;
+          {icons.map((icon) => {
+            const pos = slotToPosition(slots[icon.id] ?? 0);
+            const isDragging = dragging?.id === icon.id;
             return (
               <button
                 key={icon.id}
                 type="button"
                 role="listitem"
+                aria-label={icon.label}
                 className={`${styles.icon} ${selected === icon.id ? styles.iconOn : ""} ${
                   icon.id === `project:${activeProjectId}` ? styles.iconActive : ""
-                }`}
-                style={{ left: pos.x, top: pos.y }}
+                } ${isDragging ? styles.iconDragging : ""}`}
+                style={
+                  isDragging
+                    ? { left: dragging.x, top: dragging.y, zIndex: 20 }
+                    : { left: pos.x, top: pos.y }
+                }
                 onClick={() => handleIconClick(icon)}
                 onDoubleClick={() => openIcon(icon)}
                 onPointerDown={(e) => {
                   const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                  dragIcon.current = { id: icon.id, dx: e.clientX - r.left, dy: e.clientY - r.top };
+                  pendingDrag.current = {
+                    id: icon.id,
+                    x: r.left,
+                    y: r.top,
+                    dx: e.clientX - r.left,
+                    dy: e.clientY - r.top,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                  };
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -231,21 +277,21 @@ export function DesktopView({
         </div>
       ) : null}
 
-      {/* 剧本编辑器：以"最大化窗口"的形式出现（自己的标题栏 + 最小化/关闭），不跳走。
+      {/* 剧本窗口：标题就是剧本名。一个剧本一套工作台（写作页/设定/角色/地图/剧情状态 +
+          只读这个剧本的 AI 责编），所以它不是"某个编辑器"，而是这个剧本自己的工作区。
           工作台本体由 StudioApp 渲染在下面这一层（见 .shellUnderDesktop），
           它的高度/边距正好让开这条标题栏与任务栏。 */}
-      {editorOpen ? (
-        <div className={styles.editorFrame} data-testid="desktop-editor">
+      {scriptOpen ? (
+        <div className={styles.editorFrame} data-testid="desktop-script-window">
           <header className={styles.editorBar}>
-            <span aria-hidden>✍️</span>
-            <span className={styles.editorTitle}>
-              剧本编辑器{activeProjectTitle ? ` — ${activeProjectTitle}` : ""}
-            </span>
+            <span aria-hidden>📖</span>
+            <span className={styles.editorTitle}>{activeProjectTitle || "未命名剧本"}</span>
+            <span className={styles.editorSub}>仅此剧本</span>
             <div className={styles.editorButtons}>
-              <button type="button" onClick={onEditorMinimize} title="最小化到任务栏">
+              <button type="button" onClick={onScriptMinimize} title="最小化到任务栏">
                 —
               </button>
-              <button type="button" onClick={onCloseEditor} title="关闭">
+              <button type="button" onClick={onCloseScript} title="关闭">
                 ✕
               </button>
             </div>
@@ -309,6 +355,17 @@ export function DesktopView({
               role="menuitem"
               onClick={() => {
                 setMenuOpen(false);
+                // 整理图标：忘掉手工摆过的座位，回到"自动排列"（跟 Windows 的自动排列一致）
+                setLayout((cur) => ({ ...cur, icons: {} }));
+              }}
+            >
+              🧹 整理图标（自动排列）
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
                 onSwitchToStudioView();
               }}
             >
@@ -329,14 +386,14 @@ export function DesktopView({
 
         {/* 已打开窗口 = 任务栏按钮（点一下切换/还原） */}
         <div className={styles.tasks}>
-          {editorOpen ? (
+          {scriptOpen ? (
             <button
               type="button"
               className={styles.task}
-              onClick={() => (editorOpen ? onEditorMinimize?.() : undefined)}
-              title="剧本编辑器"
+              onClick={() => onScriptMinimize?.()}
+              title={activeProjectTitle || "未命名剧本"}
             >
-              ✍️ 剧本编辑器
+              📖 {activeProjectTitle || "未命名剧本"}
             </button>
           ) : null}
           {openWins.map((win) => {
@@ -368,7 +425,7 @@ export function DesktopView({
         </span>
       </div>
 
-      <span className={styles.hintBar} style={{ opacity: editorOpen ? 0 : 1 }}>
+      <span className={styles.hintBar} style={{ opacity: scriptOpen ? 0 : 1 }}>
         {selectedHint}
       </span>
     </div>
