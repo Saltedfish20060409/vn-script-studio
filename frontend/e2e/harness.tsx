@@ -20,8 +20,9 @@ import "../src/styles/globals.css";
  */
 
 const PROJECTS = [
-  { id: "p1", title: "雨夜站台" },
-  { id: "p2", title: "九幽诀" },
+  { id: "p1", title: "雨夜站台", chapters: 12, updatedAt: "2026-09-17T09:00:00Z" },
+  { id: "p2", title: "九幽诀", chapters: 0, updatedAt: "2026-09-10T09:00:00Z" },
+  // 没有章数/时间信息：验证"不画角标、提示也不编数字"
   { id: "p3", title: "夏日回声" },
 ];
 
@@ -139,6 +140,12 @@ function Harness({ projects = PROJECTS }: { projects?: Array<{ id: string; title
           setTab(id);
           setScriptOpen(true);
           setLog((cur) => [...cur, `tab:${id}`]);
+        }}
+        resume={{ projectTitle: projects[0].title, chapterLabel: "第 3 章 · 夜雨" }}
+        onResume={() => {
+          setActiveId(projects[0].id);
+          setScriptOpen(true);
+          setLog((cur) => [...cur, "resume"]);
         }}
         onSwitchToStudioView={() => setLog((cur) => [...cur, "studio"])}
         onLogout={() => setLog((cur) => [...cur, "logout"])}

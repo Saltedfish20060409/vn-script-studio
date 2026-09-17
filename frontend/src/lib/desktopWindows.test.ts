@@ -18,7 +18,6 @@ import {
   nextIconInDirection,
   openWindow,
   pruneIconPositions,
-  resetLayout,
   resolveIconSlots,
   saveLayout,
   setIconSlot,
@@ -184,17 +183,6 @@ describe("键盘在图标间移动", () => {
 
   it("当前图标没有座位记录 → 不动（返回 null）", () => {
     expect(nextIconInDirection(slots, "nope", "down")).toBeNull();
-  });
-});
-
-describe("重置桌面布局", () => {
-  it("图标座位与窗口位置一起清掉，层级计数器保留", () => {
-    let layout = openWindow(EMPTY_LAYOUT, "music", RECT);
-    layout = setIconSlot(layout, "project:p1", 3);
-    const reset = resetLayout(layout);
-    expect(reset.icons).toEqual({});
-    expect(reset.windows).toEqual({});
-    expect(reset.topZ).toBeGreaterThanOrEqual(EMPTY_LAYOUT.topZ);
   });
 });
 

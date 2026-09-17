@@ -19,7 +19,6 @@ import {
   nextIconInDirection,
   openWindow,
   pruneIconPositions,
-  resetLayout,
   resizeWindow,
   resolveIconSlots,
   saveLayout,
@@ -48,8 +47,8 @@ export type DesktopApp = {
 
 type Props = {
   username?: string;
-  /** 剧本（桌面上的"文件夹"） */
-  projects: Array<{ id: string; title: string }>;
+  /** 剧本（桌面上的"文件夹"）：带章数与最后修改时间，图标上直接显示进度 */
+  projects: Array<{ id: string; title: string; chapters?: number; updatedAt?: string }>;
   activeProjectId?: string;
   /** 打开某个剧本：在桌面上打开**这个剧本自己的工作台窗口**（最大化），不是跳走 */
   onOpenProject: (id: string) => void;
@@ -76,7 +75,13 @@ type Props = {
    * 而应该打开桌面上的「AI 责编」窗口）。改 nonce 即触发一次。
    */
   openAppRequest?: { id: string; nonce: number };
-  /** 切回工作台视图（非桌面形态） */
+  /**
+   * 「继续写作」：桌面空着时给一条零学习成本的回头路 ——
+   * 直接打开上次那个剧本、回到上次那一章（而不是"自己找哪个图标是刚才写的"）。
+   */
+  resume?: { projectTitle: string; chapterLabel: string };
+  onResume?: () => void;
+  /** 切换回工作台视图（非桌面形态） */
   onSwitchToStudioView: () => void;
   /** 注销：回到登录页（会重新走过开机画面） */
   onLogout: () => void;
@@ -135,6 +140,8 @@ export function DesktopView({
   scriptTabs,
   onOpenScriptTab,
   openAppRequest,
+  resume,
+  onResume,
   onSwitchToStudioView,
   onLogout,
 }: Props) {
@@ -321,6 +328,14 @@ export function DesktopView({
   }
 
   /**
+   * 排列图标：忘掉手工摆过的座位，回到默认顺序（跟 Windows 的自动排列一致）。
+   * 只动图标、不动窗口 —— "窗口找不回来"是另一件事，见开始菜单里的「关掉所有窗口」。
+   */
+  function tileIcons() {
+    setLayout((cur) => ({ ...cur, icons: {} }));
+  }
+
+  /**
    * 键盘操作（桌面比喻该有的那几件）：方向键在座位间移动、Enter 打开、
    * F2 重命名、Delete 删除。焦点跟着走，选中态同步，底部提示条会显示这个图标能干什么。
    */
@@ -397,7 +412,7 @@ export function DesktopView({
         }
       }}
       onContextMenu={(e) => {
-        // 右键空白处 = 桌面自己的菜单（新建剧本 / 整理图标 / 打开剧本库），跟 Windows 一致
+        // 右键空白处 = 桌面自己的菜单（新建剧本 / 排列图标 / 打开剧本库），跟 Windows 一致
         if (!isBlankSpot(e.target)) return;
         e.preventDefault();
         setMenuOpen(false);
@@ -486,6 +501,11 @@ export function DesktopView({
                 <span className={styles.glyph} aria-hidden>
                   {icon.glyph}
                 </span>
+                {icon.badge ? (
+                  <span className={styles.badge} data-testid={`icon-badge-${icon.id}`}>
+                    {icon.badge}
+                  </span>
+                ) : null}
                 <span className={styles.label}>{icon.label}</span>
               </button>
             );
@@ -537,7 +557,7 @@ export function DesktopView({
         );
       })}
 
-      {/* 右键菜单：图标上（打开/重命名/复制/删除）或空白处（新建/整理图标） */}
+      {/* 右键菜单：图标上（打开/重命名/复制/删除）或空白处（新建/排列图标） */}
       {ctxMenu ? (
         <div
           className={styles.ctx}
@@ -563,10 +583,7 @@ export function DesktopView({
               ))
             : [
                 { label: "📄 新建剧本", run: onNewProject },
-                {
-                  label: "🧹 整理图标（自动排列）",
-                  run: () => setLayout((cur) => ({ ...cur, icons: {} })),
-                },
+                { label: "🧹 排列图标", run: tileIcons },
                 { label: "🗄️ 打开剧本库", run: () => openApp("library") },
               ].map((item) => (
                 <button
@@ -643,22 +660,23 @@ export function DesktopView({
               role="menuitem"
               onClick={() => {
                 setMenuOpen(false);
-                // 整理图标：忘掉手工摆过的座位，回到"自动排列"（跟 Windows 的自动排列一致）
-                setLayout((cur) => ({ ...cur, icons: {} }));
+                tileIcons();
               }}
             >
-              🧹 整理图标（自动排列）
+              🧹 排列图标
             </button>
             <button
               type="button"
               role="menuitem"
               onClick={() => {
                 setMenuOpen(false);
-                // 重置桌面布局：图标座位 + 窗口位置都清掉（窗口被拖到看不见时用它找回来）
-                setLayout((cur) => resetLayout(cur));
+                // 关掉所有窗口：窗口被拖到看不见的地方时，这样就能找回来
+                // （重新打开会回到默认位置，因为位置记录随窗口一起清掉了）
+                setLayout((cur) => ({ ...cur, windows: {} }));
+                onCloseScript();
               }}
             >
-              🧩 重置桌面布局（图标 + 窗口）
+              🪟 关掉所有窗口
             </button>
             <button
               type="button"
@@ -714,6 +732,22 @@ export function DesktopView({
             );
           })}
         </div>
+
+        {/* 「继续写作」：桌面空着时最常做的动作，放在最显眼、零学习成本的位置 */}
+        {!scriptOpen && resume && onResume ? (
+          <button
+            type="button"
+            className={styles.resume}
+            data-testid="desktop-resume"
+            onClick={onResume}
+            title={`继续写《${resume.projectTitle}》· ${resume.chapterLabel}`}
+          >
+            <span className={styles.resumeMain}>▶ 继续写作</span>
+            <span className={styles.resumeSub}>
+              {resume.chapterLabel} · {resume.projectTitle}
+            </span>
+          </button>
+        ) : null}
 
         {/* 迷路时的出口：任务栏常驻一个"回工作台视图"（开始菜单里也有，但那里要两步） */}
         <button

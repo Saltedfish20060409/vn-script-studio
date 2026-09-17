@@ -10,7 +10,7 @@ import { expect, test, type Page } from "@playwright/test";
  * 3. 双击剧本 → 打开的是**这个剧本**的工作台窗口，标题是剧本名（桌面没有"剧本编辑器"软件）；
  * 4. 右键菜单：剧本图标上是"打开/重命名/复制/删除"，空白处是"新建/整理/剧本库"；
  * 5. 剧本多于 6 个时有「更多剧本」入口，点了打开剧本库；
- * 6. 开始菜单里有"整理图标"，点了回到自动排列；
+ * 6. 开始菜单里的「排列图标」把图标排回默认顺序（只动图标、不动窗口）；
  * 7. 键盘可操作（方向键移动、Enter 打开、F2 重命名、Delete 删除）；
  * 8. 一次性小抄：第一次进桌面出现、关掉不再出现、打开剧本窗口时不出现。
  */
@@ -133,7 +133,7 @@ test("右键剧本图标有打开/重命名/复制/删除，点了会执行", as
   await expect(page.getByTestId("harness-log")).toContainText("rename:p3");
 });
 
-test("右键空白处有新建/整理图标/打开剧本库", async ({ page }) => {
+test("右键空白处有新建/排列图标/打开剧本库", async ({ page }) => {
   await openHarness(page);
 
   await page.mouse.click(700, 420, { button: "right" });
@@ -185,7 +185,7 @@ test("底部音乐条足够薄（贴底常驻，越薄越不挡写作）", async
   expect(play?.height ?? 0).toBeGreaterThanOrEqual(30);
 });
 
-test("开始菜单：系统项里有整理图标，点了回到自动排列", async ({ page }) => {
+test("开始菜单：系统项里有「排列图标」，点了回到默认顺序", async ({ page }) => {
   await openHarness(page);
 
   // 先摆乱一个图标
@@ -197,7 +197,7 @@ test("开始菜单：系统项里有整理图标，点了回到自动排列", as
   await page.mouse.up();
 
   await page.getByRole("button", { name: "开始" }).click();
-  await page.getByRole("menuitem", { name: /整理图标/ }).click();
+  await page.getByRole("menuitem", { name: /排列图标/ }).click();
 
   // 回到默认座位：第 3 个剧本图标回到第一列第三个
   const tidy = await iconBox(page, "夏日回声");
@@ -249,7 +249,7 @@ test("一次性小抄：第一次进桌面出现，点「知道了」后不再�
   await expect(tips).toBeVisible();
   await expect(tips).toContainText("双击");
   await expect(tips).toContainText("右键");
-  await expect(tips).toContainText("重置桌面布局");
+  await expect(tips).toContainText("关掉所有窗口");
 
   await page.getByTestId("desktop-tips-close").click();
   await expect(tips).toHaveCount(0);
@@ -269,6 +269,31 @@ test("小抄不挡刚打开的剧本窗口（打开窗口时自动收起）", as
   await expect(page.getByTestId("desktop-tips")).toHaveCount(0);
 });
 
+test("剧本图标带章数角标与进度提示；「继续写作」一键回到上次那一章", async ({ page }) => {
+  await openHarness(page);
+
+  // ① 角标：有章数就显示，0 章显示"空"
+  await expect(page.getByTestId("icon-badge-project:p1")).toHaveText("12 章");
+  await expect(page.getByTestId("icon-badge-project:p2")).toHaveText("空");
+  // 没有章数信息就不画角标（别显示成 0 章）
+  await expect(page.getByTestId("icon-badge-project:p3")).toHaveCount(0);
+
+  // ② 提示里能看到"共 N 章 · 最后修改 …"
+  const hint = await page.getByRole("listitem", { name: "雨夜站台" }).getAttribute("title");
+  expect(hint).toContain("共 12 章");
+  expect(hint).toContain("最后修改");
+
+  // ③ 继续写作：写着上次的章节名，点了直接回到那个剧本的窗口
+  const resume = page.getByTestId("desktop-resume");
+  await expect(resume).toBeVisible();
+  await expect(resume).toContainText("第 3 章 · 夜雨");
+  await resume.click();
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
+  await expect(page.getByTestId("harness-log")).toContainText("resume");
+  // 窗口开着时就不该再显示"继续写作"（你已经在那了）
+  await expect(page.getByTestId("desktop-resume")).toHaveCount(0);
+});
+
 test("任务栏常驻「工作台」出口（迷路了不用翻开始菜单）", async ({ page }) => {
   await openHarness(page);
   const exit = page.getByTestId("desktop-to-studio");
@@ -277,7 +302,9 @@ test("任务栏常驻「工作台」出口（迷路了不用翻开始菜单）",
   await expect(page.getByTestId("harness-log")).toContainText("studio");
 });
 
-test("开始菜单里的「重置桌面布局」把图标和窗口位置一起清掉", async ({ page }) => {
+test("两条收拾桌面的动作各管一件事：排列图标只动图标，关掉所有窗口只关窗口", async ({
+  page,
+}) => {
   await openHarness(page);
 
   // 先开一个应用窗口（位置会被记住），再摆乱一个图标
@@ -290,13 +317,19 @@ test("开始菜单里的「重置桌面布局」把图标和窗口位置一起�
   await page.mouse.move(target.x + target.width / 2, target.y + 20, { steps: 10 });
   await page.mouse.up();
 
+  // ① 排列图标：图标回到默认顺序，窗口**不受影响**（两件事不该互相牵连）
   await page.getByRole("button", { name: "开始" }).click();
-  await page.getByRole("menuitem", { name: /重置桌面布局/ }).click();
-
-  // 窗口被关掉、图标回到自动排列
-  await expect(page.getByTestId("desktop-window-agent")).toHaveCount(0);
+  await page.getByRole("menuitem", { name: /排列图标/ }).click();
   const tidy = await iconBox(page, "夏日回声");
   const first = await iconBox(page, "雨夜站台");
   expect(Math.round(tidy.x)).toBe(Math.round(first.x));
   expect(tidy.y).toBeGreaterThan(first.y);
+  await expect(page.getByTestId("desktop-window-agent")).toBeVisible();
+
+  // ② 关掉所有窗口：窗口收起，图标顺序保持不变（上面刚排好）
+  await page.getByRole("button", { name: "开始" }).click();
+  await page.getByRole("menuitem", { name: /关掉所有窗口/ }).click();
+  await expect(page.getByTestId("desktop-window-agent")).toHaveCount(0);
+  const stillTidy = await iconBox(page, "夏日回声");
+  expect(Math.round(stillTidy.x)).toBe(Math.round(first.x));
 });

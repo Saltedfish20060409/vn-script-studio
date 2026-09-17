@@ -167,6 +167,46 @@ test("桌面视角：往下滚工作台时顶栏仍贴在标题栏下面（不�
   expect(titleInput?.width ?? 0).toBeGreaterThan(80);
 });
 
+test("桌面视角：图标角标显示章数，「继续写作」回到上次那一章", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 860 });
+  const username = randomName("e2e_desktop_badge_");
+  await registerAndLogin(page, username);
+  const title = await page.getByLabel("作品标题").inputValue();
+
+  // 加一章（示例剧本自带 4 章 → 5 章），再停在第 2 章
+  await page.getByRole("button", { name: "+ 章" }).click();
+  await page.getByRole("button", { name: "添加" }).click();
+  await expect(page.getByRole("option")).toHaveCount(5, { timeout: 20_000 });
+  await page.getByRole("option").nth(1).click();
+  await expect(page.getByRole("option").nth(1)).toHaveAttribute("aria-selected", "true");
+  const chapterLabel = ((await page.getByRole("option").nth(1).textContent()) ?? "")
+    .replace(/^\d+/, "")
+    .trim();
+  await page.waitForTimeout(2500);
+
+  await page.evaluate(() => {
+    localStorage.setItem("vnss-workspace-v1", JSON.stringify({ view: "desktop" }));
+  });
+  await page.reload();
+  await expect(page.getByTestId("desktop-view")).toBeVisible({ timeout: 30_000 });
+
+  // ① 角标 = 这个剧本的章数（列表接口直接给，不用逐个项目去查）
+  const icon = page.getByRole("listitem", { name: title });
+  await expect(icon.locator('[data-testid^="icon-badge-"]')).toHaveText("5 章");
+  // ② 提示里有"共 5 章 · 最后修改 …"
+  const hint = await icon.getAttribute("title");
+  expect(hint).toContain("共 5 章");
+  expect(hint).toContain("最后修改");
+
+  // ③ 「继续写作」写着上次那一章，点了直接回到那里
+  const resume = page.getByTestId("desktop-resume");
+  await expect(resume).toBeVisible();
+  await expect(resume).toContainText(chapterLabel);
+  await resume.click();
+  await expect(page.getByTestId("script-editor")).toBeVisible();
+  await expect(page.getByRole("option").nth(1)).toHaveAttribute("aria-selected", "true");
+});
+
 test("工作台视图：页脚（使用指南 / 备案号）在页面最底部，没被音乐条压住", async ({ page }) => {  await page.setViewportSize({ width: 1440, height: 860 });
   const username = randomName("e2e_footer_");
   await registerAndLogin(page, username);

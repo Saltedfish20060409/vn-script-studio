@@ -29,6 +29,8 @@ export type DesktopIcon = {
   kind: "project" | "action";
   /** 提示条上的一句话说明 */
   hint: string;
+  /** 图标右上角的小角标（剧本 = 章数），没有就不画 */
+  badge?: string;
 };
 
 /** 桌面只放"快捷方式"：项目、新建、以及应用自己声明要放桌面的那些。 */
@@ -46,21 +48,40 @@ export type DesktopAppLike = {
  * 桌面放自己的东西（剧本、常用程序），"管理全部剧本"这种系统功能在开始里，
  * 剧本自己的重命名/复制/删除走图标右键菜单。
  *
+ * 剧本图标带角标（章数）与"最后修改"提示：桌面不只是图标，也得让人一眼看出每本的进度。
+ *
  * 剧本超过 `maxProjects` 时补一个「更多剧本」，不然多出来的剧本在桌面上就没有入口了。
  */
 export function buildDesktopIcons(opts: {
-  projects: Array<{ id: string; title: string }>;
+  projects: Array<{ id: string; title: string; chapters?: number; updatedAt?: string }>;
   apps?: DesktopAppLike[];
   maxProjects?: number;
+  /** 注入"现在"，便于测试相对时间 */
+  now?: Date;
 }): DesktopIcon[] {
   const max = opts.maxProjects ?? 6;
-  const recent = opts.projects.slice(0, max).map((p) => ({
-    id: `project:${p.id}`,
-    label: p.title || "未命名剧本",
-    glyph: "📁",
-    kind: "project" as const,
-    hint: "双击打开这个剧本（写作页 / 设定 / 角色 / 地图 / 剧情状态都只属于它）；右键更多操作",
-  }));
+  const now = opts.now ?? new Date();
+  const recent = opts.projects.slice(0, max).map((p) => {
+    const chapters = typeof p.chapters === "number" ? p.chapters : null;
+    const rel = p.updatedAt ? formatRelativeTime(p.updatedAt, now) : "";
+    const meta = [
+      chapters === null ? "" : chapters > 0 ? `共 ${chapters} 章` : "还没建章节",
+      rel ? `最后修改 ${rel}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return {
+      id: `project:${p.id}`,
+      label: p.title || "未命名剧本",
+      glyph: "📁",
+      kind: "project" as const,
+      badge: chapters === null ? undefined : chapters > 0 ? `${chapters} 章` : "空",
+      hint: [
+        `双击打开《${p.title || "未命名剧本"}》的工作台（写作 / 设定 / 角色工坊 / 地图 / 剧情状态）`,
+        meta ? `${meta}；右键可重命名 / 复制 / 删除` : "右键可重命名 / 复制 / 删除",
+      ].join("\n"),
+    };
+  });
   const appIcons = (opts.apps ?? [])
     .filter((a) => a.onDesktop)
     .map((a) => ({
@@ -107,6 +128,26 @@ export function formatClockDate(date: Date): string {
   return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
 }
 
+/**
+ * "最后修改"的相对时间（桌面图标提示用）：刚刚 / N 分钟前 / N 小时前 / 昨天 / N 天前 / 具体日期。
+ * 时钟偏差导致的"未来时间"一律显示「刚刚」，别出现"-3 分钟前"。
+ */
+export function formatRelativeTime(iso: string, now: Date = new Date()): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const diff = now.getTime() - t;
+  if (diff < 60_000) return "刚刚";
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "昨天";
+  if (days < 30) return `${days} 天前`;
+  const d = new Date(t);
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 const BOOT_SEEN_KEY = "vnss-boot-seen";
 
 /**
@@ -151,9 +192,9 @@ const TIPS_SEEN_KEY = "vnss-desktop-tips-v1";
 /** 首次进入桌面视角时的小抄内容（一次讲清四条，不再出现）。 */
 export const DESKTOP_TIPS: ReadonlyArray<string> = [
   "双击剧本图标 → 打开这个剧本自己的工作台（写作 / 设定 / 角色工坊 / 地图 / 剧情状态）",
-  "右键图标 → 重命名 / 复制 / 删除；右键空白处 → 新建剧本 / 整理图标",
+  "右键图标 → 重命名 / 复制 / 删除；右键空白处 → 新建剧本 / 排列图标",
   "「开始」里是全部应用与系统设置，也能直接跳到当前剧本的某一页",
-  "图标拖到想放的位置就会自动对齐；开始菜单里「整理图标 / 重置桌面布局」能一键恢复",
+  "图标拖到想放的位置就会自动对齐；「排列图标」「关掉所有窗口」能把桌面收拾回原样",
 ];
 
 /**

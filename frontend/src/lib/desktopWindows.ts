@@ -270,14 +270,6 @@ export function pruneIconPositions(layout: DesktopLayout, liveIds: string[]): De
 }
 
 /**
- * 重置桌面布局：图标座位与窗口位置一起清掉（保留层级计数器）。
- * 「整理图标」只复位图标；这个更彻底 —— 窗口被拖到看不见的地方时用它找回来。
- */
-export function resetLayout(layout: DesktopLayout): DesktopLayout {
-  return { windows: {}, icons: {}, topZ: layout.topZ + 1 };
-}
-
-/**
  * 把自动排列的图标与手工摆过的座位**合到一起**：没记录座位的按清单顺序找空位。
  * 这样"用户摆过的"不会被自动排列覆盖，新出现的图标也会自动补进空位。
  */

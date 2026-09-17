@@ -97,6 +97,22 @@
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
 }
 
+/* 图标角标：剧本 = 章数，一眼看出每本写到哪了 */
+.badge {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  padding: 0.05rem 0.3rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, #7fd1ff 82%, #0a0e1a);
+  color: #08131f;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
 .label {
   max-width: 92px;
   font-size: 0.74rem;
@@ -182,6 +198,41 @@
 
 .tipsFoot button:hover {
   background: color-mix(in srgb, #7fd1ff 32%, transparent);
+}
+
+/* 「继续写作」：任务栏里最显眼的一颗按钮（比"开始"更亮，因为它是最常见的下一步） */
+.resume {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+  padding: 0.2rem 0.7rem;
+  border: 1px solid color-mix(in srgb, #7fd1ff 55%, transparent);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(180deg, rgba(127, 209, 255, 0.32), rgba(127, 209, 255, 0.16));
+  color: #f2f8ff;
+  cursor: pointer;
+  max-width: 22rem;
+}
+
+.resume:hover {
+  background: linear-gradient(180deg, rgba(127, 209, 255, 0.45), rgba(127, 209, 255, 0.24));
+}
+
+.resumeMain {
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.resumeSub {
+  font-size: 0.66rem;
+  opacity: 0.85;
+  line-height: 1.15;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 21rem;
 }
 
 /* 任务栏：开始 + 已打开窗口 + 时钟 + 用户名 */

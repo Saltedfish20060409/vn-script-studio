@@ -23,6 +23,38 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+def test_list_reports_chapter_count():
+    """列表接口要给每个剧本的章数（桌面图标角标用），且与详情接口一致。"""
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "chapters_count_owner")
+
+            created: list[tuple[str, str]] = []
+            for label, payload in (
+                ("空白剧本", {"title": "空白剧本"}),
+                ("示例剧本", {"title": "示例", "from_demo": True}),
+            ):
+                r = await client.post("/api/v1/projects", json=payload, headers=headers)
+                assert r.status_code == 200, r.text
+                created.append((label, r.json()["id"]))
+
+            r = await client.get("/api/v1/projects", headers=headers)
+            assert r.status_code == 200, r.text
+            by_id = {p["id"]: p for p in r.json()}
+
+            for label, pid in created:
+                detail = (await client.get(f"/api/v1/projects/{pid}", headers=headers)).json()
+                expected = len(detail.get("chapters") or [])
+                # 新建项目至少带一章（空白剧本也有第一章）
+                assert expected >= 1, f"{label} 应该有默认章节"
+                assert by_id[pid]["chapters_count"] == expected, (
+                    f"{label}: 列表说 {by_id[pid]['chapters_count']} 章，详情是 {expected} 章"
+                )
+
+    _run(_scenario())
+
+
 def test_create_list_rename_delete():
     async def _scenario():
         async with db_gate.make_client(APP) as client:

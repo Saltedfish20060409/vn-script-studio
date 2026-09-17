@@ -1907,7 +1907,12 @@ export function StudioApp() {
       {showDesktop ? (
         <DesktopView
           username={user?.username}
-          projects={projectsList.map((p) => ({ id: p.id, title: p.title }))}
+          projects={projectsList.map((p) => ({
+            id: p.id,
+            title: p.title,
+            chapters: p.chapters_count,
+            updatedAt: p.updated_at,
+          }))}
           activeProjectId={project?.id}
           activeProjectTitle={project?.title}
           scriptOpen={desktopScriptOpen}
@@ -1948,6 +1953,20 @@ export function StudioApp() {
             setDesktopScriptOpen(true);
           }}
           openAppRequest={{ id: "agent", nonce: desktopAppTick }}
+          resume={
+            project
+              ? {
+                  projectTitle: project.title,
+                  chapterLabel: (() => {
+                    const i = (project.chapters ?? []).findIndex((c) => c.id === chapterId);
+                    const ch = i >= 0 ? project.chapters[i] : undefined;
+                    const name = ch?.title?.trim() || (i >= 0 ? `第 ${i + 1} 章` : "第 1 章");
+                    return name;
+                  })(),
+                }
+              : undefined
+          }
+          onResume={() => setDesktopScriptOpen(true)}
           apps={desktopApps}
         />
       ) : null}

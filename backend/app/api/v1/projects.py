@@ -11,7 +11,7 @@ from docx import Document
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
@@ -104,12 +104,27 @@ async def list_projects(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # 章数在 SQL 里数（jsonb 数组长度），不把每个项目的 data blob 拉到应用侧：
+    # 桌面视角每个图标都要显示"共 N 章"，列表接口顺手给出来最省事。
+    # 注意直接用 jsonb_array_length：它是 strict 函数，'chapters' 不存在时（data->'chapters'
+    # 是 NULL）返回 NULL，coalesce 兜成 0。别用 `jsonb_typeof(...) == "array"` 那种写法 ——
+    # JSONB 列的比较会把右侧按 JSON 绑定（'array' 会变成带引号的 JSON 字符串），恒为假。
+    chapters_count = func.coalesce(
+        func.jsonb_array_length(Project.data["chapters"]), 0
+    ).label("chapters_count")
     result = await db.execute(
-        select(Project)
+        select(
+            Project.id,
+            Project.title,
+            Project.logline,
+            Project.genre,
+            Project.updated_at,
+            Project.created_at,
+            chapters_count,
+        )
         .where(Project.owner_id == user.id)
         .order_by(Project.updated_at.desc())
     )
-    rows = result.scalars().all()
     return [
         ProjectSummary(
             id=r.id,
@@ -118,8 +133,9 @@ async def list_projects(
             genre=r.genre,
             updated_at=r.updated_at,
             created_at=r.created_at,
+            chapters_count=int(r.chapters_count or 0),
         )
-        for r in rows
+        for r in result.all()
     ]
 
 

@@ -23,6 +23,8 @@ export interface ProjectSummary {
   genre?: string | null;
   updated_at: string;
   created_at: string;
+  /** 章数（列表接口直接从 jsonb 数出来）：桌面图标角标 / 一眼进度 */
+  chapters_count?: number;
 }
 
 export type WritingActivityDay = {

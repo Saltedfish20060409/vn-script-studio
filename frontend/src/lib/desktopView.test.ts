@@ -5,6 +5,7 @@ import {
   buildDesktopIcons,
   formatClock,
   formatClockDate,
+  formatRelativeTime,
   isDesktopViewport,
   markDesktopTipsSeen,
   shouldPlayBoot,
@@ -92,6 +93,48 @@ describe("buildDesktopIcons", () => {
       expect(icon.hint).toContain("双击");
     }
   });
+
+  it("剧本图标带章数角标与「最后修改」提示（桌面要能一眼看出进度）", () => {
+    const now = new Date("2026-09-17T12:00:00Z");
+    const icons = buildDesktopIcons({
+      projects: [
+        { id: "p1", title: "雨夜车站", chapters: 12, updatedAt: "2026-09-17T09:00:00Z" },
+        { id: "p2", title: "空本子", chapters: 0, updatedAt: "2026-09-10T09:00:00Z" },
+        { id: "p3", title: "未知章数" },
+      ],
+      apps: [],
+      now,
+    });
+    expect(icons[0].badge).toBe("12 章");
+    expect(icons[1].badge).toBe("空");
+    // 没有章数信息就不画角标（别误导成 0 章）
+    expect(icons[2].badge).toBeUndefined();
+    expect(icons[0].hint).toContain("共 12 章");
+    expect(icons[0].hint).toContain("最后修改 3 小时前");
+    expect(icons[0].hint).toContain("右键可重命名");
+    expect(icons[1].hint).toContain("还没建章节");
+  });
+});
+
+describe("formatRelativeTime", () => {
+  const now = new Date("2026-09-17T12:00:00Z");
+
+  it("分档：刚刚 / 分钟 / 小时 / 昨天 / 天 / 具体日期", () => {
+    expect(formatRelativeTime("2026-09-17T11:59:30Z", now)).toBe("刚刚");
+    expect(formatRelativeTime("2026-09-17T11:30:00Z", now)).toBe("30 分钟前");
+    expect(formatRelativeTime("2026-09-17T08:00:00Z", now)).toBe("4 小时前");
+    expect(formatRelativeTime("2026-09-16T11:00:00Z", now)).toBe("昨天");
+    expect(formatRelativeTime("2026-09-14T11:00:00Z", now)).toBe("3 天前");
+    expect(formatRelativeTime("2026-08-01T11:00:00Z", now)).toBe("2026/8/1");
+  });
+
+  it("时钟偏差导致的「未来时间」显示刚刚，不出现负数", () => {
+    expect(formatRelativeTime("2026-09-17T12:05:00Z", now)).toBe("刚刚");
+  });
+
+  it("坏时间字符串返回空串（不显示 NaN 天前）", () => {
+    expect(formatRelativeTime("不是时间", now)).toBe("");
+  });
 });
 
 describe("时钟", () => {
@@ -147,9 +190,13 @@ describe("桌面小抄（一次性引导）", () => {
 
   it("四条要点要讲清：双击打开 / 右键菜单 / 开始菜单 / 座位与复位", () => {
     expect(DESKTOP_TIPS).toHaveLength(4);
-    expect(DESKTOP_TIPS.join("\n")).toContain("双击");
-    expect(DESKTOP_TIPS.join("\n")).toContain("右键");
-    expect(DESKTOP_TIPS.join("\n")).toContain("开始");
-    expect(DESKTOP_TIPS.join("\n")).toContain("重置桌面布局");
+    const text = DESKTOP_TIPS.join("\n");
+    expect(text).toContain("双击");
+    expect(text).toContain("右键");
+    expect(text).toContain("开始");
+    // 收拾桌面：两条各管一件事（排列图标 / 关掉所有窗口），名字不能含糊
+    expect(text).toContain("排列图标");
+    expect(text).toContain("关掉所有窗口");
+    expect(text).not.toContain("重置桌面布局");
   });
 });

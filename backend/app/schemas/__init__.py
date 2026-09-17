@@ -67,6 +67,8 @@ class ProjectSummary(BaseModel):
     genre: Optional[str] = None
     updated_at: datetime
     created_at: datetime
+    # 章数：桌面视角的图标角标、以及"这个剧本写了多少"的一眼进度
+    chapters_count: int = 0
 
 
 class ProjectCreateIn(BaseModel):
