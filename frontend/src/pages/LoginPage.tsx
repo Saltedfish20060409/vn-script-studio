@@ -15,6 +15,7 @@ import { MascotFigure } from "../components/MascotFigure";
 import { MASCOT_MOODS, type MascotMood } from "../lib/mascotArt";
 import { mascotLine } from "../lib/mascotCopy";
 import { openNotice } from "../lib/notice";
+import { BootScreen } from "../components/BootScreen";
 import { FilingFooter } from "../components/FilingFooter";
 import { AnimatedText } from "../components/reactbits/AnimatedText";
 import { GlowButton } from "../components/reactbits/GlowButton";
@@ -171,17 +172,24 @@ export default function LoginPage() {
           : "验证邮箱";
 
   return (
-    <div className={`vnss-app ${styles.wrap}`}>
-      {/* 公告复看：右上角按钮 → 让全局那个公告弹窗打开（已读也能看）。
-          这里不再自己渲染一份 —— 否则未读时全局实例会自动弹出，点按钮又弹一个，叠两层。 */}
-      <button
-        type="button"
-        className={styles.reviewBtn}
-        onClick={() => openNotice()}
-        title="查看公告与起步指导"
-      >
-        📢 公告
-      </button>
+    <div className={`vnss-app ${styles.wrap} ${styles.lock}`}>
+      {/* 开机画面：登录页的第一屏，放完自动让位（按任意键可跳过） */}
+      <BootScreen />
+      {/* 锁屏右上角小托盘：公告 / 帮助 —— 对应"开机之后"角落里的入口。
+          公告不再自己渲染一份弹窗，而是让全局那个单例打开（否则未读时会出现两个）。 */}
+      <div className={styles.tray}>
+        <button
+          type="button"
+          className={styles.reviewBtn}
+          onClick={() => openNotice()}
+          title="查看公告与起步指导"
+        >
+          📢 公告
+        </button>
+        <a className={styles.reviewBtn} href="/guide" title="使用指南 / FAQ">
+          ❓ 帮助
+        </a>
+      </div>
       <GlowCursor />
       {hasWallpaper ? (
         <>

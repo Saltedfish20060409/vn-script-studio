@@ -80,6 +80,12 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* 桌面视图打开时把工作台整体收起：用 display:none 而不是盖住，
+   否则隐藏的输入框仍然能被 Tab 聚焦（键盘用户会"跳进看不见的地方"） */
+.shellHidden {
+  display: none;
+}
+
 .top {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

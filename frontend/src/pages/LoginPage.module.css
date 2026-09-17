@@ -11,12 +11,20 @@
   background: transparent;
 }
 
-/* 右上角「公告」复看按钮：轻量 ghost，不抢标题视觉 */
-.reviewBtn {
+/* 锁屏托盘：右上角一排小入口（公告 / 帮助），对应"开机之后"角落里的图标 */
+.tray {
   position: absolute;
   top: 0.9rem;
   right: 0.9rem;
   z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+/* 托盘里的按钮：轻量 ghost，不抢标题视觉 */
+.reviewBtn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -42,6 +50,20 @@
   border-color: var(--accent);
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* 锁屏感：窄屏把两栏收成单栏（原布局在手机上已经很挤），并给托盘让出空间 */
+@media (max-width: 860px) {
+  .tray {
+    top: 0.6rem;
+    right: 0.6rem;
+    gap: 0.3rem;
+  }
+
+  .reviewBtn {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.74rem;
+  }
 }
 
 .hero {

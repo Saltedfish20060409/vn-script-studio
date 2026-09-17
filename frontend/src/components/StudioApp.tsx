@@ -77,6 +77,9 @@ import { hasSeenTour } from "../lib/onboarding";
 import { QPet } from "./QPet";
 import { AdminPanel } from "./AdminPanel";
 import { ClickFx } from "./ClickFx";import { WorldPanel } from "./WorldPanel";
+import { DesktopView } from "./DesktopView";
+import { shouldShowDesktop } from "../lib/desktopView";
+import { openNotice } from "../lib/notice";
 import { WriteToolbar, type WriteMode } from "./WriteToolbar";
 import { ScriptCommandBar } from "./ScriptCommandBar";
 import { AssetAuditPanel } from "./AssetAuditPanel";
@@ -176,6 +179,13 @@ export function StudioApp() {
   const cachedWs = useMemo(() => loadWorkspace(), []);
   const wsDefaults = workspaceDefaults();
 
+  // 窄屏跟随窗口宽度：桌面视图在手机上自动让位给工作台（触屏没有双击/右键）
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   const [bootLoading, setBootLoading] = useState(true);
   const [projectsList, setProjectsList] = useState<ProjectSummary[]>([]);
   const [project, setProject] = useState<VnProject | null>(null);
@@ -186,6 +196,11 @@ export function StudioApp() {
   const myUserId = user?.id ?? "";
 
   const [tab, setTab] = useState<Tab>((cachedWs.tab as Tab) || wsDefaults.tab);
+  /** 视图：三栏工作台 / 桌面。默认 studio（老用户习惯不变），可在系统设置里切换。 */
+  const [view, setView] = useState<"studio" | "desktop">(cachedWs.view || wsDefaults.view);
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === "undefined" ? 1280 : window.innerWidth
+  );
   const [writeSub, setWriteSub] = useState<"script" | "analysis">(
     cachedWs.writeSub || wsDefaults.writeSub
   );
@@ -1696,6 +1711,16 @@ export function StudioApp() {
   const bible = project.bible ?? {};
   const toast = classifyStatusToast(status, error);
   const writeQuiet = tab === "write" && writeSub === "script";
+  /** 桌面视图：只在用户选了它、且屏幕够宽时显示（窄屏自动回工作台）。 */
+  const showDesktop = shouldShowDesktop({ view, width: viewportWidth });
+
+  /** 从桌面进入某个工作台页签，并记住"以后就用工作台"。 */
+  function exitDesktopTo(nextTab?: Tab, sub?: WorkspaceSnapshot["projectSub"]) {
+    setView("studio");
+    saveWorkspace({ view: "studio" });
+    if (nextTab) setTab(nextTab);
+    if (sub) setProjectSub(sub);
+  }
 
   return (
     <>
@@ -1703,6 +1728,36 @@ export function StudioApp() {
       {tourOpen && project && (
         <OnboardingOverlay onDone={() => setTourOpen(false)} />
       )}
+      {/* 桌面视图：只换外壳，点开剧本仍然进下面的三栏工作台 */}
+      {showDesktop ? (
+        <DesktopView
+          username={user?.username}
+          projects={projectsList.map((p) => ({ id: p.id, title: p.title }))}
+          onOpenProject={(id: string) => {
+            // 桌面只是入口：点开剧本就进三栏工作台（当前项目则直接切视图）
+            exitDesktopTo();
+            if (id !== project?.id) void switchProject(id);
+          }}
+          onNewProject={() => {
+            void createBlank();
+          }}
+          onOpenLibrary={() => {
+            exitDesktopTo("project", "library");
+          }}
+          onOpenSettings={() => {
+            setSettingsOpen(true);
+          }}
+          onOpenHelp={() => {
+            setHelpOpen(true);
+          }}
+          onOpenNotice={() => {
+            openNotice();
+          }}
+          onExitDesktop={() => {
+            exitDesktopTo();
+          }}
+        />
+      ) : null}
       <QPet editorRef={editorTaRef} cheerSignal={petCheer} />
       <ClickFx />
       {/* 全局底部音乐条：所有页面常驻；专注模式被 FocusChrome(90) 遮住但音乐继续 */}
@@ -1737,7 +1792,8 @@ export function StudioApp() {
           tab === "write" && writeSub === "script" ? styles.writeQuiet : ""
         } ${
           tab === "write" && writeSub === "script" && focusMode ? styles.focusMode : ""
-        } ${tab !== "write" ? styles.menuStage : ""}`}
+        } ${tab !== "write" ? styles.menuStage : ""} ${showDesktop ? styles.shellHidden : ""}`}
+        aria-hidden={showDesktop || undefined}
       >
         <FocusChrome
           setupOpen={focusSetupOpen}
@@ -2306,6 +2362,13 @@ export function StudioApp() {
             onClose={() => setSettingsOpen(false)}
             settings={settings}
             onChange={setSettings}
+            view={view}
+            onViewChange={(next) => {
+              setView(next);
+              saveWorkspace({ view: next });
+              // 切到桌面时顺手关掉设置，否则弹窗会盖在"桌面"上
+              if (next === "desktop") setSettingsOpen(false);
+            }}
           />
         )}
         <HelpSheet open={helpOpen} onClose={() => setHelpOpen(false)} />

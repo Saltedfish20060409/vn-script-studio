@@ -6,6 +6,8 @@ export interface WorkspaceSnapshot {
   projectId: string;
   chapterId: string;
   tab: StudioTab;
+  /** 视图：三栏写作工作台，或"像系统桌面"的入口（可在系统设置里切） */
+  view: "studio" | "desktop";
   writeSub: "script" | "analysis";
   worldSub: "characters" | "bible" | "lore" | "entries";
   systemSub: "variables" | "sprites";
@@ -29,6 +31,8 @@ const LEGACY_PROJECT_KEY = "vnss-active-project-id";
 
 const DEFAULTS: Omit<WorkspaceSnapshot, "projectId" | "chapterId" | "updatedAt"> = {
   tab: "write",
+  // 默认三栏工作台：桌面视图是"供选择"的第二形态，不替老用户改习惯
+  view: "studio",
   writeSub: "script",
   worldSub: "characters",
   systemSub: "variables",
@@ -63,6 +67,7 @@ export function saveWorkspace(patch: Partial<WorkspaceSnapshot>) {
       projectId: patch.projectId ?? prev.projectId ?? "",
       chapterId: patch.chapterId ?? prev.chapterId ?? "",
       tab: (patch.tab ?? prev.tab ?? DEFAULTS.tab) as StudioTab,
+      view: patch.view ?? prev.view ?? DEFAULTS.view,
       writeSub: patch.writeSub ?? prev.writeSub ?? DEFAULTS.writeSub,
       worldSub: patch.worldSub ?? prev.worldSub ?? DEFAULTS.worldSub,
       systemSub: patch.systemSub ?? prev.systemSub ?? DEFAULTS.systemSub,

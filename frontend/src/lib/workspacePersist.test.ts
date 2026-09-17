@@ -141,6 +141,8 @@ describe("workspaceDefaults：默认值", () => {
   it("返回默认快照字段", () => {
     expect(workspaceDefaults()).toEqual({
       tab: "write",
+      // 默认仍是三栏工作台：桌面视图是"供选择"的第二形态，不替老用户改习惯
+      view: "studio",
       writeSub: "script",
       worldSub: "characters",
       systemSub: "variables",
@@ -148,6 +150,13 @@ describe("workspaceDefaults：默认值", () => {
       sideOpen: true,
       agentSize: "normal",
     });
+  });
+
+  it("view 能存能读（切到桌面后刷新仍是桌面）", () => {
+    saveWorkspace({ view: "desktop" });
+    expect(loadWorkspace().view).toBe("desktop");
+    saveWorkspace({ view: "studio" });
+    expect(loadWorkspace().view).toBe("studio");
   });
 
   it("每次调用返回新对象引用（防外部篡改）", () => {

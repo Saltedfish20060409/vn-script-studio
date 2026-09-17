@@ -49,6 +49,9 @@ type Props = {
   onClose: () => void;
   settings: AppSettings;
   onChange: (s: AppSettings) => void;
+  /** 界面形态（工作台 / 桌面）。属于本地布局偏好，不进服务端设置。 */
+  view?: "studio" | "desktop";
+  onViewChange?: (v: "studio" | "desktop") => void;
 };
 
 type Pane = "theme" | "bg" | "usage" | "llm";
@@ -598,7 +601,7 @@ function BgPanPreview({  image,
   );
 }
 
-export function SettingsModal({ open, onClose, settings, onChange }: Props) {
+export function SettingsModal({ open, onClose, settings, onChange, view, onViewChange }: Props) {
   const [pane, setPane] = useState<Pane>("theme");
   const deskPetOn = useSyncExternalStore(
     subscribeDeskPet,
@@ -739,7 +742,35 @@ export function SettingsModal({ open, onClose, settings, onChange }: Props) {
                     onChange={(e) => patch({ fontScale: Number(e.target.value) })}
                   />
                 </label>
-                <p
+                {onViewChange ? (
+                  <div className={styles.form}>
+                    <p className={styles.note}>
+                      界面形态：<strong>写作工作台</strong>是章节树 / 编辑器 / AI 责编同屏的三栏布局；
+                      <strong>桌面</strong>是"像操作系统"的入口——图标双击打开，进剧本后仍是同一个工作台。
+                      （窄屏会自动用工作台。）
+                    </p>
+                    <div className={styles.themeRow}>
+                      <button
+                        type="button"
+                        data-testid="view-studio"
+                        className={view === "desktop" ? styles.themeCard : styles.themeActive}
+                        onClick={() => onViewChange("studio")}
+                      >
+                        <span className={styles.themePreviewDay} />
+                        写作工作台（默认）
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="view-desktop"
+                        className={view === "desktop" ? styles.themeActive : styles.themeCard}
+                        onClick={() => onViewChange("desktop")}
+                      >
+                        <span className={styles.themePreviewNight} />
+                        桌面
+                      </button>
+                    </div>
+                  </div>
+                ) : null}                <p
                   className={styles.fontPreview}
                   style={{ fontSize: `calc(1rem * ${settings.fontScale ?? 1})` }}
                 >

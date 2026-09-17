@@ -1,0 +1,200 @@
+/* 桌面视图：壁纸 + 图标网格 + 底部任务栏（外壳只负责"像桌面"，点开仍是原来的工作台） */
+
+/* 音乐条是全站固定的（bottom:0, z-index:60），任务栏要坐在它上面，
+   否则会被整条盖住 —— 64px 与 QPet 里的 BAR_RESERVE 是同一个约定。 */
+.desktop {
+  --bar-reserve: 64px;
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 图标压一层暗角，保证白字在任何壁纸上都读得清（不动全局壁纸设置） */
+.dim {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(160deg, rgba(6, 10, 20, 0.42) 0%, rgba(6, 10, 20, 0.22) 55%, rgba(6, 10, 20, 0.5) 100%);
+  pointer-events: none;
+}
+
+.iconArea {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  align-content: flex-start;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 92px);
+  grid-auto-rows: min-content;
+  gap: 0.35rem;
+  padding: 1.1rem 1.2rem calc(var(--bar-reserve) + 3.4rem);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0.25rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+  transition: background 140ms var(--ease-out), border-color 140ms var(--ease-out);
+}
+
+.icon:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.iconOn {
+  border-color: color-mix(in srgb, #7fd1ff 55%, transparent);
+  background: color-mix(in srgb, #7fd1ff 22%, transparent);
+}
+
+.icon:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.glyph {
+  font-size: 1.9rem;
+  line-height: 1;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
+}
+
+.label {
+  max-width: 92px;
+  font-size: 0.74rem;
+  line-height: 1.3;
+  text-align: center;
+  color: #f2f6ff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  /* 桌面图标标签：长名字截两行，不然会互相压住 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 桌宠与音乐条是全站固定的（StudioApp 根上渲染），这里只需要给任务栏让位 */
+.taskbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--bar-reserve);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  height: 2.9rem;
+  padding: 0 0.7rem;
+  border-top: 1px solid color-mix(in srgb, #7fd1ff 22%, transparent);
+  background: color-mix(in srgb, #0a0e1a 72%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: #e7eefb;
+}
+
+.start {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.start:hover,
+.startOn {
+  border-color: color-mix(in srgb, #7fd1ff 40%, transparent);
+  background: color-mix(in srgb, #7fd1ff 16%, transparent);
+}
+
+.menu {
+  position: absolute;
+  left: 0.7rem;
+  bottom: calc(var(--bar-reserve) + 3.1rem);
+  display: flex;
+  flex-direction: column;
+  min-width: 11rem;
+  padding: 0.35rem;
+  border: 1px solid color-mix(in srgb, #7fd1ff 30%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, #0a0e1a 92%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-lg);
+}
+
+.menu button {
+  padding: 0.45rem 0.6rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: #e7eefb;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu button:hover {
+  background: color-mix(in srgb, #7fd1ff 18%, transparent);
+}
+
+.hint {
+  flex: 1 1 auto;
+  font-size: 0.74rem;
+  opacity: 0.72;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.clock {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.clock strong {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.clock small {
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+
+.user {
+  font-size: 0.76rem;
+  opacity: 0.85;
+  max-width: 8rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 860px) {
+  /* 窄屏（一般是手机）不会走到这里——shouldShowDesktop 已经挡掉；
+     万一渲染到，图标排一列、别横着溢出 */
+  .iconArea {
+    grid-template-columns: repeat(auto-fill, 76px);
+    padding: 0.8rem 0.8rem calc(var(--bar-reserve) + 3.2rem);
+  }
+
+  .hint {
+    display: none;
+  }
+}
