@@ -19,3 +19,18 @@
   text-decoration: underline;
   opacity: 1;
 }
+
+/* 公安备案：图标 + 号码一起，点进官方查询页 */
+.gongan {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.gonganIcon {
+  width: 14px;
+  height: 16px;
+  flex-shrink: 0;
+  /* 图标本身偏矮，往下压一点跟文字基线对齐 */
+  transform: translateY(-1px);
+}

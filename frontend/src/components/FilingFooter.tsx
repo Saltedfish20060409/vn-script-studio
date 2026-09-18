@@ -37,6 +37,7 @@ export function FilingFooter() {
       ) : null}
       {gongan ? (
         <a
+          className={styles.gongan}
           href={
             gonganCode
               ? `https://beian.mps.gov.cn/#/query/webSearch?code=${gonganCode}`
@@ -45,6 +46,15 @@ export function FilingFooter() {
           target="_blank"
           rel="noreferrer"
         >
+          {/* 公安备案图标（备案系统提供）：纯装饰，号码本身已经把信息说全了 */}
+          <img
+            className={styles.gonganIcon}
+            src="/gongan-beian.png"
+            alt=""
+            width={14}
+            height={16}
+            loading="lazy"
+          />
           {gongan}
         </a>
       ) : null}
