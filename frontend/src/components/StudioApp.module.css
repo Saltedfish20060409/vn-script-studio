@@ -124,6 +124,46 @@
   padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
 }
 
+/* 「上次停在这里」：编辑器上方一条细提示，不抢焦点，点了才回去。
+   靠左放：右下角默认是 AI 责编的浮窗，靠右会被它盖住点不到（e2e 实测）。 */
+.caretHint {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.3rem;
+  margin: 0 0 0.35rem;
+}
+
+.caretHintBtn {
+  padding: 0.22rem 0.6rem;
+  border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--line));
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--ink);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.caretHintBtn:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.caretHintClose {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.caretHintClose:hover {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
 /* 窗口里的空态说明（比如还没打开剧本时的 AI 责编） */
 .panelNote {
   margin: 0;

@@ -107,6 +107,7 @@ import {
 import { StatusToast } from "./StatusToast";
 import { classifyStatusToast } from "../lib/statusToast";
 import { loadMusicBar, subscribeMusicBar } from "../lib/musicBar";
+import { caretKey, loadCaretMap, readCaret, rememberCaret } from "../lib/caretMemory";
 import { blockTextRange, blocksToEditable, editableToBlocks } from "../lib/scriptCodec";
 import { insertCommandAtLine } from "../lib/insertCommand";
 import { chapterProse, proseFingerprint, rpyIsStale } from "../lib/scriptProse";
@@ -320,6 +321,8 @@ export function StudioApp() {
     blockIndex: number;
   } | null>(null);
   const [editorFocusNonce, setEditorFocusNonce] = useState(0);
+  /** 「上次停在这里」：本章上次停笔的偏移；null = 不提示 */
+  const [caretHint, setCaretHint] = useState<number | null>(null);
   const [mapFocus, setMapFocus] = useState<{
     id: string;
     tick: number;
@@ -490,14 +493,45 @@ export function StudioApp() {
   // Sync editor text whenever project or chapter switches (not on every save).
   // 顺便清掉"选中文本"：剧本/章节换了之后，上一段选中的文字已经不属于当前文本，
   // 留着会被当成"当前选区"发给 AI 责编（跨剧本串味）。
+  // 另外算出「上次停在这里」的按钮要不要出现（只在真的打开这一章时算一次，不自动跳）。
   useEffect(() => {
     setSelection("");
     if (!project || !chapterId) return;
     const ch = project.chapters.find((c) => c.id === chapterId);
     if (!ch) return;
     loadEditorFromChapter(ch, project.characters, writeModeRef.current);
+    const saved = readCaret(
+      loadCaretMap(),
+      caretKey(project.id, chapterId, writeModeRef.current),
+      { textLength: editorRef.current.length }
+    );
+    setCaretHint(saved);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.id, chapterId]);
+
+  /** 记住当前光标位置（失焦、切章、离开页面时各记一次；不每键都写）。 */
+  const rememberCaretNow = useCallback(() => {
+    const ta = editorTaRef.current;
+    if (!ta || !project?.id || !chapterId) return;
+    rememberCaret(project.id, chapterId, writeModeRef.current, ta.selectionStart ?? 0);
+  }, [project?.id, chapterId]);
+
+  /** 跳到"上次停下的地方"：把光标放回去并滚到那一行（用户点了才动，不自动抢焦点）。 */
+  function jumpToLastCaret() {
+    const ta = editorTaRef.current;
+    const offset = caretHint;
+    setCaretHint(null);
+    if (!ta || offset === null) return;
+    ta.focus();
+    ta.setSelectionRange(offset, offset);
+    const before = ta.value.slice(0, offset);
+    const line = before.split("\n").length;
+    const styles = window.getComputedStyle(ta);
+    const lh = Number.parseFloat(styles.lineHeight);
+    const lineHeight = Number.isFinite(lh) && lh > 0 ? lh : 22;
+    const pad = Number.parseFloat(styles.paddingTop) || 0;
+    ta.scrollTop = Math.max(0, (line - 3) * lineHeight - pad);
+  }
 
   // Map → write: scroll/select the target block after chapter text is ready.
   useEffect(() => {
@@ -531,13 +565,16 @@ export function StudioApp() {
   }, [project, chapterId, editor, tab, writeSub, editorFocusNonce]);
 
   // Flush draft when tab is hidden / page is closing so exit doesn't lose work
+  // （顺便把"停笔位置"记下来：这两个时机过后就再也读不到光标了）
   useEffect(() => {
     const onHide = () => {
       if (document.visibilityState === "hidden") {
+        rememberCaretNow();
         void flushPendingSave();
       }
     };
     const onUnload = () => {
+      rememberCaretNow();
       void flushPendingSave();
     };
     document.addEventListener("visibilitychange", onHide);
@@ -2254,6 +2291,8 @@ export function StudioApp() {
                   }}
                   onSelectChapter={(id) => {
                     if (id === chapterId) return;
+                    // 切章前先记住这一章停在哪（切换后就读不到旧光标了）
+                    rememberCaretNow();
                     commitEditor();
                     setChapterId(id);
                   }}
@@ -2345,6 +2384,28 @@ export function StudioApp() {
                       }}
                     />
                     <StudioErrorBoundary label="写作编辑器">
+                      {/* 「上次停在这里」：不自动跳光标，给一个可以点的入口（长章节才有用） */}
+                      {caretHint !== null ? (
+                        <div className={styles.caretHint} data-testid="caret-hint">
+                          <button
+                            type="button"
+                            className={styles.caretHintBtn}
+                            data-testid="caret-hint-jump"
+                            onClick={jumpToLastCaret}
+                            title="把光标放回上次停笔的地方，并滚到那一行"
+                          >
+                            ↩ 上次停在这里
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.caretHintClose}
+                            aria-label="忽略这次标记"
+                            onClick={() => setCaretHint(null)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ) : null}
                       <ScriptEditor
                         textareaRef={editorTaRef}
                         frameClassName={styles.scriptEditor}
@@ -2365,8 +2426,11 @@ export function StudioApp() {
                           editorRef.current = next;
                           setEditor(next);
                           if (rpyPreview) setRpyStale(true);
+                          // 人一动手写，"上次停在这里"就没意义了，收起来
+                          setCaretHint(null);
                           scheduleEditorCommit();
                         }}
+                        onBlur={rememberCaretNow}
                         onSelect={(e) => {
                           const t = e.currentTarget;
                           setSelection(t.value.slice(t.selectionStart, t.selectionEnd));
