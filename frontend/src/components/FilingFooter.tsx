@@ -24,6 +24,8 @@ export function FilingFooter() {
 
   const icp = meta?.icpBeian?.trim();
   const gongan = meta?.gonganBeian?.trim();
+  // 公安备案按官方要求链到全国互联网安全管理服务平台的查询页，带上备案号里的数字编码
+  const gonganCode = gongan?.replace(/[^0-9]/g, "") ?? "";
 
   return (
     <footer className={styles.filing}>
@@ -34,7 +36,15 @@ export function FilingFooter() {
         </a>
       ) : null}
       {gongan ? (
-        <a href="https://www.beian.gov.cn" target="_blank" rel="noreferrer">
+        <a
+          href={
+            gonganCode
+              ? `https://beian.mps.gov.cn/#/query/webSearch?code=${gonganCode}`
+              : "https://beian.mps.gov.cn"
+          }
+          target="_blank"
+          rel="noreferrer"
+        >
           {gongan}
         </a>
       ) : null}
