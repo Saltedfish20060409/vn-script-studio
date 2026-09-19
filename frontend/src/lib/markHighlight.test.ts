@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { lineIndexOf, lineSegments, lineStarts, type BaseToken, type MarkRange } from "./markHighlight";
+import {
+  lineIndexOf,
+  lineSegments,
+  lineStarts,
+  locateInNodes,
+  type BaseToken,
+  type MarkRange,
+} from "./markHighlight";
 
 const plain = (value: string): BaseToken => ({ value, type: "text" });
 const place = (value: string): BaseToken => ({ value, type: "place" });
@@ -23,6 +30,29 @@ describe("lineStarts / lineIndexOf", () => {
     // 越界不炸
     expect(lineIndexOf(text, 999)).toBe(2);
     expect(lineIndexOf(text, -5)).toBe(0);
+  });
+});
+
+describe("locateInNodes：偏移落在哪个文本节点", () => {
+  it("按节点长度累加定位", () => {
+    expect(locateInNodes([3, 2, 1], 0)).toEqual({ index: 0, local: 0 });
+    expect(locateInNodes([3, 2, 1], 2)).toEqual({ index: 0, local: 2 });
+    expect(locateInNodes([3, 2, 1], 3)).toEqual({ index: 1, local: 0 });
+    expect(locateInNodes([3, 2, 1], 4)).toEqual({ index: 1, local: 1 });
+    expect(locateInNodes([3, 2, 1], 5)).toEqual({ index: 2, local: 0 });
+  });
+
+  it("空节点被跳过", () => {
+    expect(locateInNodes([0, 2, 0, 3], 2)).toEqual({ index: 3, local: 0 });
+  });
+
+  it("越过末尾 → 挂到最后一个节点之后（光标停在文末的情形）", () => {
+    expect(locateInNodes([3, 2], 99)).toEqual({ index: 1, local: 2 });
+  });
+
+  it("负数偏移或没有节点 → null", () => {
+    expect(locateInNodes([3, 2], -1)).toBeNull();
+    expect(locateInNodes([], 0)).toBeNull();
   });
 });
 

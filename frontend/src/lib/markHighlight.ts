@@ -92,3 +92,28 @@ export function lineIndexOf(text: string, offset: number): number {
   const safe = Math.max(0, Math.min(offset, text.length));
   return text.slice(0, safe).split("\n").length - 1;
 }
+
+/**
+ * 偏移落在第几个文本节点、节点内第几个字符。
+ *
+ * 镜像里的文字被切成很多 span（行 span、地点词 span、标记 span），但 span 的样式都不改
+ * 字形度量，所以整段文字的字符序列与编辑器正文一一对应。要拿"某个字符的屏幕位置"，
+ * 就得先定位到具体的文本节点，再用 Range 去量——这里只做定位，量由 DOM 层做。
+ */
+export function locateInNodes(
+  nodeLengths: number[],
+  offset: number
+): { index: number; local: number } | null {
+  if (offset < 0) return null;
+  let acc = 0;
+  for (let i = 0; i < nodeLengths.length; i += 1) {
+    const len = nodeLengths[i];
+    if (len <= 0) continue;
+    if (offset < acc + len) return { index: i, local: offset - acc };
+    acc += len;
+  }
+  // 落在末尾（例如光标停在文末）：挂到最后一个节点之后
+  const last = nodeLengths.length - 1;
+  if (last < 0) return null;
+  return { index: last, local: nodeLengths[last] };
+}

@@ -118,6 +118,15 @@
   will-change: top;
 }
 
+/* 贴着选区末尾的「标记这段」按钮：位置由组件按字符坐标算，左右都要能放 */
+.selectionBar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  will-change: top, left;
+}
+
 .input {
   z-index: 1;
   display: block;

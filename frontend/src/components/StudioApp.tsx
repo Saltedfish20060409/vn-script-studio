@@ -346,6 +346,8 @@ export function StudioApp() {
   const [markBusyId, setMarkBusyId] = useState<string | null>(null);
   const [markProgress, setMarkProgress] = useState<{ done: number; total: number } | null>(null);
   const [hasStyleMemory, setHasStyleMemory] = useState(false);
+  /** 当前选区的起止偏移（浮动「标记这段」按钮要贴在选区旁边） */
+  const [selectionRange, setSelectionRange] = useState<{ from: number; to: number } | null>(null);
   const markStopRef = useRef(false);
   /** 标记在正文里的实际区间（正文高亮用）；定位不到的标记不进这里，由 stale 状态表达 */
   const markRanges = useMemo<MarkRange[]>(() => {
@@ -367,6 +369,17 @@ export function StudioApp() {
   const activeMark = useMemo(
     () => (activeMarkId ? marks.find((m) => m.id === activeMarkId) ?? null : null),
     [activeMarkId, marks]
+  );
+  /** 选区是不是就是当前标记的那一段（是的话不用再显示"标记这段"按钮） */
+  const selectionIsActiveMark = useMemo(() => {
+    if (!selectionRange || !activeMarkId) return false;
+    const active = markRanges.find((r) => r.id === activeMarkId);
+    if (!active) return false;
+    return selectionRange.from === active.from && selectionRange.to === active.to;
+  }, [selectionRange, activeMarkId, markRanges]);
+  /** 浮动「标记这段」按钮：有选中、且这段还不是当前标记时就显示 */
+  const showSelectionBar = Boolean(
+    selectionRange && selectionRange.to > selectionRange.from && !selectionIsActiveMark
   );
   const [mapFocus, setMapFocus] = useState<{
     id: string;
@@ -597,6 +610,7 @@ export function StudioApp() {
     ta.focus();
     ta.setSelectionRange(from, to);
     setSelection(ta.value.slice(from, to));
+    setSelectionRange({ from, to });
     const before = ta.value.slice(0, from);
     const line = before.split("\n").length;
     const styles = window.getComputedStyle(ta);
@@ -757,6 +771,18 @@ export function StudioApp() {
     setMarks((prev) => prev.filter((m) => m.id !== id));
     setActiveMarkId((prev) => (prev === id ? null : prev));
   }
+
+  /** 把编辑器里的选区同步进状态（浮动「标记这段」按钮靠它定位）。
+   *  只挂 onSelect 不够稳：程序化改选区、输入法、Ctrl+A 等情况不一定派发 select，
+   *  所以 keyup / mouseup 也顺手同步一次（同值时直接返回旧对象，不触发重渲染）。 */
+  const syncSelectionFromDom = useCallback(() => {
+    const ta = editorTaRef.current;
+    if (!ta) return;
+    const from = ta.selectionStart ?? 0;
+    const to = ta.selectionEnd ?? 0;
+    setSelection(ta.value.slice(from, to));
+    setSelectionRange((prev) => (prev && prev.from === from && prev.to === to ? prev : { from, to }));
+  }, []);
 
   /** 选中一条标记：编辑器滚到它那儿并选中，卡片贴过去（定位不到就说明失效了）。 */
   function selectMark(id: string) {
@@ -2748,10 +2774,25 @@ export function StudioApp() {
                             markSelection();
                           }
                         }}
-                        onSelect={(e) => {
-                          const t = e.currentTarget;
-                          setSelection(t.value.slice(t.selectionStart, t.selectionEnd));
-                        }}
+                        onSelect={syncSelectionFromDom}
+                        onKeyUp={syncSelectionFromDom}
+                        onMouseUp={syncSelectionFromDom}
+                        selectionRange={selectionRange}
+                        selectionBar={
+                          showSelectionBar ? (
+                            <button
+                              type="button"
+                              className={styles.selectionMarkBtn}
+                              data-testid="mark-selection-float"
+                              // 别让点击把 textarea 的选区弄丢（markSelection 要读它）
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={markSelection}
+                              title="把选中的这一段标成「要改」，随后在它旁边直接处理（快捷键 Ctrl+M）"
+                            >
+                              ✚ 标记这段
+                            </button>
+                          ) : null
+                        }
                       />
                       {writeMode === "rpy" ? (
                         <ScriptCommandBar

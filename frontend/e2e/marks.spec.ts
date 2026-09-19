@@ -60,7 +60,9 @@ async function registerAndLogin(page: Page, username: string) {
   await expect(page.getByTestId("script-editor")).toBeVisible({ timeout: 40_000 });
 }
 
-/** 在编辑器里程序化选中一段文字，并触发 select 事件让 React 记下选区 */
+/** 精确选中一段文字（程序化设置选区 + 补一个 keyup，让 React 状态也同步到）。
+ *  为什么要补 keyup：程序化的 setSelectionRange 不会触发 React 的 onSelect，
+ *  而浮动「标记这段」按钮靠选区状态定位。 */
 async function selectText(page: Page, text: string) {
   const ok = await page.getByTestId("script-editor").evaluate((el, needle) => {
     const ta = el as HTMLTextAreaElement;
@@ -68,10 +70,71 @@ async function selectText(page: Page, text: string) {
     if (from < 0) return false;
     ta.focus();
     ta.setSelectionRange(from, from + needle.length);
-    ta.dispatchEvent(new Event("select", { bubbles: true }));
+    ta.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
     return true;
   }, text);
   expect(ok, `正文里找不到要选中的文字：${text}`).toBe(true);
+  const selected = await page.getByTestId("script-editor").evaluate((el) => {
+    const ta = el as HTMLTextAreaElement;
+    return ta.value.slice(ta.selectionStart, ta.selectionEnd);
+  });
+  expect(selected).toBe(text);
+}
+
+/** 用**真实鼠标拖选**一段文字（量出字形位置再拖）。
+ *  专门用来验证"人是这么选的，按钮就得出现在这儿"这条路径。 */
+async function dragSelectText(page: Page, text: string) {
+  const editor = page.getByTestId("script-editor");
+  const box = await editor.boundingBox();
+  expect(box, "编辑器还不可见").not.toBeNull();
+  const points = await editor.evaluate((el, needle) => {
+    const ta = el as HTMLTextAreaElement;
+    const mirror = ta.closest("div")?.querySelector("pre") as HTMLElement | null;
+    const frame = ta.closest("div")?.getBoundingClientRect();
+    if (!mirror || !frame) return null;
+    const walker = document.createTreeWalker(mirror, NodeFilter.SHOW_TEXT);
+    const nodes: Text[] = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+    const start = ta.value.indexOf(needle);
+    if (start < 0) return null;
+    const end = start + needle.length - 1;
+    const rectAt = (offset: number) => {
+      let acc = 0;
+      for (const n of nodes) {
+        const len = n.data.length;
+        if (offset < acc + len) {
+          const local = offset - acc;
+          if (local < 0) return null;
+          const r = document.createRange();
+          r.setStart(n, local);
+          r.setEnd(n, Math.min(local + 1, len));
+          return r.getBoundingClientRect();
+        }
+        acc += len;
+      }
+      return null;
+    };
+    const first = rectAt(start);
+    const last = rectAt(end);
+    if (!first || !last) return null;
+    return {
+      fromX: Math.round(first.left - frame.left) + 1,
+      fromY: Math.round(first.top - frame.top) + Math.round(first.height / 2),
+      toX: Math.round(last.right - frame.left) - 1,
+      toY: Math.round(last.top - frame.top) + Math.round(last.height / 2),
+    };
+  }, text);
+  expect(points, `正文里找不到要选中的文字：${text}`).not.toBeNull();
+  await page.mouse.move(box!.x + points!.fromX, box!.y + points!.fromY);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + points!.toX, box!.y + points!.toY, { steps: 10 });
+  await page.mouse.up();
+  // 拖选只要选中了非空一段就算成功（不必与 needle 逐字相等，那是 selectText 的活）
+  const selected = await editor.evaluate((el) => {
+    const ta = el as HTMLTextAreaElement;
+    return ta.value.slice(ta.selectionStart, ta.selectionEnd);
+  });
+  expect(selected.length).toBeGreaterThan(0);
 }
 
 /** 把正文换成一段长稿（React 受控 textarea：必须用原生 setter + input 事件才会触发 onChange） */
@@ -122,6 +185,83 @@ async function anchorGeometry(page: Page) {
     };
   }, NEEDLE);
 }
+
+/** 选区末尾那个字符的位置 + 浮动按钮的位置（两边都用同一套 Range 量法） */
+async function selectionBarGeometry(page: Page) {
+  return page.evaluate(() => {
+    const ta = document.querySelector('[data-testid="script-editor"]') as HTMLTextAreaElement;
+    const frame = ta.closest("div") as HTMLElement;
+    const mirror = frame.querySelector("pre") as HTMLElement;
+    const fr = frame.getBoundingClientRect();
+    const walker = document.createTreeWalker(mirror, NodeFilter.SHOW_TEXT);
+    const nodes: Text[] = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+    const target = ta.selectionEnd - 1;
+    let acc = 0;
+    let charRect: DOMRect | null = null;
+    for (const n of nodes) {
+      if (target < acc + n.data.length) {
+        const r = document.createRange();
+        const local = target - acc;
+        r.setStart(n, local);
+        r.setEnd(n, Math.min(local + 1, n.data.length));
+        charRect = r.getBoundingClientRect();
+        break;
+      }
+      acc += n.data.length;
+    }
+    const bar = document.querySelector('[data-testid="mark-selection-float"]');
+    const b = bar ? bar.getBoundingClientRect() : null;
+    const panel = document.querySelector('[data-testid="mark-selection"]');
+    const p = panel ? panel.getBoundingClientRect() : null;
+    return {
+      frameTop: Math.round(fr.top),
+      frameBottom: Math.round(fr.bottom),
+      frameRight: Math.round(fr.right),
+      charBottom: charRect ? Math.round(charRect.bottom) : null,
+      charRight: charRect ? Math.round(charRect.right) : null,
+      bar: b ? { top: Math.round(b.top), left: Math.round(b.left), right: Math.round(b.right) } : null,
+      panelBtnTop: p ? Math.round(p.top) : null,
+    };
+  });
+}
+
+test("选中一段后，「标记这段」出现在选区旁边（不用去下面找）", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await registerAndLogin(page, randomName("e2e_mark_float_"));
+
+  // 没选中时不该出现
+  await expect(page.getByTestId("mark-selection-float")).toHaveCount(0);
+
+  await dragSelectText(page, NEEDLE);
+  const floatBtn = page.getByTestId("mark-selection-float");
+  await expect(floatBtn).toBeVisible();
+
+  const geo = await selectionBarGeometry(page);
+  expect(geo.charBottom).not.toBeNull();
+  expect(geo.bar).not.toBeNull();
+  // 按钮就在选中那几个字下面一点（不是跑到编辑器外面/页面下方）
+  expect(geo.bar!.top - geo.charBottom!).toBeGreaterThan(-10);
+  expect(geo.bar!.top - geo.charBottom!).toBeLessThan(44);
+  expect(geo.bar!.top).toBeLessThan(geo.frameBottom);
+  expect(geo.bar!.right).toBeLessThanOrEqual(geo.frameRight);
+  // 对比：编辑器下面那个入口确实在编辑器之外的下方
+  expect(geo.panelBtnTop!).toBeGreaterThan(geo.frameBottom);
+
+  // 点它就地标记 → 按钮让位给卡片
+  await floatBtn.click();
+  await expect(page.getByTestId("mark-card")).toBeVisible();
+  await expect(page.getByTestId("mark-chip-0")).toBeVisible();
+  await expect(page.getByTestId("mark-selection-float")).toHaveCount(0);
+  const applied = await page.evaluate(() =>
+    (document.querySelector("pre span[data-mark-id]")?.textContent ?? "")
+  );
+  expect(applied.length).toBeGreaterThan(0);
+
+  // 再选另一段 → 按钮又出现（可以连续标）
+  await selectText(page, "站台");
+  await expect(page.getByTestId("mark-selection-float")).toBeVisible();
+});
 
 test("Ctrl+M 标记：正文高亮 + 卡片贴着那一行 + 刷新后仍在", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });

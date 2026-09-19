@@ -134,6 +134,24 @@
   margin: 0 0 0.35rem;
 }
 
+/* 选中正文时贴在选区旁边的「标记这段」（位置由 ScriptEditor 按字符坐标算） */
+.selectionMarkBtn {
+  padding: 0.24rem 0.66rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 rgba(0, 47, 167, 0.22), 0 6px 18px -6px rgba(0, 47, 167, 0.35);
+}
+
+.selectionMarkBtn:hover {
+  background: color-mix(in srgb, var(--accent) 88%, #000);
+}
+
 .caretHintBtn {
   padding: 0.22rem 0.6rem;
   border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--line));
