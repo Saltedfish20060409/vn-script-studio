@@ -124,6 +124,20 @@ export function isLocatable(text: string, mark: Mark): boolean {
 }
 
 /**
+ * 标记**现在**在正文里的位置。
+ *
+ * 已接受的标记要找的是**改写后的那段**——原文已经被替换掉了，用 quote 找必然找不到，
+ * 那会导致刚接受完卡片就失去锚点（连带「撤回这次改动」也点不到）。
+ * 前/后文没被这次改动碰过，所以拿它们 + 改写稿定位是准的。
+ */
+export function currentMarkRange(text: string, mark: Mark): { from: number; to: number } | null {
+  if (mark.status === "accepted" && mark.replacement) {
+    return findMarkRange(text, { ...mark, quote: mark.replacement });
+  }
+  return findMarkRange(text, mark);
+}
+
+/**
  * 把标记的改写结果写进正文。
  * 返回新正文与这次改动的区间（区间用于"跳转/高亮/撤回"）；定位失败返回 null。
  */

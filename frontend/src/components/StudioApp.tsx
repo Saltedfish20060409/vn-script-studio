@@ -72,6 +72,7 @@ import { ProjectLibraryPanel } from "./ProjectLibraryPanel";
 import { CollabPanel } from "./CollabPanel";
 import { CommentsPanel } from "./CommentsPanel";
 import { MarksPanel } from "./MarksPanel";
+import { MarkCard } from "./MarkCard";
 import { PwaInstallPrompt } from "./PwaInstallPrompt";
 import { ProjectExportPanel } from "./ProjectExportPanel";
 import { ProjectHistoryPanel } from "./ProjectHistoryPanel";
@@ -114,7 +115,7 @@ import { caretKey, loadCaretMap, readCaret, rememberCaret } from "../lib/caretMe
 import {
   applyMark,
   createMark,
-  findMarkRange,
+  currentMarkRange,
   loadMarks,
   pendingMarks,
   refreshMarks,
@@ -122,6 +123,7 @@ import {
   saveMarks,
   type Mark,
 } from "../lib/marks";
+import type { MarkRange } from "../lib/markHighlight";
 import { blockTextRange, blocksToEditable, editableToBlocks } from "../lib/scriptCodec";
 import { insertCommandAtLine } from "../lib/insertCommand";
 import { chapterProse, proseFingerprint, rpyIsStale } from "../lib/scriptProse";
@@ -339,10 +341,33 @@ export function StudioApp() {
   const [caretHint, setCaretHint] = useState<number | null>(null);
   /** 写作页「标记批改」：作者标出来的待改处 + AI 的对照稿 */
   const [marks, setMarks] = useState<Mark[]>([]);
+  /** 正在正文旁边核对的那一条（卡片贴着它那一行） */
+  const [activeMarkId, setActiveMarkId] = useState<string | null>(null);
   const [markBusyId, setMarkBusyId] = useState<string | null>(null);
   const [markProgress, setMarkProgress] = useState<{ done: number; total: number } | null>(null);
   const [hasStyleMemory, setHasStyleMemory] = useState(false);
   const markStopRef = useRef(false);
+  /** 标记在正文里的实际区间（正文高亮用）；定位不到的标记不进这里，由 stale 状态表达 */
+  const markRanges = useMemo<MarkRange[]>(() => {
+    const out: MarkRange[] = [];
+    for (const mark of marks) {
+      if (mark.status === "rejected") continue;
+      // 已接受的用改写稿定位：原文已经不在了，否则刚接受完就会失去锚点
+      const range = currentMarkRange(editor, mark);
+      if (range) out.push({ id: mark.id, from: range.from, to: range.to, active: mark.id === activeMarkId });
+    }
+    return out;
+  }, [marks, editor, activeMarkId]);
+  /** 活动标记那一段的起始偏移：卡片贴着这一行显示 */
+  const activeMarkOffset = useMemo(() => {
+    if (!activeMarkId) return null;
+    return markRanges.find((r) => r.id === activeMarkId)?.from ?? null;
+  }, [activeMarkId, markRanges]);
+  /** 正在核对的那条标记（卡片内容） */
+  const activeMark = useMemo(
+    () => (activeMarkId ? marks.find((m) => m.id === activeMarkId) ?? null : null),
+    [activeMarkId, marks]
+  );
   const [mapFocus, setMapFocus] = useState<{
     id: string;
     tick: number;
@@ -609,7 +634,9 @@ export function StudioApp() {
       return;
     }
     setMarks((prev) => refreshMarks(editorRef.current, [...prev, mark]));
-    setStatus("已标记这一段：可以补一句要求，或直接点「按标记处理」");
+    // 立刻把卡片贴到这一段旁边（用户不用去下面找）
+    setActiveMarkId(mark.id);
+    setStatus("已标记这一段：在正文旁边直接处理，或点「按标记处理」批量跑");
   }
 
   /** 处理单个标记（改写或只给建议）。 */
@@ -702,6 +729,8 @@ export function StudioApp() {
       )
     );
     setStatus("已写入正文（可以逐条撤回）");
+    // 接受完自动跳到下一条待决定的标记
+    window.setTimeout(() => activateNextMark(id), 0);
   }
 
   /** 撤回一条已写入的改动。 */
@@ -724,11 +753,17 @@ export function StudioApp() {
     setStatus("已撤回这条改动");
   }
 
-  /** 跳到正文里标记的那一处。 */
-  function jumpToMark(id: string) {
+  function removeMark(id: string) {
+    setMarks((prev) => prev.filter((m) => m.id !== id));
+    setActiveMarkId((prev) => (prev === id ? null : prev));
+  }
+
+  /** 选中一条标记：编辑器滚到它那儿并选中，卡片贴过去（定位不到就说明失效了）。 */
+  function selectMark(id: string) {
+    setActiveMarkId(id);
     const mark = marks.find((m) => m.id === id);
     if (!mark) return;
-    const range = findMarkRange(editorRef.current, mark);
+    const range = currentMarkRange(editorRef.current, mark);
     if (!range) {
       setStatus("这一段在正文里已经找不到了（被改过或删掉），标记已失效");
       setMarks((prev) => prev.map((m) => (m.id === id ? { ...m, status: "stale" } : m)));
@@ -737,8 +772,18 @@ export function StudioApp() {
     focusEditorRange(range.from, range.to);
   }
 
-  function removeMark(id: string) {
-    setMarks((prev) => prev.filter((m) => m.id !== id));
+  /**
+   * 处理完之后自动跳到下一条待决定的标记（省得自己找）。
+   * 没有下一条时**留在当前这条**——卡片收起的话「撤回这次改动」就点不到了。
+   */
+  function activateNextMark(afterId: string) {
+    const idx = marks.findIndex((m) => m.id === afterId);
+    if (idx < 0) return;
+    const ordered = [...marks.slice(idx + 1), ...marks.slice(0, idx)];
+    const next =
+      ordered.find((m) => m.status === "suggested" && (m.replacement || m.advice)) ??
+      ordered.find((m) => m.status === "pending");
+    if (next) selectMark(next.id);
   }
 
   function setMarkInstruction(id: string, value: string) {
@@ -2633,6 +2678,47 @@ export function StudioApp() {
                         frameClassName={styles.scriptEditor}
                         value={editor}
                         locations={project.locations ?? []}
+                        marks={markRanges}
+                        anchorOffset={activeMarkOffset}
+                        overlay={
+                          activeMark ? (
+                            <MarkCard
+                              mark={activeMark}
+                              index={Math.max(
+                                0,
+                                marks.findIndex((m) => m.id === activeMark.id)
+                              )}
+                              total={marks.length}
+                              busy={markBusyId === activeMark.id}
+                              hasStyleMemory={hasStyleMemory}
+                              onProcess={() => void processMark(activeMark.id)}
+                              onAccept={(edited) => acceptMark(activeMark.id, edited)}
+                              onReject={() =>
+                                setMarks((prev) =>
+                                  prev.map((m) =>
+                                    m.id === activeMark.id ? { ...m, status: "rejected" } : m
+                                  )
+                                )
+                              }
+                              onRevert={() => revertMarkChange(activeMark.id)}
+                              onClose={() => setActiveMarkId(null)}
+                              onPrev={() => {
+                                const i = marks.findIndex((m) => m.id === activeMark.id);
+                                const prev = marks[i - 1];
+                                if (prev) selectMark(prev.id);
+                              }}
+                              onNext={() => {
+                                const i = marks.findIndex((m) => m.id === activeMark.id);
+                                const next = marks[i + 1];
+                                if (next) selectMark(next.id);
+                              }}
+                              onRemove={() => removeMark(activeMark.id)}
+                              onInstruction={(value) => setMarkInstruction(activeMark.id, value)}
+                              onIntent={(intent) => setMarkIntent(activeMark.id, intent)}
+                              onJump={() => selectMark(activeMark.id)}
+                            />
+                          ) : null
+                        }
                         onPlaceClick={(locationId, label) => {
                           commitEditor();
                           setMapFocus({ id: locationId, tick: Date.now() });
@@ -2703,27 +2789,18 @@ export function StudioApp() {
                     </StudioErrorBoundary>
                     <MarksPanel
                       marks={marks}
+                      activeId={activeMarkId}
                       busyId={markBusyId}
                       progress={markProgress}
                       hasStyleMemory={hasStyleMemory}
                       selectionLength={selection.length}
                       onMarkSelection={markSelection}
-                      onProcess={(id) => void processMark(id)}
                       onProcessAll={() => void processAllMarks()}
                       onStop={() => {
                         markStopRef.current = true;
                       }}
-                      onAccept={acceptMark}
-                      onReject={(id) =>
-                        setMarks((prev) =>
-                          prev.map((m) => (m.id === id ? { ...m, status: "rejected" } : m))
-                        )
-                      }
-                      onRevert={revertMarkChange}
+                      onSelect={selectMark}
                       onRemove={removeMark}
-                      onJump={jumpToMark}
-                      onInstruction={setMarkInstruction}
-                      onIntent={setMarkIntent}
                     />
                     <CommentsPanel
                       projectId={project.id}

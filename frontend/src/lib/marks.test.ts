@@ -4,6 +4,7 @@ import {
   applyMark,
   chapterKey,
   createMark,
+  currentMarkRange,
   findMarkRange,
   isLocatable,
   loadMarks,
@@ -147,6 +148,28 @@ describe("refreshMarks：把定位不到的标成 stale，恢复后回到待处�
   it("没有变化时返回同一个数组（避免无意义重渲染）", () => {
     const marks = [makeMark()];
     expect(refreshMarks(TEXT, marks)).toBe(marks);
+  });
+});
+
+describe("currentMarkRange：已接受的标记按改写稿定位", () => {
+  it("刚接受完，原文已经不在正文里，但按改写稿仍能找到那一段", () => {
+    const mark = makeMark({ replacement: "他把手举到眼前，停了半息。", status: "accepted" });
+    const applied = applyMark(TEXT, mark)!;
+    // 原文已被替换掉：按 quote 已经找不到（这就是"接受完卡片失去锚点"的成因）
+    expect(findMarkRange(applied.text, mark)).toBeNull();
+    const range = currentMarkRange(applied.text, mark);
+    expect(range).not.toBeNull();
+    expect(applied.text.slice(range!.from, range!.to)).toBe("他把手举到眼前，停了半息。");
+  });
+
+  it("未接受的标记仍然按原文定位", () => {
+    const mark = makeMark({ replacement: "改后", status: "suggested" });
+    expect(currentMarkRange(TEXT, mark)).toEqual({ from: FROM, to: TO });
+  });
+
+  it("接受后用户又改了那段 → 返回 null（不该硬改）", () => {
+    const mark = makeMark({ replacement: "他把手举到眼前。", status: "accepted" });
+    expect(currentMarkRange("完全换了内容。", mark)).toBeNull();
   });
 });
 

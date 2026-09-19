@@ -84,6 +84,40 @@
   -webkit-box-decoration-break: clone;
 }
 
+/* 被标记（标记批改）的正文：同样只动 background/underline/color，不改度量 */
+.mark,
+.markActive {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.mark {
+  background: color-mix(in srgb, var(--accent-hot) 14%, transparent);
+  text-decoration: underline wavy color-mix(in srgb, var(--accent-hot) 65%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.markActive {
+  background: color-mix(in srgb, var(--accent-hot) 24%, transparent);
+  text-decoration: underline color-mix(in srgb, var(--accent-hot) 85%, transparent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.18em;
+}
+
+/* 贴着活动标记行的浮层（标记批改卡片）：跟着滚动走，坐标由组件算 */
+.overlay {
+  position: absolute;
+  left: 0.6rem;
+  right: 0.6rem;
+  z-index: 3;
+  will-change: top;
+}
+
 .input {
   z-index: 1;
   display: block;

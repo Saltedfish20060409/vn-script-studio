@@ -1,28 +1,21 @@
-import { useState, type ChangeEvent } from "react";
 import { shortQuote, type Mark } from "../lib/marks";
 import styles from "./MarksPanel.module.css";
 
 type Props = {
   marks: Mark[];
-  /** 正在处理的标记 id（单条） */
+  /** 当前正在核对的标记（卡片贴在它那一行旁边） */
+  activeId: string | null;
   busyId: string | null;
-  /** 批量处理的进度（处理中才非空） */
   progress: { done: number; total: number } | null;
-  /** 有没有可用的文风记忆（决定"按你的文风改"是否生效） */
   hasStyleMemory: boolean;
   /** 当前正文里选中了几个字（0 = 没选中，标记按钮会提示） */
   selectionLength: number;
   onMarkSelection: () => void;
-  onProcess: (id: string) => void;
   onProcessAll: () => void;
   onStop: () => void;
-  onAccept: (id: string, edited?: string) => void;
-  onReject: (id: string) => void;
-  onRevert: (id: string) => void;
+  /** 选中某条标记：编辑器滚到它那儿，卡片贴过去 */
+  onSelect: (id: string) => void;
   onRemove: (id: string) => void;
-  onJump: (id: string) => void;
-  onInstruction: (id: string, value: string) => void;
-  onIntent: (id: string, intent: "rewrite" | "advice") => void;
 };
 
 const STATUS_LABEL: Record<Mark["status"], string> = {
@@ -34,30 +27,24 @@ const STATUS_LABEL: Record<Mark["status"], string> = {
 };
 
 /**
- * 写作页的「标记批改」面板：作者标出来的每一处 + AI 的对照稿，逐条接受/拒绝。
+ * 标记条：所有标记的**导航 + 批量**入口。
  *
- * 设计取舍：默认**不自动写入**正文（每条都要点接受），因为改稿最怕"悄悄改过"；
- * 接受后可以单独撤回，正文改动仍然走编辑器原有的保存/快照链路。
+ * 明细（要求 / 对照稿 / 接受）不在这里做——那些都在贴着正文那一行的
+ * `MarkCard` 上，因为长章节里"标记在上、面板在下"核对要来回滚。
  */
 export function MarksPanel({
   marks,
+  activeId,
   busyId,
   progress,
   hasStyleMemory,
   selectionLength,
   onMarkSelection,
-  onProcess,
   onProcessAll,
   onStop,
-  onAccept,
-  onReject,
-  onRevert,
+  onSelect,
   onRemove,
-  onJump,
-  onInstruction,
-  onIntent,
 }: Props) {
-  const [editing, setEditing] = useState<Record<string, string>>({});
   // 「可处理」= 还没结果的，或上次失败的（失效的标记没得处理，不该算进按钮数字里）
   const processable = marks.filter((m) => m.status === "pending" || Boolean(m.error)).length;
   const processing = busyId !== null || progress !== null;
@@ -77,7 +64,7 @@ export function MarksPanel({
           data-testid="mark-selection"
           disabled={selectionLength === 0}
           onClick={onMarkSelection}
-          title="把选中的这一段标成「要改」（可以之后再补一句要求）"
+          title="把选中的这一段标成「要改」（随后在正文旁边直接处理）"
         >
           ✚ 标记这段
         </button>
@@ -88,7 +75,7 @@ export function MarksPanel({
             data-testid="marks-process-all"
             disabled={processing || processable === 0}
             onClick={onProcessAll}
-            title="逐条处理所有待处理标记（每条失败不影响其它；已失效的标记不会处理）"
+            title="逐条处理所有待处理标记（每条失败不影响其它；已失效的不会处理）"
           >
             {progress ? `处理中 ${progress.done}/${progress.total}` : `按标记处理（${processable}）`}
           </button>
@@ -107,153 +94,43 @@ export function MarksPanel({
 
       {marks.length === 0 ? (
         <p className={styles.empty}>
-          还没有标记。选中一段文字 → 点「标记这段」→ 一次点「按标记处理」，AI 只改这一处，其余一字不动。
+          还没有标记。选中一段文字 → 点「标记这段」→ 正文里那一段会被标出来，旁边直接给出对照稿；接受才写进正文。
         </p>
-      ) : null}
-
-      <ul className={styles.list}>
-        {marks.map((mark, idx) => {
-          const busy = busyId === mark.id;
-          const editValue = editing[mark.id] ?? mark.replacement ?? "";
-          return (
-            <li
-              key={mark.id}
-              className={`${styles.item} ${mark.status === "accepted" ? styles.itemDone : ""} ${
-                mark.status === "stale" ? styles.itemStale : ""
-              }`}
-              data-testid={`mark-item-${idx}`}
-            >
-              <div className={styles.itemHead}>
-                <span className={styles.seq}>{idx + 1}</span>
-                <button
-                  type="button"
-                  className={styles.quote}
-                  onClick={() => onJump(mark.id)}
-                  title="跳到正文里这一处"
-                >
-                  {shortQuote(mark.quote, 34)}
-                </button>
-                <span className={`${styles.status} ${styles[`status_${mark.status}`]}`}>
-                  {busy ? "处理中…" : STATUS_LABEL[mark.status]}
-                </span>
-                <button
-                  type="button"
-                  className={styles.ghost}
-                  onClick={() => onRemove(mark.id)}
-                  title="删掉这个标记（不改正文）"
-                >
-                  ✕
-                </button>
-              </div>
-
-              {mark.status !== "accepted" ? (
-                <div className={styles.row}>
-                  <div className={styles.intentSwitch} role="group" aria-label="标记意图">
-                    <button
-                      type="button"
-                      className={mark.intent === "rewrite" ? styles.intentOn : styles.intent}
-                      onClick={() => onIntent(mark.id, "rewrite")}
-                      title="按你的要求改写这一段"
-                    >
-                      改
-                    </button>
-                    <button
-                      type="button"
-                      className={mark.intent === "advice" ? styles.intentOn : styles.intent}
-                      onClick={() => onIntent(mark.id, "advice")}
-                      title="只让它指出问题、给建议，不动正文"
-                    >
-                      问
-                    </button>
-                  </div>
-                  <input
-                    className={styles.input}
-                    value={mark.instruction}
-                    placeholder={
-                      mark.intent === "advice" ? "想问什么（可留空）" : "要求，例如：更冷一点 / 短一些（可留空）"
-                    }
-                    onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      onInstruction(mark.id, e.target.value)
-                    }
-                  />
-                  <button
-                    type="button"
-                    className={styles.primary}
-                    disabled={processing}
-                    onClick={() => onProcess(mark.id)}
-                  >
-                    {mark.replacement || mark.advice ? "重新处理" : "处理"}
-                  </button>
-                </div>
-              ) : null}
-
-              {mark.error ? <p className={styles.error}>出错了：{mark.error}</p> : null}
-
-              {mark.advice && mark.intent === "advice" ? (
-                <p className={styles.advice} data-testid={`mark-advice-${idx}`}>
-                  {mark.advice}
-                </p>
-              ) : null}
-
-              {mark.replacement && mark.intent === "rewrite" ? (
-                <div className={styles.diff}>
-                  <div className={styles.diffSide}>
-                    <span className={styles.diffLabel}>原文</span>
-                    <p className={styles.diffOld}>{mark.quote}</p>
-                  </div>
-                  <div className={styles.diffSide}>
-                    <span className={styles.diffLabel}>改后（可以直接改）</span>
-                    <textarea
-                      className={styles.diffNew}
-                      data-testid={`mark-replacement-${idx}`}
-                      value={editValue}
-                      rows={Math.min(6, Math.max(2, Math.ceil(editValue.length / 46)))}
-                      onChange={(e) => setEditing((p) => ({ ...p, [mark.id]: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              <div className={styles.actions}>
-                {mark.status !== "accepted" ? (
-                  <>
-                    <button
-                      type="button"
-                      className={styles.accept}
-                      data-testid={`mark-accept-${idx}`}
-                      disabled={!mark.replacement || mark.intent === "advice"}
-                      onClick={() => onAccept(mark.id, editing[mark.id])}
-                      title="写入正文（可以之后再撤回）"
-                    >
-                      ✓ 接受
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.ghost}
-                      data-testid={`mark-reject-${idx}`}
-                      onClick={() => onReject(mark.id)}
-                    >
-                      忽略
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    className={styles.ghost}
-                    data-testid={`mark-revert-${idx}`}
-                    onClick={() => onRevert(mark.id)}
-                  >
-                    ↩ 撤回这次改动
-                  </button>
-                )}
-              </div>
+      ) : (
+        <ul className={styles.chips}>
+          {marks.map((mark, idx) => (
+            <li key={mark.id}>
+              <button
+                type="button"
+                className={`${styles.chip} ${mark.id === activeId ? styles.chipActive : ""} ${
+                  styles[`c_${mark.status}`]
+                }`}
+                data-testid={`mark-chip-${idx}`}
+                onClick={() => onSelect(mark.id)}
+                title={`${STATUS_LABEL[mark.status]}：${mark.quote}`}
+              >
+                <span className={styles.chipSeq}>{idx + 1}</span>
+                <span className={styles.chipText}>{shortQuote(mark.quote, 18)}</span>
+                <span className={styles.chipDot} aria-hidden />
+              </button>
+              <button
+                type="button"
+                className={styles.chipX}
+                data-testid={`mark-chip-remove-${idx}`}
+                onClick={() => onRemove(mark.id)}
+                title="删掉这个标记"
+              >
+                ✕
+              </button>
             </li>
-          );
-        })}
-      </ul>
+          ))}
+        </ul>
+      )}
 
-      {marks.some((m) => m.status === "accepted") ? (
-        <p className={styles.foot}>已写入的改动可以逐条撤回；正文保存/快照走原有流程。</p>
+      {marks.length > 0 ? (
+        <p className={styles.foot}>
+          点标记条上的编号可以跳到那一处（卡片会贴着正文那一段）；正文被改动后定位不到的标记会标成「已失效」。
+        </p>
       ) : null}
     </section>
   );
