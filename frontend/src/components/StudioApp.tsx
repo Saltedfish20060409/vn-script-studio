@@ -33,10 +33,12 @@ import {
   listSnapshots,
   mapExtract,
   mapExtractAccept,
+  marksHint,
   patchProject,
   putProject,
   putSettings,
   restoreSnapshot as apiRestoreSnapshot,
+  reviseMark,
   revokeShare,
   type MapExtractProposal,
   type MemoryArchiveDetail,
@@ -69,6 +71,7 @@ import { FirstRunChecklist } from "./FirstRunChecklist";
 import { ProjectLibraryPanel } from "./ProjectLibraryPanel";
 import { CollabPanel } from "./CollabPanel";
 import { CommentsPanel } from "./CommentsPanel";
+import { MarksPanel } from "./MarksPanel";
 import { PwaInstallPrompt } from "./PwaInstallPrompt";
 import { ProjectExportPanel } from "./ProjectExportPanel";
 import { ProjectHistoryPanel } from "./ProjectHistoryPanel";
@@ -108,6 +111,17 @@ import { StatusToast } from "./StatusToast";
 import { classifyStatusToast } from "../lib/statusToast";
 import { loadMusicBar, subscribeMusicBar } from "../lib/musicBar";
 import { caretKey, loadCaretMap, readCaret, rememberCaret } from "../lib/caretMemory";
+import {
+  applyMark,
+  createMark,
+  findMarkRange,
+  loadMarks,
+  pendingMarks,
+  refreshMarks,
+  revertMark,
+  saveMarks,
+  type Mark,
+} from "../lib/marks";
 import { blockTextRange, blocksToEditable, editableToBlocks } from "../lib/scriptCodec";
 import { insertCommandAtLine } from "../lib/insertCommand";
 import { chapterProse, proseFingerprint, rpyIsStale } from "../lib/scriptProse";
@@ -323,6 +337,12 @@ export function StudioApp() {
   const [editorFocusNonce, setEditorFocusNonce] = useState(0);
   /** 「上次停在这里」：本章上次停笔的偏移；null = 不提示 */
   const [caretHint, setCaretHint] = useState<number | null>(null);
+  /** 写作页「标记批改」：作者标出来的待改处 + AI 的对照稿 */
+  const [marks, setMarks] = useState<Mark[]>([]);
+  const [markBusyId, setMarkBusyId] = useState<string | null>(null);
+  const [markProgress, setMarkProgress] = useState<{ done: number; total: number } | null>(null);
+  const [hasStyleMemory, setHasStyleMemory] = useState(false);
+  const markStopRef = useRef(false);
   const [mapFocus, setMapFocus] = useState<{
     id: string;
     tick: number;
@@ -506,8 +526,37 @@ export function StudioApp() {
       { textLength: editorRef.current.length }
     );
     setCaretHint(saved);
+    // 本章的标记：读本机保存的，并按当前正文重新定位（正文改过就标成"已失效"）
+    setMarks(refreshMarks(editorRef.current, loadMarks(project.id, chapterId)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.id, chapterId]);
+
+  // 标记落盘（只在本机）：加一道"标记属于当前章节"的守卫，
+  // 否则切章那一刻会用旧标记写到新章节的键上。
+  useEffect(() => {
+    if (!project?.id || !chapterId) return;
+    if (marks.some((m) => m.chapterId !== chapterId)) return;
+    saveMarks(project.id, chapterId, marks);
+  }, [marks, project?.id, chapterId]);
+
+  // 「按你的文风改」是否生效：项目里有没有学过文风（纯查询，不花 token）
+  useEffect(() => {
+    if (!project?.id) {
+      setHasStyleMemory(false);
+      return;
+    }
+    let alive = true;
+    marksHint(project.id)
+      .then((r) => {
+        if (alive) setHasStyleMemory(Boolean(r.hasStyleMemory));
+      })
+      .catch(() => {
+        if (alive) setHasStyleMemory(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [project?.id]);
 
   /** 记住当前光标位置（失焦、切章、离开页面时各记一次；不每键都写）。 */
   const rememberCaretNow = useCallback(() => {
@@ -516,21 +565,194 @@ export function StudioApp() {
     rememberCaret(project.id, chapterId, writeModeRef.current, ta.selectionStart ?? 0);
   }, [project?.id, chapterId]);
 
-  /** 跳到"上次停下的地方"：把光标放回去并滚到那一行（用户点了才动，不自动抢焦点）。 */
-  function jumpToLastCaret() {
+  /** 把编辑器滚到某个偏移并选中一段（"跳到上次停笔处"和"跳到某个标记"共用）。 */
+  function focusEditorRange(from: number, to: number) {
     const ta = editorTaRef.current;
-    const offset = caretHint;
-    setCaretHint(null);
-    if (!ta || offset === null) return;
+    if (!ta) return;
     ta.focus();
-    ta.setSelectionRange(offset, offset);
-    const before = ta.value.slice(0, offset);
+    ta.setSelectionRange(from, to);
+    setSelection(ta.value.slice(from, to));
+    const before = ta.value.slice(0, from);
     const line = before.split("\n").length;
     const styles = window.getComputedStyle(ta);
     const lh = Number.parseFloat(styles.lineHeight);
     const lineHeight = Number.isFinite(lh) && lh > 0 ? lh : 22;
     const pad = Number.parseFloat(styles.paddingTop) || 0;
     ta.scrollTop = Math.max(0, (line - 3) * lineHeight - pad);
+  }
+
+  /** 跳到"上次停下的地方"：把光标放回去并滚到那一行（用户点了才动，不自动抢焦点）。 */
+  function jumpToLastCaret() {
+    const offset = caretHint;
+    setCaretHint(null);
+    if (offset === null) return;
+    focusEditorRange(offset, offset);
+  }
+
+  // ---- 标记批改：标记 / 处理 / 接受 / 撤回 -------------------------------------
+
+  /** 把当前选中的一段标成"要改"。 */
+  function markSelection() {
+    const ta = editorTaRef.current;
+    if (!ta || !chapterId) return;
+    const from = ta.selectionStart ?? 0;
+    const to = ta.selectionEnd ?? 0;
+    const mark = createMark({
+      text: editorRef.current,
+      from,
+      to,
+      chapterId,
+      intent: "rewrite",
+    });
+    if (!mark) {
+      setStatus("先选中一小段正文，再点「标记这段」");
+      return;
+    }
+    setMarks((prev) => refreshMarks(editorRef.current, [...prev, mark]));
+    setStatus("已标记这一段：可以补一句要求，或直接点「按标记处理」");
+  }
+
+  /** 处理单个标记（改写或只给建议）。 */
+  async function processMark(id: string): Promise<boolean> {
+    const mark = marks.find((m) => m.id === id);
+    if (!mark || !project?.id) return false;
+    setMarkBusyId(id);
+    setMarks((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, error: undefined } : m))
+    );
+    try {
+      const out = await reviseMark(project.id, {
+        chapterId: mark.chapterId,
+        quote: mark.quote,
+        prefix: mark.prefix,
+        suffix: mark.suffix,
+        instruction: mark.instruction,
+        intent: mark.intent,
+      });
+      setMarks((prev) =>
+        prev.map((m) =>
+          m.id === id
+            ? {
+                ...m,
+                replacement: out.replacement || undefined,
+                advice: out.advice || undefined,
+                status: "suggested" as const,
+                error: undefined,
+              }
+            : m
+        )
+      );
+      return true;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "处理失败";
+      setMarks((prev) => prev.map((m) => (m.id === id ? { ...m, error: msg } : m)));
+      return false;
+    } finally {
+      setMarkBusyId(null);
+    }
+  }
+
+  /** 逐条处理所有待处理标记：单条失败不影响其它，可随时停。 */
+  async function processAllMarks() {
+    const queue = pendingMarks(marks).filter((m) => m.status === "pending" || m.error);
+    if (queue.length === 0) {
+      setStatus("没有待处理的标记");
+      return;
+    }
+    markStopRef.current = false;
+    setMarkProgress({ done: 0, total: queue.length });
+    let done = 0;
+    for (const mark of queue) {
+      if (markStopRef.current) break;
+      await processMark(mark.id);
+      done += 1;
+      setMarkProgress({ done, total: queue.length });
+    }
+    setMarkProgress(null);
+    setStatus(
+      markStopRef.current ? `已停止（完成 ${done}/${queue.length}）` : `已处理 ${done} 处标记`
+    );
+  }
+
+  /** 接受一条改写的标记：写进正文（可之后再撤回）。 */
+  function acceptMark(id: string, edited?: string) {
+    const mark = marks.find((m) => m.id === id);
+    if (!mark) return;
+    const override = edited && edited.trim() ? edited : undefined;
+    const result = applyMark(editorRef.current, mark, override);
+    if (!result) {
+      setMarks((prev) => prev.map((m) => (m.id === id ? { ...m, status: "stale" } : m)));
+      setStatus("这段正文已经改过了，标记失效：请跳到正文确认后再处理");
+      return;
+    }
+    editorRef.current = result.text;
+    setEditor(result.text);
+    if (rpyPreview) setRpyStale(true);
+    scheduleEditorCommit();
+    setMarks((prev) =>
+      refreshMarks(result.text, prev).map((m) =>
+        m.id === id
+          ? {
+              ...m,
+              replacement: override ?? m.replacement,
+              status: "accepted" as const,
+              appliedAt: Date.now(),
+            }
+          : m
+      )
+    );
+    setStatus("已写入正文（可以逐条撤回）");
+  }
+
+  /** 撤回一条已写入的改动。 */
+  function revertMarkChange(id: string) {
+    const mark = marks.find((m) => m.id === id);
+    if (!mark) return;
+    const result = revertMark(editorRef.current, mark);
+    if (!result) {
+      setStatus("正文后来又改过，撤回不了：可以手工改回，或按 Ctrl+Z 撤销编辑器操作");
+      return;
+    }
+    editorRef.current = result.text;
+    setEditor(result.text);
+    scheduleEditorCommit();
+    setMarks((prev) =>
+      refreshMarks(result.text, prev).map((m) =>
+        m.id === id ? { ...m, status: "suggested" as const } : m
+      )
+    );
+    setStatus("已撤回这条改动");
+  }
+
+  /** 跳到正文里标记的那一处。 */
+  function jumpToMark(id: string) {
+    const mark = marks.find((m) => m.id === id);
+    if (!mark) return;
+    const range = findMarkRange(editorRef.current, mark);
+    if (!range) {
+      setStatus("这一段在正文里已经找不到了（被改过或删掉），标记已失效");
+      setMarks((prev) => prev.map((m) => (m.id === id ? { ...m, status: "stale" } : m)));
+      return;
+    }
+    focusEditorRange(range.from, range.to);
+  }
+
+  function removeMark(id: string) {
+    setMarks((prev) => prev.filter((m) => m.id !== id));
+  }
+
+  function setMarkInstruction(id: string, value: string) {
+    setMarks((prev) => prev.map((m) => (m.id === id ? { ...m, instruction: value } : m)));
+  }
+
+  function setMarkIntent(id: string, intent: "rewrite" | "advice") {
+    setMarks((prev) =>
+      prev.map((m) =>
+        m.id === id
+          ? { ...m, intent, replacement: undefined, advice: undefined, error: undefined, status: "pending" }
+          : m
+      )
+    );
   }
 
   // Map → write: scroll/select the target block after chapter text is ready.
@@ -2428,9 +2650,18 @@ export function StudioApp() {
                           if (rpyPreview) setRpyStale(true);
                           // 人一动手写，"上次停在这里"就没意义了，收起来
                           setCaretHint(null);
+                          // 正文一变就重新校验标记：被标记的那段没了 → 标成"已失效"
+                          setMarks((prev) => (prev.length ? refreshMarks(next, prev) : prev));
                           scheduleEditorCommit();
                         }}
                         onBlur={rememberCaretNow}
+                        onKeyDown={(e) => {
+                          // Ctrl/Cmd+M：把选中的这段标成"要改"（标记批改的快捷键）
+                          if ((e.ctrlKey || e.metaKey) && (e.key === "m" || e.key === "M")) {
+                            e.preventDefault();
+                            markSelection();
+                          }
+                        }}
                         onSelect={(e) => {
                           const t = e.currentTarget;
                           setSelection(t.value.slice(t.selectionStart, t.selectionEnd));
@@ -2470,6 +2701,30 @@ export function StudioApp() {
                         />
                       ) : null}
                     </StudioErrorBoundary>
+                    <MarksPanel
+                      marks={marks}
+                      busyId={markBusyId}
+                      progress={markProgress}
+                      hasStyleMemory={hasStyleMemory}
+                      selectionLength={selection.length}
+                      onMarkSelection={markSelection}
+                      onProcess={(id) => void processMark(id)}
+                      onProcessAll={() => void processAllMarks()}
+                      onStop={() => {
+                        markStopRef.current = true;
+                      }}
+                      onAccept={acceptMark}
+                      onReject={(id) =>
+                        setMarks((prev) =>
+                          prev.map((m) => (m.id === id ? { ...m, status: "rejected" } : m))
+                        )
+                      }
+                      onRevert={revertMarkChange}
+                      onRemove={removeMark}
+                      onJump={jumpToMark}
+                      onInstruction={setMarkInstruction}
+                      onIntent={setMarkIntent}
+                    />
                     <CommentsPanel
                       projectId={project.id}
                       chapterId={chapterId}

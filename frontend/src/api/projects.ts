@@ -134,6 +134,47 @@ export function duplicateProject(id: string): Promise<VnProject> {
   return apiFetch<VnProject>(`/projects/${id}/duplicate`, { method: "POST" });
 }
 
+/** 写作页「标记批改」：让 AI 只改标出来的这一处（intent=advice 时只给建议，不动正文）。 */
+export type MarkReviseOut = {
+  replacement: string;
+  advice: string;
+  changed: boolean;
+  model: string;
+  styleUsed: boolean;
+  intent: "rewrite" | "advice";
+  chapterId: string;
+};
+
+export function reviseMark(
+  id: string,
+  body: {
+    chapterId: string;
+    quote: string;
+    prefix?: string;
+    suffix?: string;
+    instruction?: string;
+    intent?: "rewrite" | "advice";
+  }
+): Promise<MarkReviseOut> {
+  return apiFetch<MarkReviseOut>(`/projects/${id}/marks/revise`, {
+    method: "POST",
+    timeoutMs: 180000,
+    body: JSON.stringify({
+      chapter_id: body.chapterId,
+      quote: body.quote,
+      prefix: body.prefix ?? "",
+      suffix: body.suffix ?? "",
+      instruction: body.instruction ?? "",
+      intent: body.intent ?? "rewrite",
+    }),
+  });
+}
+
+/** 标记面板的一句提示：项目有没有可用文风记忆（决定"按你的文风改"是否生效）。 */
+export function marksHint(id: string): Promise<{ hasStyleMemory: boolean }> {
+  return apiFetch<{ hasStyleMemory: boolean }>(`/projects/${id}/marks/hint`);
+}
+
 export function importProjectFile(file: File, title?: string): Promise<VnProject> {
   const form = new FormData();
   form.append("file", file);
