@@ -627,6 +627,9 @@ async def run_agent_loop(
             task=task,
             charsUsed=ctx.charsUsed,
             included=ctx.included,
+            # 「证明它记得」：实际依据的资料与摘录（前端默认摆出来，可展开看）
+            includedDetails=ctx.includedDetails,
+            excludedSections=ctx.excluded,
             craftMode=craft.mode,
             craftReason=craft.reason,
             mentorIds=mentor_ids or None,

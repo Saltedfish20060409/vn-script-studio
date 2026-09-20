@@ -73,6 +73,8 @@ class AgentContextResult:
     task: str
     # 这次**没带**的资料块 key（前端可显示、可让作者改回来）
     excluded: List[str] = field(default_factory=list)
+    # 「证明它记得」：这次实际依据了什么（可展开看摘录），前端默认摆出来
+    includedDetails: List[Dict[str, str]] = field(default_factory=list)
 
 
 # 可以被作者按需摘掉的资料块：key → 人话（前端「资料」面板直接用它渲染）
@@ -143,6 +145,24 @@ TASK_KEY_RULES: Dict[str, List[str]] = {
 
 def task_key_rules(task: str) -> List[str]:
     return TASK_KEY_RULES.get(task or "chat", TASK_KEY_RULES["chat"])
+
+
+# 每个任务的**输出契约**：长度与形态。写清楚"给我什么形状的东西"，
+# 模型就不会拿解释、总结、小标题来凑数——这也是"工具不如裸聊"的一个常见原因。
+TASK_OUTPUT_CONTRACT: Dict[str, str] = {
+    "continue": "只输出续写的正文（300–900 字，用户另有要求按用户要求）；不要解释、不要小结、不要标题。",
+    "scene": "只输出这一场的正文；场景切换用空行分隔，不要写镜头术语或舞台指令（除非用户要求）。",
+    "rewrite": "只输出改写后的正文；长度与原文相当；不附说明、不附对照。",
+    "polish": "只输出润色后的正文；不改情节、不改专名。",
+    "consistency": "先列冲突（每条一行：位置 → 与什么设定冲突 → 建议改法），再给一句总体判断；不要重写正文。",
+    "outline": "输出分级大纲：卷/章/节三层用缩进或编号表示；每条一句话，不要展开成正文。",
+    "voice": "输出调整后的台词或段落；旁边不写解释。",
+    "chat": "直接回答：先结论后理由；需要时给可执行的改法；不要复述我的问题。",
+}
+
+
+def output_contract(task: str) -> str:
+    return TASK_OUTPUT_CONTRACT.get(task or "chat", TASK_OUTPUT_CONTRACT["chat"])
 
 
 TASK_HINTS: Dict[str, str] = {
@@ -813,15 +833,27 @@ def build_agent_context(
 
     # Author style memory: LLM-learned writing-style guide (continuity of voice)
     style_block = ""
+    style_samples: List[str] = []
     sm = getattr(project, "styleMemory", None)
     if isinstance(sm, dict):
         guide = str(sm.get("guide") or "").strip()
+        samples = [
+            str(s).strip() for s in (sm.get("samples") or []) if str(s or "").strip()
+        ][:3]
+        style_samples = samples
         if guide:
             style_block = (
                 "\n## 作者文风记忆（延续作者自己的习惯：续写/改写/润色请贴合此风格；"
                 "它是归纳不是圣旨，具体情节仍听用户）\n" + _clip(guide, 1200)
             )
             included.append("文风记忆")
+        if samples:
+            # 样例比规则更管用：模型模仿"看得见的句子"远比遵守"形容词式的规则"稳。
+            style_block += (
+                "\n\n【作者原文样例（最重要：模仿它们的句法、节奏与用词密度，不要照抄内容）】\n"
+                + "\n".join(f"- {_clip(s, 200)}" for s in samples)
+            )
+            included.append(f"文风样例×{len(samples)}")
 
     # 每块都带一个 key：既方便按任务裁剪/作者摘掉，也让"这次带了什么"可解释。
     keyed_sections: List[Tuple[str, str]] = [
@@ -931,7 +963,39 @@ def build_agent_context(
     key_rules = task_key_rules(resolved_task)
     if key_rules:
         tail += "\n\n## 本次硬规则（务必遵守）\n" + "\n".join(f"- {r}" for r in key_rules)
+    tail += "\n\n## 输出契约\n" + output_contract(resolved_task)
+    included.append("输出契约")
     kept_sections.append(tail)
+
+    # 「证明它记得」：把这次真正用到的资料连同摘录列出来（前端可展开看），
+    # 这是"聊天给不了"的东西——作者能核对它到底读了什么，而不是只能猜。
+    details: List[Dict[str, str]] = []
+    if "lore" not in dropped and entry_blocks:
+        for block in entry_blocks[:5]:
+            details.append({"label": "设定条目", "preview": _clip(block, 120)})
+    if "characters" not in dropped and picked_chars:
+        details.append(
+            {"label": f"角色×{len(picked_chars)}", "preview": "、".join(r[0].displayName for r in picked_chars[:8])}
+        )
+    if "locations" not in dropped and picked_locs:
+        details.append(
+            {"label": f"地点×{len(picked_locs)}", "preview": "、".join(r[0].name for r in picked_locs[:8])}
+        )
+    if "bible" not in dropped and bible_block:
+        details.append({"label": "设定 bible", "preview": _clip(bible_block, 120)})
+    if "style" not in dropped and style_samples:
+        details.append({"label": "文风样例", "preview": _clip(style_samples[0], 120)})
+    if "index" not in dropped and index_lines:
+        details.append(
+            {"label": f"章节目录×{len(index_lines)}", "preview": "；".join(index_lines[:3])}
+        )
+    if focus_chapter is not None and "focus" not in dropped:
+        details.append(
+            {
+                "label": "当前章",
+                "preview": f"{focus_chapter.title}（{len(focus_body or '')} 字）",
+            }
+        )
 
     text = "\n".join(kept_sections)
 
@@ -970,4 +1034,5 @@ def build_agent_context(
         charsUsed=len(text),
         task=resolved_task,
         excluded=sorted(dropped),
+        includedDetails=details,
     )

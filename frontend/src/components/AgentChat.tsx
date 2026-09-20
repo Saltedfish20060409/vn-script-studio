@@ -194,6 +194,8 @@ export function AgentChat({
   /** 「资料」开关：这次不交给 AI 的资料块（只影响本机会话；后端会忽略未知 key） */
   const [excluded, setExcluded] = useState<string[]>(() => loadExcludedSections());
   const [sectionsOpen, setSectionsOpen] = useState(false);
+  /** 「证明它记得」：本次实际依据的资料与摘录 */
+  const [evidence, setEvidence] = useState<Array<{ label: string; preview: string }>>([]);
 
   // 资料开关落盘：这是"我怎么用界面"的偏好，不是作品数据
   useEffect(() => {
@@ -827,6 +829,14 @@ export function AgentChat({
         [taskName, resultBit, craftShort, reviewShort, lensShort, refShort]
           .filter(Boolean)
           .join(" · ")
+      );
+      // 「证明它记得」：把这次真正读到的资料摆出来（可展开看摘录）
+      setEvidence(
+        Array.isArray(meta?.includedDetails)
+          ? meta.includedDetails
+              .filter((d) => d && (d.label || d.preview))
+              .map((d) => ({ label: String(d.label ?? ""), preview: String(d.preview ?? "") }))
+          : []
       );
 
       const warnings = res.warnings ?? [];
@@ -1858,6 +1868,23 @@ export function AgentChat({
             onIngest={() => void ingestSettingsFromAttachments()}
             onScan={() => void runFactsScanFlow("请根据附件整理关系与时间线")}
           />
+
+          {/* 「证明它记得」：本次依据了什么，可展开看摘录——聊天永远给不了这个 */}
+          {evidence.length > 0 ? (
+            <details className={styles.evidence} data-testid="agent-evidence">
+              <summary>
+                依据 {evidence.length} 项（点开看它读到的原文摘录）
+              </summary>
+              <ul>
+                {evidence.map((item, i) => (
+                  <li key={i}>
+                    <strong>{item.label}</strong>
+                    {item.preview ? <span>{item.preview}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
 
           {/* 资料开关：把"这次带哪些资料"交给作者，一眼可控（工具比裸聊差多半是因为塞太多） */}
           <div className={styles.sectionRow}>

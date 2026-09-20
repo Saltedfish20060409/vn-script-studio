@@ -97,6 +97,34 @@ test("「资料」开关：取消勾选的资料块真的不进请求", async ({
   expect(body.exclude_sections).toContain("bible");
 });
 
+test("「证明它记得」：回复里带上本次依据的资料与摘录", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await registerAndLogin(page, randomName("e2e_evidence_"));
+
+  const toggle = page.getByTestId("agent-sections-toggle");
+  if (!(await toggle.isVisible().catch(() => false))) {
+    await page.getByTitle(/AI 责编/).first().click();
+  }
+  await expect(toggle).toBeVisible({ timeout: 20_000 });
+
+  // 发一句话，等流式响应回来（done 事件里带 contextMeta.includedDetails）
+  const streamed = page.waitForResponse(
+    (r) => r.url().includes("/agent/stream") && r.request().method() === "POST",
+    { timeout: 120_000 }
+  );
+  const composer = page.getByPlaceholder(/用平常话说/).first();
+  await composer.fill("接着写两句");
+  await composer.press("Enter");
+  const payload = await (await streamed).text();
+
+  // 依据清单要有内容：标签 + 摘录（不是只有计数）
+  expect(payload).toContain("includedDetails");
+  expect(payload).toContain("当前章");
+  // 界面上默认摆出「依据 N 项」
+  await expect(page.getByTestId("agent-evidence")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("agent-evidence")).toContainText("依据");
+});
+
 test("快捷反馈与多候选：点一下就改指令重做，不必打字", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await registerAndLogin(page, randomName("e2e_quick_"));

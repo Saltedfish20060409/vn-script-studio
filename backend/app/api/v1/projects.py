@@ -314,17 +314,30 @@ async def get_project(
     return project_to_dict(row_to_vn(row))
 
 
+async def _maybe_auto_learn_style(db, row, settings, user_id: str) -> None:
+    """保存后按需自动学一次文风。失败静默——自动学习绝不能让保存失败。"""
+    try:
+        from app.services.projects import row_to_vn
+        from app.services.style_memory_auto import maybe_auto_learn_style
+
+        await maybe_auto_learn_style(db, row, row_to_vn(row), settings, user_id=user_id)
+    except Exception:  # noqa: BLE001 - 自动学习是加分项，不该影响保存
+        try:
+            await db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 @router.put("/{project_id}", response_model=dict)
-async def put_project(
-    project_id: str,
+async def put_project(    project_id: str,
     body: ProjectPutIn,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     row = await get_owned_project(db, user, project_id)
     # 并发写保护：在当前事务内锁定项目行直到 commit，使
-    # 「锁断言 → 合并 → 保存」成为临界区（此前锁只断言不持有，存在 TOCTOU）。
-    await db.refresh(row, with_for_update=True)
+    # 「锁断言 → 合并 → 保存」成为临界区（此前锁只断言不持有，存在 TOCTOU）。    await db.refresh(row, with_for_update=True)
 
     chapter_ids = body.chapter_ids or []
     sections = body.sections or []
@@ -350,6 +363,9 @@ async def put_project(
 
         await maybe_auto_archive(db, project_id, row_to_vn(row), user_id=user.id)
         await db.commit()
+        await db.refresh(row)
+        # 文风记忆自动学习（默认开；只用作者自己的 Key，攒够跨度才跑一次）
+        await _maybe_auto_learn_style(db, row, settings, user.id)
         await db.refresh(row)
         return project_to_dict(row_to_vn(row))
 
@@ -387,6 +403,9 @@ async def put_project(
 
     await maybe_auto_archive(db, project_id, row_to_vn(row), user_id=user.id)
     await db.commit()
+    await db.refresh(row)
+    # 文风记忆自动学习（默认开；只用作者自己的 Key，攒够跨度才跑一次）
+    await _maybe_auto_learn_style(db, row, settings, user.id)
     await db.refresh(row)
     return project_to_dict(row_to_vn(row))
 

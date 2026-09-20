@@ -516,6 +516,61 @@ html[data-panel-glass="ink"] .stageOverlay {
   opacity: 0.85;
 }
 
+/* 「证明它记得」：依据清单（默认收起，点开看摘录） */
+.evidence {
+  flex-shrink: 0;
+  margin: 0 0 0.3rem;
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+
+.evidence summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.1rem 0;
+}
+
+.evidence summary::-webkit-details-marker {
+  display: none;
+}
+
+.evidence summary::before {
+  content: "▸ ";
+}
+
+.evidence[open] summary::before {
+  content: "▾ ";
+}
+
+.evidence ul {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0.3rem 0.45rem;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-radius: var(--radius-sm);
+  max-height: 11rem;
+  overflow: auto;
+}
+
+.evidence li {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.12rem 0;
+  line-height: 1.5;
+}
+
+.evidence strong {
+  flex: none;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.evidence span {
+  min-width: 0;
+  word-break: break-word;
+}
+
 /* ---- 「资料」开关：这次带哪些资料交给作者决定 ---- */
 
 .sectionRow {

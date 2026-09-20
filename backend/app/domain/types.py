@@ -689,6 +689,10 @@ class AgentContextMeta(BaseModel):
     task: str
     charsUsed: int
     included: List[str] = Field(default_factory=list)
+    # 「证明它记得」：这次实际依据的资料与摘录（前端可展开看原文）
+    includedDetails: Optional[List[Dict[str, Any]]] = None
+    # 这次没带的资料块 key（作者在「资料」里摘掉的、或按任务自动省去的）
+    excludedSections: Optional[List[str]] = None
     craftMode: Optional[str] = None
     craftReason: Optional[str] = None
     mentorIds: Optional[List[str]] = None

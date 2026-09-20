@@ -619,6 +619,10 @@ export interface AgentContextMeta {
   task: AgentTaskKind;
   charsUsed: number;
   included: string[];
+  /** 「证明它记得」：这次实际依据的资料与摘录（可展开看原文） */
+  includedDetails?: Array<{ label?: string; preview?: string }>;
+  /** 这次没带的资料块 key（作者摘掉的 / 按任务自动省去的） */
+  excludedSections?: string[];
   craftMode?: "off" | "lite" | "full";
   craftReason?: string;
   mentorIds?: string[];

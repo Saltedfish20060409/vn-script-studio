@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     # Agent writing craft / self-review (server-only)
     agent_craft_mode: Literal["auto", "off", "lite", "full"] = "auto"
     agent_self_review: Literal["auto", "on", "off"] = "auto"
+    # 文风记忆自动学习（默认开）：攒够跨度且没学过/过期时自动学一次，只用作者自己的 Key
+    style_auto_learn: bool = True
 
     # Optional separate critic model (empty = reuse writer credentials)
     critic_api_key: str = ""
