@@ -242,3 +242,57 @@
   margin-top: 0.4rem;
   justify-content: flex-start;
 }
+
+/* 多候选：几版改写之间切换 */
+.variantRow {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-left: 0.4rem;
+}
+
+.variant,
+.variantOn {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  padding: 0.05rem 0.4rem;
+  cursor: pointer;
+}
+
+.variantOn {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* 一键反馈：点一下就把这句要求加上并重做 */
+.quickRow {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  margin-top: 0.35rem;
+}
+
+.quick {
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  padding: 0.12rem 0.45rem;
+  cursor: pointer;
+}
+
+.quick:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--ink);
+}
+
+.quick:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

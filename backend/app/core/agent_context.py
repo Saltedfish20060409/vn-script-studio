@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from app.domain.types import Character, Location, SceneChapter, ScriptBlock, VnProject
 
@@ -71,6 +71,78 @@ class AgentContextResult:
     included: List[str]
     charsUsed: int
     task: str
+    # 这次**没带**的资料块 key（前端可显示、可让作者改回来）
+    excluded: List[str] = field(default_factory=list)
+
+
+# 可以被作者按需摘掉的资料块：key → 人话（前端「资料」面板直接用它渲染）
+EXCLUDABLE_SECTIONS: Dict[str, str] = {
+    "bible": "设定 bible（世界观 / 大纲 / 背景）",
+    "lore": "设定条目",
+    "longMemory": "长程章节记忆",
+    "craft": "ACG 工艺卡",
+    "referenceDocs": "上传的参考资料",
+    "chatMemory": "对话滚动记忆",
+    "index": "章节目录与本地摘要",
+    "characters": "角色卡",
+    "relations": "角色关系",
+    "locations": "地点与通路",
+    "variables": "变量 / 状态机",
+    "sprites": "立绘",
+    "otherChapters": "其他章节摘录",
+    "style": "文风记忆",
+}
+
+# 按任务默认丢掉的**噪音**块：机制类资料对写散文没用，带上去只会分散注意力。
+# 注意：这里只放"去掉不影响正确性"的块（人设/地点/摘要一律保留）。
+TASK_DROP_SECTIONS: Dict[str, set] = {
+    "continue": {"sprites", "variables"},
+    "rewrite": {"sprites", "variables"},
+    "polish": {"sprites", "variables"},
+    "chat": {"otherChapters"},
+}
+
+
+def sections_to_drop(task: str, exclude: Optional[Iterable[str]] = None) -> set:
+    """本轮要丢掉的资料块 = 任务默认裁剪 ∪ 作者手动摘掉的（只认已知 key）。"""
+    drop = set(TASK_DROP_SECTIONS.get(task or "chat", set()))
+    for key in exclude or []:
+        if key in EXCLUDABLE_SECTIONS:
+            drop.add(key)
+    return drop
+
+
+# 每个任务的**硬规则**：短、可执行、且会在上下文末尾再重复一次。
+# 为什么单列：长上下文里夹在中间的要求最容易被忽略，末尾的位置才是"当场生效"的。
+TASK_KEY_RULES: Dict[str, List[str]] = {
+    "continue": [
+        "紧接「当前章节」正文末尾续写，不要重述已经写过的内容。",
+        "只输出正文本身：不要解释、不要总结、不要加小标题。",
+        "保持紧邻前文的人称、时态与专名；新出现的专名必须能在设定里找到出处。",
+        "对白与叙述的比例、句子长短要贴近紧邻的前文。",
+    ],
+    "rewrite": [
+        "只改指定的这一段（或这一章），其余一字不动。",
+        "不新增事实、不删关键信息；专名原样保留。",
+        "只输出正文本身：不要解释、不要前后对比。",
+    ],
+    "polish": [
+        "只做语言层面的润色：节奏、用词、具体程度；不改情节。",
+        "只输出润色后的正文，不加说明。",
+    ],
+    "consistency": [
+        "逐条比对设定/台账与正文，指出冲突，并给出可执行的修法。",
+        "不要为了「看起来没问题」而放过可疑处；拿不准就明确标出来。",
+    ],
+    "chat": [
+        "给结论与理由，不要客套、不要复述我的问题。",
+        "除非我明确要求，否则不要改工程。",
+    ],
+}
+
+
+def task_key_rules(task: str) -> List[str]:
+    return TASK_KEY_RULES.get(task or "chat", TASK_KEY_RULES["chat"])
 
 
 TASK_HINTS: Dict[str, str] = {
@@ -401,6 +473,7 @@ def build_agent_context(
     longChapterMemory: Optional[str] = None,
     loreCraft: Optional[str] = None,
     referenceDocs: Optional[str] = None,
+    exclude: Optional[Iterable[str]] = None,
 ) -> AgentContextResult:
     """Build a retrieval-biased project context for long-form Agent use.
 
@@ -750,75 +823,118 @@ def build_agent_context(
             )
             included.append("文风记忆")
 
-    sections: List[str] = [
-        "\n".join(meta_lines),
-        f"\n## Story Bible（内部参考，禁止整段搬进正文）\n{bible_block}" if bible_block else "",
+    # 每块都带一个 key：既方便按任务裁剪/作者摘掉，也让"这次带了什么"可解释。
+    keyed_sections: List[Tuple[str, str]] = [
+        ("meta", "\n".join(meta_lines)),
+        ("bible", f"\n## Story Bible（内部参考，禁止整段搬进正文）\n{bible_block}" if bible_block else ""),
         (
-            "\n## 设定条目（按触发词/正文检索命中；内部参考，禁止整段搬进正文）\n"
-            + "\n\n".join(entry_blocks)
-            + entry_index_note
-            if entry_blocks
-            else ""
+            "lore",
+            (
+                "\n## 设定条目（按触发词/正文检索命中；内部参考，禁止整段搬进正文）\n"
+                + "\n\n".join(entry_blocks)
+                + entry_index_note
+                if entry_blocks
+                else ""
+            ),
         ),
         (
-            f"\n{_clip(longChapterMemory.strip(), 3200)}"
-            if longChapterMemory and longChapterMemory.strip()
-            else ""
+            "longMemory",
+            (
+                f"\n{_clip(longChapterMemory.strip(), 3200)}"
+                if longChapterMemory and longChapterMemory.strip()
+                else ""
+            ),
         ),
         (
-            f"\n{_clip(loreCraft.strip(), 2400)}"
-            if loreCraft and loreCraft.strip()
-            else ""
+            "craft",
+            (
+                f"\n{_clip(loreCraft.strip(), 2400)}"
+                if loreCraft and loreCraft.strip()
+                else ""
+            ),
         ),
         (
-            f"\n{_clip(referenceDocs.strip(), 12000)}"
-            if referenceDocs and referenceDocs.strip()
-            else ""
+            "referenceDocs",
+            (
+                f"\n{_clip(referenceDocs.strip(), 12000)}"
+                if referenceDocs and referenceDocs.strip()
+                else ""
+            ),
         ),
         (
-            f"\n## 对话滚动记忆（更早轮次压缩，非正式剧情）\n{_clip(chatMemory.strip(), 2800)}"
-            if chatMemory and chatMemory.strip()
-            else ""
+            "chatMemory",
+            (
+                f"\n## 对话滚动记忆（更早轮次压缩，非正式剧情）\n{_clip(chatMemory.strip(), 2800)}"
+                if chatMemory and chatMemory.strip()
+                else ""
+            ),
         ),
-        "\n## 章节目录（含本地摘要）\n" + "\n".join(index_lines),
+        ("index", "\n## 章节目录（含本地摘要）\n" + "\n".join(index_lines)),
         (
-            "\n## Characters（内部参考：只校准语气与行为，禁止写入对白当说明书）\n"
-            + "\n".join(_char_card(r[0]) for r in picked_chars)
-            if picked_chars
-            else ""
-        ),
-        (
-            "\n## 角色关系（命中角色的直接关系；用来避免写错立场）\n"
-            + "\n".join(relation_lines)
-            if relation_lines
-            else ""
-        ),
-        (
-            "\n## Locations（内部参考：氛围与走位，勿念地名百科）\n"
-            + "\n".join(_loc_card(r[0]) for r in picked_locs)
-            + ("\n通路:\n" + "\n".join(link_lines) if link_lines else "")
-            + ("\n相邻地点:\n" + "\n".join(related_loc_lines) if related_loc_lines else "")
-            if picked_locs
-            else ""
+            "characters",
+            (
+                "\n## Characters（内部参考：只校准语气与行为，禁止写入对白当说明书）\n"
+                + "\n".join(_char_card(r[0]) for r in picked_chars)
+                if picked_chars
+                else ""
+            ),
         ),
         (
-            "\n## Variables / 状态机\n" + "\n".join(var_lines)
-            if show_vars
-            else (f"\n## Variables / 状态机\n{_clip(chr(10).join(var_lines), 600)}" if show_vars_chat_clipped else "")
+            "relations",
+            (
+                "\n## 角色关系（命中角色的直接关系；用来避免写错立场）\n"
+                + "\n".join(relation_lines)
+                if relation_lines
+                else ""
+            ),
         ),
-        f"\n## Sprites\n{_clip(chr(10).join(sprite_lines), 400)}" if sprite_lines else "",
-        "\n## 其他章节（摘要优先）\n" + "\n\n".join(other_chapter_blocks) if other_chapter_blocks else "",
         (
-            f"\n{focus_body}" + (f"\n（章摘要备忘: {focus_digest.beatSummary}）" if focus_digest and focus_digest.beatSummary else "")
-            if focus_body
-            else ""
+            "locations",
+            (
+                "\n## Locations（内部参考：氛围与走位，勿念地名百科）\n"
+                + "\n".join(_loc_card(r[0]) for r in picked_locs)
+                + ("\n通路:\n" + "\n".join(link_lines) if link_lines else "")
+                + ("\n相邻地点:\n" + "\n".join(related_loc_lines) if related_loc_lines else "")
+                if picked_locs
+                else ""
+            ),
         ),
-        f"\n## 用户选区（审稿/改写焦点）\n{_clip(selection, 2000)}" if selection else "",
-        style_block,
-        f"\n## 编排说明\n上下文按任务「{resolved_task}」检索拼装：章摘要本地抽取、大纲节拍检索、对话记忆压缩。人设与 bible 是作者备忘不是讲稿。续写请紧接「当前章节」正文末尾。",
+        (
+            "variables",
+            (
+                "\n## Variables / 状态机\n" + "\n".join(var_lines)
+                if show_vars
+                else (f"\n## Variables / 状态机\n{_clip(chr(10).join(var_lines), 600)}" if show_vars_chat_clipped else "")
+            ),
+        ),
+        ("sprites", f"\n## Sprites\n{_clip(chr(10).join(sprite_lines), 400)}" if sprite_lines else ""),
+        ("otherChapters", "\n## 其他章节（摘要优先）\n" + "\n\n".join(other_chapter_blocks) if other_chapter_blocks else ""),
+        (
+            "focus",
+            (
+                f"\n{focus_body}" + (f"\n（章摘要备忘: {focus_digest.beatSummary}）" if focus_digest and focus_digest.beatSummary else "")
+                if focus_body
+                else ""
+            ),
+        ),
+        ("selection", f"\n## 用户选区（审稿/改写焦点）\n{_clip(selection, 2000)}" if selection else ""),
+        ("style", style_block),
     ]
 
-    text = "\n".join(s for s in sections if s)
+    dropped = sections_to_drop(resolved_task, exclude)
+    kept_sections = [text for key, text in keyed_sections if text and key not in dropped]
+    if dropped:
+        # 透明化：告诉作者这次省掉了什么（前端会把没省的显示成"依据"）
+        included.append("省去:" + "、".join(sorted(dropped)))
+    tail = f"\n## 编排说明\n上下文按任务「{resolved_task}」检索拼装：章摘要本地抽取、大纲节拍检索、对话记忆压缩。人设与 bible 是作者备忘不是讲稿。续写请紧接「当前章节」正文末尾。"
+    # 硬规则在**末尾再出现一次**：长上下文里夹在中间的要求最容易被忽略。
+    key_rules = task_key_rules(resolved_task)
+    if key_rules:
+        tail += "\n\n## 本次硬规则（务必遵守）\n" + "\n".join(f"- {r}" for r in key_rules)
+    kept_sections.append(tail)
+
+    text = "\n".join(kept_sections)
+
 
     # Trim from the least critical middle (other chapters) if over budget
     if len(text) > max_chars:
@@ -849,5 +965,9 @@ def build_agent_context(
             included.append("中段压缩")
 
     return AgentContextResult(
-        text=text, included=included, charsUsed=len(text), task=resolved_task
+        text=text,
+        included=included,
+        charsUsed=len(text),
+        task=resolved_task,
+        excluded=sorted(dropped),
     )

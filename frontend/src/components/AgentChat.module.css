@@ -516,6 +516,75 @@ html[data-panel-glass="ink"] .stageOverlay {
   opacity: 0.85;
 }
 
+/* ---- 「资料」开关：这次带哪些资料交给作者决定 ---- */
+
+.sectionRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  padding: 0.15rem 0 0.25rem;
+}
+
+.sectionToggle {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  cursor: pointer;
+}
+
+.sectionToggle:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.sectionHint {
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sectionMenu {
+  position: absolute;
+  bottom: calc(100% + 0.25rem);
+  left: 0;
+  z-index: 30;
+  width: min(22rem, 92vw);
+  max-height: 20rem;
+  overflow: auto;
+  padding: 0.45rem 0.55rem 0.55rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-lg);
+}
+
+.sectionNote {
+  margin: 0 0 0.35rem;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.sectionItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.16rem 0;
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.sectionItem input {
+  margin-top: 0.12rem;
+}
+
 /* 断点续跑提示条：上次运行中断/失败后可一键继续 */
 .resumeBar {
   display: flex;

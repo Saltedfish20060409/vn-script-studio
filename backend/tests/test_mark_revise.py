@@ -7,7 +7,24 @@ from app.core.mark_revise import (
     _QUOTE_CAP,
     build_mark_messages,
     clean_model_text,
+    parse_variants,
 )
+
+
+def test_parse_variants_reads_json_and_cleans_each():
+    raw = '```json\n{"variants": ["改后一。", "「改后二。」"]}\n```'
+    assert parse_variants(raw, 2) == ["改后一。", "改后二。"]
+
+
+def test_parse_variants_falls_back_to_single_when_model_ignores_json():
+    # 模型不听话时宁可只给一版，也不能让作者什么都拿不到
+    assert parse_variants("他就那样站着，没动。", 2) == ["他就那样站着，没动。"]
+
+
+def test_parse_variants_handles_single_mode_and_garbage():
+    assert parse_variants("改后：他把手举到眼前。", 1) == ["他把手举到眼前。"]
+    assert parse_variants("", 2) == []
+    assert parse_variants('{"variants": []}', 2) == []
 
 
 def _user_text(messages) -> str:

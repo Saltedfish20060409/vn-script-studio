@@ -427,6 +427,7 @@ async def run_agent_loop(
             longChapterMemory=request.longChapterMemory,
             loreCraft=request.loreCraft,
             referenceDocs=request.referenceDocs,
+            exclude=request.excludeSections,
         )
     else:
         last_user = next(
@@ -452,6 +453,7 @@ async def run_agent_loop(
             longChapterMemory=request.longChapterMemory,
             loreCraft=request.loreCraft,
             referenceDocs=request.referenceDocs,
+            exclude=request.excludeSections,
         )
 
         if craft.mode == "off":

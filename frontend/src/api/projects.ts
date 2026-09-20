@@ -180,6 +180,8 @@ export function getRecap(
 /** 写作页「标记批改」：让 AI 只改标出来的这一处（intent=advice 时只给建议，不动正文）。 */
 export type MarkReviseOut = {
   replacement: string;
+  /** 多候选：1–3 版改写（第一版即 replacement） */
+  candidates?: string[];
   advice: string;
   changed: boolean;
   model: string;
@@ -197,6 +199,8 @@ export function reviseMark(
     suffix?: string;
     instruction?: string;
     intent?: "rewrite" | "advice";
+    /** 一次要几版改写（1–3） */
+    candidates?: number;
   }
 ): Promise<MarkReviseOut> {
   return apiFetch<MarkReviseOut>(`/projects/${id}/marks/revise`, {
@@ -209,6 +213,7 @@ export function reviseMark(
       suffix: body.suffix ?? "",
       instruction: body.instruction ?? "",
       intent: body.intent ?? "rewrite",
+      candidates: body.candidates ?? 1,
     }),
   });
 }
@@ -584,6 +589,8 @@ export interface AgentRunInBody {
   attachments?: AgentAttachment[];
   /** 断点续跑：从该会话 run_state 检查点继续上次中断/失败的多步运行 */
   resume?: boolean;
+  /** 作者按需摘掉的资料块 key（见 lib/agentSections.AGENT_SECTIONS） */
+  exclude_sections?: string[];
 }
 
 export type AgentAttachment = {

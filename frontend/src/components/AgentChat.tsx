@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import {
+  AGENT_SECTIONS,
+  loadExcludedSections,
+  saveExcludedSections,
+  toggleSection,
+} from "../lib/agentSections";
+import {
   createAgentConversation,
   deleteAgentConversation,
   getAgentConversation,
@@ -185,6 +191,14 @@ export function AgentChat({
   const [loadingConv, setLoadingConv] = useState(true);
   const [error, setError] = useState("");
   const [lastContext, setLastContext] = useState<string>("");
+  /** 「资料」开关：这次不交给 AI 的资料块（只影响本机会话；后端会忽略未知 key） */
+  const [excluded, setExcluded] = useState<string[]>(() => loadExcludedSections());
+  const [sectionsOpen, setSectionsOpen] = useState(false);
+
+  // 资料开关落盘：这是"我怎么用界面"的偏好，不是作品数据
+  useEffect(() => {
+    saveExcludedSections(excluded);
+  }, [excluded]);
   const [undoCount, setUndoCount] = useState(0);
   const [thinking, setThinking] = useState("编辑正在检索设定 / 读当前章…");
   const [liveStream, setLiveStream] = useState<{
@@ -724,6 +738,8 @@ export function AgentChat({
           resume: opts.resume || undefined,
           // 与 UI 选中同步；勿仅依赖 DB（避免 PUT 未完成时本轮漏注入）
           lens_ids: activeLensIds,
+          // 作者按需摘掉的资料块（空数组 = 不带这个字段也没关系）
+          exclude_sections: excluded.length ? excluded : undefined,
           attachments: opts.resume
             ? undefined
             : pendingAttach.map((a) => ({
@@ -1842,6 +1858,42 @@ export function AgentChat({
             onIngest={() => void ingestSettingsFromAttachments()}
             onScan={() => void runFactsScanFlow("请根据附件整理关系与时间线")}
           />
+
+          {/* 资料开关：把"这次带哪些资料"交给作者，一眼可控（工具比裸聊差多半是因为塞太多） */}
+          <div className={styles.sectionRow}>
+            <button
+              type="button"
+              className={styles.sectionToggle}
+              data-testid="agent-sections-toggle"
+              onClick={() => setSectionsOpen((v) => !v)}
+              title="按需决定这次要交给 AI 的资料（只影响本次会话，不改工程数据）"
+            >
+              ⚙ 资料
+            </button>
+            <span className={styles.sectionHint} data-testid="agent-sections-summary">
+              {excluded.length === 0
+                ? "默认全带（机制类资料已按任务自动省去）"
+                : `本次不带 ${excluded.length} 项`}
+            </span>
+            {sectionsOpen ? (
+              <div className={styles.sectionMenu} data-testid="agent-sections-menu">
+                <p className={styles.sectionNote}>
+                  取消勾选 = 这次不交给它。塞太多无关资料反而会让它跑偏。
+                </p>
+                {AGENT_SECTIONS.map((s) => (
+                  <label key={s.key} className={styles.sectionItem}>
+                    <input
+                      type="checkbox"
+                      data-testid={`agent-section-${s.key}`}
+                      checked={!excluded.includes(s.key)}
+                      onChange={() => setExcluded((prev) => toggleSection(prev, s.key))}
+                    />
+                    <span>{s.label}</span>
+                  </label>
+                ))}
+              </div>
+            ) : null}
+          </div>
 
           <AgentComposerBox
             value={input}

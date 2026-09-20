@@ -1,5 +1,5 @@
 import { useEffect, useState, type ChangeEvent } from "react";
-import { shortQuote, type Mark } from "../lib/marks";
+import { QUICK_FEEDBACK, shortQuote, type Mark } from "../lib/marks";
 import styles from "./MarkCard.module.css";
 
 type Props = {
@@ -18,6 +18,10 @@ type Props = {
   onRemove: () => void;
   onInstruction: (value: string) => void;
   onIntent: (intent: "rewrite" | "advice") => void;
+  /** 一键反馈：把这句话追加进要求并立刻重做这一处 */
+  onQuickFeedback: (label: string) => void;
+  /** 换个方向再来一版（多候选） */
+  onMoreVariants: () => void;
   /** 跳到正文里这一处（重新选中） */
   onJump: () => void;
 };
@@ -52,6 +56,8 @@ export function MarkCard({
   onRemove,
   onInstruction,
   onIntent,
+  onQuickFeedback,
+  onMoreVariants,
   onJump,
 }: Props) {
   const [edit, setEdit] = useState(mark.replacement ?? "");
@@ -120,7 +126,27 @@ export function MarkCard({
             <p className={styles.diffOld}>{mark.quote}</p>
           </div>
           <div className={styles.diffSide}>
-            <span className={styles.diffLabel}>改后（可以直接改）</span>
+            <span className={styles.diffLabel}>
+              改后（可以直接改）
+              {(mark.candidates?.length ?? 0) > 1 ? (
+                <span className={styles.variantRow} data-testid="mark-card-variants">
+                  {mark.candidates!.map((v, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className={
+                        v === edit ? styles.variantOn : styles.variant
+                      }
+                      data-testid={`mark-card-variant-${i}`}
+                      onClick={() => setEdit(v)}
+                      title={v.slice(0, 60)}
+                    >
+                      第 {i + 1} 版
+                    </button>
+                  ))}
+                </span>
+              ) : null}
+            </span>
             <textarea
               className={styles.diffNew}
               data-testid="mark-card-replacement"
@@ -129,6 +155,25 @@ export function MarkCard({
               onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setEdit(e.target.value)}
             />
           </div>
+        </div>
+      ) : null}
+
+      {!decided ? (
+        <div className={styles.quickRow} data-testid="mark-card-quick">
+          {/* 快捷反馈：比打字说一句快，也比聊天更精准（直接进这次改写的指令） */}
+          {QUICK_FEEDBACK.map((q) => (
+            <button
+              key={q.label}
+              type="button"
+              className={styles.quick}
+              data-testid={`mark-card-quick-${q.id}`}
+              disabled={busy || mark.status === "stale"}
+              onClick={() => onQuickFeedback(q.label)}
+              title={`在现有要求后面加上「${q.label}」，重新处理这一处`}
+            >
+              {q.label}
+            </button>
+          ))}
         </div>
       ) : null}
 
@@ -172,6 +217,18 @@ export function MarkCard({
           >
             {hasResult ? "重新处理" : "处理"}
           </button>
+          {mark.intent === "rewrite" ? (
+            <button
+              type="button"
+              className={styles.ghost}
+              data-testid="mark-card-more"
+              disabled={busy || mark.status === "stale"}
+              onClick={onMoreVariants}
+              title="一次给我 3 个不同方向的改写，挑一版"
+            >
+              给我 3 版
+            </button>
+          ) : null}
         </div>
       ) : null}
 

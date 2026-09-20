@@ -31,6 +31,8 @@ class MarkReviseIn(BaseModel):
     suffix: str = Field(default="", max_length=1000)
     instruction: str = Field(default="", max_length=1000)
     intent: Literal["rewrite", "advice"] = "rewrite"
+    # 一次给几版改写（1–3）。多版让作者挑一版，比反复点"重来"省事也更省 token。
+    candidates: int = Field(default=1, ge=1, le=3)
 
 
 @router.post("/{project_id}/marks/revise")
@@ -85,6 +87,7 @@ async def revise_mark(
         instruction=body.instruction,
         intent=body.intent,
         style_guide=style_guide,
+        candidates=body.candidates,
     )
     if result.error:
         raise HTTPException(status_code=502, detail=result.error)
@@ -92,6 +95,8 @@ async def revise_mark(
     changed = bool(result.replacement) and result.replacement.strip() != body.quote.strip()
     return {
         "replacement": result.replacement,
+        # 多候选：作者在卡片上挑一版（第一版即 replacement，兼容旧前端）
+        "candidates": result.candidates or ([result.replacement] if result.replacement else []),
         "advice": result.advice,
         "changed": changed,
         "model": result.model,

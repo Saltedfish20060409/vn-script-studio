@@ -29,6 +29,8 @@ export type Mark = {
   replacement?: string;
   /** 建议（intent=advice） */
   advice?: string;
+  /** 多候选改写：一次给出 1–3 版，作者挑一版（挑中的那版写进 replacement） */
+  candidates?: string[];
   /** 处理失败的原因 */
   error?: string;
   createdAt: number;
@@ -213,6 +215,14 @@ export function shortQuote(quote: string, max = 28): string {
 const STORE_KEY = "vnss-marks-v1";
 /** 每条最多留这么多（超了丢最旧的），别让 localStorage 无限长 */
 export const MAX_MARKS_PER_CHAPTER = 80;
+
+/** 一键反馈：点一下就把这句要求加进指令并重做这一处（比打字快，也比聊天更精准） */
+export const QUICK_FEEDBACK = [
+  { id: "colder", label: "再冷一点" },
+  { id: "shorter", label: "再短一点" },
+  { id: "concrete", label: "更具体" },
+  { id: "keep", label: "保留信息量" },
+] as const;
 
 type MarkMap = Record<string, Mark[]>;
 

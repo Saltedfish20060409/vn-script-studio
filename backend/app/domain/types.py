@@ -663,6 +663,8 @@ class AgentRequest(BaseModel):
     loreCraft: Optional[str] = None
     # User-uploaded reference docs (already extracted plain text)
     referenceDocs: Optional[str] = None
+    # 作者按需摘掉的资料块 key（见 agent_context.EXCLUDABLE_SECTIONS）
+    excludeSections: Optional[List[str]] = None
     # Writing craft injection: auto | off | lite | full
     craftMode: Optional[str] = None
     # Override project writingMentors.activeIds for this turn (max 2)

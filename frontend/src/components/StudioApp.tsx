@@ -682,8 +682,8 @@ export function StudioApp() {
     setStatus("已标记这一段：在正文旁边直接处理，或点「按标记处理」批量跑");
   }
 
-  /** 处理单个标记（改写或只给建议）。 */
-  async function processMark(id: string): Promise<boolean> {
+  /** 处理单个标记（改写或只给建议）。wantVariants>1 时一次要几版改写。 */
+  async function processMark(id: string, wantVariants = 1): Promise<boolean> {
     const mark = marks.find((m) => m.id === id);
     if (!mark || !project?.id) return false;
     setMarkBusyId(id);
@@ -698,6 +698,7 @@ export function StudioApp() {
         suffix: mark.suffix,
         instruction: mark.instruction,
         intent: mark.intent,
+        candidates: wantVariants,
       });
       setMarks((prev) =>
         prev.map((m) =>
@@ -705,6 +706,7 @@ export function StudioApp() {
             ? {
                 ...m,
                 replacement: out.replacement || undefined,
+                candidates: out.candidates?.length ? out.candidates : undefined,
                 advice: out.advice || undefined,
                 status: "suggested" as const,
                 error: undefined,
@@ -827,9 +829,53 @@ export function StudioApp() {
     focusEditorRange(range.from, range.to);
   }
 
-  /**
-   * 处理完之后自动跳到下一条待决定的标记（省得自己找）。
-   * 没有下一条时**留在当前这条**——卡片收起的话「撤回这次改动」就点不到了。
+  /** 一键反馈：把这句要求追加到现有要求后面，立刻重做这一处。 */
+  function quickFeedbackMark(id: string, label: string) {
+    const mark = marks.find((m) => m.id === id);
+    if (!mark) return;
+    const next = mark.instruction.trim()
+      ? `${mark.instruction.trim()}；${label}`
+      : label;
+    setMarks((prev) => prev.map((m) => (m.id === id ? { ...m, instruction: next } : m)));
+    // 直接用新要求处理，不等状态回灌（否则这次请求还会用旧要求）
+    const patched = { ...mark, instruction: next };
+    setMarkBusyId(id);
+    void (async () => {
+      if (!project?.id) return;
+      try {
+        const out = await reviseMark(project.id, {
+          chapterId: patched.chapterId,
+          quote: patched.quote,
+          prefix: patched.prefix,
+          suffix: patched.suffix,
+          instruction: next,
+          intent: patched.intent,
+        });
+        setMarks((prev) =>
+          prev.map((m) =>
+            m.id === id
+              ? {
+                  ...m,
+                  instruction: next,
+                  replacement: out.replacement || undefined,
+                  candidates: out.candidates?.length ? out.candidates : undefined,
+                  advice: out.advice || undefined,
+                  status: "suggested" as const,
+                  error: undefined,
+                }
+              : m
+          )
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "处理失败";
+        setMarks((prev) => prev.map((m) => (m.id === id ? { ...m, error: msg } : m)));
+      } finally {
+        setMarkBusyId(null);
+      }
+    })();
+  }
+
+  /** 处理完之后自动跳到下一条待决定的标记（省得自己找）。   * 没有下一条时**留在当前这条**——卡片收起的话「撤回这次改动」就点不到了。
    */
   function activateNextMark(afterId: string) {
     const idx = marks.findIndex((m) => m.id === afterId);
@@ -2925,6 +2971,8 @@ export function StudioApp() {
                               onRemove={() => removeMark(activeMark.id)}
                               onInstruction={(value) => setMarkInstruction(activeMark.id, value)}
                               onIntent={(intent) => setMarkIntent(activeMark.id, intent)}
+                              onQuickFeedback={(label) => quickFeedbackMark(activeMark.id, label)}
+                              onMoreVariants={() => void processMark(activeMark.id, 3)}
                               onJump={() => selectMark(activeMark.id)}
                             />
                           ) : null

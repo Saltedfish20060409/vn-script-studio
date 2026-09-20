@@ -122,6 +122,8 @@ class AgentRunIn(BaseModel):
     attachments: Optional[List[Dict[str, Any]]] = None
     # 断点续跑：true 时从会话 run_state 的检查点继续上次中断/失败的多步运行
     resume: bool = False
+    # 作者按需摘掉的资料块 key（见 core/agent_context.EXCLUDABLE_SECTIONS）
+    exclude_sections: Optional[List[str]] = None
 
 
 class AgentRunOut(BaseModel):

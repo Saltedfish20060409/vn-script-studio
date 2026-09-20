@@ -13,8 +13,9 @@
 
 from __future__ import annotations
 
+import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from app.core.ai import DeepSeekConfig
@@ -49,6 +50,21 @@ _ADVICE_SYSTEM = """你是中文文学编辑。作者标出了一处**他觉得�
 
 只输出建议本身。"""
 
+_MULTI_SUFFIX = """
+
+作者想从**几个不同的方向**里挑一版，所以请一次给出 {n} 个**彼此明显不同**的改写（不是同义替换的微调）。
+输出 JSON（不要解释、不要代码围栏）：
+{{"variants": ["第一版改写", "第二版改写"]}}
+每版都要满足上面的所有铁律；两版的句法节奏或处理角度要有可见差别。"""
+
+
+def _variant_count(candidates: int) -> int:
+    try:
+        n = int(candidates)
+    except (TypeError, ValueError):
+        return 1
+    return max(1, min(3, n))
+
 
 @dataclass
 class MarkReviseResult:
@@ -56,6 +72,8 @@ class MarkReviseResult:
     advice: str = ""
     error: Optional[str] = None
     model: str = ""
+    # 多候选：给作者挑一版（一次调用里要 2–3 版，比让用户反复点"重来"更省）
+    candidates: List[str] = field(default_factory=list)
 
 
 def _clip(text: str, cap: int) -> str:
@@ -107,6 +125,38 @@ def clean_model_text(raw: str) -> str:
     return text
 
 
+def parse_variants(raw: str, want: int = 1) -> List[str]:
+    """从模型输出里取出 1–3 版改写。
+
+    多候选时要求 JSON，但模型经常不听话：所以先试 JSON，失败就退化成一版
+    （宁可只给一版，也不要因为格式问题让作者什么都拿不到）。
+    """
+    text = (raw or "").strip()
+    if want <= 1:
+        single = clean_model_text(text)
+        return [single] if single else []
+
+    fenced = _FENCE_RE.sub("", text).strip()
+    for blob in (fenced, text):
+        start = blob.find("{")
+        end = blob.rfind("}")
+        if start < 0 or end <= start:
+            continue
+        try:
+            data = json.loads(blob[start : end + 1])
+        except json.JSONDecodeError:
+            continue
+        # 明确给了 variants 就按它来（哪怕是空的也不要退化，否则会把 JSON 当正文返回）
+        if isinstance(data, dict) and "variants" in data:
+            items = data.get("variants")
+            if not isinstance(items, list):
+                return []
+            out = [clean_model_text(str(v)) for v in items]
+            return [v for v in out if v][:3]
+    single = clean_model_text(text)
+    return [single] if single else []
+
+
 async def revise_marked_text(
     config: Optional[DeepSeekConfig],
     *,
@@ -116,38 +166,50 @@ async def revise_marked_text(
     instruction: str = "",
     intent: str = "rewrite",
     style_guide: str = "",
+    candidates: int = 1,
 ) -> MarkReviseResult:
     """把标出来的这一处交给模型处理（改写或只给建议）。"""
     if config is None or not config.apiKey or "your-key" in config.apiKey:
         return MarkReviseResult(error="未配置模型密钥：请在「设置 → 模型」填入自己的 Key，或使用站内免费档。")
     if not quote.strip():
         return MarkReviseResult(error="标记内容为空")
+    want = _variant_count(candidates) if intent == "rewrite" else 1
     try:
+        messages = build_mark_messages(
+            quote=quote,
+            prefix=prefix,
+            suffix=suffix,
+            instruction=instruction,
+            intent=intent,
+            style_guide=style_guide,
+        )
+        if want > 1:
+            messages = [
+                messages[0],
+                {
+                    "role": "user",
+                    "content": messages[1]["content"] + _MULTI_SUFFIX.format(n=want),
+                },
+            ]
         res = await chat_completions(
             config,
-            messages=build_mark_messages(
-                quote=quote,
-                prefix=prefix,
-                suffix=suffix,
-                instruction=instruction,
-                intent=intent,
-                style_guide=style_guide,
-            ),
+            messages=messages,
             # 局部改写要贴原意，温度别高；建议类任务更保守
             temperature=0.4 if intent == "advice" else 0.55,
             timeout=120,
         )
         content, used_model = content_from_response(res)
-        text = clean_model_text(content)
-        if not text:
-            return MarkReviseResult(error="模型没有返回内容，请重试或换一个模型")
-        limit = int(len(quote) * _REPLACEMENT_RATIO) + _REPLACEMENT_MIN_SLACK
-        text = text[:limit]
-        result = MarkReviseResult(model=used_model or (config.model or ""))
+        model = used_model or (config.model or "")
         if intent == "advice":
-            result.advice = text
-        else:
-            result.replacement = text
-        return result
+            advice = clean_model_text(content)
+            if not advice:
+                return MarkReviseResult(error="模型没有返回内容，请重试或换一个模型")
+            return MarkReviseResult(advice=advice[:2000], model=model)
+
+        limit = int(len(quote) * _REPLACEMENT_RATIO) + _REPLACEMENT_MIN_SLACK
+        variants = [v[:limit] for v in parse_variants(content, want)]
+        if not variants:
+            return MarkReviseResult(error="模型没有返回内容，请重试或换一个模型")
+        return MarkReviseResult(replacement=variants[0], candidates=variants, model=model)
     except Exception as exc:  # noqa: BLE001 — 单处改写失败不该影响其它标记
         return MarkReviseResult(error=f"处理失败：{exc}")

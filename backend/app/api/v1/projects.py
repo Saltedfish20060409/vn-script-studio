@@ -2154,6 +2154,7 @@ async def _build_agent_request(
         ),
         loreCraft=lore_combined,
         referenceDocs=reference_docs,
+        excludeSections=body.exclude_sections,
         craftMode=settings.agent_craft_mode,
         selfReview=settings.agent_self_review,
         lensIds=body.lens_ids,
