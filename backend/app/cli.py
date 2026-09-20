@@ -561,6 +561,13 @@ def eval(
                 "warns": sum(c["warnCount"] for c in cells),
             }
 
+        # 汇总。注意边界集的读法：那里的指令是"照写问题写法"，
+        # 所以"稿子被 lint 命中"只说明它按指令写得糟，**不是**优劣指标；
+        # 边界集的优劣看 Rubric 均分与 veto 次数（保留集才看 lint 通过率）。
+        report["summaryNote"] = (
+            "边界集指令要求「照写问题写法」，因此 lint 命中率在对照模式下会被任务本身"
+            "混淆（越听话写得越糟、命中越多），不作为优劣指标；边界集请看 Rubric 均分与 veto。"
+        )
         for kind, title in (("retention", "retention 保留集"), ("boundary", "boundary 边界集")):
             group = [c for c in report["cases"] if c["kind"] == kind]
             if not group:
@@ -572,16 +579,22 @@ def eval(
                 if not agg.get("n"):
                     continue
                 typer.echo(
-                    f"    {arm}: lint通过 {agg['lintPass']:.0%} · 检出 {agg['caught']:.0%} · "
-                    f"Rubric {agg['rubricAvg']} · veto {agg['veto']} · "
-                    f"error {agg['errors']} / warn {agg['warns']}"
+                    f"    {arm}: lint通过 {agg['lintPass']:.0%} · Rubric {agg['rubricAvg']} · "
+                    f"veto {agg['veto']} · error {agg['errors']} / warn {agg['warns']}"
                 )
             if a.get("n") and b.get("n"):
                 d_lint = a["lintPass"] - b["lintPass"]
                 d_rub = (a["rubricAvg"] or 0) - (b["rubricAvg"] or 0)
-                typer.echo(
-                    f"    差值（工具 − 裸聊）: lint通过 {d_lint:+.0%} · Rubric {d_rub:+.2f}"
+                extra = (
+                    f" · veto {b['veto'] - a['veto']:+d}（工具−裸聊，越负越好）"
+                    if kind == "boundary"
+                    else ""
                 )
+                typer.echo(
+                    f"    差值（工具 − 裸聊）: lint通过 {d_lint:+.0%} · Rubric {d_rub:+.2f}{extra}"
+                )
+        if report["summary"].get("boundary"):
+            typer.echo(f"  读法：{report['summaryNote']}")
 
         blind_doc = {
             "说明": (

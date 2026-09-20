@@ -181,3 +181,6 @@ def test_summary_reports_retention_and_boundary(tmp_path, monkeypatch, fake_llm)
             assert agg["n"] >= 1
             assert isinstance(agg["rubricAvg"], float)
     assert "差值（工具 − 裸聊）" in output
+    # 边界集的 lint 命中率会被"照写问题写法"这个指令混淆，必须把读法印出来
+    assert "不作为优劣指标" in output
+    assert "不作为优劣指标" in report["summaryNote"]
