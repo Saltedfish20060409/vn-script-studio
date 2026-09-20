@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 
@@ -70,6 +71,15 @@ def eval(
     api_key: Optional[str] = typer.Option(None, "--api-key", help="API key（Ollama 可省略）"),
     out: Optional[Path] = typer.Option(None, "--out", help="评测报告 JSON 输出路径"),
     cases: int = typer.Option(3, "--cases", help="运行前 N 个用例"),
+    ab: bool = typer.Option(
+        False,
+        "--ab",
+        help="对照盲评：同一模型同一任务跑「工具流程」与「裸聊」两臂，并输出随机标签的盲评文件",
+    ),
+    blind_out: Optional[Path] = typer.Option(
+        None, "--blind-out", help="盲评文件输出路径（默认写到 --out 同目录的 blind-ab.json）"
+    ),
+    seed: int = typer.Option(20260409, "--seed", help="盲评标签随机种子（同种子可复现）"),
 ):
     """生成质量评测：对写作任务跑目标模型，用确定性 lint 自动评分。
 
@@ -77,10 +87,21 @@ def eval(
       python -m app eval                          # 用 .env 的模型
       python -m app eval -m deepseek-v4-flash
       python -m app eval -m qwen2.5:7b --base-url http://localhost:11434 --api-key ollama
+      python -m app eval --ab --cases 9 -o ab.json  # 对照盲评：工具流程 vs 裸聊
     """
     from app.core.demo import create_demo_project
     from app.core.harness.audit_full import full_audit_draft
     from app.core.llm_http import chat_completions, content_from_response
+
+    if ab:
+        # 对照盲评只用线上真实链路里已有的模块，避免"评测里另写一套"导致测的不是产品
+        from app.core.agent import agent_identity_block
+        from app.core.agent_context import build_agent_context
+        from app.core.agent_loop import compose_agent_system
+        from app.core.llm_params import task_temperature
+        from app.core.narrative_lint import NarrativeLintIssue, lint_has_blockers
+        from app.core.narrative_review import run_narrative_self_review
+        from app.core.writing_craft import build_writing_craft_prompt, select_craft_mode
 
     settings = get_settings()
     cfg = DeepSeekConfig(
@@ -168,6 +189,134 @@ def eval(
         content, used_model = content_from_response(res)
         return {"text": content.strip(), "model": used_model}
 
+    # ——— 对照盲评两臂（--ab） ———
+    # 争议点：「软件是不是还不如直接跟聊天框说一句」。要回答它，就不能拿我们
+    # 精心写的单条系统提示去比对方的随手一问，必须让两臂**只差流程**：
+    #   tool 臂 = 线上真实链路（检索拼装上下文 + 工艺卡 + 输出契约 + 作者硬规则
+    #             + 任务分档温度 + 第二遍自检修订）
+    #   bare 臂 = 同一个模型、同一句任务，只有一句通用「写作助手」人设，
+    #             不给项目上下文、不给工艺卡、不给契约、不做自检
+    # 两臂产出后用**完全相同**的确定性 lint + 同一份 Rubric Judge 打分。
+    BARE_SYSTEM = "你是一个乐于助人的写作助手，请按用户要求完成写作。"
+
+    # 评测用例名（trap-xxx 是"抓毛病"的边界用例，不是产品的任务档）要映射到产品里
+    # 真实存在的 task 档位；映射规则写在用例边上，不靠对用例文案的猜测——
+    # 用例文案里带"（测试：审稿应抓住…）"这类元信息，推断会误判。
+    # 对白为主的用例走 scene，纯旁白的走 continue（都取自 AGENT_TASKS）。
+    AB_AGENT_TASK = {
+        "continue": "continue",
+        "scene": "scene",
+        "rewrite": "rewrite",
+        "trap-dump": "scene",
+        "trap-pingpong": "scene",
+        "trap-halluc": "scene",
+        "trap-telegram": "scene",
+        "trap-omniscient": "scene",
+        "trap-ooc": "scene",
+        "trap-saidtag": "scene",
+        "trap-notbut": "continue",
+        "trap-hedge": "continue",
+        "trap-adverb": "continue",
+    }
+
+    def _agent_task_for(label: str) -> str:
+        return AB_AGENT_TASK.get(label, "scene")
+
+    async def _arm_tool(task: str, instruction: str, agent_task: str) -> dict:
+        """工具流程臂：走产品真实链路，任务档位等价于用户在界面上选的那个模式。
+
+        用户的原始话术两臂完全一致（不额外加「【任务：x】」标记），
+        任务档位只通过 system 里的任务提示 / 输出契约 / 工艺卡生效——
+        这样两臂的差别确实来自流程，而不是来自我们多写了一句提示词。
+        """
+        craft = select_craft_mode(
+            task=agent_task, user_message=instruction, project=project, preference="auto"
+        )
+        ctx_obj = build_agent_context(
+            project,
+            chapterId=(project.chapters[0].id if project.chapters else None),
+            userMessage=instruction,
+            task=agent_task,
+        )
+        system = compose_agent_system(
+            identity_block=agent_identity_block([], []),
+            task=agent_task,
+            craft_block=build_writing_craft_prompt(agent_task, craft.mode),
+            context_text=ctx_obj.text,
+        )
+        temp = task_temperature(agent_task, craft.mode)
+        res = await chat_completions(
+            cfg,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": instruction},
+            ],
+            temperature=temp,
+            timeout=180,
+        )
+        text, used_model = content_from_response(res)
+        text = text.strip()
+
+        # 第二遍自检：与线上 run_agent_loop 末尾调的是同一个函数（含 lint 阻断语义）
+        audit0 = full_audit_draft(text)
+        lint_issues = [
+            NarrativeLintIssue(
+                severity=str(i.get("severity") or "warn"),
+                code=str(i.get("code") or "harness"),
+                message=str(i.get("message") or ""),
+            )
+            for i in (audit0.get("issues") or [])
+            if isinstance(i, dict) and i.get("message")
+        ]
+        review_note = ""
+        revised = False
+        try:
+            review = await run_narrative_self_review(
+                cfg,
+                draft=text,
+                task=agent_task,
+                project=project,
+                lintIssues=lint_issues,
+            )
+            review_note = review.note or ""
+            if not review.ok and review.revisedText:
+                text = review.revisedText.strip()
+                revised = True
+            elif lint_has_blockers(lint_issues) and not review.revisedText:
+                review_note = review_note or "规则未过但责编未给出改写"
+        except Exception as exc:  # noqa: BLE001 — 自检失败不拖垮评测，但要留痕
+            review_note = f"self_review_failed:{type(exc).__name__}"
+        return {
+            "text": text,
+            "model": used_model,
+            "temperature": temp,
+            "craftMode": craft.mode,
+            "contextChars": ctx_obj.charsUsed,
+            "selfReview": review_note,
+            "selfRevised": revised,
+        }
+
+    async def _arm_bare(task: str, instruction: str) -> dict:
+        res = await chat_completions(
+            cfg,
+            messages=[
+                {"role": "system", "content": BARE_SYSTEM},
+                {"role": "user", "content": instruction},
+            ],
+            temperature=0.75,
+            timeout=180,
+        )
+        text, used_model = content_from_response(res)
+        return {
+            "text": text.strip(),
+            "model": used_model,
+            "temperature": 0.75,
+            "craftMode": "off",
+            "contextChars": 0,
+            "selfReview": "",
+            "selfRevised": False,
+        }
+
     # LLM-as-a-Judge（《深入理解 AI Agent》第7/9章）：Rubric 逐维打分+引用证据
     # +一票否决。与确定性 lint 互补：lint 查规则，Judge 查质量。
     JUDGE_SYSTEM = """你是视觉小说 / 轻小说审稿评委。对草稿按 Rubric 逐维打分（1-4），
@@ -234,6 +383,198 @@ def eval(
             }
         except Exception as exc:  # noqa: BLE001
             return {"error": f"judge_failed:{type(exc).__name__}:{str(exc)[:120]}"}
+
+    def _avg_rubric(judge: Optional[dict]) -> Optional[float]:
+        s = (judge or {}).get("scores") or {}
+        nums: List[float] = []
+        for v in s.values():
+            if isinstance(v, dict) and isinstance(v.get("score"), (int, float)):
+                nums.append(float(v["score"]))
+            elif isinstance(v, (int, float)):
+                nums.append(float(v))
+        return (sum(nums) / len(nums)) if nums else None
+
+    async def _score_arm(text: str, task: str, instruction: str) -> dict:
+        """两臂用完全相同的量具：确定性 lint + 同一份 Rubric Judge。"""
+        audit = full_audit_draft(text)
+        judge = await _judge_rubric(cfg, ctx, task, text, instruction)
+        return {
+            "chars": len(text),
+            "passed": bool(audit.get("pass")),
+            "errorCount": int(audit.get("errorCount", 0) or 0),
+            "warnCount": int(audit.get("warnCount", 0) or 0),
+            "issues": [
+                {"severity": i.get("severity"), "code": i.get("code")}
+                for i in (audit.get("issues") or [])[:6]
+            ],
+            "judge": judge,
+            "rubricAvg": _avg_rubric(judge),
+            "veto": bool((judge or {}).get("veto")),
+        }
+
+    async def _run_ab(blind_path: Path):
+        """对照盲评：每个任务跑两臂，输出内部报告 + 随机标签的盲评文件 + 拆封密钥。"""
+        rng = random.Random(seed)
+        report = {
+            "mode": "ab",
+            "model": cfg.model,
+            "baseUrl": cfg.baseUrl,
+            "provider": cfg.provider,
+            "seed": seed,
+            "arms": {
+                "tool": "工具流程（线上真实链路：检索上下文+工艺卡+输出契约+作者硬规则+任务分档温度+第二遍自检）",
+                "bare": "裸聊（同模型，仅一句通用写作助人人设，无上下文/无工艺/无契约/无自检）",
+            },
+            "cases": [],
+            "summary": {},
+        }
+        blind_items = []
+        key: dict = {}
+
+        for idx, (task, instruction) in enumerate(
+            TASKS[: max(1, min(cases, len(TASKS)))], start=1
+        ):
+            case_id = f"case-{idx:02d}-{task}"
+            kind = "retention" if not task.startswith("trap-") else "boundary"
+            agent_task = _agent_task_for(task)
+            entry: dict = {
+                "id": case_id,
+                "task": task,
+                "agentTask": agent_task,
+                "kind": kind,
+            }
+            texts: dict = {}
+            for arm, runner in (("tool", _arm_tool), ("bare", _arm_bare)):
+                try:
+                    if arm == "tool":
+                        r = await runner(task, instruction, agent_task)
+                    else:
+                        r = await runner(task, instruction)
+                except Exception as exc:  # noqa: BLE001
+                    entry[arm] = {"error": f"{type(exc).__name__}:{str(exc)[:200]}"}
+                    continue
+                scored = await _score_arm(r["text"], task, instruction)
+                entry[arm] = {**r, **scored}
+                texts[arm] = r["text"]
+
+            # 随机标签：谁叫「甲」谁叫「乙」每例独立随机（同 seed 可复现）
+            labels = ["甲", "乙"]
+            rng.shuffle(labels)
+            mapping = {"tool": labels[0], "bare": labels[1]}
+            entry["blindLabels"] = mapping
+            if len(texts) == 2:
+                tool_label = mapping["tool"]
+                bare_label = mapping["bare"]
+                blind_items.append(
+                    {
+                        "id": case_id,
+                        "task": task,
+                        "instruction": instruction,
+                        tool_label: texts["tool"],
+                        bare_label: texts["bare"],
+                    }
+                )
+                key[case_id] = {tool_label: "tool", bare_label: "bare"}
+            report["cases"].append(entry)
+
+            def _fmt(a: str) -> str:
+                c = entry.get(a) or {}
+                if "error" in c:
+                    return f"{a}=ERR"
+                avg = c.get("rubricAvg")
+                return (
+                    f"{a}=e{c['errorCount']}/w{c['warnCount']}"
+                    + (f"/R{avg:.1f}" if avg is not None else "/R-")
+                    + ("·veto" if c.get("veto") else "")
+                    + ("·自检改写" if c.get("selfRevised") else "")
+                )
+
+            typer.echo(f"[{task}] {_fmt('tool')} | {_fmt('bare')}")
+
+        # 汇总：保留集看 lint 通过率与 Rubric 均分；边界集看检出率与 veto
+        def _agg(arm: str, group: List[dict]) -> dict:
+            cells = [c[arm] for c in group if arm in c and "error" not in (c.get(arm) or {})]
+            if not cells:
+                return {"n": 0}
+            avgs = [c["rubricAvg"] for c in cells if c.get("rubricAvg") is not None]
+            return {
+                "n": len(cells),
+                "lintPass": round(sum(1 for c in cells if c["passed"]) / len(cells), 3),
+                "caught": round(
+                    sum(
+                        1
+                        for c in cells
+                        if (c["errorCount"] + c["warnCount"]) > 0 or c.get("veto")
+                    )
+                    / len(cells),
+                    3,
+                ),
+                "veto": sum(1 for c in cells if c.get("veto")),
+                "rubricAvg": round(sum(avgs) / len(avgs), 2) if avgs else None,
+                "errors": sum(c["errorCount"] for c in cells),
+                "warns": sum(c["warnCount"] for c in cells),
+            }
+
+        for kind, title in (("retention", "retention 保留集"), ("boundary", "boundary 边界集")):
+            group = [c for c in report["cases"] if c["kind"] == kind]
+            if not group:
+                continue
+            a, b = _agg("tool", group), _agg("bare", group)
+            report["summary"][kind] = {"tool": a, "bare": b}
+            typer.echo(f"  {title}: n={a.get('n', 0)}")
+            for arm, agg in (("工具流程", a), ("裸聊", b)):
+                if not agg.get("n"):
+                    continue
+                typer.echo(
+                    f"    {arm}: lint通过 {agg['lintPass']:.0%} · 检出 {agg['caught']:.0%} · "
+                    f"Rubric {agg['rubricAvg']} · veto {agg['veto']} · "
+                    f"error {agg['errors']} / warn {agg['warns']}"
+                )
+            if a.get("n") and b.get("n"):
+                d_lint = a["lintPass"] - b["lintPass"]
+                d_rub = (a["rubricAvg"] or 0) - (b["rubricAvg"] or 0)
+                typer.echo(
+                    f"    差值（工具 − 裸聊）: lint通过 {d_lint:+.0%} · Rubric {d_rub:+.2f}"
+                )
+
+        blind_doc = {
+            "说明": (
+                "对照盲评：每个任务的甲/乙两稿来自同一个模型、同一句任务，只有流程不同。"
+                "请只按 Rubric 打分并选出更好的一稿，不要猜哪份是工具产出；"
+                "本文件不含答案，拆封请用同名 -key.json。"
+            ),
+            "model": cfg.model,
+            "seed": seed,
+            "rubric": {
+                "social": "社交真实（距离感、问答乒乓、无缘由倾诉）",
+                "dialogue": "对白工艺（信息动机、打断省略、惜话与沉默）",
+                "setting": "设定传达（溶于动作，无宣讲/内心OS标签）",
+                "stageable": "VN 可演性（适合对白与画面，无全知剧透）",
+                "consistency": "一致性（人设语气 voice、已知信息、地点氛围）",
+            },
+            "一票否决": [
+                "编造不存在的信息 / 设定前后矛盾",
+                "同一角色本拍主动追问≥2次 / 问答乒乓",
+                "陌生人过熟倾诉 / 设定履历宣讲",
+                "旁白揭示角色不可能知道的隐藏信息（全知剧透）",
+                "台词风格与人设 voice 明显冲突（OOC）",
+            ],
+            "items": blind_items,
+        }
+        blind_path.parent.mkdir(parents=True, exist_ok=True)
+        blind_path.write_text(
+            json.dumps(blind_doc, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        key_path = blind_path.with_name(blind_path.stem + "-key.json")
+        key_path.write_text(
+            json.dumps(
+                {"seed": seed, "model": cfg.model, "key": key}, ensure_ascii=False, indent=2
+            ),
+            encoding="utf-8",
+        )
+        typer.echo(f"盲评文件（交给评审，不含答案）: {blind_path}")
+        typer.echo(f"拆封密钥（自己留好，评审完再看）: {key_path}")
+        return report
 
     async def _run_all():
         report = {
@@ -334,13 +675,25 @@ def eval(
             typer.echo(line)
         return report
 
-    report = asyncio.run(_run_all())
+    if ab:
+        blind_path = blind_out or ((out.with_name("blind-ab.json")) if out else Path("blind-ab.json"))
+        typer.echo(
+            f"对照盲评：模型 {cfg.model} · seed {seed} · 用例 {max(1, min(cases, len(TASKS)))}"
+        )
+        typer.echo("  甲/乙 每例独立随机；两臂只差流程（工具流程 vs 裸聊），量具完全相同")
+        report = asyncio.run(_run_ab(blind_path))
+    else:
+        report = asyncio.run(_run_all())
     text = json.dumps(report, ensure_ascii=False, indent=2)
     if out:
         out.write_text(text, encoding="utf-8")
         typer.echo(f"报告已写入 {out}")
     else:
-        typer.echo(text)
+        if ab:
+            # AB 报告含大段正文，没给 --out 时只打印摘要，避免刷屏
+            typer.echo(json.dumps(report["summary"], ensure_ascii=False, indent=2))
+        else:
+            typer.echo(text)
 
 
 @cli.command()

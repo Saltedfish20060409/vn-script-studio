@@ -196,7 +196,22 @@ python -m app ai out.json continue --instruction "更压抑"
 # 生成质量评测（对写作任务跑目标模型，用确定性 lint 自动评分）
 python -m app eval
 python -m app eval -m qwen2.5:7b --base-url http://localhost:11434 --api-key ollama
+# 对照盲评：「工具流程」vs「裸聊」两臂，同一模型同一任务、量具完全相同
+python -m app eval --ab --cases 13 --out ab.json
 ```
+
+对照盲评（`--ab`）用来回答「这软件是不是还不如直接跟聊天框说一句」这类质疑：
+
+- **两臂只差流程**：`tool` 臂走线上真实链路（检索拼装上下文 + 工艺卡 + 输出契约 +
+  作者硬规则 + 任务分档温度 + 第二遍自检修订）；`bare` 臂是同一个模型、**同一句用户话术**，
+  只有一句通用「写作助手」人设，不给上下文、不给工艺、不做自检。
+- **量具完全相同**：两臂产出都用同一套确定性 lint（`harness.audit_full`）和同一份
+  Rubric Judge（逐维打分 + 一票否决）评分，避免「自己当裁判还改尺子」。
+- **随机标签盲评**：每例的甲/乙分配按 `--seed` 独立随机，盲评文件（`blind-ab.json`）
+  **不含答案**、可直接交给别人或另一个模型评；答案单独写在 `blind-ab-key.json`，
+  评完再拆封。换个 `--seed` 可复现另一套标签，用来检查评审自身是否稳定。
+- 报告里保留集看 lint 通过率与 Rubric 均分，边界集（`trap-*`）看检出率与 veto，
+  并直接打印「工具 − 裸聊」的差值。
 
 ### 环境变量（backend/.env）
 
