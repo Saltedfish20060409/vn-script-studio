@@ -47,6 +47,43 @@ def new_location_link(
     return LocationLink(id=uid("link"), fromId=from_id, toId=to_id, relation=relation)
 
 
+def normalize_volumes(
+    raw_volumes: Any, raw_chapters: Any
+) -> tuple[list[dict[str, Any]], list[Any]]:
+    """规范化卷与章节归属。
+
+    两条硬约束（都是"删卷/删章"以后最容易留下的残渣）：
+    1. 卷必须有 id（缺了补一个）；
+    2. ``chapter.volumeId`` 指向不存在的卷时**清空**（而不是留一个悬空 id 让界面找不到归属）。
+    另外顺手丢掉既无 id 又无标题的空卷。
+    """
+    volumes: list[dict[str, Any]] = []
+    for item in list(raw_volumes or []):
+        if not isinstance(item, dict):
+            continue
+        vid = str(item.get("id") or "").strip() or uid("vol")
+        title = str(item.get("title") or "").strip()
+        note = item.get("note")
+        if not title and not item.get("id"):
+            continue
+        volume: dict[str, Any] = {"id": vid, "title": title or "未命名卷"}
+        if note:
+            volume["note"] = str(note)
+        volumes.append(volume)
+
+    valid_ids = {v["id"] for v in volumes}
+    chapters: list[Any] = []
+    for ch in list(raw_chapters or []):
+        if not isinstance(ch, dict):
+            chapters.append(ch)
+            continue
+        vid = ch.get("volumeId")
+        if isinstance(vid, str) and vid.strip() and vid not in valid_ids:
+            ch = {k: v for k, v in ch.items() if k != "volumeId"}
+        chapters.append(ch)
+    return volumes, chapters
+
+
 def _model_field_names() -> set[str]:
     """VnProject 声明的全部字段名（含别名）。
 
@@ -93,6 +130,7 @@ def normalize_project(raw: Any = None) -> VnProject:
             }
         ]
     )
+    volumes, chapters = normalize_volumes(raw.get("volumes"), chapters)
 
     # 先透传模型已声明、且调用方确实给了值的字段（避免上面那种"新字段被丢掉"）。
     data: dict[str, Any] = {
@@ -104,6 +142,7 @@ def normalize_project(raw: Any = None) -> VnProject:
             "title": data.get("title") or "未命名剧本",
             "characters": data.get("characters") or [],
             "chapters": chapters,
+            "volumes": volumes,
             "lore": bible.world,
             "bible": bible,
             "locations": data.get("locations") or [],

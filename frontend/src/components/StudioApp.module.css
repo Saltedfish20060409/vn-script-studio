@@ -134,8 +134,79 @@
   margin: 0 0 0.35rem;
 }
 
-/* 选中正文时贴在选区旁边的「标记这段」（位置由 ScriptEditor 按字符坐标算） */
-.selectionMarkBtn {
+/* ---- 分卷（轻小说/网文按卷连载）---- */
+
+.volumeRow {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  width: 100%;
+  margin-bottom: 0.35rem;
+}
+
+.volumeChip,
+.volumeChipOn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.volumeChipOn {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  font-weight: 700;
+}
+
+.volumeChipTitle {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.volumeChipMeta {
+  font-size: 0.68rem;
+  font-style: normal;
+  color: var(--ink-soft);
+}
+
+.volumeActions {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding-left: 0.25rem;
+  border-left: 1px solid var(--line);
+}
+
+.volumeEmpty {
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+}
+
+.volumeAssign {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.chapterSelect {
+  max-width: 9rem;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-bg);
+  color: var(--ink);
+  font-size: 0.74rem;
+}
+
+/* 选中正文时贴在选区旁边的「标记这段」（位置由 ScriptEditor 按字符坐标算） */.selectionMarkBtn {
   padding: 0.24rem 0.66rem;
   border: 2px solid var(--line);
   border-radius: var(--radius-pill);

@@ -9,7 +9,7 @@ tags in brackets, menu choices as bullet lists.
 from __future__ import annotations
 
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from app.domain.types import Character, ScriptBlock, VnProject
 
@@ -103,8 +103,17 @@ def project_to_docx(project: VnProject) -> bytes:
     if project.logline:
         doc.add_paragraph(project.logline).italic = True
 
+    # 分卷时：卷标题做一级标题、章节降为二级，导出稿自带层级；未分卷时与原来完全一致。
+    volume_titles = {
+        str(v.id): (v.title or "") for v in list(project.volumes or [])
+    }
+    current_volume: Optional[str] = None
     for idx, ch in enumerate(project.chapters or [], start=1):
-        doc.add_heading(ch.title or f"第{idx}章", level=1)
+        volume_title = volume_titles.get(str(getattr(ch, "volumeId", None) or ""))
+        if volume_title and volume_title != current_volume:
+            doc.add_heading(volume_title, level=1)
+            current_volume = volume_title
+        doc.add_heading(ch.title or f"第{idx}章", level=2 if current_volume else 1)
         if ch.synopsis:
             p = doc.add_paragraph(ch.synopsis)
             p.italic = True

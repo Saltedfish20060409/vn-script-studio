@@ -44,6 +44,20 @@ type ChapterStats = {
   dialogueWords: number;
   dialogueRatio: number;
   speakers: string[];
+  /** 所属卷 id（"" = 未分卷） */
+  volumeId?: string;
+};
+
+/** 每卷进度（有卷时后端才返回内容） */
+export type VolumeStats = {
+  id: string;
+  title: string;
+  index: number;
+  note: string;
+  chapters: number;
+  words: number;
+  avgChapterWords: number;
+  chapterIds: string[];
 };
 
 export type ProjectStats = {
@@ -55,6 +69,8 @@ export type ProjectStats = {
     avgChapterWords: number;
   };
   chapters: ChapterStats[];
+  /** 每卷进度（含末尾的「未分卷」档；没有卷时为空数组） */
+  volumes?: VolumeStats[];
   activity: WritingActivityDay[];
 };
 

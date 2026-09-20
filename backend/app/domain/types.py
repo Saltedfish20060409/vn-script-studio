@@ -259,6 +259,23 @@ class SceneChapter(BaseModel):
     prose: Optional[str] = None
     # Fingerprint of prose last used to generate RPY (stale when it drifts).
     rpyFromProseHash: Optional[str] = None
+    # 所属卷（可选）。没有卷时是 None，行为与"平铺章节"完全一致。
+    volumeId: Optional[str] = None
+
+
+class Volume(BaseModel):
+    """一卷（轻小说/网文的连载单位）。
+
+    章节靠 ``SceneChapter.volumeId`` 归属；卷的顺序就是本列表的顺序。
+    老工程没有 volumes 字段 → 空列表 → 界面上仍是平铺章节，不改变任何行为。
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    title: str
+    # 卷备注（这一卷要写什么、给谁看），不进正文
+    note: Optional[str] = None
 
 
 class StoryBible(BaseModel):
@@ -538,6 +555,8 @@ class VnProject(BaseModel):
     genre: Optional[str] = None
     characters: List[Character] = Field(default_factory=list)
     chapters: List[SceneChapter] = Field(default_factory=list)
+    # 卷（可选）：章节按 volumeId 归属；空列表 = 平铺章节（老工程行为不变）
+    volumes: Optional[List[Volume]] = None
     # deprecated: prefer bible.world — kept for older saves
     lore: Optional[str] = None
     bible: Optional[StoryBible] = None

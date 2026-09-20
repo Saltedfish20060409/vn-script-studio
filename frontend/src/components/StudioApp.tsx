@@ -123,6 +123,15 @@ import {
   saveMarks,
   type Mark,
 } from "../lib/marks";
+import {
+  LOOSE_VOLUME_ID,
+  addVolume,
+  assignChapterToVolume,
+  deleteVolume,
+  moveVolume,
+  renameVolume,
+  volumeIdOfChapter,
+} from "../lib/volumes";
 import type { MarkRange } from "../lib/markHighlight";
 import { blockTextRange, blocksToEditable, editableToBlocks } from "../lib/scriptCodec";
 import { insertCommandAtLine } from "../lib/insertCommand";
@@ -346,6 +355,8 @@ export function StudioApp() {
   const [markBusyId, setMarkBusyId] = useState<string | null>(null);
   const [markProgress, setMarkProgress] = useState<{ done: number; total: number } | null>(null);
   const [hasStyleMemory, setHasStyleMemory] = useState(false);
+  /** 当前查看的卷（"" = 未分卷）。分卷作品里章节条只显示这一卷的章节。 */
+  const [activeVolumeId, setActiveVolumeId] = useState<string>(LOOSE_VOLUME_ID);
   /** 当前选区的起止偏移（浮动「标记这段」按钮要贴在选区旁边） */
   const [selectionRange, setSelectionRange] = useState<{ from: number; to: number } | null>(null);
   const markStopRef = useRef(false);
@@ -566,6 +577,8 @@ export function StudioApp() {
     setCaretHint(saved);
     // 本章的标记：读本机保存的，并按当前正文重新定位（正文改过就标成"已失效"）
     setMarks(refreshMarks(editorRef.current, loadMarks(project.id, chapterId)));
+    // 当前查看的卷跟着章节走：切到别的卷里的章节时，卷标自动切过去
+    setActiveVolumeId(volumeIdOfChapter(project.chapters, chapterId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.id, chapterId]);
 
@@ -1603,11 +1616,79 @@ export function StudioApp() {
           title: title.trim() || "新章节",
           prose: "",
           blocks: [{ type: "label", id: "start", name: "start" }],
+          // 新建的章节归到当前查看的那一卷（分卷时"+ 章"就该进这一卷）
+          ...(activeVolumeId ? { volumeId: activeVolumeId } : {}),
         },
       ],
     }));
     commitEditor();
     setChapterId(id);
+  }
+
+  // ---- 分卷（轻小说/网文按卷连载）--------------------------------------------
+
+  async function addVolumeFlow() {
+    const title = await prompt({
+      title: "新建一卷",
+      defaultValue: `第${(project?.volumes?.length ?? 0) + 1}卷`,
+      confirmLabel: "创建",
+    });
+    if (title === null) return;
+    const id = `vol-${Date.now().toString(36)}`;
+    updateActive((p) => ({
+      ...p,
+      volumes: addVolume(p.volumes, title, id).volumes,
+    }));
+    setActiveVolumeId(id);
+    setStatus("已新建一卷：新章节会归到这一卷，已有的章节可以用「本章归入」调整");
+  }
+
+  async function renameVolumeFlow(volumeId: string) {
+    const current = (project?.volumes ?? []).find((v) => v.id === volumeId);
+    if (!current) return;
+    const title = await prompt({
+      title: "卷标题",
+      defaultValue: current.title,
+      confirmLabel: "保存",
+    });
+    if (title === null) return;
+    updateActive((p) => ({ ...p, volumes: renameVolume(p.volumes, volumeId, title) }));
+  }
+
+  function moveVolumeFlow(volumeId: string, delta: number) {
+    updateActive((p) => ({ ...p, volumes: moveVolume(p.volumes, volumeId, delta) }));
+  }
+
+  async function deleteVolumeFlow(volumeId: string) {
+    const vol = (project?.volumes ?? []).find((v) => v.id === volumeId);
+    const count = (project?.chapters ?? []).filter(
+      (c) => volumeIdOfChapter(project?.chapters ?? [], c.id) === volumeId
+    ).length;
+    const ok = await confirm({
+      title: `删掉「${vol?.title ?? "这一卷"}」？`,
+      body: count
+        ? `里面的 ${count} 章会回到「未分卷」，章节内容不会删。`
+        : "这一卷还没有章节。",
+      confirmLabel: "删掉这卷",
+      danger: true,
+    });
+    if (!ok) return;
+    updateActive((p) => {
+      const out = deleteVolume(p.volumes, p.chapters, volumeId);
+      return { ...p, volumes: out.volumes, chapters: out.chapters };
+    });
+    setActiveVolumeId(LOOSE_VOLUME_ID);
+    setStatus("已删掉这一卷：章节已回到「未分卷」");
+  }
+
+  function assignChapterVolume(volumeId: string) {
+    updateActive((p) => ({
+      ...p,
+      chapters: assignChapterToVolume(p.chapters, chapterId, volumeId),
+    }));
+    setStatus(
+      volumeId ? "已把这一章归入所选卷" : "已把这一章移出到「未分卷」"
+    );
   }
 
   async function deleteChapter(id: string) {
@@ -2574,6 +2655,14 @@ export function StudioApp() {
                   writeSub={writeSub}
                   chapterId={chapterId}
                   chapters={project.chapters}
+                  volumes={project.volumes ?? []}
+                  activeVolumeId={activeVolumeId}
+                  onSelectVolume={setActiveVolumeId}
+                  onAddVolume={() => void addVolumeFlow()}
+                  onRenameVolume={(id) => void renameVolumeFlow(id)}
+                  onMoveVolume={moveVolumeFlow}
+                  onDeleteVolume={(id) => void deleteVolumeFlow(id)}
+                  onAssignChapter={assignChapterVolume}
                   onSelectScript={() => setWriteSub("script")}
                   onSelectAnalysis={() => {
                     void (async () => {

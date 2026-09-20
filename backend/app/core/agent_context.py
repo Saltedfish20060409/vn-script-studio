@@ -467,11 +467,20 @@ def build_agent_context(
         included.append("设定bible")
 
     digests = digest_all_chapters(project)
+    # 分卷的作品：模型看到的章节目录也带卷（长篇续写时它要知道自己在写哪一卷）
+    volume_titles: Dict[str, str] = {}
+    if project.volumes:
+        title_by_id = {str(v.id): (v.title or "") for v in project.volumes}
+        for ch in project.chapters or []:
+            title = title_by_id.get(str(getattr(ch, "volumeId", "") or ""))
+            if title:
+                volume_titles[ch.id] = title
     digest_fmt = format_chapter_digest_index(
         digests,
         focus_id=focus_chapter.id if focus_chapter else None,
         tokens=effective_tokens,
         max_related_excerpts=5 if resolved_task == "consistency" else 3,
+        volume_titles=volume_titles,
     )
     included.extend([x for x in digest_fmt.included if not x.startswith("章摘要")])
 

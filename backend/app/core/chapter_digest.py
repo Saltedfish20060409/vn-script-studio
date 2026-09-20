@@ -210,14 +210,24 @@ def format_chapter_digest_index(
     focus_id: Optional[str] = None,
     tokens: Optional[List[str]] = None,
     max_related_excerpts: Optional[int] = None,
+    volume_titles: Optional[Dict[str, str]] = None,
 ) -> ChapterDigestIndex:
-    """Format other-chapter digests for Agent context (prefer digest over raw dump)."""
+    """Format other-chapter digests for Agent context (prefer digest over raw dump).
+
+    ``volume_titles`` 是 章节 id → 卷标题 的映射（分卷的作品才有）。带上它，模型看到的
+    章节目录就是「【第一卷】1. …」这种带卷的结构——长篇续写时它才知道自己在写哪一卷。
+    """
     tokens = tokens or []
     included = [f"章摘要×{len(digests)}"]
-    index_lines = [
-        f"{i + 1}. {d.title}{'◀当前' if d.chapterId == focus_id else ''} — {_clip(d.beatSummary, 100)}"
-        for i, d in enumerate(digests)
-    ]
+    volumes = volume_titles or {}
+    lines: List[str] = []
+    for i, d in enumerate(digests):
+        label = volumes.get(d.chapterId)
+        prefix = f"【{label}】" if label else ""
+        lines.append(
+            f"{prefix}{i + 1}. {d.title}{'◀当前' if d.chapterId == focus_id else ''} — {_clip(d.beatSummary, 100)}"
+        )
+    index_lines = lines
 
     ranked = sorted(
         (

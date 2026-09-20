@@ -40,14 +40,15 @@ export function normalizeProject(
           ],
     lore: bible.world,
     bible,
+    // ⚠️ 这里漏字段 = 保存时把服务端的东西抹掉（normalizeProject 是白名单式的），
+    // 所以新加的项目级字段必须同时出现在这里和 SECTION_KEYS 里。
+    volumes: raw.volumes ?? [],
     locations: raw.locations ?? [],
     locationLinks: raw.locationLinks ?? [],
     mapStyle: normalizeMapStyle(raw.mapStyle),
     customMapElements: raw.customMapElements ?? [],
     mapStrokes: raw.mapStrokes ?? [],
     characterLinks: raw.characterLinks ?? [],
-    // ⚠️ 这里漏字段 = 保存时把服务端的东西抹掉（normalizeProject 是白名单式的），
-    // 所以新加的项目级字段必须同时出现在这里和 SECTION_KEYS 里。
     loreEntries: raw.loreEntries ?? [],
     timeline: raw.timeline ?? [],
     variables: raw.variables ?? [],

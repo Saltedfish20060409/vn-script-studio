@@ -45,6 +45,21 @@ def count_blocks_words(blocks: list[dict]) -> int:
     return total
 
 
+def count_chapter_words(ch: Any) -> int:
+    """一章的"写了多少字"。
+
+    **优先数 `prose`（大白话正文），没有正文才数 script blocks。**
+    为什么不是两者相加：blocks 通常是由 prose 生成出来的脚本，加一起会把同一段内容
+    数两遍。而反过来只数 blocks 的话，纯用正文写作的作者（网文/轻小说的主流用法）
+    会被算成 0 字——日更热力图、字数统计、章节回炉的对比全都跟着失真（实测确认过）。
+    """
+    prose = str(getattr(ch, "prose", None) or "")
+    if prose.strip():
+        return count_words(prose)
+    blocks = list(getattr(ch, "blocks", None) or [])
+    return count_blocks_words(blocks)
+
+
 def chapter_metrics(vn: VnProject) -> List[Dict[str, Any]]:
     """Per-chapter word/line/speaker metrics for the stats panel."""
     characters = list(vn.characters or [])
@@ -52,7 +67,7 @@ def chapter_metrics(vn: VnProject) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for idx, ch in enumerate(vn.chapters or [], start=1):
         blocks = list(ch.blocks or [])
-        words = count_blocks_words(blocks)
+        words = count_chapter_words(ch)
         dialogue_words = 0
         line_count = 0
         speakers: set = set()
@@ -76,8 +91,52 @@ def chapter_metrics(vn: VnProject) -> List[Dict[str, Any]]:
                 "dialogueWords": dialogue_words,
                 "dialogueRatio": round(dialogue_words / words, 3) if words else 0,
                 "speakers": sorted(s for s in speakers if s),
+                "volumeId": getattr(ch, "volumeId", None) or "",
             }
         )
+    return out
+
+
+def volume_metrics(vn: VnProject) -> List[Dict[str, Any]]:
+    """每卷的进度汇总（轻小说/网文按卷连载时最常看的一组数）。
+
+    只汇总、不重复实现计数：数据源就是 `chapter_metrics`，所以面板与卷头数字永远一致。
+    """
+    volumes = list(vn.volumes or [])
+    if not volumes:
+        return []
+    metrics = {m["id"]: m for m in chapter_metrics(vn)}
+    out: List[Dict[str, Any]] = []
+    for idx, vol in enumerate(volumes, start=1):
+        ids = [ch.id for ch in (vn.chapters or []) if (getattr(ch, "volumeId", None) or "") == vol.id]
+        words = sum(int(metrics.get(cid, {}).get("words") or 0) for cid in ids)
+        out.append(
+            {
+                "id": vol.id,
+                "title": vol.title or f"第{idx}卷",
+                "index": idx,
+                "note": vol.note or "",
+                "chapters": len(ids),
+                "words": words,
+                "avgChapterWords": round(words / len(ids)) if ids else 0,
+                "chapterIds": ids,
+            }
+        )
+    # 未归卷的章节单列一档，界面上显示为「未分卷」
+    loose = [ch.id for ch in (vn.chapters or []) if not (getattr(ch, "volumeId", None) or "")]
+    loose_words = sum(int(metrics.get(cid, {}).get("words") or 0) for cid in loose)
+    out.append(
+        {
+            "id": "",
+            "title": "未分卷",
+            "index": len(volumes) + 1,
+            "note": "",
+            "chapters": len(loose),
+            "words": loose_words,
+            "avgChapterWords": round(loose_words / len(loose)) if loose else 0,
+            "chapterIds": loose,
+        }
+    )
     return out
 
 

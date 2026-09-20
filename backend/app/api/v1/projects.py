@@ -1397,8 +1397,8 @@ async def project_stats(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Writing stats: per-chapter metrics + recent daily activity (heatmap)."""
-    from app.services.writing_stats import chapter_metrics, recent_activity
+    """Writing stats: per-chapter metrics + per-volume progress + recent daily activity."""
+    from app.services.writing_stats import chapter_metrics, recent_activity, volume_metrics
 
     row = await get_project_readable(db, user, project_id)
     vn = row_to_vn(row)
@@ -1415,6 +1415,8 @@ async def project_stats(
             "avgChapterWords": round(total_words / len(chapters), 1) if chapters else 0,
         },
         "chapters": chapters,
+        # 有卷时才有内容（老工程返回空列表）
+        "volumes": volume_metrics(vn),
         "activity": activity,
     }
 

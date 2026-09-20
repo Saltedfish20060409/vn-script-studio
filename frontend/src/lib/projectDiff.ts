@@ -6,6 +6,7 @@ const SECTION_KEYS = [
   "logline",
   "genre",
   "characters",
+  "volumes",
   "lore",
   "bible",
   "locations",

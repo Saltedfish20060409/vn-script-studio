@@ -42,6 +42,7 @@ export function WritingStatsPanel({ projectId }: Props) {
   if (!stats) return <p className={styles.hint}>加载写作统计…</p>;
 
   const { totals, chapters, activity } = stats;
+  const volumes = stats.volumes ?? [];
   const maxDay = Math.max(1, ...activity.map((d) => Math.abs(d.net)));
   // Build a full 30-day calendar (oldest → newest) so gaps render as empty cells.
   const days: (WritingActivityDay | null)[] = [];
@@ -101,9 +102,36 @@ export function WritingStatsPanel({ projectId }: Props) {
         </p>
       </div>
 
+      {volumes.length > 0 ? (
+        <div className={styles.section}>
+          <h3 className={styles.sectionTitle}>每卷进度</h3>
+          <table className={styles.table} data-testid="volume-stats">
+            <thead>
+              <tr>
+                <th>卷</th>
+                <th>标题</th>
+                <th>章数</th>
+                <th>字数</th>
+                <th>平均字/章</th>
+              </tr>
+            </thead>
+            <tbody>
+              {volumes.map((v) => (
+                <tr key={v.id || "loose"}>
+                  <td>{v.index}</td>
+                  <td className={styles.title}>{v.title}</td>
+                  <td>{v.chapters}</td>
+                  <td>{fmt(v.words)}</td>
+                  <td>{fmt(v.avgChapterWords)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
       <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>章节字数</h3>
-        {chapters.length === 0 ? (
+        <h3 className={styles.sectionTitle}>章节字数</h3>        {chapters.length === 0 ? (
           <div className={styles.empty}>
             <p>还没有章节。去写第一章吧。</p>
           </div>

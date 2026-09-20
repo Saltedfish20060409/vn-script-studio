@@ -65,6 +65,7 @@ MERGE_SECTIONS = [
     "logline",
     "genre",
     "characters",
+    "volumes",
     "lore",
     "bible",
     "locations",

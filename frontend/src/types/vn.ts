@@ -104,6 +104,16 @@ export interface SceneChapter {
   prose?: string;
   /** Fingerprint of prose last used to generate RPY. */
   rpyFromProseHash?: string;
+  /** 所属卷（可选）。没有卷 = 平铺章节，老工程行为不变。 */
+  volumeId?: string;
+}
+
+/** 一卷（轻小说/网文的连载单位）。顺序就是数组顺序。 */
+export interface Volume {
+  id: string;
+  title: string;
+  /** 卷备注（这一卷要写什么），不进正文 */
+  note?: string;
 }
 
 /** Story setting — independent from character cards */
@@ -385,6 +395,8 @@ export interface VnProject {
   genre?: string;
   characters: Character[];
   chapters: SceneChapter[];
+  /** 卷（可选）：章节按 volumeId 归属；空/缺省 = 平铺章节 */
+  volumes?: Volume[];
   /** @deprecated Mirror of bible.world for older saves — UI edits bible.world only */
   lore?: string;
   bible?: StoryBible;
