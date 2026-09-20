@@ -6,6 +6,15 @@ import type {
   MapStroke,
 } from "../types/vn";
 import { presetByKind } from "../lib/mapCatalog";
+import {
+  MAP_FEATURES,
+  loadMapPrefs,
+  saveMapPrefs,
+  setMeasurePrefs,
+  toggleFeature,
+  type MapPrefs,
+} from "../lib/mapFeatures";
+import { TRANSPORT_MODES, distanceKm, formatLegLabel } from "../lib/mapDistance";
 import { findLocationOccurrences } from "../lib/mapOccurrences";
 import { planRoadCurves } from "../lib/mapRoads";
 import { uid } from "../lib/vnLocal";
@@ -52,6 +61,21 @@ export function MapStudio({
   const studioRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [tool, setTool] = useState<Tool>("pan");
+  /** 按需功能开关 + 测距参数（存在本机，关掉只隐藏不删数据） */
+  const [prefs, setPrefs] = useState<MapPrefs>(() => loadMapPrefs());
+  const [featuresOpen, setFeaturesOpen] = useState(false);
+  const showStrokes = prefs.features.strokes;
+  const showDistance = prefs.features.distance;
+
+  // 开关存在本机：改了就落盘（关掉画笔不会动任何已画的笔迹）
+  useEffect(() => {
+    saveMapPrefs(prefs);
+  }, [prefs]);
+
+  // 关掉画笔时把当前工具从"画笔"上挪开，避免"工具在手却画不了"
+  useEffect(() => {
+    if (!showStrokes && tool === "draw") setTool("pan");
+  }, [showStrokes, tool]);
   const [placeKind, setPlaceKind] = useState<MapElementKind>("landmark");
   const [placeCustomId, setPlaceCustomId] = useState<string | null>(null);
   const [lineStyle, setLineStyle] = useState<MapLineStyle>("solid");
@@ -933,6 +957,82 @@ export function MapStudio({
         onAddCustom={addCustomDef}
       />
       <div className={styles.center}>
+        <div className={styles.quickBar}>
+          <button
+            type="button"
+            className={featuresOpen ? styles.toolActive : styles.toolBtn}
+            data-testid="map-features-toggle"
+            onClick={() => setFeaturesOpen((v) => !v)}
+            title="按需开启地图的进阶功能（关掉只隐藏，数据保留）"
+          >
+            ⚙ 显示
+          </button>
+          {showDistance ? (
+            <span className={styles.quickHint} data-testid="map-scale-hint">
+              每 {prefs.measure.px} 像素 = {prefs.measure.km} 公里 ·
+              {TRANSPORT_MODES.find((m) => m.id === prefs.measure.transport)?.label ?? "步行"}
+            </span>
+          ) : null}
+          {featuresOpen ? (
+            <div className={styles.featuresMenu} data-testid="map-features-menu">
+              {MAP_FEATURES.map((f) => (
+                <label key={f.id} className={styles.featureRow}>
+                  <input
+                    type="checkbox"
+                    data-testid={`map-feature-${f.id}`}
+                    checked={prefs.features[f.id]}
+                    onChange={() => setPrefs((p) => toggleFeature(p, f.id))}
+                  />
+                  <span className={styles.featureText}>
+                    <strong>{f.label}</strong>
+                    <em>{f.hint}</em>
+                  </span>
+                </label>
+              ))}
+              {showDistance ? (
+                <div className={styles.measureRow}>
+                  <span className={styles.quickHint}>比例尺：每</span>
+                  <input
+                    type="number"
+                    min={1}
+                    className={styles.measureInput}
+                    data-testid="map-measure-px"
+                    value={prefs.measure.px}
+                    onChange={(e) =>
+                      setPrefs((p) => setMeasurePrefs(p, { px: Number(e.target.value) || 1 }))
+                    }
+                  />
+                  <span className={styles.quickHint}>像素 =</span>
+                  <input
+                    type="number"
+                    min={1}
+                    className={styles.measureInput}
+                    data-testid="map-measure-km"
+                    value={prefs.measure.km}
+                    onChange={(e) =>
+                      setPrefs((p) => setMeasurePrefs(p, { km: Number(e.target.value) || 1 }))
+                    }
+                  />
+                  <span className={styles.quickHint}>公里</span>
+                  <select
+                    className={styles.measureSelect}
+                    data-testid="map-measure-transport"
+                    value={prefs.measure.transport}
+                    onChange={(e) =>
+                      setPrefs((p) => setMeasurePrefs(p, { transport: e.target.value }))
+                    }
+                  >
+                    {TRANSPORT_MODES.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}（{m.kmPerDay} 公里/天）
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
         <MapToolbar
           tool={tool}
           linkFrom={linkFrom}
@@ -950,6 +1050,7 @@ export function MapStudio({
           onFit={fitToContent}
           onExtractFromScript={onExtractFromScript}
           onExtractRulesOnly={onExtractRulesOnly}
+          showBrushTools={showStrokes}
         />
         <div
           ref={viewportRef}
@@ -958,7 +1059,7 @@ export function MapStudio({
           onPointerDown={onViewportPointerDown}
           onContextMenu={(e) => e.preventDefault()}
         >
-          {locations.length === 0 && strokes.length === 0 ? (
+          {locations.length === 0 && (!showStrokes || strokes.length === 0) ? (
             <MapEmptyOverlay onExtractFromScript={onExtractFromScript} />
           ) : null}
           <div
@@ -972,9 +1073,35 @@ export function MapStudio({
           >
             <MapStage />
             <svg className={styles.roads} width={WORLD_W} height={WORLD_H} aria-hidden>
-              {strokes.map((s) => renderPath(s.points, s.color, s.width, s.id))}
-              {draftPts.length > 1 &&
-                renderPath(draftPts, brushColor, brushWidth, "draft")}
+              {showStrokes ? strokes.map((s) => renderPath(s.points, s.color, s.width, s.id)) : null}
+              {showStrokes && draftPts.length > 1
+                ? renderPath(draftPts, brushColor, brushWidth, "draft")
+                : null}
+              {showDistance ? (
+                <g>
+                  {links.map((link) => {
+                    const a = byId.get(link.fromId);
+                    const b = byId.get(link.toId);
+                    if (!a || !b) return null;
+                    const curve = roadCurves.get(link.id);
+                    const mx = curve?.mx ?? (a.x + b.x) / 2;
+                    const my = curve?.my ?? (a.y + b.y) / 2;
+                    const km = distanceKm(a, b, prefs.measure);
+                    return (
+                      <text
+                        key={`dist-${link.id}`}
+                        className={styles.roadLabel}
+                        x={mx}
+                        y={my}
+                        textAnchor="middle"
+                        data-testid="map-distance-label"
+                      >
+                        {formatLegLabel(km, prefs.measure.transport)}
+                      </text>
+                    );
+                  })}
+                </g>
+              ) : null}
               {links.map((link) => {
                 const a = byId.get(link.fromId);
                 const b = byId.get(link.toId);

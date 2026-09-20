@@ -17,6 +17,8 @@ type Props = {
   onSetBrushWidth: (width: number) => void;
   onUndoStroke: () => void;
   onClearStrokes: () => void;
+  /** 「手绘与标记」开关关掉时隐藏画笔相关的一切（数据不删，重新打开就回来） */
+  showBrushTools?: boolean;
   onFit: () => void;
   onExtractFromScript?: () => void;
   onExtractRulesOnly?: () => void;
@@ -40,6 +42,7 @@ export function MapToolbar({
   onFit,
   onExtractFromScript,
   onExtractRulesOnly,
+  showBrushTools = true,
 }: Props) {
   return (
     <>
@@ -53,7 +56,7 @@ export function MapToolbar({
             ["select", "选择"],
             ["place", "放置"],
             ["link", "通路"],
-            ["draw", "画笔"],
+            ...(showBrushTools === false ? [] : ([["draw", "画笔"]] as const)),
           ] as const
         ).map(([id, label]) => (
           <button

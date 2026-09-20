@@ -72,6 +72,105 @@
   box-shadow: var(--shadow-sm);
 }
 
+/* ---- 按需功能开关（⚙ 显示）：关掉只隐藏，数据保留 ---- */
+
+.quickBar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  padding: 0.35rem 0.5rem 0;
+}
+
+.quickHint {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.featuresMenu {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0.5rem;
+  z-index: 20;
+  width: min(26rem, 90vw);
+  padding: 0.5rem 0.6rem 0.6rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-lg);
+}
+
+.featureRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding: 0.25rem 0;
+  cursor: pointer;
+}
+
+.featureRow input {
+  margin-top: 0.15rem;
+}
+
+.featureText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.featureText strong {
+  font-size: 0.8rem;
+}
+
+.featureText em {
+  font-size: 0.7rem;
+  font-style: normal;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.measureRow {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--line);
+}
+
+.measureInput {
+  width: 4.5rem;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--field-bg);
+  color: var(--ink);
+  font-size: 0.74rem;
+}
+
+.measureSelect {
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--field-bg);
+  color: var(--ink);
+  font-size: 0.74rem;
+}
+
+/* 连线上的距离/行程标注：SVG 文本，描边当底避免压在线里看不清 */
+.roadLabel {
+  font-size: 20px;
+  font-family: var(--font-mono);
+  fill: var(--ink);
+  paint-order: stroke;
+  stroke: var(--panel-bg);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
 .palBtn,
 .palActive {
   display: flex;
