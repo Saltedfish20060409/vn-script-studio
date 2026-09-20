@@ -93,6 +93,17 @@
   color: var(--accent-hot);
 }
 
+/* 生成后自检没完全过的提示（不阻断使用，但要让作者看见） */
+.warn {
+  margin: 0.3rem 0 0;
+  padding: 0.25rem 0.45rem;
+  border-left: 3px solid var(--accent-hot);
+  background: color-mix(in srgb, var(--accent-hot) 8%, transparent);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
 .advice {
   margin: 0.35rem 0 0;
   padding: 0.35rem 0.5rem;

@@ -708,6 +708,7 @@ export function StudioApp() {
                 replacement: out.replacement || undefined,
                 candidates: out.candidates?.length ? out.candidates : undefined,
                 advice: out.advice || undefined,
+                warnings: out.warnings?.length ? out.warnings : undefined,
                 status: "suggested" as const,
                 error: undefined,
               }
@@ -860,6 +861,7 @@ export function StudioApp() {
                   replacement: out.replacement || undefined,
                   candidates: out.candidates?.length ? out.candidates : undefined,
                   advice: out.advice || undefined,
+                  warnings: out.warnings?.length ? out.warnings : undefined,
                   status: "suggested" as const,
                   error: undefined,
                 }

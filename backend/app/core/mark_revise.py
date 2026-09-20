@@ -20,6 +20,7 @@ from typing import Dict, List, Optional
 
 from app.core.ai import DeepSeekConfig
 from app.core.llm_http import chat_completions, content_from_response
+from app.core.llm_params import MARK_ADVICE_TEMPERATURE, MARK_REVISE_TEMPERATURE
 
 # 上下文与正文长度上限：控制成本，也避免"要改的这段"被稀释
 _QUOTE_CAP = 1500
@@ -74,6 +75,8 @@ class MarkReviseResult:
     model: str = ""
     # 多候选：给作者挑一版（一次调用里要 2–3 版，比让用户反复点"重来"更省）
     candidates: List[str] = field(default_factory=list)
+    # 自检发现但没能自动修好的问题（如实告诉作者，不静默放过）
+    warnings: List[str] = field(default_factory=list)
 
 
 def _clip(text: str, cap: int) -> str:
@@ -125,6 +128,60 @@ def clean_model_text(raw: str) -> str:
     return text
 
 
+def check_replacement(
+    quote: str, replacement: str, names: Optional[List[str]] = None
+) -> List[str]:
+    """改写稿的自检（生成后默认跑，不合格会自动再改一次）。
+
+    只做**能确定判断**的检查，不做风格评价：
+    1. 长度失控（远超/远短于原文）；
+    2. 把原文里的专有名词弄丢了（项目角色名、《书名号》、大写拉丁词）；
+    3. 把原文的标点结构弄没了（例如整段并成一句）。
+    """
+    problems: List[str] = []
+    text = (replacement or "").strip()
+    src = (quote or "").strip()
+    if not text:
+        return ["改写结果为空"]
+    if src:
+        ratio = len(text) / max(1, len(src))
+        if ratio > 2.5:
+            problems.append(f"改写后长度是原文的 {ratio:.1f} 倍（要求接近原文）")
+        elif ratio < 0.3:
+            problems.append("改写后比原文短太多，可能丢了信息")
+
+    expected: List[str] = []
+    for name in names or []:
+        value = str(name or "").strip()
+        if len(value) >= 2 and value in src and value not in text:
+            expected.append(value)
+    for match in re.findall(r"《[^》]{1,20}》", src):
+        if match not in text:
+            expected.append(match)
+    for match in re.findall(r"\b[A-Za-z][A-Za-z0-9_.-]{2,}\b", src):
+        if match not in text:
+            expected.append(match)
+    if expected:
+        problems.append("改写后丢了原文里的专名：" + "、".join(dict.fromkeys(expected))[:80])
+    return problems
+
+
+def build_retry_messages(
+    base_messages: List[Dict[str, str]], problems: List[str]
+) -> List[Dict[str, str]]:
+    """把自检发现的问题回灌给模型，让它只针对这些问题再改一次。"""
+    return [
+        base_messages[0],
+        {
+            "role": "user",
+            "content": base_messages[1]["content"]
+            + "\n\n【上一版的问题（必须修正）】\n"
+            + "\n".join(f"- {p}" for p in problems)
+            + "\n请只修正这些问题，其他要求不变；仍然只输出改写后的正文。",
+        },
+    ]
+
+
 def parse_variants(raw: str, want: int = 1) -> List[str]:
     """从模型输出里取出 1–3 版改写。
 
@@ -167,6 +224,7 @@ async def revise_marked_text(
     intent: str = "rewrite",
     style_guide: str = "",
     candidates: int = 1,
+    names: Optional[List[str]] = None,
 ) -> MarkReviseResult:
     """把标出来的这一处交给模型处理（改写或只给建议）。"""
     if config is None or not config.apiKey or "your-key" in config.apiKey:
@@ -194,8 +252,8 @@ async def revise_marked_text(
         res = await chat_completions(
             config,
             messages=messages,
-            # 局部改写要贴原意，温度别高；建议类任务更保守
-            temperature=0.4 if intent == "advice" else 0.55,
+            # 采样参数按任务分档（core/llm_params）：局部改写中等，建议类更保守
+            temperature=MARK_ADVICE_TEMPERATURE if intent == "advice" else MARK_REVISE_TEMPERATURE,
             timeout=120,
         )
         content, used_model = content_from_response(res)
@@ -210,6 +268,32 @@ async def revise_marked_text(
         variants = [v[:limit] for v in parse_variants(content, want)]
         if not variants:
             return MarkReviseResult(error="模型没有返回内容，请重试或换一个模型")
-        return MarkReviseResult(replacement=variants[0], candidates=variants, model=model)
+
+        # 生成后自检（默认开）：能确定判断的问题就自动再改一次，别把问题丢给作者
+        warnings = check_replacement(quote, variants[0], names)
+        if warnings and want == 1:
+            try:
+                retry = await chat_completions(
+                    config,
+                    messages=build_retry_messages(messages, warnings),
+                    temperature=MARK_REVISE_TEMPERATURE,
+                    timeout=120,
+                )
+                retry_text, retry_model = content_from_response(retry)
+                retried = parse_variants(retry_text, 1)
+                if retried and not check_replacement(quote, retried[0], names):
+                    return MarkReviseResult(
+                        replacement=retried[0][:limit],
+                        candidates=[retried[0][:limit]],
+                        model=retry_model or model,
+                    )
+            except Exception:  # noqa: BLE001 - 自检重试失败就用第一版，并如实标注
+                pass
+        return MarkReviseResult(
+            replacement=variants[0],
+            candidates=variants,
+            model=model,
+            warnings=warnings,
+        )
     except Exception as exc:  # noqa: BLE001 — 单处改写失败不该影响其它标记
         return MarkReviseResult(error=f"处理失败：{exc}")

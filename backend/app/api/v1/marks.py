@@ -78,6 +78,8 @@ async def revise_mark(
     style = vn.styleMemory or {}
     if isinstance(style, dict):
         style_guide = str(style.get("guide") or "")
+    # 自检要用的角色名（专名保护：改写不该把项目里的角色名弄丢）
+    names = [str(getattr(c, "displayName", "") or "") for c in (vn.characters or [])]
 
     result = await revise_marked_text(
         config,
@@ -88,6 +90,7 @@ async def revise_mark(
         intent=body.intent,
         style_guide=style_guide,
         candidates=body.candidates,
+        names=names,
     )
     if result.error:
         raise HTTPException(status_code=502, detail=result.error)
@@ -101,6 +104,8 @@ async def revise_mark(
         "changed": changed,
         "model": result.model,
         "styleUsed": bool(style_guide),
+        # 自检结果：空数组 = 通过
+        "warnings": result.warnings,
         "intent": body.intent,
         "chapterId": body.chapter_id,
     }

@@ -33,6 +33,7 @@ from app.core.lenses import (
     resolve_project_lenses,
 )
 from app.core.llm_http import content_from_response
+from app.core.llm_params import task_temperature
 from app.core.llm_provider import LlmProvider, provider_from_config
 from app.core.longform_memory import summarize_chat_memory
 from app.core.mentors import build_mentor_prompt_for_project, resolve_project_mentors
@@ -456,16 +457,8 @@ async def run_agent_loop(
             exclude=request.excludeSections,
         )
 
-        if craft.mode == "off":
-            temperature = 0.82
-        elif task in ("polish", "voice", "consistency"):
-            temperature = 0.55
-        elif task == "outline":
-            temperature = 0.7
-        elif craft.mode == "lite":
-            temperature = 0.72
-        else:
-            temperature = 0.78
+        # 采样参数按任务分档（集中在一处，见 core/llm_params）：连续创作偏高、改稿/检查偏低
+        temperature = task_temperature(task, craft.mode)
 
         craft_block = build_writing_craft_prompt(task, craft.mode)
         # 解析出来的**包对象**要留着：身份块要按真实生效的名字拼，不能只拿 id。

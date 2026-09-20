@@ -186,6 +186,8 @@ export type MarkReviseOut = {
   changed: boolean;
   model: string;
   styleUsed: boolean;
+  /** 生成后自检发现、但没自动修好的问题（空/缺省 = 通过） */
+  warnings?: string[];
   intent: "rewrite" | "advice";
   chapterId: string;
 };

@@ -31,6 +31,8 @@ export type Mark = {
   advice?: string;
   /** 多候选改写：一次给出 1–3 版，作者挑一版（挑中的那版写进 replacement） */
   candidates?: string[];
+  /** 生成后自检发现、但没自动修好的问题（如实显示，不静默放过） */
+  warnings?: string[];
   /** 处理失败的原因 */
   error?: string;
   createdAt: number;

@@ -166,6 +166,37 @@ def test_model_error_surfaces_as_502():
     _run(_scenario())
 
 
+def test_warnings_are_passed_through_and_candidates_returned():
+    """生成后自检没修好的问题要如实回传；多候选要一次给出 1–3 版。"""
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "mark_warn_user")
+            pid = await _demo_project(client, headers)
+
+            async def fake_revise(config, **kwargs):
+                assert kwargs["candidates"] == 3
+                return MarkReviseResult(
+                    replacement="他把手举到眼前。",
+                    candidates=["他把手举到眼前。", "他抬起手，停在半空。", "手举起来了。"],
+                    warnings=["改写后长度是原文的 3.2 倍（要求接近原文）"],
+                    model="test-model",
+                )
+
+            with patch(PATCH_TARGET, new=fake_revise):
+                r = await client.post(
+                    f"/api/v1/projects/{pid}/marks/revise",
+                    json={"quote": "他慢慢抬起手，举到眼前。", "candidates": 3},
+                    headers=headers,
+                )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert len(body["candidates"]) == 3
+            assert body["warnings"] and "长度" in body["warnings"][0]
+
+    _run(_scenario())
+
+
 def test_marks_hint_reports_style_memory_state():
     async def _scenario():
         async with db_gate.make_client(APP) as client:

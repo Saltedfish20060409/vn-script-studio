@@ -113,6 +113,12 @@ export function MarkCard({
 
       {mark.error ? <p className={styles.error}>出错了：{mark.error}</p> : null}
 
+      {mark.warnings?.length ? (
+        <p className={styles.warn} data-testid="mark-card-warnings">
+          ⚠ 自检没完全过：{mark.warnings.join("；")}
+        </p>
+      ) : null}
+
       {mark.advice && mark.intent === "advice" ? (
         <p className={styles.advice} data-testid="mark-card-advice">
           {mark.advice}
