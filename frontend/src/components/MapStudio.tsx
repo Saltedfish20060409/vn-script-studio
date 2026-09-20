@@ -8,13 +8,17 @@ import type {
 import { presetByKind } from "../lib/mapCatalog";
 import {
   MAP_FEATURES,
+  MAP_SCALE_PRESETS,
+  applyScalePreset,
   loadMapPrefs,
   saveMapPrefs,
+  scalePreset,
   setMeasurePrefs,
   toggleFeature,
   type MapPrefs,
+  type MapScaleId,
 } from "../lib/mapFeatures";
-import { TRANSPORT_MODES, distanceKm, formatLegLabel } from "../lib/mapDistance";
+import { recommendedModes, transportById, distanceKm, formatLegLabel } from "../lib/mapDistance";
 import { findLocationOccurrences } from "../lib/mapOccurrences";
 import { planRoadCurves } from "../lib/mapRoads";
 import { uid } from "../lib/vnLocal";
@@ -969,8 +973,9 @@ export function MapStudio({
           </button>
           {showDistance ? (
             <span className={styles.quickHint} data-testid="map-scale-hint">
-              每 {prefs.measure.px} 像素 = {prefs.measure.km} 公里 ·
-              {TRANSPORT_MODES.find((m) => m.id === prefs.measure.transport)?.label ?? "步行"}
+              {scalePreset(prefs.measure.scale).label} · 每 {prefs.measure.px} 像素 ={" "}
+              {prefs.measure.km} 公里 ·
+              {transportById(prefs.measure.transport).label}
             </span>
           ) : null}
           {featuresOpen ? (
@@ -990,45 +995,68 @@ export function MapStudio({
                 </label>
               ))}
               {showDistance ? (
-                <div className={styles.measureRow}>
-                  <span className={styles.quickHint}>比例尺：每</span>
-                  <input
-                    type="number"
-                    min={1}
-                    className={styles.measureInput}
-                    data-testid="map-measure-px"
-                    value={prefs.measure.px}
-                    onChange={(e) =>
-                      setPrefs((p) => setMeasurePrefs(p, { px: Number(e.target.value) || 1 }))
-                    }
-                  />
-                  <span className={styles.quickHint}>像素 =</span>
-                  <input
-                    type="number"
-                    min={1}
-                    className={styles.measureInput}
-                    data-testid="map-measure-km"
-                    value={prefs.measure.km}
-                    onChange={(e) =>
-                      setPrefs((p) => setMeasurePrefs(p, { km: Number(e.target.value) || 1 }))
-                    }
-                  />
-                  <span className={styles.quickHint}>公里</span>
-                  <select
-                    className={styles.measureSelect}
-                    data-testid="map-measure-transport"
-                    value={prefs.measure.transport}
-                    onChange={(e) =>
-                      setPrefs((p) => setMeasurePrefs(p, { transport: e.target.value }))
-                    }
-                  >
-                    {TRANSPORT_MODES.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.label}（{m.kmPerDay} 公里/天）
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <>
+                  <div className={styles.measureRow}>
+                    <span className={styles.quickHint}>地图尺度：</span>
+                    <select
+                      className={styles.measureSelect}
+                      data-testid="map-scale-preset"
+                      value={prefs.measure.scale}
+                      onChange={(e) =>
+                        setPrefs((p) => applyScalePreset(p, e.target.value as MapScaleId))
+                      }
+                      title="决定默认比例尺与常用交通方式；日常题材按分钟、异世界大陆按天"
+                    >
+                      {MAP_SCALE_PRESETS.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                    <span className={styles.quickHint} data-testid="map-scale-preset-hint">
+                      {scalePreset(prefs.measure.scale).hint}
+                    </span>
+                  </div>
+                  <div className={styles.measureRow}>
+                    <span className={styles.quickHint}>比例尺：每</span>
+                    <input
+                      type="number"
+                      min={1}
+                      className={styles.measureInput}
+                      data-testid="map-measure-px"
+                      value={prefs.measure.px}
+                      onChange={(e) =>
+                        setPrefs((p) => setMeasurePrefs(p, { px: Number(e.target.value) || 1 }))
+                      }
+                    />
+                    <span className={styles.quickHint}>像素 =</span>
+                    <input
+                      type="number"
+                      min={1}
+                      className={styles.measureInput}
+                      data-testid="map-measure-km"
+                      value={prefs.measure.km}
+                      onChange={(e) =>
+                        setPrefs((p) => setMeasurePrefs(p, { km: Number(e.target.value) || 1 }))
+                      }
+                    />
+                    <span className={styles.quickHint}>公里</span>
+                    <select
+                      className={styles.measureSelect}
+                      data-testid="map-measure-transport"
+                      value={prefs.measure.transport}
+                      onChange={(e) =>
+                        setPrefs((p) => setMeasurePrefs(p, { transport: e.target.value }))
+                      }
+                    >
+                      {recommendedModes(prefs.measure.scale).map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label}（{m.kmh} 公里/小时）
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
               ) : null}
             </div>
           ) : null}

@@ -35,7 +35,11 @@ export const MAP_FEATURES: MapFeatureDef[] = [
 ];
 
 /** 距离功能的比例尺与交通方式（和开关一起存在本机）。 */
+export type MapScaleId = "urban" | "regional" | "continental";
+
 export type MapMeasurePrefs = {
+  /** 地图尺度预设：决定默认比例尺与推荐的交通方式（城市/地区/异世界大陆） */
+  scale: MapScaleId;
   /** 多少像素算一段距离（世界坐标的像素） */
   px: number;
   /** 这段像素等于多少公里 */
@@ -44,6 +48,50 @@ export type MapMeasurePrefs = {
   transport: string;
 };
 
+export type MapScalePreset = {
+  id: MapScaleId;
+  label: string;
+  hint: string;
+  measure: Omit<MapMeasurePrefs, "scale">;
+};
+
+/**
+ * 三种尺度。这是修掉"一律按天算"的关键：日常题材几百米也要有意义的读数（分钟），
+ * 异世界大陆则按天。预设只给**默认值**，比例尺与交通方式都能再改。
+ */
+export const MAP_SCALE_PRESETS: MapScalePreset[] = [
+  {
+    id: "urban",
+    label: "城市 / 日常",
+    hint: "家、学校、车站、商场这种距离。默认 100 像素 = 1 公里，往返按分钟算。",
+    measure: { px: 100, km: 1, transport: "walk" },
+  },
+  {
+    id: "regional",
+    label: "地区 / 城镇之间",
+    hint: "城镇、周边、一趟短途。默认 100 像素 = 10 公里。",
+    measure: { px: 100, km: 10, transport: "walk" },
+  },
+  {
+    id: "continental",
+    label: "异世界 / 大陆",
+    hint: "国与国、大陆板块。默认 100 像素 = 100 公里，按天算。",
+    measure: { px: 100, km: 100, transport: "horse" },
+  },
+];
+
+export const DEFAULT_SCALE: MapScaleId = "regional";
+
+export function scalePreset(id: MapScaleId | string): MapScalePreset {
+  return MAP_SCALE_PRESETS.find((p) => p.id === id) ?? MAP_SCALE_PRESETS[1];
+}
+
+/** 应用某个尺度预设（返回新的完整配置）。 */
+export function applyScalePreset(prefs: MapPrefs, id: MapScaleId): MapPrefs {
+  const preset = scalePreset(id);
+  return { ...prefs, measure: { scale: id, ...preset.measure } };
+}
+
 export type MapPrefs = {
   features: Record<MapFeatureId, boolean>;
   measure: MapMeasurePrefs;
@@ -51,7 +99,10 @@ export type MapPrefs = {
 
 const STORE_KEY = "vnss-map-features-v1";
 
-export const DEFAULT_MEASURE: MapMeasurePrefs = { px: 100, km: 10, transport: "walk" };
+export const DEFAULT_MEASURE: MapMeasurePrefs = {
+  scale: DEFAULT_SCALE,
+  ...scalePreset(DEFAULT_SCALE).measure,
+};
 
 export function defaultFeatures(): Record<MapFeatureId, boolean> {
   const out = {} as Record<MapFeatureId, boolean>;
@@ -84,6 +135,9 @@ export function resolvePrefs(raw: unknown): MapPrefs {
     if (Number.isFinite(px) && px > 0) base.measure.px = px;
     if (Number.isFinite(km) && km > 0) base.measure.km = km;
     if (typeof m.transport === "string" && m.transport) base.measure.transport = m.transport;
+    if (typeof m.scale === "string" && MAP_SCALE_PRESETS.some((p) => p.id === m.scale)) {
+      base.measure.scale = m.scale as MapScaleId;
+    }
   }
   return base;
 }
@@ -145,3 +199,6 @@ export function toggleFeature(prefs: MapPrefs, id: MapFeatureId): MapPrefs {
 export function setMeasurePrefs(prefs: MapPrefs, patch: Partial<MapMeasurePrefs>): MapPrefs {
   return { ...prefs, measure: { ...prefs.measure, ...patch } };
 }
+
+/** 兼容别名：尺度预设就是一次 setMeasurePrefs（放在 mapFeatures 里方便界面调用） */
+export const MAP_SCALES = MAP_SCALE_PRESETS;

@@ -85,25 +85,51 @@ test("距离与行程时间是按需开的：打开才显示，改比例尺会�
   await page.getByTestId("map-feature-distance").check();
   await expect(page.getByTestId("map-scale-hint")).toContainText("公里");
 
-  // 通路上出现距离 + 行程读法（示例项目提取出来的通路）
+  // 通路上出现距离 + 行程读法
   const labels = page.getByTestId("map-distance-label");
   await expect(labels.first()).toBeVisible({ timeout: 15_000 });
   const first = (await labels.first().textContent()) ?? "";
   expect(first).toMatch(/约 \d/);
-  expect(first).toMatch(/天|半天/);
 
-  // 改比例尺（100px=10km → 100px=100km）→ 标注里的公里数应显著变大
+  // 改比例尺（地区 100px=10km → 100px=100km）→ 标注里的公里数应显著变大
   await page.getByTestId("map-measure-km").fill("100");
   await page.waitForTimeout(400);
   const after = (await labels.first().textContent()) ?? "";
   const num = (s: string) => Number((s.match(/约 (\d+(?:\.\d+)?)/) ?? [])[1] ?? "0");
   expect(num(after)).toBeGreaterThan(num(first));
+});
 
-  // 换成骑马 → 天数变小（马一天走得更远）
-  await page.getByTestId("map-measure-transport").selectOption("horse");
+test("单位跟着题材尺度走：城市按分钟、大陆按天（这是用户提的问题）", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await registerAndLogin(page, randomName("e2e_map_scale_"));
+  await openMapWithLinks(page);
+
+  await page.getByTestId("map-features-toggle").click();
+  await page.getByTestId("map-feature-distance").check();
+  const labels = page.getByTestId("map-distance-label");
+  await expect(labels.first()).toBeVisible({ timeout: 15_000 });
+
+  // 城市 / 日常：100 像素 = 1 公里 → 家、学校、车站这种距离应该是分钟级，不是"天"
+  await page.getByTestId("map-scale-preset").selectOption("urban");
   await page.waitForTimeout(400);
-  const horsed = (await labels.first().textContent()) ?? "";
-  expect(horsed).toContain("骑马");
+  await expect(page.getByTestId("map-measure-km")).toHaveValue("1");
+  const urbanLabel = (await labels.first().textContent()) ?? "";
+  expect(urbanLabel).not.toContain("天");
+  expect(urbanLabel).toMatch(/分钟|小时/);
+  // 城市尺度下交通方式给出通勤选项
+  const transportOptions = await page
+    .getByTestId("map-measure-transport")
+    .locator("option")
+    .allTextContents();
+  expect(transportOptions.slice(0, 2).join(" ")).toMatch(/步行|自行车/);
+  expect(transportOptions.join(" ")).toContain("公交");
+
+  // 异世界 / 大陆：100 像素 = 100 公里 → 同样的路变成按天
+  await page.getByTestId("map-scale-preset").selectOption("continental");
+  await page.waitForTimeout(400);
+  await expect(page.getByTestId("map-measure-km")).toHaveValue("100");
+  const bigLabel = (await labels.first().textContent()) ?? "";
+  expect(bigLabel).toContain("天");
 });
 
 test("手绘开关：关掉画笔工具消失、再打开回来；刷新后开关仍在", async ({ page }) => {
