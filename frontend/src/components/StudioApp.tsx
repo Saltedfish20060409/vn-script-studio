@@ -26,6 +26,7 @@ import {
   getChapterMemoryArchive,
   getLatestMemory,
   getProject,
+  getRecap,
   getSettings,
   importProjectFile,
   listChapterMemory,
@@ -34,8 +35,7 @@ import {
   mapExtract,
   mapExtractAccept,
   marksHint,
-  patchProject,
-  putProject,
+  patchProject,  putProject,
   putSettings,
   restoreSnapshot as apiRestoreSnapshot,
   reviseMark,
@@ -73,6 +73,7 @@ import { CollabPanel } from "./CollabPanel";
 import { CommentsPanel } from "./CommentsPanel";
 import { MarksPanel } from "./MarksPanel";
 import { MarkCard } from "./MarkCard";
+import { RecapCard } from "./RecapCard";
 import { PwaInstallPrompt } from "./PwaInstallPrompt";
 import { ProjectExportPanel } from "./ProjectExportPanel";
 import { ProjectHistoryPanel } from "./ProjectHistoryPanel";
@@ -132,6 +133,7 @@ import {
   renameVolume,
   volumeIdOfChapter,
 } from "../lib/volumes";
+import { chapterWithRecap } from "../lib/recap";
 import type { MarkRange } from "../lib/markHighlight";
 import { blockTextRange, blocksToEditable, editableToBlocks } from "../lib/scriptCodec";
 import { insertCommandAtLine } from "../lib/insertCommand";
@@ -359,6 +361,16 @@ export function StudioApp() {
   const [activeVolumeId, setActiveVolumeId] = useState<string>(LOOSE_VOLUME_ID);
   /** 当前选区的起止偏移（浮动「标记这段」按钮要贴在选区旁边） */
   const [selectionRange, setSelectionRange] = useState<{ from: number; to: number } | null>(null);
+  /** 前情提要卡片：生成结果 / 生成中 / 错误 */
+  const [recapOpen, setRecapOpen] = useState(false);
+  const [recapBusy, setRecapBusy] = useState(false);
+  const [recapError, setRecapError] = useState("");
+  const [recap, setRecap] = useState<{
+    label: string;
+    text: string;
+    model: string;
+    chaptersUsed: number;
+  } | null>(null);
   const markStopRef = useRef(false);
   /** 标记在正文里的实际区间（正文高亮用）；定位不到的标记不进这里，由 stale 状态表达 */
   const markRanges = useMemo<MarkRange[]>(() => {
@@ -1691,6 +1703,55 @@ export function StudioApp() {
     );
   }
 
+  // ---- 前情提要（卷首回顾）----------------------------------------------------
+
+  /** 生成前情提要：有卷时回述这一卷之前，没卷时回述"写到现在"之前。 */
+  async function generateRecap() {
+    if (!project?.id) return;
+    const volumeId = project.volumes?.length ? activeVolumeId : undefined;
+    setRecapOpen(true);
+    setRecapBusy(true);
+    setRecapError("");
+    try {
+      const out = await getRecap(project.id, {
+        ...(volumeId ? { volumeId } : {}),
+        mode: "before",
+      });
+      setRecap({ label: out.label, text: out.text, model: out.model, chaptersUsed: out.chaptersUsed });
+    } catch (e) {
+      setRecapError(e instanceof Error ? e.message : "生成失败");
+    } finally {
+      setRecapBusy(false);
+    }
+  }
+
+  /** 把回述插进正文（默认插到本卷第一章开头；追加则进当前章结尾）。 */
+  function insertRecap(text: string, position: "prepend" | "append") {
+    if (!text.trim()) return;
+    const chapters = project?.chapters ?? [];
+    const volumeId = project?.volumes?.length ? activeVolumeId : "";
+    const target =
+      position === "append"
+        ? chapters.find((c) => c.id === chapterId)
+        : (volumeId
+            ? chapters.find((c) => (c.volumeId ?? "") === volumeId)
+            : chapters[0]);
+    if (!target) {
+      setStatus("找不到可以插入的章节");
+      return;
+    }
+    updateActive((p) => ({
+      ...p,
+      chapters: p.chapters.map((c) => (c.id === target.id ? chapterWithRecap(c, text, position) : c)),
+    }));
+    setRecapOpen(false);
+    setStatus(
+      position === "append"
+        ? `已追加到「${target.title}」结尾`
+        : `已插到「${target.title}」开头（可以再编辑）`
+    );
+  }
+
   async function deleteChapter(id: string) {
     if (!project || project.chapters.length <= 1) {
       setError("至少保留一章");
@@ -2663,6 +2724,7 @@ export function StudioApp() {
                   onMoveVolume={moveVolumeFlow}
                   onDeleteVolume={(id) => void deleteVolumeFlow(id)}
                   onAssignChapter={assignChapterVolume}
+                  onRecap={() => void generateRecap()}
                   onSelectScript={() => setWriteSub("script")}
                   onSelectAnalysis={() => {
                     void (async () => {
@@ -2788,10 +2850,22 @@ export function StudioApp() {
                           </button>
                         </div>
                       ) : null}
+                      {recapOpen ? (
+                        <RecapCard
+                          label={recap?.label ?? ""}
+                          text={recap?.text ?? ""}
+                          model={recap?.model ?? ""}
+                          chaptersUsed={recap?.chaptersUsed ?? 0}
+                          busy={recapBusy}
+                          error={recapError}
+                          onRegenerate={() => void generateRecap()}
+                          onClose={() => setRecapOpen(false)}
+                          onInsert={insertRecap}
+                        />
+                      ) : null}
                       <ScriptEditor
                         textareaRef={editorTaRef}
-                        frameClassName={styles.scriptEditor}
-                        value={editor}
+                        frameClassName={styles.scriptEditor}                        value={editor}
                         locations={project.locations ?? []}
                         marks={markRanges}
                         anchorOffset={activeMarkOffset}

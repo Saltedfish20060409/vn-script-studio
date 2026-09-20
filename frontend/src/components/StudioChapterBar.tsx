@@ -24,6 +24,8 @@ type Props = {
   onDeleteVolume: (volumeId: string) => void;
   /** 把当前章节移入某卷（"" = 移出到未分卷） */
   onAssignChapter: (volumeId: string) => void;
+  /** 生成本卷（或写到现在）的前情提要 */
+  onRecap: () => void;
 };
 
 /**
@@ -49,6 +51,7 @@ export function StudioChapterBar({
   onMoveVolume,
   onDeleteVolume,
   onAssignChapter,
+  onRecap,
 }: Props) {
   const rows = buildVolumeRows(volumes, chapters);
   const hasVolumes = volumes.length > 0;
@@ -130,6 +133,15 @@ export function StudioChapterBar({
                 <button
                   type="button"
                   className={styles.ghost}
+                  data-testid="volume-recap"
+                  onClick={onRecap}
+                  title="把这一卷之前的内容压成一段「前情提要」（卷首回顾）"
+                >
+                  ⤴ 前情提要
+                </button>
+                <button
+                  type="button"
+                  className={styles.ghost}
                   data-testid="volume-delete"
                   onClick={() => onDeleteVolume(activeVolumeId)}
                   title="删掉这一卷（里面的章节会回到「未分卷」，不会删章节）"
@@ -198,6 +210,17 @@ export function StudioChapterBar({
             + 卷
           </button>
         )}
+        {!hasVolumes ? (
+          <button
+            type="button"
+            className={styles.ghost}
+            data-testid="chapter-recap"
+            onClick={onRecap}
+            title="把写到现在的剧情压成一段「前情提要」"
+          >
+            ⤴ 前情提要
+          </button>
+        ) : null}
         <button type="button" className={styles.ghost} onClick={onAddChapter}>
           + 章
         </button>

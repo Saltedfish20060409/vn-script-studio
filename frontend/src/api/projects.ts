@@ -150,6 +150,33 @@ export function duplicateProject(id: string): Promise<VnProject> {
   return apiFetch<VnProject>(`/projects/${id}/duplicate`, { method: "POST" });
 }
 
+/** 前情提要（卷首回顾）：生成一段"之前发生了什么"的可读回述。 */
+export type RecapOut = {
+  text: string;
+  model: string;
+  chaptersUsed: number;
+  archivesUsed: number;
+  included: string[];
+  label: string;
+  mode: "before" | "volume";
+  volumeId: string | null;
+};
+
+export function getRecap(
+  id: string,
+  body: { volumeId?: string; mode?: "before" | "volume"; upToChapterId?: string }
+): Promise<RecapOut> {
+  return apiFetch<RecapOut>(`/projects/${id}/recap`, {
+    method: "POST",
+    timeoutMs: 240000,
+    body: JSON.stringify({
+      volume_id: body.volumeId,
+      mode: body.mode ?? "before",
+      up_to_chapter_id: body.upToChapterId,
+    }),
+  });
+}
+
 /** 写作页「标记批改」：让 AI 只改标出来的这一处（intent=advice 时只给建议，不动正文）。 */
 export type MarkReviseOut = {
   replacement: string;

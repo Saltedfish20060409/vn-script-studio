@@ -1,0 +1,104 @@
+/* 卷首「前情提要」卡片：放在编辑器上方，生成后可编辑再决定插不插入 */
+
+.wrap {
+  margin: 0 0 0.55rem;
+  max-width: 660px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel-bg));
+  padding: 0.5rem 0.6rem 0.6rem;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 0.86rem;
+}
+
+.hint {
+  flex: 1 1 10rem;
+  min-width: 0;
+  margin: 0.35rem 0 0;
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+}
+
+.primary,
+.accept,
+.ghost {
+  border-radius: var(--radius-pill);
+  font-size: 0.74rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.primary {
+  padding: 0.22rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+  font-weight: 700;
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.accept {
+  padding: 0.22rem 0.65rem;
+  border: 1px solid color-mix(in srgb, #16a34a 55%, transparent);
+  background: color-mix(in srgb, #16a34a 18%, transparent);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.ghost {
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+}
+
+.ghost:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.error {
+  margin: 0.4rem 0 0;
+  font-size: 0.75rem;
+  color: var(--accent-hot);
+}
+
+.text {
+  width: 100%;
+  margin-top: 0.4rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: var(--radius-sm);
+  background: var(--panel-bg);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.82rem;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.meta {
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+}
