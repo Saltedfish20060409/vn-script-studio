@@ -856,8 +856,20 @@ def build_agent_context(
             included.append(f"文风样例×{len(samples)}")
 
     # 每块都带一个 key：既方便按任务裁剪/作者摘掉，也让"这次带了什么"可解释。
+    # 注意 `rules` 刻意**不在** EXCLUDABLE_SECTIONS 里：本次硬规则不是"可摘的参考资料"，
+    # 而是这一轮的任务契约，必须首尾各出现一次（末尾那次见下方 tail）。
+    head_rules = task_key_rules(resolved_task)
     keyed_sections: List[Tuple[str, str]] = [
         ("meta", "\n".join(meta_lines)),
+        (
+            "rules",
+            (
+                "\n## 本次硬规则（先读一遍；末尾会再出现一次）\n"
+                + "\n".join(f"- {r}" for r in head_rules)
+            )
+            if head_rules
+            else "",
+        ),
         ("bible", f"\n## Story Bible（内部参考，禁止整段搬进正文）\n{bible_block}" if bible_block else ""),
         (
             "lore",
@@ -963,6 +975,7 @@ def build_agent_context(
     key_rules = task_key_rules(resolved_task)
     if key_rules:
         tail += "\n\n## 本次硬规则（务必遵守）\n" + "\n".join(f"- {r}" for r in key_rules)
+        included.append("本次硬规则")
     tail += "\n\n## 输出契约\n" + output_contract(resolved_task)
     included.append("输出契约")
 

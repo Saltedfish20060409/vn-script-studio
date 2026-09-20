@@ -123,6 +123,45 @@ def test_hard_rules_are_repeated_at_the_end():
     assert task_key_rules("continue")[0] in tail
 
 
+def test_hard_rules_appear_once_at_each_end():
+    """⑦ 关键约束首尾各出现一次：开头一次、结尾一次，中间不重复。"""
+    project = _project()
+    for task in ("continue", "rewrite", "chat"):
+        ctx = build_agent_context(project, chapterId="c1", userMessage="接着写", task=task)
+        first_rule = task_key_rules(task)[0]
+        # 开头（前 800 字内）必须有
+        assert first_rule in ctx.text[:800], task
+        assert "本次硬规则" in ctx.text[:800], task
+        # 结尾（后 800 字内）必须有
+        assert first_rule in ctx.text[-800:], task
+        # 恰好两次：不在中间再夹一次（否则等于噪音）
+        assert ctx.text.count(first_rule) == 2, task
+
+
+def test_hard_rules_are_always_injected_and_cannot_be_dropped():
+    """硬规则是任务契约，不是「可摘掉的资料块」——即使作者摘了一堆资料也仍在。"""
+    from app.core.agent_context import EXCLUDABLE_SECTIONS
+
+    assert "rules" not in EXCLUDABLE_SECTIONS
+    project = _project()
+    ctx = build_agent_context(
+        project,
+        chapterId="c1",
+        userMessage="接着写",
+        task="continue",
+        exclude=["bible", "lore", "characters", "index", "style"],
+    )
+    assert task_key_rules("continue")[0] in ctx.text[:800]
+    assert "本次硬规则" in ctx.text
+
+
+def test_hard_rules_are_reported_as_included():
+    """「证明它记得」也要能看到硬规则这次确实注入了。"""
+    project = _project()
+    ctx = build_agent_context(project, chapterId="c1", userMessage="接着写", task="continue")
+    assert "本次硬规则" in ctx.included
+
+
 def test_task_key_rules_exist_for_every_agent_task():
     from app.core.agent_context import AGENT_TASKS
 
