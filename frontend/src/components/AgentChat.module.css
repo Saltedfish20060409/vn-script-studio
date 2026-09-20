@@ -516,6 +516,23 @@ html[data-panel-glass="ink"] .stageOverlay {
   opacity: 0.85;
 }
 
+/* 免费档提示：一行、不打扰、可忽略（长任务建议配自己的 Key） */
+.tierHint {
+  flex-shrink: 0;
+  margin: 0 0 0.3rem;
+  padding: 0.3rem 0.45rem;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.tierHint b {
+  color: var(--ink);
+}
+
 /* 「证明它记得」：依据清单（默认收起，点开看摘录） */
 .evidence {
   flex-shrink: 0;

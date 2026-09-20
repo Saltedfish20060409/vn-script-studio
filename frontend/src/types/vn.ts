@@ -623,6 +623,8 @@ export interface AgentContextMeta {
   includedDetails?: Array<{ label?: string; preview?: string }>;
   /** 这次没带的资料块 key（作者摘掉的 / 按任务自动省去的） */
   excludedSections?: string[];
+  /** own = 作者自己的 Key；shared = 站内免费档（前端据此提示长任务配 Key） */
+  credentialsMode?: string;
   craftMode?: "off" | "lite" | "full";
   craftReason?: string;
   mentorIds?: string[];

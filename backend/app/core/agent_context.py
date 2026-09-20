@@ -965,6 +965,31 @@ def build_agent_context(
         tail += "\n\n## 本次硬规则（务必遵守）\n" + "\n".join(f"- {r}" for r in key_rules)
     tail += "\n\n## 输出契约\n" + output_contract(resolved_task)
     included.append("输出契约")
+
+    # 作者自己写的硬规则（"必须/不要/禁止…"）单独拎出来，放进末尾的硬规则区：
+    # 它们最容易淹没在世界观叙述里，而末尾的位置才是"当场生效"的。
+    from .constraints import author_hard_rules
+
+    bible = project.bible
+    author_rules = author_hard_rules(
+        bible_text="\n".join(
+            [
+                str(getattr(bible, "world", "") or ""),
+                str(getattr(bible, "notes", "") or ""),
+                str(getattr(bible, "themes", "") or ""),
+                str(getattr(bible, "outline", "") or ""),
+            ]
+        ),
+        entry_texts=[
+            f"{e.title}：{e.body}" for e in (project.loreEntries or [])
+        ],
+        limit=5,
+    )
+    if author_rules:
+        tail += "\n\n## 作者自己的硬规则（最高优先，务必遵守）\n" + "\n".join(
+            f"- {r}" for r in author_rules
+        )
+        included.append(f"作者硬约束×{len(author_rules)}")
     kept_sections.append(tail)
 
     # 「证明它记得」：把这次真正用到的资料连同摘录列出来（前端可展开看），

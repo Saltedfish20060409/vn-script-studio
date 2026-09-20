@@ -665,6 +665,8 @@ class AgentRequest(BaseModel):
     referenceDocs: Optional[str] = None
     # 作者按需摘掉的资料块 key（见 agent_context.EXCLUDABLE_SECTIONS）
     excludeSections: Optional[List[str]] = None
+    # 这一轮用的是谁的钱：own = 作者自己的 Key；shared = 站内免费档（轻量模型 + 每日额度）
+    credentialsMode: Optional[str] = None
     # Writing craft injection: auto | off | lite | full
     craftMode: Optional[str] = None
     # Override project writingMentors.activeIds for this turn (max 2)
@@ -693,6 +695,8 @@ class AgentContextMeta(BaseModel):
     includedDetails: Optional[List[Dict[str, Any]]] = None
     # 这次没带的资料块 key（作者在「资料」里摘掉的、或按任务自动省去的）
     excludedSections: Optional[List[str]] = None
+    # own = 作者自己的 Key；shared = 站内免费档（前端据此提示"长任务建议配 Key"）
+    credentialsMode: Optional[str] = None
     craftMode: Optional[str] = None
     craftReason: Optional[str] = None
     mentorIds: Optional[List[str]] = None

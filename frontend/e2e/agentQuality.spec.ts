@@ -97,6 +97,52 @@ test("「资料」开关：取消勾选的资料块真的不进请求", async ({
   expect(body.exclude_sections).toContain("bible");
 });
 
+test("约束体检：设定里写了互相冲突的要求就会被指出来", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await registerAndLogin(page, randomName("e2e_audit_"));
+
+  // 去设定页 → 世界观/大纲 子页，往「世界观」里写互相打架的要求
+  await page.getByRole("button", { name: "设定", exact: true }).first().click();
+  await page.getByRole("button", { name: /世界观/ }).first().click();
+  const world = page.getByLabel(/世界观/);
+  await expect(world).toBeVisible({ timeout: 20_000 });
+  await world.fill("必须用第一人称叙述\n全知视角交代所有人的想法\n尽量短句");
+
+  const card = page.getByTestId("constraint-audit");
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  // 硬规则 1 条（必须用第一人称），软规则 1 条（尽量短句）
+  await expect(page.getByTestId("constraint-audit-counts")).toContainText("硬规则 1");
+  // 人称冲突要被指出来
+  await expect(page.getByTestId("constraint-audit-conflicts")).toContainText("冲突");
+  await card.getByRole("button", { name: "看明细" }).click();
+  await expect(card).toContainText("必须用第一人称叙述");
+});
+
+test("免费档提示：用站内免费档时提示长任务建议配 Key", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await registerAndLogin(page, randomName("e2e_tier_"));
+
+  const toggle = page.getByTestId("agent-sections-toggle");
+  if (!(await toggle.isVisible().catch(() => false))) {
+    await page.getByTitle(/AI 责编/).first().click();
+  }
+  await expect(toggle).toBeVisible({ timeout: 20_000 });
+
+  const streamed = page.waitForResponse(
+    (r) => r.url().includes("/agent/stream") && r.request().method() === "POST",
+    { timeout: 120_000 }
+  );
+  const composer = page.getByPlaceholder(/用平常话说/).first();
+  await composer.fill("在吗");
+  await composer.press("Enter");
+  await streamed;
+
+  // 本地没配自己的 Key → 走站内免费档 → 应出现提示（含"设置 → 模型"的出口）
+  await expect(page.getByTestId("agent-tier-hint")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("agent-tier-hint")).toContainText("免费档");
+  await expect(page.getByTestId("agent-tier-hint")).toContainText("设置");
+});
+
 test("「证明它记得」：回复里带上本次依据的资料与摘录", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await registerAndLogin(page, randomName("e2e_evidence_"));

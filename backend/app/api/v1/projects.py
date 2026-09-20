@@ -2123,6 +2123,7 @@ async def _build_agent_request(
     body: AgentRunIn,
     settings: Settings,
     creds: dict[str, str],
+    user_id: Optional[str] = None,
 ) -> tuple[AgentRequest, str]:
     """Assemble the AgentRequest (lore / ledger / continuity / attachments)."""
     last_user = ""
@@ -2151,6 +2152,20 @@ async def _build_agent_request(
 
     reference_docs = format_attachment_block(list(body.attachments or [])) or None
 
+    # 这一轮用的是谁的钱：作者自己在设置里填了 Key（或浏览器带了 key）= own，
+    # 否则是站内免费档（共享额度 + 轻量模型）→ 前端据此提示"长任务建议配 Key"。
+    own_llm_key = False
+    try:
+        from app.core.llm_client_override import get_client_llm_override
+        from app.services.settings import user_llm_credentials
+
+        if user_id and (await user_llm_credentials(db, user_id, settings) or {}).get("api_key"):
+            own_llm_key = True
+        elif get_client_llm_override():
+            own_llm_key = True
+    except Exception:  # noqa: BLE001 - 判定失败就按免费档提示，不影响主流程
+        own_llm_key = False
+
     # 对话记忆：优先用会话表已归档的 LLM 摘要（前端通常传空），
     # 长对话据此累积早期决定/设定共识，不丢上下文。
     prior_memory = (body.chat_memory or "").strip()
@@ -2174,6 +2189,7 @@ async def _build_agent_request(
         loreCraft=lore_combined,
         referenceDocs=reference_docs,
         excludeSections=body.exclude_sections,
+        credentialsMode=("own" if own_llm_key else "shared"),
         craftMode=settings.agent_craft_mode,
         selfReview=settings.agent_self_review,
         lensIds=body.lens_ids,
@@ -2335,7 +2351,9 @@ async def run_project_agent(
         )
     await ensure_under_quota(db, user.id, settings, creds)
 
-    req, last_user = await _build_agent_request(db, project_id, vn, body, settings, creds)
+    req, last_user = await _build_agent_request(
+        db, project_id, vn, body, settings, creds, user_id=user.id
+    )
 
     cfg = DeepSeekConfig(
         apiKey=creds["api_key"],
@@ -2404,7 +2422,9 @@ async def run_project_agent_stream(
         except Exception:  # noqa: BLE001
             raise HTTPException(status_code=400, detail="检查点数据损坏，无法续跑")
 
-    req, last_user = await _build_agent_request(db, project_id, req_vn, body, settings, creds)
+    req, last_user = await _build_agent_request(
+        db, project_id, req_vn, body, settings, creds, user_id=user.id
+    )
     cfg = DeepSeekConfig(
         apiKey=creds["api_key"],
         baseUrl=creds["base_url"],

@@ -1,0 +1,107 @@
+/* 约束体检卡片：放在设定页，纯本地计算不花 token */
+
+.card {
+  margin: 0.5rem 0 0;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 4%, var(--panel-bg));
+  padding: 0.45rem 0.6rem 0.55rem;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+}
+
+.meta {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.bad {
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent-hot) 16%, transparent);
+  font-size: 0.7rem;
+}
+
+.ghost {
+  margin-left: auto;
+  padding: 0.16rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.ghost:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.body {
+  margin-top: 0.45rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sectionTitle {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.76rem;
+  line-height: 1.6;
+}
+
+.conflict {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.25rem 0.4rem;
+  border-left: 3px solid var(--accent-hot);
+  background: color-mix(in srgb, var(--accent-hot) 7%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.pair {
+  color: var(--ink);
+}
+
+.conflict em {
+  font-style: normal;
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+
+.notes {
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem 0.45rem;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}

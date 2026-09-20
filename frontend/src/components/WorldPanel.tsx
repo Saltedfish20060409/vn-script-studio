@@ -2,6 +2,7 @@ import { ColorPicker } from "./ColorPicker";
 import { LorePanel } from "./LorePanel";
 import { LoreEntriesPanel } from "./LoreEntriesPanel";
 import type { Character, LoreEntry, StoryBible } from "../types/vn";
+import { ConstraintAuditCard } from "./ConstraintAuditCard";
 import styles from "./StudioApp.module.css";
 
 type WorldSub = "characters" | "bible" | "lore" | "entries";
@@ -26,6 +27,8 @@ type Props = {
   onGenreChange: (value: string) => void;
   onBibleChange: (patch: Partial<StoryBible>) => void;
   onLoreEntriesChange: (next: LoreEntry[]) => void;
+  /** 有没有文风样例（约束体检据此提醒"补样例"） */
+  hasStyleSamples?: boolean;
 };
 
 /**
@@ -51,6 +54,7 @@ export function WorldPanel({
   onGenreChange,
   onBibleChange,
   onLoreEntriesChange,
+  hasStyleSamples = false,
 }: Props) {
   const entriesBadge = loreEntries.length ? String(loreEntries.length) : "";
   return (
@@ -255,6 +259,11 @@ export function WorldPanel({
               />
             </label>
           </div>
+          <ConstraintAuditCard
+            bible={bible}
+            loreEntries={loreEntries}
+            hasStyleSamples={hasStyleSamples}
+          />
         </section>
       )}
       {worldSub === "lore" && (

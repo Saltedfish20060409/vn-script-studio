@@ -3142,6 +3142,10 @@ export function StudioApp() {
                 genre={project.genre ?? ""}
                 bible={bible}
                 loreEntries={project.loreEntries ?? []}
+                hasStyleSamples={Boolean(
+                  Array.isArray(project.styleMemory?.samples) &&
+                    project.styleMemory.samples.length > 0
+                )}
                 onSelectCharacters={() => setWorldSub("characters")}
                 onSelectBible={() => setWorldSub("bible")}
                 onSelectLore={() => setWorldSub("lore")}

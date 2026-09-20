@@ -630,6 +630,8 @@ async def run_agent_loop(
             # 「证明它记得」：实际依据的资料与摘录（前端默认摆出来，可展开看）
             includedDetails=ctx.includedDetails,
             excludedSections=ctx.excluded,
+            # 用的是谁的钱：前端据此在免费档下提示"长任务建议填自己的 Key"
+            credentialsMode=request.credentialsMode,
             craftMode=craft.mode,
             craftReason=craft.reason,
             mentorIds=mentor_ids or None,

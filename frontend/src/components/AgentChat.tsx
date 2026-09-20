@@ -196,6 +196,8 @@ export function AgentChat({
   const [sectionsOpen, setSectionsOpen] = useState(false);
   /** 「证明它记得」：本次实际依据的资料与摘录 */
   const [evidence, setEvidence] = useState<Array<{ label: string; preview: string }>>([]);
+  /** 本次用的是谁的钱：own / shared（免费档） */
+  const [credentialsMode, setCredentialsMode] = useState("");
 
   // 资料开关落盘：这是"我怎么用界面"的偏好，不是作品数据
   useEffect(() => {
@@ -831,6 +833,8 @@ export function AgentChat({
           .join(" · ")
       );
       // 「证明它记得」：把这次真正读到的资料摆出来（可展开看摘录）
+      // 用的是谁的钱：免费档下提示"长任务建议配 Key"（长任务最吃模型能力，也最容易撞限流）
+      setCredentialsMode(typeof meta?.credentialsMode === "string" ? meta.credentialsMode : "");
       setEvidence(
         Array.isArray(meta?.includedDetails)
           ? meta.includedDetails
@@ -1868,6 +1872,15 @@ export function AgentChat({
             onIngest={() => void ingestSettingsFromAttachments()}
             onScan={() => void runFactsScanFlow("请根据附件整理关系与时间线")}
           />
+
+          {/* 免费档提示：长任务（整章重写、长篇续写）最吃模型能力，也最容易撞限流 */}
+          {credentialsMode === "shared" ? (
+            <p className={styles.tierHint} data-testid="agent-tier-hint">
+              当前用<b>站内免费档</b>（GLM-4-Flash · 每天有额度 · 人多会限流）。
+              整章重写、长篇续写这类长任务建议到「设置 → 模型」填自己的 Key：站内支持 GLM-5.3 / DeepSeek，
+              用量走你自己的账户。
+            </p>
+          ) : null}
 
           {/* 「证明它记得」：本次依据了什么，可展开看摘录——聊天永远给不了这个 */}
           {evidence.length > 0 ? (

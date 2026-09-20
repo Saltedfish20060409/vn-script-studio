@@ -13,7 +13,6 @@ from app.core.agent_context import (
     TASK_OUTPUT_CONTRACT,
     build_agent_context,
     output_contract,
-    task_key_rules,
 )
 from app.core.project import normalize_project
 from app.services.style_memory_auto import (
