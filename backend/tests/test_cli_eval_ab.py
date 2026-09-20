@@ -129,6 +129,21 @@ def test_blind_document_leaks_no_answer(tmp_path, monkeypatch, fake_llm):
     assert "rubric" in blind and "一票否决" in blind
 
 
+def test_markdown_worksheet_is_writable_and_leaks_nothing(tmp_path, monkeypatch, fake_llm):
+    """人肉盲评工作纸：能直接读、且同样不含答案。"""
+    _, blind, _, _ = _run_ab(tmp_path, monkeypatch, cases=2)
+    md = (tmp_path / "blind-ab.md").read_text(encoding="utf-8")
+    for leak in ("工具流程", "裸聊", "tool", "bare"):
+        assert leak not in md, f"工作纸泄漏了 {leak}"
+    # 每个用例的两稿与计分表都在
+    assert "稿 甲" in md and "稿 乙" in md
+    assert md.count("| case-") == 2
+    for item in blind["items"]:
+        assert item["id"] in md
+        assert item["甲"] in md and item["乙"] in md
+    assert "一票否决" in md and "拆封" in md
+
+
 def test_tool_arm_carries_pipeline_and_bare_arm_does_not(tmp_path, monkeypatch, fake_llm):
     _run_ab(tmp_path, monkeypatch)
     writes = [c for c in fake_llm if not c["json"]]

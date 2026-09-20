@@ -64,6 +64,52 @@ def ai(
     typer.echo(result.content)
 
 
+def blind_markdown(blind_doc: dict, key_name: str) -> str:
+    """把盲评 JSON 渲染成人能直接读/打印的工作纸（不含答案）。
+
+    单独抽出来是为了可测、也可以从已存在的 blind-ab.json 重新生成，
+    不必为了改格式再花一遍模型调用。
+    """
+    items = blind_doc.get("items") or []
+    lines = [
+        "# 对照盲评工作纸（甲 / 乙）",
+        "",
+        f"- 模型：`{blind_doc.get('model') or ''}`　种子：`{blind_doc.get('seed')}`",
+        "- 甲、乙两稿来自**同一个模型、同一句要求**，只有流程不同；标签每例独立随机。",
+        "- 请只按下面的 Rubric 打分并选出更好的一稿，**不要猜**哪份是工具产出。",
+        f"- 拆封用同目录的 `{key_name}`，评完再看。",
+        "",
+        "## Rubric（每维 1–4 分，必须引用原文作证据）",
+        "",
+    ]
+    lines += [f"- **{k}**：{v}" for k, v in (blind_doc.get("rubric") or {}).items()]
+    lines += ["", "## 一票否决（命中任一 → 该稿淘汰）", ""]
+    lines += [f"- {v}" for v in (blind_doc.get("一票否决") or [])]
+    lines += [
+        "",
+        "## 计分表",
+        "",
+        "| 用例 | 甲 总分 | 乙 总分 | 更好的一稿 | 一票否决 |",
+        "|---|---|---|---|---|",
+    ]
+    lines += [f"| {it.get('id')} |  |  |  |  |" for it in items]
+    lines += [
+        "",
+        f"> 汇总时把「更好的一稿」逐例对齐 `{key_name}` 即可看出结论。",
+        "",
+    ]
+    for it in items:
+        lines += [
+            f"## {it.get('id')}（{it.get('task')}）",
+            "",
+            f"**要求**：{it.get('instruction') or ''}",
+            "",
+        ]
+        for lab in ("甲", "乙"):
+            lines += [f"### 稿 {lab}", "", it.get(lab) or "（缺失）", ""]
+    return "\n".join(lines)
+
+
 @cli.command()
 def eval(
     model: Optional[str] = typer.Option(None, "--model", "-m", help="目标模型名（默认取 .env）"),
@@ -562,10 +608,16 @@ def eval(
             "items": blind_items,
         }
         blind_path.parent.mkdir(parents=True, exist_ok=True)
+        key_path = blind_path.with_name(blind_path.stem + "-key.json")
         blind_path.write_text(
             json.dumps(blind_doc, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        key_path = blind_path.with_name(blind_path.stem + "-key.json")
+        # 人肉盲评要的是能直接读/打印的东西：同一份内容再出一份 Markdown 工作纸，
+        # 同样不含答案（甲/乙 内容取自 blind_items，未做任何标签还原）。
+        md_path = blind_path.with_suffix(".md")
+        md_path.write_text(
+            blind_markdown(blind_doc, key_path.name) + "\n", encoding="utf-8"
+        )
         key_path.write_text(
             json.dumps(
                 {"seed": seed, "model": cfg.model, "key": key}, ensure_ascii=False, indent=2
@@ -573,6 +625,7 @@ def eval(
             encoding="utf-8",
         )
         typer.echo(f"盲评文件（交给评审，不含答案）: {blind_path}")
+        typer.echo(f"人肉盲评工作纸（可直接打印/转发）: {md_path}")
         typer.echo(f"拆封密钥（自己留好，评审完再看）: {key_path}")
         return report
 
