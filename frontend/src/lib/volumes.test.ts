@@ -106,6 +106,16 @@ describe("保存链路：卷不能被静默丢掉（实际踩过的坑）", () =
     expect(diff.sections).toContain("volumes");
     expect(diff.hasChanges).toBe(true);
   });
+
+  it("地图比例尺（mapMeasure）同样不能丢：白名单与 diff 都要认得", () => {
+    const measure = { scale: "urban" as const, px: 100, km: 1, transport: "walk" };
+    const p = normalizeProject({ id: "p1", title: "测试", chapters: [], mapMeasure: measure });
+    expect(p.mapMeasure).toEqual(measure);
+
+    const base = normalizeProject({ id: "p1", title: "测试", chapters: [] });
+    const diff = diffProjectAgainst(base, p);
+    expect(diff.sections).toContain("mapMeasure");
+  });
 });
 
 describe("卷的分组", () => {

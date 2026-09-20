@@ -166,6 +166,55 @@ def test_import_rejects_bad_json_400():
     _run(_scenario())
 
 
+def test_scoped_save_persists_volumes_and_map_measure():
+    """卷与地图比例尺都要能被 scoped save（只声明 sections）真正写进工程。
+
+    这两处都是"新加的项目级字段"，而保存链路是**白名单**式的：前端 diff 声明了哪一节，
+    后端才从 payload 里取哪一节。漏一处就会**静默丢掉**（实测踩过：点"+卷"后卷不出现）。
+    """
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "scoped_sections")
+            r = await client.post(
+                "/api/v1/projects", json={"from_demo": True}, headers=headers
+            )
+            assert r.status_code == 200, r.text
+            pid = r.json()["id"]
+
+            r = await client.get(f"/api/v1/projects/{pid}", headers=headers)
+            project = r.json()
+            project["volumes"] = [{"id": "v1", "title": "第一卷"}]
+            project["chapters"][0]["volumeId"] = "v1"
+            project["mapMeasure"] = {
+                "scale": "urban",
+                "px": 100,
+                "km": 1,
+                "transport": "walk",
+            }
+            # scoped save：只声明这两节
+            r = await client.put(
+                f"/api/v1/projects/{pid}",
+                json={
+                    "data": project,
+                    "sections": ["volumes", "mapMeasure"],
+                    "chapter_ids": [project["chapters"][0]["id"]],
+                    "force": True,
+                },
+                headers=headers,
+            )
+            assert r.status_code == 200, r.text
+
+            r = await client.get(f"/api/v1/projects/{pid}", headers=headers)
+            saved = r.json()
+            assert [v["title"] for v in saved.get("volumes") or []] == ["第一卷"]
+            assert saved["mapMeasure"]["scale"] == "urban"
+            assert saved["mapMeasure"]["km"] == 1
+            assert saved["chapters"][0]["volumeId"] == "v1"
+
+    _run(_scenario())
+
+
 def test_save_auto_populates_writing_ledger():
     """账本走「保存时自动」这条线（用户什么都不用说）。
 

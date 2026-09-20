@@ -114,13 +114,22 @@ test("章节改归属 → 卷改名 → 删卷后章节回到「未分卷」，�
   await expect(page.getByTestId("volume-chip-loose")).toContainText(`${totalChapters - 1} 章`);
 
   // 改卷名
+  // 注意：要等**带着这次改名的那次 PUT** 落盘，不能只等"任意一次 PUT"——
+  // 上一步改归属的保存可能还在飞，等错了就会在改名还没存住时刷新（首轮必现的那种失败）。
+  const renamedPersisted = page.waitForResponse(
+    (r) =>
+      r.request().method() === "PUT" &&
+      /\/api\/v1\/projects\/[^/]+$/.test(r.url()) &&
+      (r.request().postData() ?? "").includes("卷一·春"),
+    { timeout: 25_000 }
+  );
   await firstVol.click();
   await page.getByTestId("volume-rename").click();
   await answerPrompt(page, "卷一·春", "保存");
   await expect(page.getByTestId(VOL_CHIP).first()).toContainText("卷一·春");
+  await renamedPersisted;
 
   // 刷新后仍在（卷在工程数据里，不是本机缓存）
-  await page.waitForTimeout(1500);
   await page.reload();
   await expect(page.getByTestId(VOL_CHIP).first()).toContainText("卷一·春", { timeout: 30_000 });
 

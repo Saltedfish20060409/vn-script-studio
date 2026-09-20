@@ -342,6 +342,8 @@ export function StudioApp() {
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   const editorRef = useRef("");
+  /** 本地编辑版本号：保存响应回来时据此判断"是否还能覆盖界面状态"（防旧响应盖掉新改动） */
+  const projectRevRef = useRef(0);
   const editorTaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingEditorFocus = useRef<{
     chapterId: string;
@@ -371,6 +373,8 @@ export function StudioApp() {
     model: string;
     chaptersUsed: number;
   } | null>(null);
+  /** 回述范围：before = 这一卷之前（卷首），volume = 本卷 */
+  const [recapScope, setRecapScope] = useState<"before" | "volume">("before");
   const markStopRef = useRef(false);
   /** 标记在正文里的实际区间（正文高亮用）；定位不到的标记不进这里，由 stale 状态表达 */
   const markRanges = useMemo<MarkRange[]>(() => {
@@ -986,6 +990,9 @@ export function StudioApp() {
     opts?: { silent?: boolean; force?: boolean }
   ) {
     const silent = opts?.silent ?? true;
+    // 这次请求发出时的本地版本号：回来时若已经变过，说明用户在等待期间又改了东西，
+    // 那就**不能用响应覆盖界面状态**（否则旧响应会把新改动盖掉，随后又被自动保存写回服务器）。
+    const revAtRequest = projectRevRef.current;
     try {
       if (!silent) setStatus("保存中…");
       // Collaboration stage B: compute which chapters / sections this save
@@ -1009,8 +1016,11 @@ export function StudioApp() {
         ...scoped,
       });
       lastSavedRef.current = saved;
-      skipNextProjectSave.current = true;
-      setProject(saved);
+      if (projectRevRef.current === revAtRequest) {
+        skipNextProjectSave.current = true;
+        setProject(saved);
+      }
+      // 否则：保留本地（更新的）状态；lastSavedRef 已推进，下一次自动保存会把新改动写上去
       setPetCheer((v) => v + 1);
       clearConflictDraft(saved.id);
       setSaveConflict(null);
@@ -1151,6 +1161,8 @@ export function StudioApp() {
   }
 
   const updateActive = useCallback((updater: (p: VnProject) => VnProject) => {
+    // 记一次"本地又改过"：保存回来时据此判断能不能用服务器响应覆盖界面状态
+    projectRevRef.current += 1;
     setProject((prev) => {
       if (!prev) return prev;
       return normalizeProject({
@@ -1161,6 +1173,7 @@ export function StudioApp() {
   }, []);
 
   function replaceActiveProject(nextProject: VnProject) {
+    projectRevRef.current += 1;
     setProject((prev) => {
       if (!prev) return prev;
       return normalizeProject({
@@ -1706,16 +1719,21 @@ export function StudioApp() {
   // ---- 前情提要（卷首回顾）----------------------------------------------------
 
   /** 生成前情提要：有卷时回述这一卷之前，没卷时回述"写到现在"之前。 */
-  async function generateRecap() {
+  async function generateRecap(scope: "before" | "volume" = recapScope) {
     if (!project?.id) return;
     const volumeId = project.volumes?.length ? activeVolumeId : undefined;
+    if (scope === "volume" && !volumeId) {
+      setRecapError("「本卷」回顾需要先把章节分卷");
+      return;
+    }
+    setRecapScope(scope);
     setRecapOpen(true);
     setRecapBusy(true);
     setRecapError("");
     try {
       const out = await getRecap(project.id, {
         ...(volumeId ? { volumeId } : {}),
-        mode: "before",
+        mode: scope,
       });
       setRecap({ label: out.label, text: out.text, model: out.model, chaptersUsed: out.chaptersUsed });
     } catch (e) {
@@ -2858,6 +2876,9 @@ export function StudioApp() {
                           chaptersUsed={recap?.chaptersUsed ?? 0}
                           busy={recapBusy}
                           error={recapError}
+                          scope={recapScope}
+                          canUseVolumeScope={Boolean(project.volumes?.length)}
+                          onScopeChange={(next) => void generateRecap(next)}
                           onRegenerate={() => void generateRecap()}
                           onClose={() => setRecapOpen(false)}
                           onInsert={insertRecap}
@@ -3119,6 +3140,10 @@ export function StudioApp() {
                   }
                   onChangeStrokes={(mapStrokes) =>
                     updateActive((p) => ({ ...p, mapStrokes }))
+                  }
+                  mapMeasure={project.mapMeasure}
+                  onChangeMapMeasure={(mapMeasure) =>
+                    updateActive((p) => ({ ...p, mapMeasure }))
                   }
                   onJumpToChapter={(id, blockIndex) => {
                     commitEditor();

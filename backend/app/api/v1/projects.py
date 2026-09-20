@@ -244,6 +244,13 @@ async def import_project(
         window=3600,
     ):
         raise HTTPException(status_code=429, detail="导入过于频繁，请稍后再试")
+    # SECURITY: read with a hard cap so oversized uploads are rejected
+    # while streaming (not buffered whole into memory first).
+    # 8MB ≈ 260 万汉字：一本长篇连载导得进来；再大请分卷导入。
+    MAX_IMPORT = 8 * 1024 * 1024
+    # 导入会按段落成块：块数爆炸会让编辑器/保存变重，所以再加一道闸。
+    # （放在分支外面——JSON 导入那条路也要用，之前放在文件分支里导致 500。）
+    MAX_IMPORT_BLOCKS = 50_000
     vn: Optional[VnProject] = None
     if json_body:
         try:
@@ -253,12 +260,9 @@ async def import_project(
         vn = normalize_project(raw)
         vn = normalize_project({**project_to_dict(vn), "id": uid("proj")})
     elif file is not None:
-        # SECURITY: read with a hard cap so oversized uploads are rejected
-        # while streaming (not buffered whole into memory first).
-        MAX_IMPORT = 2 * 1024 * 1024
         content = await file.read(MAX_IMPORT + 1)
         if len(content) > MAX_IMPORT:
-            raise HTTPException(status_code=413, detail="文件过大（限 2MB）")
+            raise HTTPException(status_code=413, detail="文件过大（限 8MB），请分卷或分次导入")
         name = (file.filename or "").lower()
         if name.endswith(".json") or name.endswith(".vnss-share.json"):
             try:
@@ -286,6 +290,16 @@ async def import_project(
 
     if title:
         vn.title = title
+    from app.core.import_text import count_import_blocks
+
+    if count_import_blocks(vn.model_dump(mode="json").get("chapters") or []) > MAX_IMPORT_BLOCKS:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"这份内容切出了超过 {MAX_IMPORT_BLOCKS} 个段落块（大概是全书级的长篇）。"
+                "请按卷或分批导入，这样编辑和保存都更顺。"
+            ),
+        )
     row = await create_project_row(db, user, vn=vn)
     return project_to_dict(row_to_vn(row))
 

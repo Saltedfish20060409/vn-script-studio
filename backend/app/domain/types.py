@@ -563,6 +563,8 @@ class VnProject(BaseModel):
     locations: Optional[List[Location]] = None
     locationLinks: Optional[List[LocationLink]] = None
     mapStyle: Optional[str] = None
+    # 地图测距的比例尺与默认交通方式（属于作品设定：换设备要跟着走）
+    mapMeasure: Optional[Dict[str, Any]] = None
     customMapElements: Optional[List[CustomMapElementDef]] = None
     mapStrokes: Optional[List[MapStroke]] = None
     characterLinks: Optional[List[CharacterLink]] = None

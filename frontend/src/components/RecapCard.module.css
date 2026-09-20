@@ -21,6 +21,35 @@
   font-size: 0.86rem;
 }
 
+.scopeSwitch {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.scope,
+.scopeOn {
+  border: none;
+  padding: 0.14rem 0.5rem;
+  font-size: 0.72rem;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.scopeOn {
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+  font-weight: 700;
+}
+
+.scope:disabled,
+.scopeOn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .hint {
   flex: 1 1 10rem;
   min-width: 0;

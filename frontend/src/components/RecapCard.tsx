@@ -9,6 +9,11 @@ type Props = {
   chaptersUsed: number;
   busy: boolean;
   error: string;
+  /** 回述范围：before = 这一卷之前（卷首前情）；volume = 本卷（卷末收束/给 AI 当本卷摘要） */
+  scope: "before" | "volume";
+  /** 有卷时才显示范围切换 */
+  canUseVolumeScope: boolean;
+  onScopeChange: (scope: "before" | "volume") => void;
   onRegenerate: () => void;
   onClose: () => void;
   onInsert: (text: string, position: "prepend" | "append") => void;
@@ -27,6 +32,9 @@ export function RecapCard({
   chaptersUsed,
   busy,
   error,
+  scope,
+  canUseVolumeScope,
+  onScopeChange,
   onRegenerate,
   onClose,
   onInsert,
@@ -53,6 +61,30 @@ export function RecapCard({
     <section className={styles.wrap} data-testid="recap-card">
       <div className={styles.head}>
         <strong className={styles.title}>前情提要</strong>
+        {canUseVolumeScope ? (
+          <span className={styles.scopeSwitch} role="group" aria-label="回述范围">
+            <button
+              type="button"
+              className={scope === "before" ? styles.scopeOn : styles.scope}
+              data-testid="recap-scope-before"
+              disabled={busy}
+              onClick={() => onScopeChange("before")}
+              title="回述这一卷之前发生的事（卷首回顾）"
+            >
+              前情
+            </button>
+            <button
+              type="button"
+              className={scope === "volume" ? styles.scopeOn : styles.scope}
+              data-testid="recap-scope-volume"
+              disabled={busy}
+              onClick={() => onScopeChange("volume")}
+              title="回述本卷（卷末收束，也可以当成喂给 AI 的本卷摘要）"
+            >
+              本卷
+            </button>
+          </span>
+        ) : null}
         <span className={styles.hint} data-testid="recap-label">
           {busy ? "正在读前面的章节…" : label || "（未生成）"}
         </span>

@@ -12,6 +12,7 @@ const SECTION_KEYS = [
   "locations",
   "locationLinks",
   "mapStyle",
+  "mapMeasure",
   "customMapElements",
   "mapStrokes",
   "characterLinks",

@@ -7,15 +7,17 @@ import type {
 } from "../types/vn";
 import { presetByKind } from "../lib/mapCatalog";
 import {
+  DEFAULT_MEASURE,
+  DEFAULT_SCALE,
   MAP_FEATURES,
   MAP_SCALE_PRESETS,
-  applyScalePreset,
   loadMapPrefs,
   saveMapPrefs,
   scalePreset,
   setMeasurePrefs,
   toggleFeature,
   type MapPrefs,
+  type MapMeasurePrefs,
   type MapScaleId,
 } from "../lib/mapFeatures";
 import { recommendedModes, transportById, distanceKm, formatLegLabel } from "../lib/mapDistance";
@@ -56,6 +58,8 @@ export function MapStudio({
   onChangeLinks,
   onChangeCustomElements,
   onChangeStrokes,
+  mapMeasure,
+  onChangeMapMeasure,
   onJumpToChapter,
   focusLocationId = null,
   focusTick = 0,
@@ -65,16 +69,42 @@ export function MapStudio({
   const studioRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [tool, setTool] = useState<Tool>("pan");
-  /** 按需功能开关 + 测距参数（存在本机，关掉只隐藏不删数据） */
+  /** 按需功能开关（本机偏好）+ 测距参数（作品数据，跨设备） */
   const [prefs, setPrefs] = useState<MapPrefs>(() => loadMapPrefs());
   const [featuresOpen, setFeaturesOpen] = useState(false);
   const showStrokes = prefs.features.strokes;
   const showDistance = prefs.features.distance;
 
-  // 开关存在本机：改了就落盘（关掉画笔不会动任何已画的笔迹）
+  // 功能开关是本机偏好：改了就落盘
   useEffect(() => {
     saveMapPrefs(prefs);
   }, [prefs]);
+
+  // 测距参数属于作品数据：作品里没有就用本机存过的（老用户不丢设置），
+  // 一旦在界面上改过，就写回作品（换设备也跟着走）。
+  const measure: MapMeasurePrefs = useMemo(() => {
+    if (mapMeasure) return mapMeasure;
+    return prefs.measure;
+  }, [mapMeasure, prefs.measure]);
+
+  const applyMeasure = useCallback(
+    (patch: Partial<MapMeasurePrefs>) => {
+      const next: MapMeasurePrefs = { ...measure, ...patch };
+      onChangeMapMeasure(next);
+      setPrefs((p) => setMeasurePrefs(p, patch));
+    },
+    [measure, onChangeMapMeasure]
+  );
+
+  // 作品还没有比例尺，而本机存过非默认值时，主动写回作品一次（迁移用，只做一次）
+  const migratedRef = useRef(false);
+  useEffect(() => {
+    if (migratedRef.current || mapMeasure) return;
+    migratedRef.current = true;
+    if (prefs.measure.scale !== DEFAULT_SCALE || prefs.measure.km !== DEFAULT_MEASURE.km) {
+      onChangeMapMeasure(prefs.measure);
+    }
+  }, [mapMeasure, onChangeMapMeasure, prefs.measure]);
 
   // 关掉画笔时把当前工具从"画笔"上挪开，避免"工具在手却画不了"
   useEffect(() => {
@@ -973,9 +1003,9 @@ export function MapStudio({
           </button>
           {showDistance ? (
             <span className={styles.quickHint} data-testid="map-scale-hint">
-              {scalePreset(prefs.measure.scale).label} · 每 {prefs.measure.px} 像素 ={" "}
-              {prefs.measure.km} 公里 ·
-              {transportById(prefs.measure.transport).label}
+              {scalePreset(measure.scale as MapScaleId).label} · 每 {measure.px} 像素 ={" "}
+              {measure.km} 公里 ·
+              {transportById(measure.transport).label}
             </span>
           ) : null}
           {featuresOpen ? (
@@ -1001,10 +1031,13 @@ export function MapStudio({
                     <select
                       className={styles.measureSelect}
                       data-testid="map-scale-preset"
-                      value={prefs.measure.scale}
-                      onChange={(e) =>
-                        setPrefs((p) => applyScalePreset(p, e.target.value as MapScaleId))
-                      }
+                      value={measure.scale}
+                      onChange={(e) => {
+                        // 注意：preset.measure 不含 scale 字段，必须显式带上，
+                        // 否则比例尺变了、尺度还留在旧值（e2e 抓出来过）。
+                        const next = e.target.value as MapScaleId;
+                        applyMeasure({ ...scalePreset(next).measure, scale: next });
+                      }}
                       title="决定默认比例尺与常用交通方式；日常题材按分钟、异世界大陆按天"
                     >
                       {MAP_SCALE_PRESETS.map((p) => (
@@ -1014,7 +1047,7 @@ export function MapStudio({
                       ))}
                     </select>
                     <span className={styles.quickHint} data-testid="map-scale-preset-hint">
-                      {scalePreset(prefs.measure.scale).hint}
+                      {scalePreset(measure.scale as MapScaleId).hint}
                     </span>
                   </div>
                   <div className={styles.measureRow}>
@@ -1024,10 +1057,8 @@ export function MapStudio({
                       min={1}
                       className={styles.measureInput}
                       data-testid="map-measure-px"
-                      value={prefs.measure.px}
-                      onChange={(e) =>
-                        setPrefs((p) => setMeasurePrefs(p, { px: Number(e.target.value) || 1 }))
-                      }
+                      value={measure.px}
+                      onChange={(e) => applyMeasure({ px: Number(e.target.value) || 1 })}
                     />
                     <span className={styles.quickHint}>像素 =</span>
                     <input
@@ -1035,21 +1066,17 @@ export function MapStudio({
                       min={1}
                       className={styles.measureInput}
                       data-testid="map-measure-km"
-                      value={prefs.measure.km}
-                      onChange={(e) =>
-                        setPrefs((p) => setMeasurePrefs(p, { km: Number(e.target.value) || 1 }))
-                      }
+                      value={measure.km}
+                      onChange={(e) => applyMeasure({ km: Number(e.target.value) || 1 })}
                     />
                     <span className={styles.quickHint}>公里</span>
                     <select
                       className={styles.measureSelect}
                       data-testid="map-measure-transport"
-                      value={prefs.measure.transport}
-                      onChange={(e) =>
-                        setPrefs((p) => setMeasurePrefs(p, { transport: e.target.value }))
-                      }
+                      value={measure.transport}
+                      onChange={(e) => applyMeasure({ transport: e.target.value })}
                     >
-                      {recommendedModes(prefs.measure.scale).map((m) => (
+                      {recommendedModes(measure.scale).map((m) => (
                         <option key={m.id} value={m.id}>
                           {m.label}（{m.kmh} 公里/小时）
                         </option>
@@ -1114,7 +1141,7 @@ export function MapStudio({
                     const curve = roadCurves.get(link.id);
                     const mx = curve?.mx ?? (a.x + b.x) / 2;
                     const my = curve?.my ?? (a.y + b.y) / 2;
-                    const km = distanceKm(a, b, prefs.measure);
+                    const km = distanceKm(a, b, measure);
                     return (
                       <text
                         key={`dist-${link.id}`}
@@ -1124,7 +1151,7 @@ export function MapStudio({
                         textAnchor="middle"
                         data-testid="map-distance-label"
                       >
-                        {formatLegLabel(km, prefs.measure.transport)}
+                        {formatLegLabel(km, measure.transport)}
                       </text>
                     );
                   })}

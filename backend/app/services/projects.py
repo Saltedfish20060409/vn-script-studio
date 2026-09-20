@@ -71,6 +71,7 @@ MERGE_SECTIONS = [
     "locations",
     "locationLinks",
     "mapStyle",
+    "mapMeasure",
     "customMapElements",
     "mapStrokes",
     "characterLinks",

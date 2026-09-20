@@ -388,6 +388,18 @@ export interface FactInboxItem {
   createdAt?: string | null;
 }
 
+/** 地图测距的比例尺与默认交通方式（作品数据，跨设备同步） */
+export interface MapMeasure {
+  /** 地图尺度预设：城市 / 地区 / 大陆 */
+  scale: "urban" | "regional" | "continental";
+  /** 多少像素 */
+  px: number;
+  /** 等于多少公里 */
+  km: number;
+  /** 默认交通方式 id */
+  transport: string;
+}
+
 export interface VnProject {
   id: string;
   title: string;
@@ -403,6 +415,8 @@ export interface VnProject {
   locations?: Location[];
   locationLinks?: LocationLink[];
   mapStyle?: MapStyleId;
+  /** 地图测距的比例尺与默认交通方式（作品数据；缺省时用本机默认） */
+  mapMeasure?: MapMeasure;
   customMapElements?: CustomMapElementDef[];
   mapStrokes?: MapStroke[];
   characterLinks?: CharacterLink[];

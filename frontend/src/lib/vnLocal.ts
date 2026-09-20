@@ -46,6 +46,7 @@ export function normalizeProject(
     locations: raw.locations ?? [],
     locationLinks: raw.locationLinks ?? [],
     mapStyle: normalizeMapStyle(raw.mapStyle),
+    mapMeasure: raw.mapMeasure,
     customMapElements: raw.customMapElements ?? [],
     mapStrokes: raw.mapStrokes ?? [],
     characterLinks: raw.characterLinks ?? [],

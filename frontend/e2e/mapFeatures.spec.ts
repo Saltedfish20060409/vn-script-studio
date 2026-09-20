@@ -130,6 +130,24 @@ test("单位跟着题材尺度走：城市按分钟、大陆按天（这是用�
   await expect(page.getByTestId("map-measure-km")).toHaveValue("100");
   const bigLabel = (await labels.first().textContent()) ?? "";
   expect(bigLabel).toContain("天");
+
+  // 尺度属于**作品数据**：把本机缓存清掉再刷新，设置仍然在（换设备也跟得上）
+  const scalePersisted = page.waitForResponse(
+    (r) =>
+      r.request().method() === "PUT" &&
+      /\/api\/v1\/projects\/[^/]+$/.test(r.url()) &&
+      (r.request().postData() ?? "").includes('"urban"'),
+    { timeout: 25_000 }
+  );
+  await page.getByTestId("map-scale-preset").selectOption("urban");
+  await scalePersisted; // 等这一次保存落盘（而不是等"任意一次 PUT"）
+  await page.evaluate(() => localStorage.removeItem("vnss-map-features-v1"));
+  await page.reload();
+  await expect(page.getByTestId("map-features-toggle")).toBeVisible({ timeout: 40_000 });
+  await page.getByTestId("map-features-toggle").click();
+  await page.getByTestId("map-feature-distance").check();
+  await expect(page.getByTestId("map-measure-km")).toHaveValue("1", { timeout: 15_000 });
+  await expect(page.getByTestId("map-scale-preset")).toHaveValue("urban");
 });
 
 test("手绘开关：关掉画笔工具消失、再打开回来；刷新后开关仍在", async ({ page }) => {
