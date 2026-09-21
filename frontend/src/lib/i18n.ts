@@ -41,7 +41,7 @@ const zh = {
   "settings.criticModel": "评审模型名",
   "settings.criticHint": "可选：独立的评审模型（critic，改稿对照时使用）。",
   "settings.llmNote":
-    "填写你从模型服务商（如 DeepSeek 开放平台）申请的 API Key（形如 sk-…），AI 才能为你写作，费用记在你自己的模型账户上。可加密保存到账号（推荐，可跨设备），也可只存当前浏览器。留空则使用站内免费体验模型（每日限额，适合先试效果）。",
+    "填你自己的 API Key（形如 sk-…），费用记在你自己的模型账户上。可加密存到账号（可跨设备），也可只存本机。留空就用站内免费体验模型。",
   "common.cancel": "取消",
   "common.save": "保存",
   "common.ok": "好的",

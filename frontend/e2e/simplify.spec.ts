@@ -146,3 +146,25 @@ test("设定页：写作参考卡不再和设定条目并列，但入口还在",
   await expect(page.getByPlaceholder(/搜索萌百/)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(/AI 写作时作为参考/)).toBeVisible();
 });
+
+test("Agent 起手句：一下都不用打字，点一下就填好", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await registerAndLogin(page, randomName("e2e_starter_"));
+
+  // 打开 AI 责编（平时贴边收起）
+  const toggle = page.getByTestId("agent-sections-toggle");
+  if (!(await toggle.isVisible().catch(() => false))) {
+    await page.getByTitle(/AI 责编/).first().click();
+  }
+  await expect(toggle).toBeVisible({ timeout: 20_000 });
+
+  const starters = page.getByTestId("agent-starters");
+  await expect(starters).toBeVisible();
+
+  // 点一个起手句 → 输入框里就有内容了（不用打字），而且**没有**被自动发送
+  const composer = page.getByPlaceholder(/用平常话说/).first();
+  await expect(composer).toHaveValue("");
+  await page.getByRole("button", { name: "接着往下写一段" }).click();
+  await expect(composer).toHaveValue("接着往下写一段");
+  await expect(starters).toHaveCount(0);
+});

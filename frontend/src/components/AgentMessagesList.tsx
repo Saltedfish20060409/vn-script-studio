@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { getChapterReviseDraft } from "../lib/chapterReviseDraft";
 import { describeActions } from "../lib/agentFormat";
 import type { AgentChatMessage, AgentTraceEvent } from "../types/vn";
@@ -92,6 +92,10 @@ type Props = {
   error: string;
   undoCount: number;
   scrollerRef: RefObject<HTMLDivElement | null>;
+  /** 消息流末尾的附加内容（起手句 chips 之类）。放在滚动区里，
+   *  这样底部固定区（⚙ 资料 / 输入框）的高度不变——它们上方的弹出菜单
+   *  在短面板里一旦被顶高就会钻到标题栏底下，按钮点不动。 */
+  footer?: ReactNode;
   onOpenReviseReview: (chapterId: string) => void;
   onToggleDossier: () => void;
   onTogglePersona: () => void;
@@ -121,6 +125,7 @@ export function AgentMessagesList({
   error,
   undoCount,
   scrollerRef,
+  footer,
   onOpenReviseReview,
   onToggleDossier,
   onTogglePersona,
@@ -257,6 +262,7 @@ export function AgentMessagesList({
               )}
             </div>
           )}
+        {footer}
       </div>
 
       {(selection || lastContext) && (

@@ -35,8 +35,6 @@ const ACTION_LABEL: Record<string, string> = {
   scan_facts: "扫描事实",
 };
 
-const WELCOME_MARKER = "我会默认按一套面向轻小说 / 视觉小说的写作要点帮你看稿";
-
 export function describeActions(actions: AgentAction[]): string {
   if (actions.length === 0) return "";
   const names = actions.map((a) => ACTION_LABEL[a.op] ?? a.op);
@@ -48,15 +46,18 @@ export function defaultWelcome(): AgentChatMessage[] {
     {
       role: "assistant",
       content:
-        "我是这部作品的驻场责编（通用文学编辑）。我会默认按一套面向轻小说 / 视觉小说的写作要点帮你看稿——比如对白要能演得动、每场留个让人想读下去的钩子、别把设定像说明书一样倒出来。这些你不用管，用平常话说想续写、改哪段、卡在哪就行。\n\n若想换一位作家的眼光来参谋，点顶部 **⇄** 打开作家卡；需要多视角时可打开「多选」。右上角 **!** 有说明。卡壳或要一整场戏时，再说「自动写作：……」（旧叫法「跑流水线」也认）。",
+        "我是这部作品的驻场责编。用平常话说想干什么就行——续写、改哪一段、卡在哪。\n\n改稿会先给你左右对照，你确认了才写进正文，之后还能撤回。想换一位作家的眼光，点顶部 ⇄。",
     },
   ];
 }
 
 function isStaleWelcome(content: string): boolean {
   const t = (content || "").trim();
+  // 不是系统开场白（用户自己聊出来的历史）→ 绝不改动
   if (!t.includes("驻场责编")) return false;
-  return !t.includes(WELCOME_MARKER);
+  // 是开场白，但已经是当前这一版 → 不算旧
+  // （不能只判断"含不含某个旧标记"：改版后新开场白也会被误判成旧，每次加载都白重写一遍）
+  return t !== defaultWelcome()[0].content.trim();
 }
 
 /** Refresh baked-in welcome from older sessions; keep real chat history. */

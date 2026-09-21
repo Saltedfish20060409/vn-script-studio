@@ -66,9 +66,8 @@ export function FactExtractReview({
           <p className={styles.stamp}>FACT · REVIEW</p>
           <h2 id="fact-extract-review-title">确认加入关系与时间线</h2>
           <p className={styles.sub}>
-            候选来自剧本、作品设定和角色卡（及你粘贴的内容）。勾选后点「接受」才会把条目
-            加进角色关系、时间线与设定条目（只加资料，不改正文）；AI 不会直接改动你的设定库。
-            「稍后处理」只关弹窗，候选仍保留，可稍后再看。
+            勾选后点「接受」才会写进工程（只加资料，不改正文）。AI 不会直接改你的设定。
+            「稍后处理」只关弹窗，候选仍保留。
           </p>
         </header>
 

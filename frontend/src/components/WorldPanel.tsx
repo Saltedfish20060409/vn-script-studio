@@ -221,7 +221,10 @@ export function WorldPanel({
       {worldSub === "bible" && (
         <section className={styles.panel}>
           <div className={styles.toolbar}>
-            <span>世界观、大纲等设定会单独保存，AI 写作 / 审稿时按需参考，不会直接混入正文。这几格有长度上限（超出会被截断），请放最关键的几段；**设定体量大就用「设定条目」**——那里可以堆很多条，AI 按触发词检索，问什么带什么。</span>
+            <span title="这几格有长度上限，超出会被截断">
+              设定越全，AI 越少瞎猜；但每格有长度上限，
+              <strong>设定体量大就改用「设定条目」</strong>——那里能堆很多条，AI 按触发词只取相关的几条。
+            </span>
           </div>
           <div className={styles.bibleGrid}>
             <label>

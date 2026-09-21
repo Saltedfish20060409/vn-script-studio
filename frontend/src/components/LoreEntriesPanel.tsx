@@ -165,8 +165,8 @@ export function LoreEntriesPanel({ entries, onChange, projectId }: Props) {
       </div>
 
       <p className={styles.lead}>
-        设定很多的时候用这里：条目可以一直加，每条填**触发词**，提问里出现哪个词就带哪条进上下文——
-        所以总设定再大，单次给 AI 的仍然只有相关的那几条。钉住 ☆ 的条目每轮都会带上。
+        设定多就写在这里：一条一个主题，可以一直加。每条填几个<strong>触发词</strong>，
+        提问里出现哪个词就带哪条给 AI。钉住 ☆ 的条目每轮都带。
       </p>
       {notice ? <p className={styles.notice}>{notice}</p> : null}
 
@@ -180,8 +180,7 @@ export function LoreEntriesPanel({ entries, onChange, projectId }: Props) {
                   {drafts.some((d) => !d.include) ? `（已取消 ${drafts.filter((d) => !d.include).length} 条）` : ""}
                 </strong>
                 <span className={styles.hint}>
-                  取消勾选就不会导入；触发词是「你提问时可能怎么称呼它」，点一下可去掉，勾上的
-                  以后你随口一提它就会被自动带上。
+                  取消勾选就不导入。触发词 = 你提问时可能怎么称呼它，点一下可加/可去。
                 </span>
               </div>
               <ul className={styles.previewList}>

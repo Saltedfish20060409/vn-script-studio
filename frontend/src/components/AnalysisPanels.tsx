@@ -409,9 +409,7 @@ export function AnalysisPanels({
       {sub === "branch" && (
         <div className={styles.panel}>
           <ScriptReportPanel projectId={project.id} />
-          <p className={styles.hint}>
-            分支路线图：按当前章节里的分支点自动画出结构，直接生成、不需要你确认。
-          </p>
+          <p className={styles.hint}>按本章的分支点自动画出走向结构。</p>
           {tree[0]?.children.length ? (
             <BranchView nodes={tree} />
           ) : (
@@ -641,9 +639,7 @@ export function AnalysisPanels({
 
       {sub === "voice" && (
         <div className={styles.panel}>
-          <p className={styles.hint}>
-            语气报告只是参考意见，不会改动正文或关系图 / 时间线；最终以你的判断为准。
-          </p>
+          <p className={styles.hint}>只是参考意见，不会改动正文。</p>
           <div className={styles.toolbar}>
             <button type="button" disabled={voiceBusy} onClick={() => void runVoice()}>
               {voiceBusy ? "检查中…" : "生成语气一致性报告"}
@@ -694,7 +690,7 @@ export function AnalysisPanels({
       {sub === "consistency" && (
         <div className={styles.panel}>
           <p className={styles.hint}>
-            全书层：以角色卡 / 设定库 / 地图 / 时间线为权威，扫描全部章节，找出设定违反与章节间矛盾。
+            扫全部章节，以角色卡 / 设定库 / 地图 / 时间线为准，找出矛盾。
           </p>
           <div className={styles.toolbar}>
             <input
@@ -784,9 +780,8 @@ export function AnalysisPanels({
 
       {sub === "arcs" && (
         <div className={styles.panel}>
-          <p className={styles.hint}>
-            弧线层：各章对白行数反映角色出场热度；断层提示角色可能"掉线"，
-            时间线事件标注角色关键节点（按角色名匹配事件标题/摘要）。
+          <p className={styles.hint} title="时间线事件按角色名匹配事件标题与摘要">
+            各章对白行数 = 角色出场热度；断层表示可能「掉线」。
           </p>
           <CharacterArcsPanel project={project} />
         </div>

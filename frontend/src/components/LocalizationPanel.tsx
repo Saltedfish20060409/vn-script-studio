@@ -443,9 +443,7 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
           {/* ── 步骤 ② 术语表 ── */}
           <section className={styles.blocks}>
             <span className={styles.subTitle}>② 术语表（建议先填：人名、地名、专有名词）</span>
-            <p className={styles.note}>
-              填好后，含这些词的句子可以一键预填译名，你只改句子部分；也能保证同一个词全书译法一致。
-            </p>
+            <p className={styles.note}>填好后可一键预填译名，并保证同一个词全书译法一致。</p>
             <ul className={styles.glossary}>
               {draft.glossary.map((g, i) => (
                 <li key={`${g.term}-${i}`}>
@@ -582,10 +580,8 @@ export function LocalizationPanel({ projectId, chapters, onSaved }: Props) {
               </button>
             </div>
             <p className={styles.note}>
-              两种翻法，随你挑：左边「AI 代翻 {AUTO_L10N_PER_CALL} 句」<strong>每点一次只翻 {AUTO_L10N_PER_CALL} 句</strong>，
-              不满意可以一直点（看一眼再决定要不要继续）；
-              右边「一次翻完剩下的」一口气连跑，最多 {AUTO_L10N_MAX_CALLS} 轮（约 {AUTO_L10N_PER_CALL * AUTO_L10N_MAX_CALLS} 句），
-              中途随时可以「停止」——已经翻好的都会留着。
+              左边每点一次翻 {AUTO_L10N_PER_CALL} 句，可以反复点；右边一口气连跑到没有剩余，
+              最多 {AUTO_L10N_MAX_CALLS} 轮，中途能停，已翻好的都会留着。
             </p>
             <label className={styles.note}>
               <input

@@ -1,4 +1,4 @@
-.shell,
+﻿.shell,
 .shellCompact,
 .gameShell {
   display: flex;
@@ -516,7 +516,7 @@ html[data-panel-glass="ink"] .stageOverlay {
   opacity: 0.85;
 }
 
-/* 免费档提示：一行、不打扰、可忽略（长任务建议配自己的 Key） */
+/* 鍏嶈垂妗ｆ彁绀猴細涓€琛屻€佷笉鎵撴壈銆佸彲蹇界暐锛堥暱浠诲姟寤鸿閰嶈嚜宸辩殑 Key锛?*/
 .tierHint {
   flex-shrink: 0;
   margin: 0 0 0.3rem;
@@ -533,7 +533,7 @@ html[data-panel-glass="ink"] .stageOverlay {
   color: var(--ink);
 }
 
-/* 「证明它记得」：依据清单（默认收起，点开看摘录） */
+/* 銆岃瘉鏄庡畠璁板緱銆嶏細渚濇嵁娓呭崟锛堥粯璁ゆ敹璧凤紝鐐瑰紑鐪嬫憳褰曪級 */
 .evidence {
   flex-shrink: 0;
   margin: 0 0 0.3rem;
@@ -552,11 +552,11 @@ html[data-panel-glass="ink"] .stageOverlay {
 }
 
 .evidence summary::before {
-  content: "▸ ";
+  content: "鈻?";
 }
 
 .evidence[open] summary::before {
-  content: "▾ ";
+  content: "鈻?";
 }
 
 .evidence ul {
@@ -588,7 +588,7 @@ html[data-panel-glass="ink"] .stageOverlay {
   word-break: break-word;
 }
 
-/* ---- 「资料」开关：这次带哪些资料交给作者决定 ---- */
+/* ---- 銆岃祫鏂欍€嶅紑鍏筹細杩欐甯﹀摢浜涜祫鏂欎氦缁欎綔鑰呭喅瀹?---- */
 
 .sectionRow {
   position: relative;
@@ -657,7 +657,7 @@ html[data-panel-glass="ink"] .stageOverlay {
   margin-top: 0.12rem;
 }
 
-/* 断点续跑提示条：上次运行中断/失败后可一键继续 */
+/* 鏂偣缁窇鎻愮ず鏉★細涓婃杩愯涓柇/澶辫触鍚庡彲涓€閿户缁?*/
 .resumeBar {
   display: flex;
   align-items: center;
@@ -1232,7 +1232,7 @@ html[data-panel-glass="ink"] .stageOverlay {
   font-size: 0.88rem;
 }
 
-/* 打字机三点：依次跳动 */
+/* 鎵撳瓧鏈轰笁鐐癸細渚濇璺冲姩 */
 .typingDots {
   display: inline-flex;
   gap: 3px;
@@ -1522,4 +1522,36 @@ html[data-panel-glass="ink"] .stageOverlay {
     justify-items: center;
     text-align: center;
   }
+}
+
+/* 璧锋墜鍙ワ細鏂板璇濈偣涓€涓嬪氨鏈夎瘽璇达紝涓嶇敤鎵撳瓧 */
+.starters {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.1rem 0.2rem;
+  border-top: 1px dashed var(--rail-border);
+}
+
+.startersHint {
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+
+.starterChip {
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--rail-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.74rem;
+  cursor: pointer;
+  transition: background 150ms var(--ease-out, ease);
+}
+
+.starterChip:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }

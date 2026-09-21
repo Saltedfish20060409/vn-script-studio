@@ -132,6 +132,20 @@ function parseUndoStack(raw: unknown[]): UndoEntry[] {
   return out.slice(-20);
 }
 
+/**
+ * 起手句：新对话里"一次都不用打字"就能开口。
+ *
+ * 为什么是这四句：新手真正卡住的是"不知道该让它干什么"，而不是不会打字。
+ * 这四句覆盖了最常见的四种意图（续写 / 改稿 / 挑毛病 / 整理设定）；
+ * 点了只填进输入框，不直接发送——省打字，但不替作者花模型调用。
+ */
+const STARTERS = [
+  "接着往下写一段",
+  "帮我润色这一章",
+  "这章有什么问题？",
+  "按附件整理设定条目",
+];
+
 export function AgentChat({
   project,
   chapterId,
@@ -189,6 +203,9 @@ export function AgentChat({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [loadingConv, setLoadingConv] = useState(true);
+  /** 还没有任何用户发言 → 给起手句（最省打字的一种"建议提示词"） */
+  const showStarters =
+    !busy && input.trim() === "" && !messages.some((m) => m.role === "user");
   const [error, setError] = useState("");
   const [lastContext, setLastContext] = useState<string>("");
   /** 「资料」开关：这次不交给 AI 的资料块（只影响本机会话；后端会忽略未知 key） */
@@ -1865,6 +1882,28 @@ export function AgentChat({
             onTogglePersona={handleTogglePersona}
             onToggleHelp={handleToggleHelp}
             onUndo={() => void undoAgentEdit()}
+            footer={
+              /* 起手句：新对话给几个"你大概想干什么"，点一下就填进输入框。
+                 点它只填不发（不替作者花模型调用）。
+                 放在滚动区末尾而不是输入框上方：底部固定区高度一变，
+                 ⚙ 资料 的弹出菜单就会被顶到标题栏底下点不到（踩过）。 */
+              showStarters ? (
+                <div className={styles.starters} data-testid="agent-starters">
+                  <span className={styles.startersHint}>想干什么？点一个：</span>
+                  {STARTERS.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className={styles.starterChip}
+                      data-testid={`agent-starter-${STARTERS.indexOf(s)}`}
+                      onClick={() => setInput(s)}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              ) : null
+            }
           />
 
           <AgentAttachList
@@ -1941,6 +1980,9 @@ export function AgentChat({
             ) : null}
           </div>
 
+          {/* 一次都不用打字：新对话给几个"你大概想干什么"的起手句。
+              点了只**填进输入框**（不直接发送），作者可以改完再按回车——
+              既省掉打字，也不会替他花掉一次模型调用。 */}
           <AgentComposerBox
             value={input}
             onChange={setInput}

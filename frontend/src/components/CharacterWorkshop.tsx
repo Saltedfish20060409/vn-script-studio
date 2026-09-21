@@ -429,7 +429,10 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
         if (!lines.length) {
           setError(
             res.variants?.length
-              ? "当前后端是旧进程（忽略了 kind=scene，返回了三选一对白）。请关掉 Anaconda 的 uvicorn，只用 backend\\.venv 启动：运行项目根目录 dev.bat，或先结束占用 8000 端口的进程后再开。"
+              ? // 用户看不懂 "kind=scene / uvicorn"，所以界面上只说人话：
+                // 技术原因（后端进程比前端旧，返回了旧格式）留在 title 里给维护者看。
+                "这一项暂时没生成出来（服务端可能还没更新）。刷新页面再试一次；" +
+                  "若一直这样，先用上面的「三选一」收集语料，或联系作者。"
               : "长场次未返回台词，请重试。"
           );
           return;
