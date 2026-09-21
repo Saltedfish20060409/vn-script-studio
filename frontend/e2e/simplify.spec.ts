@@ -168,3 +168,77 @@ test("Agent 起手句：一下都不用打字，点一下就填好", async ({ pa
   await expect(composer).toHaveValue("接着往下写一段");
   await expect(starters).toHaveCount(0);
 });
+
+test("Agent 面板里的文字要看得清：压在背景图上的行必须有不透明底", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await registerAndLogin(page, randomName("e2e_contrast_"));
+
+  const toggle = page.getByTestId("agent-sections-toggle");
+  if (!(await toggle.isVisible().catch(() => false))) {
+    await page.getByTitle(/AI 责编/).first().click();
+  }
+  await expect(page.getByTestId("agent-starters")).toBeVisible({ timeout: 20_000 });
+
+  /**
+   * 线上问题：起手句和 ⚙ 资料 两行糊在背景图里几乎看不清。
+   *
+   * 为什么这里断言「底色不透明」而不是算对比度：面板底是**半透明渐变 + 背景图**
+   * （AgentChat .messages / AgentFloat .panel），getComputedStyle 看不到图，
+   * 算出来的对比度会虚高（实测旧样式反而"达标"6.96:1）。真正决定看得清与否的，
+   * 是这几行背后有没有一层不透明底把图挡掉——那才是可确定性断言的东西。
+   */
+  const surfaces = await page.evaluate(() => {
+    // color-mix() 的 computed 值在 Chrome 里是 `color(srgb r g b / a)`（分量 0~1），
+    // 不是 rgba()；两种都要认，否则会一律解析成 0（踩过）。
+    const alphaOf = (raw: string): number => {
+      if (!raw || raw === "transparent") return 0;
+      const c = raw.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*(?:\/\s*([\d.]+))?\)/);
+      if (c) return c[4] === undefined ? 1 : parseFloat(c[4]);
+      const m = raw.match(/rgba?\(([^)]+)\)/);
+      if (!m) return -1; // 未知格式：让断言直接失败，别假装通过
+      const p = m[1].split(",").map((v) => parseFloat(v.trim()));
+      return p.length > 3 ? p[3] : 1;
+    };
+    const bgAlpha = (sel: string) => {
+      const el = document.querySelector(sel);
+      return el ? alphaOf(getComputedStyle(el).backgroundColor) : -2;
+    };
+    const color = (sel: string) => {
+      const el = document.querySelector(sel);
+      return el ? getComputedStyle(el).color : "missing";
+    };
+    return {
+      cardAlpha: bgAlpha('[data-testid="agent-starters"]'),
+      chipAlpha: bgAlpha('[data-testid="agent-starters"] button'),
+      hintColor: color('[data-testid="agent-starters"] span'),
+      sectionColor: color('[data-testid="agent-sections-summary"]'),
+    };
+  });
+
+  expect(surfaces.cardAlpha, "起手句卡片必须是实底（否则背景图透上来就糊了）").toBeGreaterThanOrEqual(0.9);
+  expect(surfaces.chipAlpha, "起手句按钮不能是透明底").toBeGreaterThan(0);
+  for (const [name, got] of [
+    ["起手句提示", surfaces.hintColor],
+    ["⚙ 资料 说明", surfaces.sectionColor],
+  ] as const) {
+    // 文字要用主墨色 --ink，不能用弱化的 --ink-soft（#4a5568 → rgb(74,85,104)）
+    expect(got, `${name} 不该用弱化色`).not.toMatch(/^rgba?\(74,\s*85,\s*104/);
+    expect(got).toBeTruthy();
+  }
+
+  // 自证：把旧样式（透明底）注回去，这个护栏必须能判不合格
+  await page.addStyleTag({
+    content: '[data-testid="agent-starters"] { background: transparent !important; border: none !important; }',
+  });
+  const afterInject = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="agent-starters"]');
+    if (!el) return -2;
+    const raw = getComputedStyle(el).backgroundColor;
+    if (raw === "transparent") return 0;
+    const m = raw.match(/rgba?\(([^)]+)\)/);
+    if (!m) return -1;
+    const p = m[1].split(",").map((v) => parseFloat(v.trim()));
+    return p.length > 3 ? p[3] : 1;
+  });
+  expect(afterInject, "护栏失效：注入透明底后仍判合格").toBeLessThan(0.9);
+});
