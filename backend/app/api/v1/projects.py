@@ -1190,7 +1190,9 @@ async def analysis_facts_inbox(
         db,
         project_id,
         status="pending",
-        kinds=["character_link", "timeline_event"],
+        # lore_entry 也要列出来：AI 提议的设定条目必须出现在待审列表里，
+        # 否则作者看不到、也就永远接受不了（提议等于白提）。
+        kinds=["character_link", "timeline_event", "lore_entry"],
     )
     return {"items": [inbox_svc.inbox_row_to_dict(r) for r in rows]}
 
@@ -1204,9 +1206,11 @@ async def analysis_facts_accept(
 ):
     from app.core.fact_extract import (
         accept_character_link,
+        accept_lore_entry,
         accept_timeline_event,
         existing_dedupe_keys,
         link_dedupe_key,
+        lore_dedupe_key,
         timeline_dedupe_key,
     )
     from app.services import analysis_inbox as inbox_svc
@@ -1250,6 +1254,25 @@ async def analysis_facts_accept(
                 summary=payload.get("summary"),
                 chapter_ref=chapter_ref,
                 order=payload.get("order"),
+                evidence=evidence,
+            )
+            if key in before_keys:
+                skipped_ids.append(item.id)
+            else:
+                accepted_ids.append(item.id)
+        elif item.kind == "lore_entry":
+            # 设定条目：作者点了「接受」才真的进设定库（AI 只提议，见 core/agent.py）
+            title = str(payload.get("title") or "").strip()
+            if not title:
+                skipped_ids.append(item.id)
+                continue
+            key = lore_dedupe_key(title)
+            kw = payload.get("keywords")
+            vn = accept_lore_entry(
+                vn,
+                title=title,
+                body=str(payload.get("body") or ""),
+                keywords=[str(k) for k in kw] if isinstance(kw, list) else None,
                 evidence=evidence,
             )
             if key in before_keys:

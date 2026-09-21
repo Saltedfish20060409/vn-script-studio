@@ -148,6 +148,17 @@ def timeline_dedupe_key(title: str, chapter_ref: Optional[str] = None) -> str:
     return f"tl:{(chapter_ref or '').lower()}|{t}"
 
 
+def lore_dedupe_key(title: str) -> str:
+    """设定条目的去重键：按标题（去空白、忽略大小写）。
+
+    为什么只按标题：设定条目本来就该一条一个名字，同名几乎一定是同一条
+    （AI 提议的、扫描出来的、作者手写的三种来源会撞车）。正文不同不该算两条——
+    否则作者会看到两个「青云门」并且不知道留哪个。
+    """
+    t = re.sub(r"\s+", "", (title or "").strip().lower())
+    return f"lore:{t}"
+
+
 @dataclass
 class FactCandidate:
     kind: str  # character_link | timeline_event
@@ -431,6 +442,9 @@ def existing_dedupe_keys(project: VnProject) -> Set[str]:
         keys.add(link_dedupe_key(l.fromId, l.toId, l.label))
     for t in project.timeline or []:
         keys.add(timeline_dedupe_key(t.title, t.chapterRef))
+    for e in getattr(project, "loreEntries", None) or []:
+        if str(getattr(e, "title", "") or "").strip():
+            keys.add(lore_dedupe_key(str(e.title)))
     return keys
 
 
@@ -670,6 +684,30 @@ def accept_timeline_event(
         deep=True,
         update={"timeline": [*(project.timeline or []), ev]},
     )
+
+
+def accept_lore_entry(
+    project: VnProject,
+    *,
+    title: str,
+    body: str = "",
+    keywords: Optional[Sequence[str]] = None,
+    evidence: Optional[List[Dict[str, Any]]] = None,
+) -> VnProject:
+    """把一条「待审的设定条目」写进设定库（只有作者点了接受才会走这里）。"""
+    key = lore_dedupe_key(title)
+    if key in existing_dedupe_keys(project):
+        return project
+    from app.domain.types import LoreEntry
+
+    entry = LoreEntry(
+        id=uid("lore"),
+        title=title.strip(),
+        body=(body or "").strip(),
+        keywords=[str(k).strip() for k in (keywords or []) if str(k).strip()] or None,
+    )
+    entries = [*(getattr(project, "loreEntries", None) or []), entry]
+    return project.model_copy(deep=True, update={"loreEntries": entries})
 
 
 def clear_stale_flags(

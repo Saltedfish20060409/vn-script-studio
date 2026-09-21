@@ -433,6 +433,48 @@ def _entry_score(e: Any, ask: str, tokens: List[str]) -> int:
 _ENTRY_MIN_SCORE = 4
 
 
+def rank_lore_entries(
+    entries: Sequence[Any],
+    query: str,
+    *,
+    limit: int = 8,
+    min_score: int = _ENTRY_MIN_SCORE,
+) -> List[Tuple[Any, int]]:
+    """按提问给设定条目打分排序。
+
+    存在的理由：自动注入（开场拼上下文）和 Agent 的 `search_lore` 工具必须是**同一把尺子**，
+    否则会出现"工具说命中、注入却不带"这种自相矛盾的行为。所以两处都走这个函数。
+    """
+    ask = (query or "").strip().lower()
+    tokens = _tokenize(query or "")
+    scored = [
+        (e, _entry_score(e, ask, tokens))
+        for e in (entries or [])
+        if e is not None and not bool(getattr(e, "pinned", None))
+    ]
+    scored = [(e, s) for e, s in scored if s >= min_score]
+    scored.sort(
+        key=lambda pair: (pair[1], int(getattr(pair[0], "priority", 0) or 0)),
+        reverse=True,
+    )
+    return scored[: max(1, limit)]
+
+
+def lore_entry_index(entries: Sequence[Any], limit: int = 60) -> str:
+    """条目索引（标题 + 触发词一行一条）：模型不知道叫什么名字时先看这个。"""
+    lines: List[str] = []
+    for e in (entries or [])[:limit]:
+        if e is None:
+            continue
+        title = str(getattr(e, "title", "") or "").strip()
+        if not title:
+            continue
+        keys = _entry_keywords(e)
+        pin = " ☆钉住" if bool(getattr(e, "pinned", None)) else ""
+        lines.append(f"- {title}" + (f"（{'/'.join(keys)}）" if keys else "") + pin)
+    return "\n".join(lines)
+
+
 def _clip(text: str, max_len: int) -> str:
     if len(text) <= max_len:
         return text

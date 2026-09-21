@@ -64,6 +64,8 @@ replace_script { "op":"replace_script", "chapterRef"?, "text" } /
 update_bible / update_meta /
 propose_character_link { fromRef, toRef, label?, quote? } — 进分析待审托盘，不直接改图 /
 propose_timeline_event { title, when?, summary?, chapterRef? } — 进待审托盘 /
+propose_lore_entries { entries:[{ title, body, keywords?:[] }] } — 把设定整理成**设定条目**候选，
+  进待审托盘，作者逐条接受后才进设定库；你**永远不能**直接写入设定条目（没有 add_lore 这个 op） /
 add_character_link / update_character_link / delete_character_link — 仅当用户明确要求写入/应用/填上关系图 /
 add_timeline_event / update_timeline_event / delete_timeline_event — 仅当用户明确要求写入时间线 /
 scan_facts { chapterRef?, includePaste? } — 触发增量事实扫描（批量结果进待审，勿静默直写）
@@ -80,6 +82,10 @@ scan_facts { chapterRef?, includePaste? } — 触发增量事实扫描（批量�
   角色卡用 add_character / update_character（voice/bio/relationships）。
 - 用户说「根据附件写入/更新设定/整理进设定页」时：必须输出 update_bible（可多项字段合并进一个 patch），必要时叠加 update_meta / add_character / update_character；message 用中文说明改了哪些栏。合并写入：保留工程里已有且附件未覆盖的内容，附件新信息追加或改写对应栏，勿无故清空未提及字段。
 - 从附件整理关系/时间线：优先 propose_* 或 scan_facts（includePaste=true）；禁止把附件原文整段塞进对白。
+- 从附件/长文整理**设定条目**：用 propose_lore_entries，一条一个主题（门派/系统/规则/组织/历史事件各自成条），
+  title 用能当名字的短语、body 写清这条设定本身、keywords 给 2~5 个"提问里可能出现的说法"（含别名）。
+  不要整篇照搬成一条，也不要把长文切成碎句；作者会在待审列表里逐条勾选。设定库里的条目你可以用
+  search_lore / get_lore_entry 自己检索，不要凭猜测引用设定。
 
 事实层边界：
 - 角色关系图 / 时间线 = 可对账事实；语气讨论与审稿意见 = 观点层，禁止用 message 假装已写入事实。
@@ -372,6 +378,7 @@ def apply_agent_actions(
         accept_character_link,
         accept_timeline_event,
         link_dedupe_key,
+        lore_dedupe_key,
         should_weak_sync_label,
         timeline_dedupe_key,
         weak_sync_relationships,
@@ -685,6 +692,52 @@ def apply_agent_actions(
                     }
                 )
                 applied.append(f"提议关系 {a.displayName}—{label}→{b.displayName}")
+                continue
+
+            if op == "propose_lore_entries":
+                # 设定条目**只能提议**：没有 add_lore / update_lore，AI 不能直接写设定库。
+                # 理由：评论里最扎心的一条就是"全是 AI 自己生成的设定，编辑自由度太小"。
+                raw_entries = action.get("entries")
+                if not isinstance(raw_entries, list):
+                    skipped.append("propose_lore_entries 缺少 entries 数组")
+                    continue
+                quote = action.get("quote")
+                made = 0
+                for raw in raw_entries[:12]:
+                    if not isinstance(raw, dict):
+                        continue
+                    title = str(raw.get("title") or "").strip()
+                    if not title:
+                        continue
+                    body = str(raw.get("body") or "").strip()
+                    kw_raw = raw.get("keywords")
+                    keywords = [
+                        str(k).strip()
+                        for k in (kw_raw if isinstance(kw_raw, list) else [])
+                        if str(k).strip()
+                    ][:8]
+                    inbox_proposals.append(
+                        {
+                            "kind": "lore_entry",
+                            "payload": {
+                                "title": title[:120],
+                                "body": body[:4000],
+                                "keywords": keywords,
+                            },
+                            "evidence": [
+                                {
+                                    "source": "agent",
+                                    "quote": str(quote)[:200] if quote else None,
+                                }
+                            ],
+                            "dedupe_key": lore_dedupe_key(title),
+                        }
+                    )
+                    made += 1
+                if made:
+                    applied.append(f"提议设定条目 ×{made}（待审）")
+                else:
+                    skipped.append("propose_lore_entries 没有可用的条目（title 必填）")
                 continue
 
             if op == "propose_timeline_event":

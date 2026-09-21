@@ -62,6 +62,20 @@ TOOL_SPECS: List[Dict[str, Any]] = [
         "parameters": {"query": "可选过滤词"},
     },
     {
+        "name": "search_lore",
+        "description": "在「设定条目」里按关键词检索并取回正文。开场上下文只会自动带上相关的那几条，"
+        "没带上的条目你要用这个工具自己取；query 留空则返回全部条目标题索引。",
+        "parameters": {
+            "query": "关键词、名字或说法（留空 = 列出所有条目标题）",
+            "limit": "最多取几条正文，默认 4",
+        },
+    },
+    {
+        "name": "get_lore_entry",
+        "description": "按标题/别名/id 精确取一条设定条目的完整正文（已知条目叫什么时用它）。",
+        "parameters": {"ref": "条目标题、别名或 id"},
+    },
+    {
         "name": "lint_draft",
         "description": "对候选正文或当前章跑叙事/AI 腔体检，返回问题列表。",
         "parameters": {
@@ -126,6 +140,35 @@ def _clip(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
     return text[: max_chars - 12] + "\n…(截断)"
+
+
+def _entry_keywords_of(entry: Any) -> List[str]:
+    raw = getattr(entry, "keywords", None)
+    if not isinstance(raw, (list, tuple)):
+        return []
+    return [str(k).strip() for k in raw if str(k).strip()]
+
+
+def _find_lore_entry(project: VnProject, ref: str) -> Optional[Any]:
+    """按标题 / 别名 / id 找一条设定条目（精确优先，其次包含）。"""
+    key = (ref or "").strip()
+    if not key:
+        return None
+    entries = [e for e in (getattr(project, "loreEntries", None) or []) if e]
+    for e in entries:
+        if str(getattr(e, "id", "")) == key:
+            return e
+    low = key.lower()
+    for e in entries:
+        if str(getattr(e, "title", "") or "").strip().lower() == low:
+            return e
+    for e in entries:
+        if low in [k.lower() for k in _entry_keywords_of(e)]:
+            return e
+    for e in entries:
+        if low in str(getattr(e, "title", "") or "").lower():
+            return e
+    return None
 
 
 def _bible_blob(project: VnProject) -> Dict[str, str]:
@@ -265,6 +308,59 @@ def run_agent_tool(
                         f" {getattr(lk, 'relation', '') or ''}".rstrip()
                     )
             return True, "\n".join(lines) if lines else "（无地点）"
+
+        if name == "search_lore":
+            from app.core.agent_context import lore_entry_index, rank_lore_entries
+
+            entries = [e for e in (getattr(project, "loreEntries", None) or []) if e]
+            if not entries:
+                return True, "（这部作品还没有设定条目）"
+            q = str(args.get("query") or "").strip()
+            if not q:
+                # 留空 = 索引模式：模型先看有哪些条目，再决定取哪条
+                return True, f"设定条目索引（共 {len(entries)} 条）：\n{lore_entry_index(entries)}"
+            limit = max(1, min(12, int(args.get("limit") or 4)))
+            hits = rank_lore_entries(entries, q, limit=limit)
+            if not hits:
+                # 没命中就把索引给它：别让模型干等，也别让它编一条设定出来
+                return True, (
+                    f"「{q}」没有命中设定条目。现有条目标题（可换个说法再查，或点名取全文）：\n"
+                    f"{lore_entry_index(entries)}"
+                )
+            parts = []
+            pin_titles = [
+                str(getattr(e, "title", "") or "")
+                for e in entries
+                if bool(getattr(e, "pinned", None))
+            ]
+            for e, score in hits:
+                title = str(getattr(e, "title", "") or "（无标题）")
+                keys = _entry_keywords_of(e)
+                body = str(getattr(e, "body", "") or "")
+                head = f"### {title}" + (f"　[{'/'.join(keys)}]" if keys else "")
+                parts.append(f"{head}\n{_clip(body, 1500) if body else '（这条没有正文）'}")
+            note = ""
+            if pin_titles:
+                note = f"\n（另有钉住条目每轮都会自动带上：{'、'.join(pin_titles[:6])}）"
+            return True, "\n\n".join(parts) + note
+
+        if name == "get_lore_entry":
+            ref = str(args.get("ref") or args.get("title") or args.get("id") or "").strip()
+            if not ref:
+                return False, "ref 必填"
+            entry = _find_lore_entry(project, ref)
+            if entry is None:
+                from app.core.agent_context import lore_entry_index
+
+                return False, (
+                    f"未找到设定条目：{ref}\n现有条目标题：\n"
+                    f"{lore_entry_index(getattr(project, 'loreEntries', None) or [])}"
+                )
+            title = str(getattr(entry, "title", "") or "（无标题）")
+            keys = _entry_keywords_of(entry)
+            body = str(getattr(entry, "body", "") or "")
+            head = f"### {title}" + (f"　[{'/'.join(keys)}]" if keys else "")
+            return True, f"{head}\n{_clip(body, 6000) if body else '（这条没有正文）'}"
 
         if name == "lint_draft":
             text = str(args.get("text") or "").strip()
