@@ -343,7 +343,7 @@ export function LorePanel({ projectId }: Props) {
 
       {inspireBlock && (
         <div className={styles.inspire}>
-          <h4>当前 AI 写作时会参考的设定卡</h4>
+          <h4>当前 AI 写作时会参考的写作参考卡</h4>
           <pre>{inspireBlock}</pre>
         </div>
       )}

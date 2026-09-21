@@ -40,7 +40,8 @@ export default function GuidePage() {
           <p className={styles.kicker}>VN SCRIPT STUDIO</p>
           <h1>使用说明</h1>
           <p className={styles.lead}>
-            从注册到导出，每个页面的完整用法。按章节顺序读，或从左侧目录跳到你关心的部分。
+            顶部「三分钟上手」读完就能开始写了。下面是每个页面的完整用法——
+            <strong>用到哪页查哪页</strong>，不必从头读到尾。
           </p>
           <p className={styles.nav}>
             <Link to="/login">登录</Link>

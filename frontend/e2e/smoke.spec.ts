@@ -14,25 +14,14 @@ function randomName(prefix: string): string {
   return `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
 }
 
-async function dismissTour(page: Page) {
-  const overlay = page.getByTestId("onboarding-overlay");
-  try {
-    await overlay.waitFor({ state: "visible", timeout: 2_000 });
-    await page.getByRole("button", { name: "跳过" }).click();
-  } catch {
-    /* 引导未出现：继续 */
-  }
-}
-
-/** 公告横幅 + 新手引导 + Agent 面板：页面加载前注入标记，
- *  让弹层/悬浮面板不干扰（Agent 预设为 docked 收起在右缘）
+/** 公告横幅 + Agent 面板：页面加载前注入标记，让弹层/悬浮面板不干扰
+ *  （Agent 预设为 docked 收起在右缘）。
  *  公告的已读标记是 `vnss-notice-read-v<版本>`，版本号每次发公告都会 +1，
  *  所以这里把所有版本一次性标成已读（以前只标了 v3，公告升到 v6 后弹窗又开始挡路）。 */
 function seedLocalStorage(page: Page) {
   page.addInitScript(() => {
     try {
       for (let v = 1; v <= 30; v += 1) localStorage.setItem(`vnss-notice-read-v${v}`, "1");
-      localStorage.setItem("vnss-tour-v1", "1");
       localStorage.setItem(
         "vnss-agent-float-v6",
         JSON.stringify({ mode: "docked", edge: "right", along: 96, size: "mini" })
@@ -67,7 +56,6 @@ async function register(page: Page, username: string) {
 /** 新账号现在会自带一个示例剧本（不再是空剧本库），所以：
  *  先看空库里有没有「空白剧本」入口，没有就走 项目 → 剧本库 再新建。 */
 async function createBlankProject(page: Page) {
-  await dismissTour(page);
   const blank = page.getByRole("button", { name: "空白剧本" });
   if (!(await blank.isVisible().catch(() => false))) {
     const rail = page.locator('nav[aria-label="剧本篇章"]');
@@ -78,7 +66,6 @@ async function createBlankProject(page: Page) {
   await blank.click();
   await page.getByRole("textbox", { name: "新剧本标题" }).fill("E2E 测试剧本");
   await page.getByRole("button", { name: "创建" }).click();
-  await dismissTour(page);
 }
 
 test("注册 → 登录 → 建项目 → 写作 → 保存 → 导出", async ({ page }) => {
@@ -102,7 +89,6 @@ test("注册 → 登录 → 建项目 → 写作 → 保存 → 导出", async (
 
   await page.waitForTimeout(2500);
   await page.reload();
-  await dismissTour(page);
   const after = page.getByTestId("script-editor");
   await expect(after).toHaveValue(/站厅里回荡/, { timeout: 15_000 });
   await expect(after).toHaveValue(/末班车已经开走了/);

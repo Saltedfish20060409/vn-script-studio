@@ -85,8 +85,7 @@ import { STUDIO_TABS } from "../lib/studioTabs";
 import { StudioTabs } from "./StudioTabs";
 import { StudioTopBar } from "./StudioTopBar";
 import { TemplatePicker } from "./TemplatePicker";
-import { OnboardingOverlay } from "./OnboardingOverlay";
-import { hasSeenTour } from "../lib/onboarding";
+
 import { QPet } from "./QPet";
 import { AdminPanel } from "./AdminPanel";
 import { ClickFx } from "./ClickFx";import { WorldPanel } from "./WorldPanel";
@@ -196,6 +195,28 @@ function tabIndex(tab: StudioTab): number {
   return i < 0 ? 0 : i;
 }
 
+/**
+ * 项目页的子页签分两组。
+ *
+ * 为什么分：原来九个子页签一次全排出来，新人第一眼就要在「账本 / 素材 / 本地化 /
+ * 快照分享 / 成员」里做选择——这些是长尾功能，用不到的人只会觉得"好复杂"。
+ * 常用的四个常驻，其余收进「更多」；**当前正停在长尾页时自动展开**，老用户不丢入口。
+ */
+const PROJECT_SUBS_PRIMARY = [
+  ["library", "剧本库"],
+  ["stats", "写作统计"],
+  ["analysis", "结构分析"],
+  ["export", "导出"],
+] as const;
+
+const PROJECT_SUBS_MORE = [
+  ["ledger", "账本 / 摘要"],
+  ["assets", "素材"],
+  ["localization", "本地化"],
+  ["history", "快照 / 分享"],
+  ["members", "成员"],
+] as const;
+
 function downloadText(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime });
   downloadBlob(filename, blob);
@@ -262,8 +283,11 @@ export function StudioApp() {
     cachedWs.projectSub || wsDefaults.projectSub
   );
   const [playOpen, setPlayOpen] = useState(false);
-  const [tourOpen, setTourOpen] = useState(() => !hasSeenTour());
+  const [projectMoreOpen, setProjectMoreOpen] = useState(false);
   const [petCheer, setPetCheer] = useState(0);
+  // 长尾子页里正停着 → 强制展开，避免"当前页签看不见"
+  const projectMoreVisible =
+    projectMoreOpen || PROJECT_SUBS_MORE.some(([id]) => id === projectSub);
   const [chapterId, setChapterId] = useState(cachedWs.chapterId || "");
   const otherLock = activeLocks.find(
     (l) => l.chapterId === chapterId && l.userId !== myUserId
@@ -2438,9 +2462,6 @@ export function StudioApp() {
   return (
     <>
       <PwaInstallPrompt />
-      {tourOpen && project && (
-        <OnboardingOverlay onDone={() => setTourOpen(false)} />
-      )}
       {/* 桌面视图：图标是"快捷方式"，双击剧本 = 打开**这个剧本自己的窗口**（不是跳走） */}
       {showDesktop ? (
         <DesktopView
@@ -2620,32 +2641,44 @@ export function StudioApp() {
             {tab === "project" && (
               <section className={styles.panel}>
                 <div className={styles.subNav}>
-                  {(
-                    [
-                      ["library", "剧本库"],
-                      ["ledger", "账本 / 摘要"],
-                      ["stats", "写作统计"],
-                      ["analysis", "结构分析"],
-                      ["assets", "素材"],
-                      ["localization", "本地化"],
-                      ["export", "导出"],
-                      ["history", "快照 / 分享"],
-                      ["members", "成员"],
-                    ] as const
-                  )
+                  {PROJECT_SUBS_PRIMARY
                     // 桌面视图里这个窗口只属于当前剧本，"剧本库"（列出全部剧本、切来切去）
                     // 不该出现在这里：桌面上双击哪个就是哪个，右键能重命名/复制/删除。
                     .filter(([id]) => !(showDesktop && id === "library"))
                     .map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className={projectSub === id ? styles.subActive : styles.subTab}
+                        onClick={() => setProjectSub(id)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  {/* 长尾子页收进「更多」：新人第一眼只需看到常用的那四个。
+                      当前就在长尾页里时**自动展开**，老用户不会丢入口。 */}
+                  {projectMoreVisible ? (
+                    PROJECT_SUBS_MORE.map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className={projectSub === id ? styles.subActive : styles.subTab}
+                        onClick={() => setProjectSub(id)}
+                      >
+                        {label}
+                      </button>
+                    ))
+                  ) : (
                     <button
-                      key={id}
                       type="button"
-                      className={projectSub === id ? styles.subActive : styles.subTab}
-                      onClick={() => setProjectSub(id)}
+                      className={styles.subTab}
+                      data-testid="project-subs-more"
+                      aria-expanded={false}
+                      onClick={() => setProjectMoreOpen(true)}
                     >
-                      {label}
+                      更多 ›
                     </button>
-                  ))}
+                  )}
                 </div>
 
                 {projectSub === "library" && showDesktop && (

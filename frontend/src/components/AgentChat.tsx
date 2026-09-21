@@ -1918,7 +1918,7 @@ export function AgentChat({
             </button>
             <span className={styles.sectionHint} data-testid="agent-sections-summary">
               {excluded.length === 0
-                ? "默认全带（机制类资料已按任务自动省去）"
+                ? "AI 会参考你的设定与资料（点开可以少给它一些）"
                 : `本次不带 ${excluded.length} 项`}
             </span>
             {sectionsOpen ? (

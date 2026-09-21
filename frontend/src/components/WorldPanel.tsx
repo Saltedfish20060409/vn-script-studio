@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ColorPicker } from "./ColorPicker";
 import { LorePanel } from "./LorePanel";
 import { LoreEntriesPanel } from "./LoreEntriesPanel";
@@ -32,7 +33,8 @@ type Props = {
 };
 
 /**
- * 设定 tab: 角色卡 / 世界观 · 大纲 / 设定卡 / 设定条目 secondary nav plus panels.
+ * 设定 tab: 角色卡 / 世界观 · 大纲 / 设定条目 三个常驻页，
+ * 外加收在「更多」里的「写作参考卡」（进阶：教 AI 怎么写，不是"你的设定"）。
  * Pure presentational — update/delete logic stays in StudioApp.
  */
 export function WorldPanel({
@@ -57,6 +59,11 @@ export function WorldPanel({
   hasStyleSamples = false,
 }: Props) {
   const entriesBadge = loreEntries.length ? String(loreEntries.length) : "";
+  // 「写作参考卡」是进阶功能（教 AI 怎么写），原来和「设定条目」（你的设定库）并列，
+  // 两个名字只差一个字、意思完全不同，是"看不懂"的重灾区。现在它收进「更多」，
+  // 但正停在这一页时自动展开，老用户不会丢入口。
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreVisible = moreOpen || worldSub === "lore";
   return (
     <>
       <div className={styles.subNav} style={{ padding: "0.75rem 1.1rem 0" }}>
@@ -76,18 +83,31 @@ export function WorldPanel({
         </button>
         <button
           type="button"
-          className={worldSub === "lore" ? styles.subActive : styles.subTab}
-          onClick={onSelectLore}
-        >
-          设定卡
-        </button>
-        <button
-          type="button"
           className={worldSub === "entries" ? styles.subActive : styles.subTab}
           onClick={onSelectEntries}
         >
           设定条目{entriesBadge ? `（${entriesBadge}）` : ""}
         </button>
+        {/* 进阶：教 AI 怎么写（不是"你的设定"），所以排在最后并默认收起 */}
+        {moreVisible ? (
+          <button
+            type="button"
+            className={worldSub === "lore" ? styles.subActive : styles.subTab}
+            onClick={onSelectLore}
+          >
+            写作参考卡
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={styles.subTab}
+            data-testid="world-subs-more"
+            aria-expanded={false}
+            onClick={() => setMoreOpen(true)}
+          >
+            更多 ›
+          </button>
+        )}
       </div>
       {worldSub === "characters" && (
         <section className={styles.panel}>
