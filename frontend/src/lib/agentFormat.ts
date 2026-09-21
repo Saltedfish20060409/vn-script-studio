@@ -24,6 +24,7 @@ const ACTION_LABEL: Record<string, string> = {
   update_bible: "更新设定",
   update_meta: "更新元信息",
   propose_character_link: "提议关系",
+  propose_lore_entries: "提议设定条目",
   propose_timeline_event: "提议时间线",
   add_character_link: "写入关系",
   update_character_link: "更新关系",

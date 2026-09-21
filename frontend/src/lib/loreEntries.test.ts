@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  draftFromImport,
+  draftsToImports,
   importToEntries,
   keywordsToText,
   newLoreEntry,
   parseKeywords,
   parseLoreImport,
+  suggestKeywords,
+  toggleKeyword,
 } from "./loreEntries";
 
 describe("parseKeywords / keywordsToText", () => {
@@ -80,5 +84,82 @@ describe("newLoreEntry", () => {
     expect(e.title).toBe("");
     expect(e.body).toBe("");
     expect(e.keywords).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 触发词推荐：让作者不必理解「触发词」是什么
+// ---------------------------------------------------------------------------
+
+describe("suggestKeywords", () => {
+  it("标题本身就是第一个候选（提问最容易直接叫出名字）", () => {
+    expect(suggestKeywords("夺魂案")[0]).toBe("夺魂案");
+  });
+
+  it("标题去后缀给出简称：青云门 → 青云", () => {
+    const got = suggestKeywords("青云门", "东域正道之首。");
+    expect(got).toContain("青云门");
+    expect(got).toContain("青云");
+  });
+
+  it("把正文里书名号 / 引号里的专名也算上", () => {
+    const got = suggestKeywords("封印", "封印与《镜湖祭典》有关，源自「百年前之乱」。");
+    expect(got).toContain("镜湖祭典");
+    expect(got).toContain("百年前之乱");
+  });
+
+  it("不推明显不是叫法的词：正文里的普通句子不进候选", () => {
+    const got = suggestKeywords("铁律", "任何人不得提及先帝，违者逐出宗门。");
+    expect(got).not.toContain("任何人不得提及先帝");
+    expect(got.every((k) => k.length <= 12)).toBe(true);
+  });
+
+  it("去重、限量、保持优先级顺序", () => {
+    const got = suggestKeywords("青云门", "青云门在青云山。青云门掌门玄真。", 3);
+    expect(got.length).toBeLessThanOrEqual(3);
+    expect(new Set(got).size).toBe(got.length);
+    expect(got[0]).toBe("青云门");
+  });
+
+  it("只有标题也能给出候选（不依赖正文）", () => {
+    expect(suggestKeywords("太虚宗", "")).toEqual(["太虚宗", "太虚"]);
+  });
+
+  it("空标题空正文 → 不给噪声", () => {
+    expect(suggestKeywords("", "")).toEqual([]);
+  });
+});
+
+describe("draftFromImport / draftsToImports", () => {
+  it("默认勾选，并把解析出的关键词与推荐词合并去重", () => {
+    const d = draftFromImport({ title: "青云门", body: "东域正道之首。", keywords: ["掌门"] });
+    expect(d.include).toBe(true);
+    expect(d.keywords).toContain("掌门");
+    expect(d.keywords).toContain("青云门");
+    expect(new Set(d.keywords).size).toBe(d.keywords.length);
+    expect(d.suggested).toContain("青云");
+  });
+
+  it("取消勾选的条目不会被导入", () => {
+    const a = draftFromImport({ title: "甲", body: "", keywords: [] });
+    const b = { ...draftFromImport({ title: "乙", body: "", keywords: [] }), include: false };
+    expect(draftsToImports([a, b]).map((x) => x.title)).toEqual(["甲"]);
+  });
+
+  it("标题被改空的不导入（避免出现无名条目）", () => {
+    const a = { ...draftFromImport({ title: "甲", body: "", keywords: [] }), title: "   " };
+    expect(draftsToImports([a])).toEqual([]);
+  });
+
+  it("触发词里的空白项被清掉", () => {
+    const d = { ...draftFromImport({ title: "甲", body: "", keywords: [] }), keywords: ["甲", " ", ""] };
+    expect(draftsToImports([d])[0].keywords).toEqual(["甲"]);
+  });
+});
+
+describe("toggleKeyword", () => {
+  it("点一下加上，再点一下去掉", () => {
+    expect(toggleKeyword(["甲"], "乙")).toEqual(["甲", "乙"]);
+    expect(toggleKeyword(["甲", "乙"], "乙")).toEqual(["甲"]);
   });
 });

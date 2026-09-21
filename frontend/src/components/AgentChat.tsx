@@ -847,8 +847,14 @@ export function AgentChat({
       const noteUndo = applied
         ? `可用「撤回编辑」回滚（当前对话内 ${undoStack.current.length} 步）`
         : "";
+      // AI 提议的设定条目/关系/时间线不会直接落地：明确告诉作者去哪儿点确认，
+      // 否则作者会以为"它说整理好了"其实什么都没进设定库。
+      const proposed = actions.some((a) => String(a.op || "").startsWith("propose_"));
       const foot = [
         applied ? `已落地：${describeActions(actions)}` : "",
+        proposed
+          ? "上面的「提议」都放进了「项目 → 结构分析 → 待审列表」，你逐条勾选接受后才会写进工程（AI 不会直接改设定库）"
+          : "",
         warnings.length ? `未执行：${warnings.join("；")}` : "",
         noteUndo,
       ]

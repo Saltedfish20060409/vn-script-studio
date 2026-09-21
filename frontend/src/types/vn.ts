@@ -535,6 +535,12 @@ export type AgentAction =
       order?: number;
     }
   | {
+      /** 设定条目只能提议：接受后才写进 loreEntries */
+      op: "propose_lore_entries";
+      entries: Array<{ title: string; body?: string; keywords?: string[] }>;
+      quote?: string;
+    }
+  | {
       op: "add_character_link";
       fromRef: string;
       toRef: string;

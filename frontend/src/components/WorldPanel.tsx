@@ -273,7 +273,11 @@ export function WorldPanel({
       )}
       {worldSub === "entries" && (
         <section className={styles.panel} style={{ padding: 0 }}>
-          <LoreEntriesPanel entries={loreEntries} onChange={onLoreEntriesChange} />
+          <LoreEntriesPanel
+            entries={loreEntries}
+            onChange={onLoreEntriesChange}
+            projectId={projectId}
+          />
         </section>
       )}
     </>

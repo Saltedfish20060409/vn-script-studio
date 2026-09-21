@@ -31,6 +31,10 @@ export function FactExtractReview({
     () => items.filter((i) => i.kind === "timeline_event"),
     [items]
   );
+  const lore = useMemo(
+    () => items.filter((i) => i.kind === "lore_entry"),
+    [items]
+  );
 
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(items.map((i) => i.id))
@@ -63,7 +67,8 @@ export function FactExtractReview({
           <h2 id="fact-extract-review-title">确认加入关系与时间线</h2>
           <p className={styles.sub}>
             候选来自剧本、作品设定和角色卡（及你粘贴的内容）。勾选后点「接受」才会把条目
-            加进角色关系与时间线（只加资料，不改正文）；「稍后处理」只关弹窗，候选仍保留，可稍后再看。
+            加进角色关系、时间线与设定条目（只加资料，不改正文）；AI 不会直接改动你的设定库。
+            「稍后处理」只关弹窗，候选仍保留，可稍后再看。
           </p>
         </header>
 
@@ -88,6 +93,50 @@ export function FactExtractReview({
         </div>
 
         <div className={styles.cols}>
+          {/* 设定条目单独一段：AI 只能提议，你勾了才进设定库 */}
+          {lore.length > 0 ? (
+            <section data-testid="fact-review-lore">
+              <h3>设定条目（AI 提议，接受后才进设定库）</h3>
+              <ul className={styles.list}>
+                {lore.map((item) => {
+                  const title = String(item.payload.title ?? "（无标题）");
+                  const body = String(item.payload.body ?? "");
+                  const kw = Array.isArray(item.payload.keywords)
+                    ? (item.payload.keywords as unknown[]).map(String)
+                    : [];
+                  const quote = item.evidence?.[0]?.quote;
+                  return (
+                    <li key={item.id}>
+                      <label className={styles.row}>
+                        <input
+                          type="checkbox"
+                          checked={selected.has(item.id)}
+                          onChange={() => toggle(item.id)}
+                        />
+                        <span>
+                          <strong>{title}</strong>
+                          {kw.length ? (
+                            <span className={styles.meta}>触发词：{kw.join("、")}</span>
+                          ) : (
+                            <span className={styles.meta}>
+                              没有触发词（以后要按别名叫它，建议补一个）
+                            </span>
+                          )}
+                          {body ? (
+                            <span className={styles.meta}>
+                              {body.slice(0, 120)}
+                              {body.length > 120 ? "…" : ""}
+                            </span>
+                          ) : null}
+                          {quote ? <em className={styles.quote}>「{quote}」</em> : null}
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ) : null}
           <section>
             <h3>角色关系</h3>
             <ul className={styles.list}>

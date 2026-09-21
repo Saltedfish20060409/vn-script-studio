@@ -112,6 +112,131 @@
   opacity: 0.85;
 }
 
+.error {
+  margin: 0;
+  padding: 0.4rem 0.55rem;
+  border-left: 3px solid var(--accent-hot);
+  background: color-mix(in srgb, var(--accent-hot) 8%, transparent);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  color: var(--ink);
+}
+
+/* 选文件导入：整份设定文档丢进来，不用先手工切段 */
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.filePick {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.42rem 0.8rem;
+  border: 1px solid var(--rail-border);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.filePick:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.filePick input[type="file"] {
+  display: none;
+}
+
+/* 导入预览：先让作者看清「会变成什么」，再决定导不导 */
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.previewHead {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+}
+
+.previewList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 22rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.previewRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid var(--rail-border);
+  border-radius: var(--radius-md);
+}
+
+.previewCheck {
+  padding-top: 0.25rem;
+  flex: 0 0 auto;
+}
+
+.previewBody {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.previewTitle {
+  width: 100%;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.previewText {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.chips {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.chip {
+  padding: 0.16rem 0.5rem;
+  border: 1px dashed var(--rail-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-style: solid;
+}
+
+.chipOn {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--ink);
+}
+
 .empty {
   margin: 0;
   padding: 1.2rem 0;
