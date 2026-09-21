@@ -83,12 +83,12 @@ test("新人第一屏：没有功能名长文弹窗，只有三个可点的动�
   );
 });
 
-test("项目页：默认只列 4 个常用子页，长尾进「更多」且一个都没少", async ({ page }) => {
+test("项目页：「更多」能开也能关，长尾一个都没少", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await registerAndLogin(page, randomName("e2e_subs_"));
   await gotoTab(page, "项目");
 
-  const nav = page.locator("section").first();
+  const more = page.getByTestId("project-subs-more");
   for (const label of ["剧本库", "写作统计", "结构分析", "导出"]) {
     await expect(page.getByRole("button", { name: label, exact: true }).first()).toBeVisible({
       timeout: 20_000,
@@ -98,30 +98,47 @@ test("项目页：默认只列 4 个常用子页，长尾进「更多」且一�
   for (const label of ["本地化", "成员", "账本 / 摘要"]) {
     await expect(page.getByRole("button", { name: label, exact: true })).toHaveCount(0);
   }
-  expect(nav).toBeTruthy();
+  await expect(more).toHaveText(/更多/);
 
-  await page.getByTestId("project-subs-more").click();
-  // 展开后五个长尾都在，加上原来四个 = 9 个，一个没删
+  // 展开：五个长尾都在，加上原来四个 = 9 个，一个没删；按钮变成「收起」
+  await more.click();
   for (const label of ["账本 / 摘要", "素材", "本地化", "快照 / 分享", "成员"]) {
     await expect(page.getByRole("button", { name: label, exact: true }).first()).toBeVisible();
   }
-  await expect(page.getByTestId("project-subs-more")).toHaveCount(0);
+  await expect(more).toHaveText(/收起/);
+
+  // 关得掉：这就是曾经的 bug——展开后按钮被页签替换、点开就收不回来
+  await more.click();
+  await expect(more).toHaveText(/更多/);
+  for (const label of ["本地化", "成员"]) {
+    await expect(page.getByRole("button", { name: label, exact: true })).toHaveCount(0);
+  }
+  // 关掉之后原来的四个常用页签还在（没被连带藏起来）
+  for (const label of ["剧本库", "写作统计", "结构分析", "导出"]) {
+    await expect(page.getByRole("button", { name: label, exact: true }).first()).toBeVisible();
+  }
 });
 
-test("停在长尾子页时「更多」自动展开，刷新也不丢", async ({ page }) => {
+test("停在长尾子页时：收起也看得见自己在哪，刷新后不丢", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await registerAndLogin(page, randomName("e2e_subs_keep_"));
   await gotoTab(page, "项目");
 
-  await page.getByTestId("project-subs-more").click();
+  const more = page.getByTestId("project-subs-more");
+  await more.click();
   await page.getByRole("button", { name: "本地化", exact: true }).click();
-  await expect(page.getByRole("button", { name: "本地化", exact: true })).toBeVisible();
+  await expect(more).toHaveText(/收起/);
 
-  // 刷新后仍停在长尾页，且「更多」自动展开（当前页签看得见）
+  // 手动收起：当前页那一个页签要留着（否则"看不见自己在哪"），其余长尾收起来
+  await more.click();
+  await expect(page.getByRole("button", { name: "本地化", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "成员", exact: true })).toHaveCount(0);
+
+  // 刷新后仍停在长尾页，且当前页签依然看得见
   await page.reload();
   const active = page.getByRole("button", { name: "本地化", exact: true }).first();
   await expect(active).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("project-subs-more")).toHaveCount(0);
+  await expect(page.getByTestId("project-subs-more")).toHaveText(/更多/);
 });
 
 test("设定页：写作参考卡不再和设定条目并列，但入口还在", async ({ page }) => {
@@ -137,14 +154,22 @@ test("设定页：写作参考卡不再和设定条目并列，但入口还在",
   // 进阶的写作参考卡默认不并列出现
   await expect(page.getByRole("button", { name: "写作参考卡", exact: true })).toHaveCount(0);
 
-  await page.getByTestId("world-subs-more").click();
+  const more = page.getByTestId("world-subs-more");
+  await more.click();
   const card = page.getByRole("button", { name: "写作参考卡", exact: true });
   await expect(card).toBeVisible();
+  await expect(more).toHaveText(/收起/);
 
   // 点进去功能照旧（收藏参考卡 + 萌百搜索都还在）
   await card.click();
   await expect(page.getByPlaceholder(/搜索萌百/)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(/AI 写作时作为参考/)).toBeVisible();
+
+  // 这里同样要能收回来：当前停在这一页，所以页签留着、按钮回到「更多」
+  await more.click();
+  await expect(more).toHaveText(/更多/);
+  await expect(card).toBeVisible();
+  await expect(page.getByPlaceholder(/搜索萌百/)).toBeVisible();
 });
 
 test("Agent 起手句：一下都不用打字，点一下就填好", async ({ page }) => {

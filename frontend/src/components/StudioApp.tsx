@@ -285,9 +285,6 @@ export function StudioApp() {
   const [playOpen, setPlayOpen] = useState(false);
   const [projectMoreOpen, setProjectMoreOpen] = useState(false);
   const [petCheer, setPetCheer] = useState(0);
-  // 长尾子页里正停着 → 强制展开，避免"当前页签看不见"
-  const projectMoreVisible =
-    projectMoreOpen || PROJECT_SUBS_MORE.some(([id]) => id === projectSub);
   const [chapterId, setChapterId] = useState(cachedWs.chapterId || "");
   const otherLock = activeLocks.find(
     (l) => l.chapterId === chapterId && l.userId !== myUserId
@@ -2655,30 +2652,32 @@ export function StudioApp() {
                         {label}
                       </button>
                     ))}
-                  {/* 长尾子页收进「更多」：新人第一眼只需看到常用的那四个。
-                      当前就在长尾页里时**自动展开**，老用户不会丢入口。 */}
-                  {projectMoreVisible ? (
-                    PROJECT_SUBS_MORE.map(([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        className={projectSub === id ? styles.subActive : styles.subTab}
-                        onClick={() => setProjectSub(id)}
-                      >
-                        {label}
-                      </button>
-                    ))
-                  ) : (
+                  {/* 长尾子页收进「更多」。两条规矩：
+                      ① 「更多」按钮**始终在**，能开就能关（展开后变成「收起」）——
+                         上一版把它换成一堆页签、自己消失了，点开就收不回来；
+                      ② 当前页若是长尾页，即使收起也留着它那一个页签，
+                         否则会出现"页面在长尾页、却看不见自己在哪"。 */}
+                  {PROJECT_SUBS_MORE.filter(
+                    ([id]) => projectMoreOpen || id === projectSub
+                  ).map(([id, label]) => (
                     <button
+                      key={id}
                       type="button"
-                      className={styles.subTab}
-                      data-testid="project-subs-more"
-                      aria-expanded={false}
-                      onClick={() => setProjectMoreOpen(true)}
+                      className={projectSub === id ? styles.subActive : styles.subTab}
+                      onClick={() => setProjectSub(id)}
                     >
-                      更多 ›
+                      {label}
                     </button>
-                  )}
+                  ))}
+                  <button
+                    type="button"
+                    className={styles.subTab}
+                    data-testid="project-subs-more"
+                    aria-expanded={projectMoreOpen}
+                    onClick={() => setProjectMoreOpen((v) => !v)}
+                  >
+                    {projectMoreOpen ? "收起 ‹" : "更多 ›"}
+                  </button>
                 </div>
 
                 {projectSub === "library" && showDesktop && (

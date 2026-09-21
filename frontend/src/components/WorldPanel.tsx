@@ -60,10 +60,9 @@ export function WorldPanel({
 }: Props) {
   const entriesBadge = loreEntries.length ? String(loreEntries.length) : "";
   // 「写作参考卡」是进阶功能（教 AI 怎么写），原来和「设定条目」（你的设定库）并列，
-  // 两个名字只差一个字、意思完全不同，是"看不懂"的重灾区。现在它收进「更多」，
-  // 但正停在这一页时自动展开，老用户不会丢入口。
+  // 两个名字只差一个字、意思完全不同，是"看不懂"的重灾区。现在它收进「更多」。
+  // 注意：「更多」按钮必须一直在（能开能关）——上一版展开后按钮自己消失，点开就收不回来。
   const [moreOpen, setMoreOpen] = useState(false);
-  const moreVisible = moreOpen || worldSub === "lore";
   return (
     <>
       <div className={styles.subNav} style={{ padding: "0.75rem 1.1rem 0" }}>
@@ -88,8 +87,10 @@ export function WorldPanel({
         >
           设定条目{entriesBadge ? `（${entriesBadge}）` : ""}
         </button>
-        {/* 进阶：教 AI 怎么写（不是"你的设定"），所以排在最后并默认收起 */}
-        {moreVisible ? (
+        {/* 进阶：教 AI 怎么写（不是"你的设定"），所以排在最后并默认收起。
+            「更多」始终在、能开能关；当前正停在这一页时即使收起也留着它，
+            免得"页面在写作参考卡、却看不见自己在哪"。 */}
+        {worldSub === "lore" || moreOpen ? (
           <button
             type="button"
             className={worldSub === "lore" ? styles.subActive : styles.subTab}
@@ -97,17 +98,16 @@ export function WorldPanel({
           >
             写作参考卡
           </button>
-        ) : (
-          <button
-            type="button"
-            className={styles.subTab}
-            data-testid="world-subs-more"
-            aria-expanded={false}
-            onClick={() => setMoreOpen(true)}
-          >
-            更多 ›
-          </button>
-        )}
+        ) : null}
+        <button
+          type="button"
+          className={styles.subTab}
+          data-testid="world-subs-more"
+          aria-expanded={moreOpen}
+          onClick={() => setMoreOpen((v) => !v)}
+        >
+          {moreOpen ? "收起 ‹" : "更多 ›"}
+        </button>
       </div>
       {worldSub === "characters" && (
         <section className={styles.panel}>
