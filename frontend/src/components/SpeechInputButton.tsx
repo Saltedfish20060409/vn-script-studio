@@ -24,6 +24,7 @@ export function SpeechInputButton({ onInsert, autoStart = false }: Props) {
   const finalsRef = useRef<string[]>([]);
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!supported) return;
@@ -69,6 +70,7 @@ export function SpeechInputButton({ onInsert, autoStart = false }: Props) {
     recRef.current = rec;
     finalsRef.current = [];
     setInterim("");
+    setError("");
     setListening(true);
     rec.onresult = (e) => {
       let interimText = "";
@@ -94,8 +96,22 @@ export function SpeechInputButton({ onInsert, autoStart = false }: Props) {
       }
     };
     rec.onerror = (e) => {
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        setListening(false);
+      setListening(false);
+      // 以前只处理 not-allowed，其它错误被静默吞掉：用户点了麦克风、界面一闪就没了，
+      // 完全不知道发生了什么（"语音输入现在还能不能用"就是这么变成谜的）。
+      // 实测：Chrome 的语音识别走 Google 的服务，网络不通时报的就是 network。
+      const code = e.error ?? "";
+      if (code === "aborted") return; // 自己主动停的，不是错误
+      if (code === "not-allowed" || code === "service-not-allowed") {
+        setError("浏览器没给麦克风权限——点地址栏的锁图标允许「麦克风」再试。");
+      } else if (code === "network") {
+        setError("连不上语音识别服务（用的是 Google 的服务，网络不通时用不了）。可以先用打字输入。");
+      } else if (code === "no-speech") {
+        setError("没听到声音，靠近麦克风再说一次。");
+      } else if (code === "audio-capture") {
+        setError("找不到麦克风设备。");
+      } else {
+        setError(`语音识别失败（${code || "未知原因"}）。可以先用打字输入。`);
       }
     };
     try {
@@ -124,6 +140,11 @@ export function SpeechInputButton({ onInsert, autoStart = false }: Props) {
           {interim || "正在聆听…"}
         </span>
       )}
+      {!listening && error ? (
+        <span className={styles.error} role="status" aria-live="polite" data-testid="speech-error">
+          {error}
+        </span>
+      ) : null}
     </div>
   );
 }

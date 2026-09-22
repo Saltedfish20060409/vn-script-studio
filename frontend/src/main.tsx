@@ -4,11 +4,14 @@ import { BrowserRouter } from "react-router-dom";
 import { registerSW } from "virtual:pwa-register";
 import App from "./App";
 import { installErrorReporter } from "./lib/errorReporter";
-// 自托管展示/等宽字体（仅 latin，中文走系统字体回退）
+// 自托管字体：拉丁用 Baloo 2 / JetBrains Mono，中文用 Noto Sans SC
+// （中文那份由 scripts/gen-cjk-font-css.mjs 生成：按 unicode-range 分片，
+//   浏览器只下载页面上真正出现的字所在的片，且只留 woff2）
 import "@fontsource/baloo-2/latin-600.css";
 import "@fontsource/baloo-2/latin-700.css";
 import "@fontsource/jetbrains-mono/latin-400.css";
 import "@fontsource/jetbrains-mono/latin-500.css";
+import "./styles/fonts-noto-sans-sc.css";
 import "./styles/globals.css";
 
 installErrorReporter();

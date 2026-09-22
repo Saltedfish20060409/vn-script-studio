@@ -44,4 +44,12 @@
   white-space: nowrap;
 }
 
+/* 失败原因要说出来：以前静默吞掉错误，用户只看到按钮闪一下就没反应 */
+.error {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  max-width: 26rem;
+  color: var(--danger, #e11d48);
+}
+
 

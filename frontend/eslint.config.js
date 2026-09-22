@@ -40,5 +40,14 @@ export default tseslint.config(
       "no-constant-condition": "off",
     },
   },
+  {
+    // 构建期脚本（Node 环境）：globals.browser 下 process/Buffer/console 会报 no-undef
+    files: ["scripts/**/*.{js,mjs,cjs}"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: globals.node,
+    },
+  },
   prettier,
 );
