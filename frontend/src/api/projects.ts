@@ -603,6 +603,24 @@ export type AgentAttachment = {
   warning?: string | null;
 };
 
+/** 动笔前问几句：给一个写作目标，拿回 2~3 个该先定下来的问题（可跳过）。 */
+export type PreQuestionsResult = {
+  questions: string[];
+  /** llm = 模型按你的设定生成的；template = 模型不可用时的模板问题 */
+  source: "llm" | "template";
+};
+
+export function fetchPreQuestions(
+  projectId: string,
+  body: { goal?: string; chapter_id?: string | null }
+): Promise<PreQuestionsResult> {
+  return apiFetch(`/projects/${projectId}/agent/pre-questions`, {
+    method: "POST",
+    timeoutMs: 90_000,
+    body: JSON.stringify(body),
+  });
+}
+
 export function uploadAgentAttachment(
   projectId: string,
   file: File,

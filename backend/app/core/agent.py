@@ -223,7 +223,11 @@ def _normalize_bible_patch(raw: Any) -> Dict[str, str]:
 
 def _coerce_script_text(value: Any) -> Optional[str]:
     if isinstance(value, str):
-        return value
+        # 模型偶尔把整段正文当转义字符串/代码块吐出来（字面 \n、```renpy 围栏），
+        # 落到正文里就是一眼可见的垃圾 —— 这里统一自愈。
+        from app.core.llm_text import normalize_model_text
+
+        return normalize_model_text(value)
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, (int, float)):
@@ -314,14 +318,18 @@ def _parse_agent_json(raw: str) -> Tuple[str, List[AgentAction]]:
     except json.JSONDecodeError:
         # 模型没吐 JSON（如忽略 response_format 返回纯文本，或返回空串）：
         # 把原文当回复，绝不把裸 JSONDecodeError 抛给用户。
-        prose = text.strip()
-        if not prose:
+        from app.core.llm_text import normalize_model_text
+
+        prose = normalize_model_text(text.strip())
+        if not prose.strip():
             return "模型返回了无法解析的内容（空响应），请重试。", []
-        return prose[:2000], []
+        return prose.strip()[:2000], []
     actions = _normalize_agent_actions(parsed.get("actions"))
     message = parsed.get("message")
     if isinstance(message, str) and message.strip():
-        return message.strip(), actions
+        from app.core.llm_text import normalize_model_text
+
+        return normalize_model_text(message.strip()), actions
     # Empty message is a common model failure mode; never leave a dead "已处理。"
     if actions:
         ops = []

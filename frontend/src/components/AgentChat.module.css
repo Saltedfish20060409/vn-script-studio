@@ -1564,3 +1564,103 @@ html[data-panel-glass="ink"] .stageOverlay {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
+
+/* 「动笔前先问几句」：入口 + 问题卡片。
+   和起手句同理——这里也在半透明/有背景图的底上，所以给实底 + 主墨色。 */
+.preQRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  padding: 0.15rem 0 0.2rem;
+}
+
+.preQBtn {
+  border: 1px solid color-mix(in srgb, var(--ink) 32%, transparent);
+  border-radius: var(--radius-pill, 999px);
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
+  color: var(--ink);
+  font-size: 0.72rem;
+  padding: 0.15rem 0.55rem;
+  cursor: pointer;
+}
+
+.preQBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.preQHint {
+  font-size: 0.72rem;
+  color: var(--ink);
+  opacity: 0.8;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preQCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  margin: 0.15rem 0 0.35rem;
+  padding: 0.55rem 0.65rem 0.6rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-bg) 94%, transparent);
+  box-shadow: var(--shadow);
+}
+
+.preQCardHead {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--ink);
+}
+
+.preQItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.preQText {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.preQInput {
+  width: 100%;
+  font-size: 0.8rem;
+}
+
+.preQActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.15rem;
+}
+
+.preQPrimary,
+.preQGhost {
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-md);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.preQPrimary {
+  border: none;
+  background: var(--grad-accent, var(--accent));
+  color: var(--on-accent, #fff);
+  font-weight: 600;
+}
+
+.preQGhost {
+  border: 1px solid var(--rail-border);
+  background: transparent;
+  color: var(--ink);
+}

@@ -113,7 +113,10 @@ def _parse_review_json(raw: str) -> NarrativeReviewResult:
         if not isinstance(revised_raw, str):
             revised_raw = parsed.get("revisedText")
         revised_raw = revised_raw if isinstance(revised_raw, str) else ""
-        revised = revised_raw.strip()
+        # 自检改写稿同样可能被模型当成转义字符串/代码块吐出来，落到正文就是垃圾
+        from app.core.llm_text import normalize_model_text
+
+        revised = normalize_model_text(revised_raw.strip())
         note_raw = parsed.get("note")
         note = note_raw.strip() if isinstance(note_raw, str) and note_raw.strip() else ""
 

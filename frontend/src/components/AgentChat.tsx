@@ -30,6 +30,7 @@ import {
   chapterRevise,
   chapterReviseApply,
   factsScan,
+  fetchPreQuestions,
   type AgentAttachment,
   type AgentConversationOut,
   type AgentConversationSummary,
@@ -203,6 +204,62 @@ export function AgentChat({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [loadingConv, setLoadingConv] = useState(true);
+  /** 「动笔前先问几句」：问题卡片 + 作者的回答（可跳过） */
+  const [preQuestions, setPreQuestions] = useState<string[] | null>(null);
+  const [preQuestionsSource, setPreQuestionsSource] = useState<"llm" | "template">("llm");
+  const [preAnswers, setPreAnswers] = useState<Record<number, string>>({});
+  const preQBusy = useRef(false);
+  /** 提问时那句话（回答完/跳过都用它作为写作指令） */
+  const pendingGoalRef = useRef("");
+
+  async function openPreQuestions() {
+    const goal = input.trim();
+    if (!goal || preQBusy.current) return;
+    preQBusy.current = true;
+    setError("");
+    try {
+      const res = await fetchPreQuestions(projectId, {
+        goal,
+        chapter_id: chapterId,
+      });
+      pendingGoalRef.current = goal;
+      setPreQuestions(res.questions?.length ? res.questions : null);
+      setPreQuestionsSource(res.source === "template" ? "template" : "llm");
+      setPreAnswers({});
+    } catch (e) {
+      // 问问题这一步失败不该拦住写作：退回直接写
+      setError(
+        e instanceof Error
+          ? `先问几句没成功（${e.message}），已直接开始写`
+          : "先问几句没成功，已直接开始写"
+      );
+      void sendText(goal);
+    } finally {
+      preQBusy.current = false;
+    }
+  }
+
+  async function confirmPreQuestions() {
+    const goal = pendingGoalRef.current;
+    const qs = preQuestions ?? [];
+    const pairs = qs
+      .map((q, i) => ({ q, a: (preAnswers[i] ?? "").trim() }))
+      .filter((p) => p.a);
+    setPreQuestions(null);
+    if (!pairs.length) {
+      void sendText(goal);
+      return;
+    }
+    // 答案作为硬约束并入指令——和文枢把答案写进场景简报是同一个意思
+    const composed = [
+      goal,
+      "",
+      "【先回答的几点，按这个写】",
+      ...pairs.map((p) => `- ${p.q} → ${p.a}`),
+    ].join("\n");
+    void sendText(composed);
+  }
+
   /** 还没有任何用户发言 → 给起手句（最省打字的一种"建议提示词"） */
   const showStarters =
     !busy && input.trim() === "" && !messages.some((m) => m.role === "user");
@@ -1883,29 +1940,92 @@ export function AgentChat({
             onToggleHelp={handleToggleHelp}
             onUndo={() => void undoAgentEdit()}
             footer={
-              /* 起手句：新对话给几个"你大概想干什么"，点一下就填进输入框。
-                 点它只填不发（不替作者花模型调用）。
-                 放在滚动区末尾而不是输入框上方：底部固定区高度一变，
-                 ⚙ 资料 的弹出菜单就会被顶到标题栏底下点不到（踩过）。 */
-              showStarters ? (
-                <div className={styles.starters} data-testid="agent-starters">
-                  <span className={styles.startersHint}>想干什么？点一个：</span>
-                  {STARTERS.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      className={styles.starterChip}
-                      data-testid={`agent-starter-${STARTERS.indexOf(s)}`}
-                      onClick={() => setInput(s)}
-                    >
-                      {s}
-                    </button>
-                  ))}
+              /* 起手句与「先问几句」都挂在消息滚动区末尾，**不放输入框上方**：
+                 底部固定区（⚙ 资料 / 输入框）的高度一变，它上方的弹出菜单就会被
+                 顶到标题栏底下点不到（起手句那次已经踩过一遍）。
+                 起手句点了只填不发，不替作者花模型调用。 */
+              <>
+                {showStarters ? (
+                  <div className={styles.starters} data-testid="agent-starters">
+                    <span className={styles.startersHint}>想干什么？点一个：</span>
+                    {STARTERS.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        className={styles.starterChip}
+                        data-testid={`agent-starter-${STARTERS.indexOf(s)}`}
+                        onClick={() => setInput(s)}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div className={styles.preQRow}>
+                  <button
+                    type="button"
+                    className={styles.preQBtn}
+                    data-testid="agent-prequestions"
+                    disabled={busy || !input.trim()}
+                    title="先说清这一场的关键推进点、角色动机变化和收尾落点，再让它写"
+                    onClick={() => void openPreQuestions()}
+                  >
+                    ❓ 先问几句
+                  </button>
+                  <span className={styles.preQHint}>
+                    {input.trim()
+                      ? "可选：先答 3 个小问题，写出来更贴你的意图"
+                      : "先在上面写下你要写什么"}
+                  </span>
                 </div>
-              ) : null
+                {preQuestions ? (
+                  <div className={styles.preQCard} data-testid="agent-prequestions-card">
+                    <p className={styles.preQCardHead}>
+                      先定这三件事（留空等于没答；不想答就点「跳过」）
+                      {preQuestionsSource === "template" ? "　·　模型不可用，这是通用问题" : ""}
+                    </p>
+                    {preQuestions.map((q, i) => (
+                      <label key={q} className={styles.preQItem}>
+                        <span className={styles.preQText}>{q}</span>
+                        <input
+                          className={styles.preQInput}
+                          data-testid={`agent-prequestions-input-${i}`}
+                          value={preAnswers[i] ?? ""}
+                          onChange={(e) =>
+                            setPreAnswers((prev) => ({ ...prev, [i]: e.target.value }))
+                          }
+                          placeholder="一句话就行"
+                        />
+                      </label>
+                    ))}
+                    <div className={styles.preQActions}>
+                      <button
+                        type="button"
+                        className={styles.preQPrimary}
+                        data-testid="agent-prequestions-confirm"
+                        disabled={busy}
+                        onClick={() => void confirmPreQuestions()}
+                      >
+                        好了，按这些写
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.preQGhost}
+                        data-testid="agent-prequestions-skip"
+                        disabled={busy}
+                        onClick={() => {
+                          setPreQuestions(null);
+                          void sendText(pendingGoalRef.current);
+                        }}
+                      >
+                        跳过，直接写
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </>
             }
           />
-
           <AgentAttachList
             attachments={attachments}
             busy={busy}
@@ -1980,9 +2100,9 @@ export function AgentChat({
             ) : null}
           </div>
 
-          {/* 一次都不用打字：新对话给几个"你大概想干什么"的起手句。
-              点了只**填进输入框**（不直接发送），作者可以改完再按回车——
-              既省掉打字，也不会替他花掉一次模型调用。 */}
+          {/* 起手句与「先问几句」都渲染在消息滚动区末尾（见上面的 footer），
+              这里不再放任何东西——底部固定区的高度必须保持稳定。 */}
+
           <AgentComposerBox
             value={input}
             onChange={setInput}

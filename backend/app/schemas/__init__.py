@@ -108,6 +108,13 @@ class LintIn(BaseModel):
     draft: str
 
 
+class PreQuestionsIn(BaseModel):
+    """动笔前问几句的入参：给一个写作目标，拿回 2~3 个该先定下来的问题。"""
+
+    goal: Optional[str] = None
+    chapter_id: Optional[str] = None
+
+
 class AgentRunIn(BaseModel):
     messages: List[Dict[str, Any]]
     chapter_id: Optional[str] = None

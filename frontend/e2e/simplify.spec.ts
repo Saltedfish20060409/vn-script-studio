@@ -194,8 +194,7 @@ test("Agent 起手句：一下都不用打字，点一下就填好", async ({ pa
   await expect(starters).toHaveCount(0);
 });
 
-test("Agent 面板里的文字要看得清：压在背景图上的行必须有不透明底", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1000 });
+test("Agent 面板里的文字要看得清：压在背景图上的行必须有不透明底", async ({ page }) => {  await page.setViewportSize({ width: 1440, height: 1000 });
   await registerAndLogin(page, randomName("e2e_contrast_"));
 
   const toggle = page.getByTestId("agent-sections-toggle");
@@ -266,4 +265,140 @@ test("Agent 面板里的文字要看得清：压在背景图上的行必须有�
     return p.length > 3 ? p[3] : 1;
   });
   expect(afterInject, "护栏失效：注入透明底后仍判合格").toBeLessThan(0.9);
+});
+
+// ---------------------------------------------------------------------------
+// 动笔前先问几句（可选、可跳过）
+// ---------------------------------------------------------------------------
+
+/** 把 agent 请求拦下来，只记录请求体，返回一个最小的 done 事件 */
+async function stubAgentStream(page: Page): Promise<Array<Record<string, unknown>>> {
+  const sent: Array<Record<string, unknown>> = [];
+  await page.route("**/agent/stream", async (route) => {
+    sent.push(JSON.parse(route.request().postData() ?? "{}"));
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body:
+        "data: " +
+        JSON.stringify({
+          type: "done",
+          result: {
+            message: "（测试用回复）",
+            actions: [],
+            model: "test",
+            applied: false,
+            warnings: [],
+          },
+        }) +
+        "\n\n",
+    });
+  });
+  return sent;
+}
+
+async function openAgentPanel(page: Page) {
+  const toggle = page.getByTestId("agent-sections-toggle");
+  if (!(await toggle.isVisible().catch(() => false))) {
+    await page.getByTitle(/AI 责编/).first().click();
+  }
+  await expect(toggle).toBeVisible({ timeout: 20_000 });
+}
+
+test("先问几句：答完把答案并进写作指令；不想答可以跳过", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await registerAndLogin(page, randomName("e2e_preq_"));
+  await openAgentPanel(page);
+  const sent = await stubAgentStream(page);
+
+  await page.route("**/agent/pre-questions", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        questions: ["这场的关键推进点是什么？", "林夏的动机有变化吗？", "结尾停在哪句台词？"],
+        source: "llm",
+      }),
+    });
+  });
+
+  const composer = page.getByPlaceholder(/用平常话说/).first();
+  await composer.fill("写一场雨夜站台的戏");
+
+  // 没输入时按钮不可点（避免问出空问题）
+  await composer.fill("");
+  await expect(page.getByTestId("agent-prequestions")).toBeDisabled();
+  await composer.fill("写一场雨夜站台的戏");
+
+  await page.getByTestId("agent-prequestions").click();
+  const card = page.getByTestId("agent-prequestions-card");
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  await expect(card).toContainText("这场的关键推进点是什么？");
+  await expect(card).toContainText("结尾停在哪句台词？");
+
+  // 只答两条，第三条留空 → 空的不该出现在指令里
+  await page.getByTestId("agent-prequestions-input-0").fill("她决定不说破");
+  await page.getByTestId("agent-prequestions-input-1").fill("从回避变成想留");
+  await page.getByTestId("agent-prequestions-confirm").click();
+  await expect(card).toHaveCount(0);
+
+  await expect.poll(() => sent.length, { timeout: 20_000 }).toBeGreaterThan(0);
+  const body = sent[sent.length - 1];
+  const text = JSON.stringify(body);
+  expect(text).toContain("写一场雨夜站台的戏");
+  expect(text).toContain("她决定不说破");
+  expect(text).toContain("从回避变成想留");
+  expect(text).toContain("先回答的几点");
+  expect(text).not.toContain("结尾停在哪句台词"); // 没答的那条不进指令
+});
+
+test("先问几句：点跳过就按原话直接写，不夹带问题", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await registerAndLogin(page, randomName("e2e_preq_skip_"));
+  await openAgentPanel(page);
+  const sent = await stubAgentStream(page);
+
+  await page.route("**/agent/pre-questions", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ questions: ["这条会被跳过吗？"], source: "template" }),
+    });
+  });
+
+  const composer = page.getByPlaceholder(/用平常话说/).first();
+  await composer.fill("接着往下写");
+  await page.getByTestId("agent-prequestions").click();
+  const card = page.getByTestId("agent-prequestions-card");
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  // 模板问题时界面要说明来源
+  await expect(card).toContainText("模型不可用");
+
+  await page.getByTestId("agent-prequestions-skip").click();
+  await expect(card).toHaveCount(0);
+
+  await expect.poll(() => sent.length, { timeout: 20_000 }).toBeGreaterThan(0);
+  const text = JSON.stringify(sent[sent.length - 1]);
+  expect(text).toContain("接着往下写");
+  expect(text).not.toContain("先回答的几点");
+});
+
+test("先问几句：接口挂了也不拦路，直接开始写", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await registerAndLogin(page, randomName("e2e_preq_fail_"));
+  await openAgentPanel(page);
+  const sent = await stubAgentStream(page);
+
+  await page.route("**/agent/pre-questions", async (route) => {
+    await route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
+  });
+
+  const composer = page.getByPlaceholder(/用平常话说/).first();
+  await composer.fill("写一小段");
+  await page.getByTestId("agent-prequestions").click();
+
+  // 不弹卡片、不留死状态，直接发出去写
+  await expect(page.getByTestId("agent-prequestions-card")).toHaveCount(0);
+  await expect.poll(() => sent.length, { timeout: 20_000 }).toBeGreaterThan(0);
+  expect(JSON.stringify(sent[sent.length - 1])).toContain("写一小段");
 });

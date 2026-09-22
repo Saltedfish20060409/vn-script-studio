@@ -61,6 +61,7 @@ from app.schemas import (
     LintIn,
     MapExtractAcceptIn,
     MapExtractIn,
+    PreQuestionsIn,
     ProjectCreateIn,
     ProjectPatchIn,
     ProjectPutIn,
@@ -2389,6 +2390,40 @@ async def run_project_agent(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return await _finalize_agent_run(db, project_id, row, vn, body, result, last_user)
+
+
+@router.post("/{project_id}/agent/pre-questions")
+async def agent_pre_questions(
+    project_id: str,
+    body: PreQuestionsIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """动笔前问几句（可选步骤）。
+
+    写作前后端的对照发现：写作前先问清「关键推进点 / 每个角色的动机变化 / 收尾落点」，
+    比拿到一句话就写更不容易写偏。这里只产出问题，不生成正文；作者可以跳过。
+    模型不可用时回退模板问题，绝不因此拦住写作。
+    """
+    from app.core.pre_questions import generate_pre_questions
+
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    creds = await resolve_llm_credentials(db, user.id, settings)
+    cfg = DeepSeekConfig(
+        apiKey=creds.get("api_key") or "",
+        baseUrl=creds.get("base_url"),
+        model=creds.get("model"),
+    )
+    result = await generate_pre_questions(
+        cfg,
+        vn,
+        goal=body.goal or "",
+        chapter_id=body.chapter_id,
+        user_message=body.goal,
+    )
+    return result
 
 
 @router.post("/{project_id}/agent/stream")
