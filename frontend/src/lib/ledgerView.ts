@@ -123,6 +123,73 @@ export function summarizeLedger(project: VnProject): LedgerOverview {
   };
 }
 
+/** 一条伏笔带"埋了多久 / 什么时候回收"，供面板直接显示。 */
+export type ForeshadowRow = {
+  id: string;
+  hook: string;
+  status: string;
+  /** 埋在第几章（标题） */
+  plantedLabel: string;
+  /** 已回收时：回收于第几章（标题） */
+  paidLabel: string;
+  /** 埋点 →（回收章｜最新章）隔了几章；算不出为 null */
+  ageChapters: number | null;
+  note: string;
+};
+
+/**
+ * 伏笔清单：补上"埋了多久、回收于第几章"。
+ *
+ * 为什么界面也要算：账本里只存 open/paid 时，作者看不出"这条已经埋了 20 章还没收"——
+ * 而长篇最需要盯的就是这个。后端 `foreshadow_report` 是同一套算法（硬锚块用它提醒模型）。
+ */
+export function foreshadowRows(project: VnProject): ForeshadowRow[] {
+  const foreshadows = project.writingLedger?.foreshadows || [];
+  if (!foreshadows.length) return [];
+
+  const order = new Map<string, number>();
+  (project.chapters || []).forEach((c, i) => order.set(c.id, i));
+  const titleOf = (id?: string) => {
+    if (!id) return "";
+    const ch = (project.chapters || []).find((c) => c.id === id);
+    return ch?.title || id;
+  };
+  const last = Math.max(0, (project.chapters || []).length - 1);
+  const rank = (s?: string) =>
+    s === "paid" ? 2 : s === "open" ? 0 : 1;
+
+  return foreshadows
+    .map((f, i) => {
+      const planted = f.plantedChapter || "";
+      const paidIn = f.paidInChapter || "";
+      const status = f.status || "open";
+      const pIdx = order.get(planted);
+      const endIdx = status === "paid" ? order.get(paidIn) ?? last : last;
+      return {
+        id: f.id || `f${i}`,
+        hook: f.hook || "（无描述）",
+        status,
+        plantedLabel: titleOf(planted),
+        paidLabel: paidIn ? titleOf(paidIn) : "",
+        ageChapters: pIdx === undefined ? null : Math.max(0, endIdx - pIdx),
+        note: f.note || "",
+      };
+    })
+    .sort((a, b) => rank(a.status) - rank(b.status) || (b.ageChapters ?? 0) - (a.ageChapters ?? 0));
+}
+
+/** 一句人话概括：未回收几条、其中埋了 5 章以上几条（面板顶部用）。 */
+export function foreshadowSummary(rows: ForeshadowRow[]): string {
+  const open = rows.filter((r) => r.status !== "paid");
+  const stale = open.filter((r) => (r.ageChapters ?? 0) >= 5).length;
+  if (!rows.length) return "";
+  if (!open.length) return `${rows.length} 条伏笔，全部已回收`;
+  return (
+    `${rows.length} 条伏笔 · 未回收 ${open.length}` +
+    (stale ? `（其中 ${stale} 条埋了 5 章以上）` : "")
+  );
+}
+
 /** 章节是否"内容变了但还没重新入库"（只有服务端能算指纹，这里用启发式兜底）。 */
 export function isChapterPending(row: LedgerChapterRow): boolean {
   return !row.fact;

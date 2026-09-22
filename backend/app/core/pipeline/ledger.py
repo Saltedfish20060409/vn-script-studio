@@ -105,7 +105,60 @@ def set_ledger(project: VnProject, ledger: Dict[str, Any]) -> VnProject:
     return VnProject.model_validate(data)
 
 
-def format_ledger_for_agent(ledger: Dict[str, Any], *, limit: int = 2800) -> str:
+def _foreshadow_rows(
+    ledger: Dict[str, Any], chapters: Optional[List[Any]] = None
+) -> List[Dict[str, Any]]:
+    """伏笔行（含"埋了多久"）。chapters 为空时 ageChapters 为 None。"""
+    order = {str(getattr(c, "id", "")): i for i, c in enumerate(chapters or [])}
+    last = len(order) - 1 if order else 0
+
+    def title_of(cid: str) -> str:
+        if not cid:
+            return ""
+        ch = next((c for c in (chapters or []) if str(getattr(c, "id", "")) == cid), None)
+        return (getattr(ch, "title", "") or cid) if ch is not None else cid
+
+    out: List[Dict[str, Any]] = []
+    for fo in ledger.get("foreshadows") or []:
+        planted = str(fo.get("plantedChapter") or "")
+        paid_in = str(fo.get("paidInChapter") or "")
+        status = str(fo.get("status") or "open")
+        p_idx = order.get(planted)
+        age = None
+        if p_idx is not None and order:
+            end_idx = order.get(paid_in, last) if status == "paid" else last
+            age = max(0, end_idx - p_idx)
+        out.append(
+            {
+                "id": fo.get("id"),
+                "hook": fo.get("hook") or "",
+                "status": status,
+                "note": fo.get("note") or "",
+                "plantedChapter": planted,
+                "plantedChapterTitle": title_of(planted),
+                "paidInChapter": paid_in or None,
+                "paidChapterTitle": title_of(paid_in) if paid_in else None,
+                "ageChapters": age,
+            }
+        )
+    return out
+
+
+def foreshadow_report(project: VnProject) -> List[Dict[str, Any]]:
+    """伏笔清单（含"埋了多久"）：给界面与硬锚块共用同一套算法。
+
+    ageChapters = 埋点章 →（已回收：回收章｜未回收：当前最后一章）隔了几章。
+    有了它才能说"这条埋了 25 章还没回收"——只记 open/paid 是说不出来的。
+    """
+    return _foreshadow_rows(get_ledger(project), list(project.chapters or []))
+
+
+def format_ledger_for_agent(
+    ledger: Dict[str, Any],
+    *,
+    limit: int = 2800,
+    chapters: Optional[List[Any]] = None,
+) -> str:
     """Hard-anchor block injected into write/check prompts."""
     parts: List[str] = ["## 项目硬锚（写作账本·不得推翻已确认事实）"]
     facts = ledger.get("chapterFacts") or []
@@ -130,11 +183,17 @@ def format_ledger_for_agent(ledger: Dict[str, Any], *, limit: int = 2800) -> str
             )
     fores = [x for x in (ledger.get("foreshadows") or []) if x.get("status") != "paid"]
     if fores:
+        # 带上"埋了几章还没回收"：只写"未回收"，模型不会觉得这事有时限；
+        # 写上"埋了 12 章"，它才会在这一轮真的去收。
+        ages = {str(f.get("id")): f.get("ageChapters") for f in _foreshadow_rows(ledger, chapters)}
         parts.append("### 未回收伏笔")
         for fo in fores[-10:]:
+            age = ages.get(str(fo.get("id")))
+            age_bit = f"，已埋 {age} 章未回收" if isinstance(age, int) and age >= 3 else ""
             parts.append(
                 f"- [{fo.get('status') or 'open'}] {fo.get('hook') or fo.get('id')}"
                 + (f"（植于 {fo.get('plantedChapter')}）" if fo.get("plantedChapter") else "")
+                + age_bit
             )
     events = ledger.get("events") or []
     if events:
@@ -261,13 +320,32 @@ def digest_chapter_into_ledger(
     fores = list(ledger.get("foreshadows") or [])
     if llm_foreshadows:
         for fo in llm_foreshadows:
+            hook = str(fo.get("hook") or "").strip()
+            status = str(fo.get("status") or "open")
+            note = str(fo.get("note") or "")
+            # 同一个钩子只留一条：模型可能把"这一章把它回收了"当成新发现报上来，
+            # 直接 append 会让同一个伏笔在账本里出现两遍（一条 open、一条 paid）。
+            existing = next(
+                (f for f in fores if str(f.get("hook") or "").strip() == hook and hook), None
+            )
+            if existing is not None:
+                existing["status"] = status
+                if note:
+                    existing["note"] = note
+                # 回收记在**哪一章**：没有这个字段，就永远说不出"埋了多久才收"，
+                # 也算不出"埋了 25 章还没回收"。
+                if status == "paid" and not existing.get("paidInChapter"):
+                    existing["paidInChapter"] = chapter_id
+                existing["updatedAt"] = _now()
+                continue
             fores.append(
                 {
                     "id": str(uuid4()),
-                    "hook": fo.get("hook") or "",
+                    "hook": hook,
                     "plantedChapter": chapter_id,
-                    "status": fo.get("status") or "open",
-                    "note": fo.get("note") or "",
+                    "status": status,
+                    "note": note,
+                    "paidInChapter": chapter_id if status == "paid" else None,
                     "updatedAt": _now(),
                 }
             )

@@ -138,6 +138,7 @@ import { blockTextRange, blocksToEditable, editableToBlocks } from "../lib/scrip
 import { insertCommandAtLine } from "../lib/insertCommand";
 import { chapterProse, proseFingerprint, rpyIsStale } from "../lib/scriptProse";
 import { normalizeProject } from "../lib/vnLocal";
+import { loreLinkOptions } from "../lib/loreEntries";
 import { diffProjectAgainst } from "../lib/projectDiff";
 import { EVENTS, trackOncePerUser } from "../lib/track";
 import {
@@ -3174,6 +3175,7 @@ export function StudioApp() {
                 genre={project.genre ?? ""}
                 bible={bible}
                 loreEntries={project.loreEntries ?? []}
+                loreLinkOptions={loreLinkOptions(project)}
                 hasStyleSamples={Boolean(
                   Array.isArray(project.styleMemory?.samples) &&
                     project.styleMemory.samples.length > 0

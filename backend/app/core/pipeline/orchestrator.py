@@ -52,7 +52,7 @@ async def stage_plan(
         if ch:
             plain = _blocks_to_plain(ch.blocks, project.characters)
             ch_hint = f"当前章「{ch.title}」末尾：\n{(plain or '')[-800:]}"
-    ledger_block = format_ledger_for_agent(get_ledger(project))
+    ledger_block = format_ledger_for_agent(get_ledger(project), chapters=project.chapters)
     prompt = (
         f"{skill.confirm_preamble()}\n\n"
         f"{skill.prompt_block(max_chars=2200)}\n\n"
@@ -96,7 +96,7 @@ async def stage_write(
         if ch:
             plain = _blocks_to_plain(ch.blocks, project.characters)
             chapter_tail = (plain or "")[-1200:]
-    ledger_block = format_ledger_for_agent(get_ledger(project))
+    ledger_block = format_ledger_for_agent(get_ledger(project), chapters=project.chapters)
     mem = long_memory
     if not mem and db_continuity:
         mem = db_continuity.get("agentBlock") or ""

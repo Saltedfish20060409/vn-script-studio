@@ -190,3 +190,85 @@ test("待审列表：AI 提议的设定条目要作者点了接受才进设定�
   await openEntriesSub(page);
   await expect(page.locator('input[value="玄真"]')).toBeVisible({ timeout: 20_000 });
 });
+
+/**
+ * 实体链接：一条设定讲的是谁，说清楚之后检索就能沿边走一步——
+ * 命中「青云门」会顺手带出掌门角色卡，反过来问这个角色也会带出这条设定。
+ * 这里验的是前端链路：能不能关联、保存请求里有没有这条边、刷新后还在不在。
+ * 上下文里真的多带了什么，由 backend/tests/test_lore_links.py 覆盖。
+ */
+test("设定条目关联角色：点一下建边，保存请求与刷新后都在", async ({ page }) => {
+  // 注册 + 建边 + 等自动保存 + 刷新后复查，步骤比别的用例长，给三倍时间
+  test.slow();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await registerAndLogin(page, randomName("e2e_lorelink_"));
+
+  // 新账号自带的示例剧本里已经有「林夏」，直接拿它当关联目标
+  await openEntriesSub(page);
+  await page.getByRole("button", { name: "新增条目" }).click();
+  await page.locator('input[placeholder*="条目标题"]').fill("青云门");
+  await page.locator('input[placeholder^="如 青云"]').fill("青云、掌门");
+
+  // 关联下拉里的分组是「角色 / 地点 / 章节」，标签用实体的显示名
+  const linkSelect = page.locator('[data-testid^="lore-link-add-"]').first();
+  await linkSelect.selectOption({ label: "角色：林夏" });
+
+  // 关联后变成可以点掉的 chip，下拉里不再重复出现它
+  const linkBox = page.locator('[data-testid^="lore-links-"]').first();
+  await expect(linkBox.getByRole("button", { name: /林夏/ })).toBeVisible();
+  await expect(linkSelect.locator('option[value="character::linxia"]')).toHaveCount(0);
+
+  /** 从 PUT 请求体里取「青云门」这条设定的 links（键名与嵌套层级两种写法都兜住） */
+  const linksOf = (raw: string) => {
+    try {
+      const body = JSON.parse(raw) as {
+        loreEntries?: Array<{ title: string; links?: Array<{ toType: string; toId: string }> }>;
+        data?: {
+          loreEntries?: Array<{ title: string; links?: Array<{ toType: string; toId: string }> }>;
+        };
+      };
+      const entries = body.loreEntries ?? body.data?.loreEntries ?? [];
+      return entries.find((e) => e.title === "青云门")?.links ?? [];
+    } catch {
+      return [];
+    }
+  };
+
+  // 保存请求里真的有这条边（等的是**带这次改动**的那次 PUT）
+  const saved = page.waitForRequest(
+    (r) =>
+      r.method() === "PUT" &&
+      r.url().includes("/projects/") &&
+      linksOf(r.postData() ?? "").some((l) => l.toType === "character" && l.toId === "linxia"),
+    { timeout: 30_000 }
+  );
+  // 触发一次保存（改个触发词最省事），然后确认那次请求带着 links
+  await page.locator('input[placeholder^="如 青云"]').fill("青云、掌门、山门");
+  await saved;
+
+  // 刷新后还在 = 真的落了库，不是只留在内存里
+  // （刷新后会恢复到刚才那一页——设定条目，所以这里等标题栏，不等写作页的编辑器）
+  await page.reload();
+  await expect(page.getByLabel("作品标题")).toBeVisible({ timeout: 40_000 });
+  await openEntriesSub(page);
+  await expect(page.locator('input[value="青云门"]')).toBeVisible({ timeout: 20_000 });
+  await expect(
+    page.locator('[data-testid^="lore-links-"]').first().getByRole("button", { name: /林夏/ })
+  ).toBeVisible();
+
+  // 点掉 chip：保存请求里这条边消失
+  const removed = page.waitForRequest(
+    (r) =>
+      r.method() === "PUT" &&
+      r.url().includes("/projects/") &&
+      (r.postData() ?? "").includes("青云门") &&
+      linksOf(r.postData() ?? "").length === 0,
+    { timeout: 30_000 }
+  );
+  await page
+    .locator('[data-testid^="lore-links-"]')
+    .first()
+    .getByRole("button", { name: /林夏/ })
+    .click();
+  await removed;
+});

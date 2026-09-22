@@ -2168,7 +2168,7 @@ async def _build_agent_request(
     lore = await resolve_lore_block(
         db, project_id, vn, user_message=last_user, limit=4
     )
-    ledger_block = format_ledger_for_agent(get_ledger(vn))
+    ledger_block = format_ledger_for_agent(get_ledger(vn), chapters=vn.chapters)
     lore_parts = [p for p in [lore.get("agentBlock") or "", ledger_block] if p.strip()]
     lore_combined = "\n\n".join(lore_parts) or None
 

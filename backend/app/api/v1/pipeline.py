@@ -527,7 +527,7 @@ async def pipeline_ledger_get(
     ledger = get_ledger(vn)
     return {
         "ledger": ledger,
-        "agentBlock": format_ledger_for_agent(ledger),
+        "agentBlock": format_ledger_for_agent(ledger, chapters=vn.chapters),
     }
 
 
@@ -573,7 +573,7 @@ async def pipeline_ledger_digest(
     await db.refresh(row)
     return {
         "ledger": ledger,
-        "agentBlock": format_ledger_for_agent(ledger),
+        "agentBlock": format_ledger_for_agent(ledger, chapters=vn.chapters),
         "project": project_to_dict(row_to_vn(row)),
         "enrichMeta": enrich_meta,
     }

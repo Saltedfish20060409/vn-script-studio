@@ -22,6 +22,7 @@ import type {
   VnProject,
 } from "../types/vn";
 import { EmptyStage } from "./EmptyStage";
+import { GraphAuditCard } from "./GraphAuditCard";
 import { FactExtractReview } from "./FactExtractReview";
 import { CharacterArcsPanel } from "./CharacterArcsPanel";
 import { StyleMemoryPanel } from "./StyleMemoryPanel";
@@ -425,9 +426,12 @@ export function AnalysisPanels({
 
       {sub === "chars" && (
         <div className={styles.panel}>
+          {/* 加完一条关系就能立刻看到机器查出的矛盾，不用切到「一致性」页才知道 */}
+          <GraphAuditCard project={project} />
           <div className={styles.toolbar}>
             <select
               value={linkDraft.fromId}
+              aria-label="角色 A"
               onChange={(e) => setLinkDraft((d) => ({ ...d, fromId: e.target.value }))}
             >
               <option value="">角色 A</option>
@@ -439,11 +443,13 @@ export function AnalysisPanels({
             </select>
             <input
               value={linkDraft.label}
+              aria-label="关系标签"
               onChange={(e) => setLinkDraft((d) => ({ ...d, label: e.target.value }))}
               placeholder="关系标签"
             />
             <select
               value={linkDraft.toId}
+              aria-label="角色 B"
               onChange={(e) => setLinkDraft((d) => ({ ...d, toId: e.target.value }))}
             >
               <option value="">角色 B</option>
@@ -692,6 +698,8 @@ export function AnalysisPanels({
           <p className={styles.hint}>
             扫全部章节，以角色卡 / 设定库 / 地图 / 时间线为准，找出矛盾。
           </p>
+          {/* 先跑确定性检查（零 token、即时），模型只需要看机器查不出来的部分 */}
+          <GraphAuditCard project={project} />
           <div className={styles.toolbar}>
             <input
               className={styles.focusInput}

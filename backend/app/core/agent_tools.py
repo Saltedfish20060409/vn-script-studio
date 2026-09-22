@@ -387,7 +387,7 @@ def run_agent_tool(
             return True, "\n".join(lines)
 
         if name == "ledger_digest":
-            block = format_ledger_for_agent(get_ledger(project))
+            block = format_ledger_for_agent(get_ledger(project), chapters=project.chapters)
             return True, block.strip() or "（账本为空）"
 
         return False, f"未知工具：{name}"

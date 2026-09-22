@@ -5,7 +5,7 @@
  * （切错了用户就得手工重排几百条），值得用测试钉住。
  */
 
-import type { LoreEntry } from "../types/vn";
+import type { LoreEntry, LoreLink } from "../types/vn";
 
 let seq = 0;
 
@@ -216,5 +216,75 @@ export function draftsToImports(
       body: d.body,
       keywords: d.keywords.filter((k) => k.trim()),
     }));
+}
+
+// ---------------------------------------------------------------------------
+// 实体链接（条目 → 角色 / 地点 / 章节）
+//
+// 为什么要做：条目原来只有触发词，等于孤岛——提问里没出现那个词就永远进不来。
+// 作者其实知道"这条设定讲的是谁、在哪"；让他点一下，检索就能沿边走一步
+// （命中条目带出关联角色，命中角色带出点名它的条目）。
+// ---------------------------------------------------------------------------
+
+export type LoreLinkOption = {
+  toType: LoreLink["toType"];
+  toId: string;
+  /** 界面显示名 */
+  label: string;
+  /** 分组标题：角色 / 地点 / 章节 */
+  group: string;
+};
+
+const GROUP_LABEL: Record<LoreLink["toType"], string> = {
+  character: "角色",
+  location: "地点",
+  chapter: "章节",
+};
+
+/** 可供关联的实体清单（按项目当前内容生成；角色/地点/章节各自成组）。 */
+export function loreLinkOptions(project: {
+  characters?: Array<{ id: string; displayName?: string }>;
+  locations?: Array<{ id: string; name?: string }>;
+  chapters?: Array<{ id: string; title?: string }>;
+}): LoreLinkOption[] {
+  const out: LoreLinkOption[] = [];
+  for (const c of project.characters ?? []) {
+    if (!c?.id) continue;
+    out.push({ toType: "character", toId: c.id, label: c.displayName || c.id, group: GROUP_LABEL.character });
+  }
+  for (const l of project.locations ?? []) {
+    if (!l?.id) continue;
+    out.push({ toType: "location", toId: l.id, label: l.name || l.id, group: GROUP_LABEL.location });
+  }
+  for (const ch of project.chapters ?? []) {
+    if (!ch?.id) continue;
+    out.push({ toType: "chapter", toId: ch.id, label: ch.title || ch.id, group: GROUP_LABEL.chapter });
+  }
+  return out;
+}
+
+/** 已关联的边 → 显示名（找不到实体时退回 id，避免界面上出现空白）。 */
+export function loreLinkLabel(link: LoreLink, options: LoreLinkOption[]): string {
+  return (
+    options.find((o) => o.toType === link.toType && o.toId === link.toId)?.label ?? link.toId
+  );
+}
+
+/** 点一下：没关联就加上，已关联就去掉。 */
+export function toggleLoreLink(links: LoreLink[] | undefined, next: LoreLink): LoreLink[] {
+  const list = links ?? [];
+  const hit = list.find((l) => l.toType === next.toType && l.toId === next.toId);
+  if (hit) return list.filter((l) => !(l.toType === next.toType && l.toId === next.toId));
+  return [...list, next];
+}
+
+/** 去掉指向已删实体的边（保存前清一遍，免得上下文里带出"关联到不存在的东西"）。 */
+export function pruneLoreLinks(
+  links: LoreLink[] | undefined,
+  options: LoreLinkOption[]
+): LoreLink[] {
+  return (links ?? []).filter((l) =>
+    options.some((o) => o.toType === l.toType && o.toId === l.toId)
+  );
 }
 

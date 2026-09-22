@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildChapterRows,
+  foreshadowRows,
+  foreshadowSummary,
   groupCharacterStates,
   isChapterPending,
   isForeshadowOpen,
@@ -117,5 +119,91 @@ describe("isForeshadowOpen", () => {
     expect(isForeshadowOpen({ status: "open" })).toBe(true);
     expect(isForeshadowOpen({})).toBe(true);
     expect(isForeshadowOpen({ status: "paid" })).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 伏笔闭环：埋了多久 / 回收于第几章
+// ---------------------------------------------------------------------------
+
+function fiveChapters(ledger: Partial<VnProject["writingLedger"]> = {}): VnProject {
+  return {
+    id: "p5",
+    title: "五章项目",
+    updatedAt: "2026-09-22T00:00:00Z",
+    characters: [],
+    chapters: [1, 2, 3, 4, 5].map((i) => ({ id: `ch${i}`, title: `第${i}章`, blocks: [] })),
+    writingLedger: ledger,
+  } as unknown as VnProject;
+}
+
+describe("伏笔闭环（埋了多久 / 回收于第几章）", () => {
+  it("未回收：算出从埋点到现在隔了几章", () => {
+    const p = fiveChapters({
+      foreshadows: [{ id: "f1", hook: "红伞", plantedChapter: "ch1", status: "open" }],
+    });
+    const rows = foreshadowRows(p);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].ageChapters).toBe(4); // ch1 → ch5
+    expect(rows[0].plantedLabel).toBe("第1章");
+    expect(rows[0].paidLabel).toBe("");
+  });
+
+  it("已回收：算出回收于哪一章、以及埋了几章", () => {
+    const p = fiveChapters({
+      foreshadows: [
+        { id: "f1", hook: "红伞", plantedChapter: "ch1", paidInChapter: "ch4", status: "paid" },
+      ],
+    });
+    const rows = foreshadowRows(p);
+    expect(rows[0].paidLabel).toBe("第4章");
+    expect(rows[0].ageChapters).toBe(3);
+  });
+
+  it("缺章节信息时不崩，只是算不出年龄", () => {
+    const p = fiveChapters({
+      foreshadows: [{ id: "f1", hook: "x", plantedChapter: "gone", status: "open" }],
+    });
+    p.chapters = [];
+    expect(foreshadowRows(p)[0].ageChapters).toBeNull();
+  });
+
+  it("排序：未回收在前，埋得久的更靠前", () => {
+    const p = fiveChapters({
+      foreshadows: [
+        { id: "paid", hook: "已收", plantedChapter: "ch1", paidInChapter: "ch2", status: "paid" },
+        { id: "fresh", hook: "新埋", plantedChapter: "ch5", status: "open" },
+        { id: "old", hook: "老埋", plantedChapter: "ch1", status: "open" },
+      ],
+    });
+    expect(foreshadowRows(p).map((r) => r.id)).toEqual(["old", "fresh", "paid"]);
+  });
+
+  it("一句话概括会点出「埋了 5 章以上」的条数", () => {
+    const p = fiveChapters({
+      foreshadows: [
+        { id: "a", hook: "老", plantedChapter: "ch1", status: "open" },
+        { id: "b", hook: "新", plantedChapter: "ch5", status: "open" },
+        { id: "c", hook: "收", plantedChapter: "ch2", paidInChapter: "ch3", status: "paid" },
+      ],
+    });
+    // 再来一章，让 ch1 那条真的隔了 5 章（ch1 → ch6）
+    p.chapters = [
+      ...p.chapters,
+      { id: "ch6", title: "第6章", blocks: [] },
+    ] as VnProject["chapters"];
+
+    const s = foreshadowSummary(foreshadowRows(p));
+    expect(s).toContain("未回收 2");
+    expect(s).toContain("1 条埋了 5 章以上");
+  });
+
+  it("全部回收时不喊「未回收」", () => {
+    const p = fiveChapters({
+      foreshadows: [
+        { id: "a", hook: "x", plantedChapter: "ch1", paidInChapter: "ch2", status: "paid" },
+      ],
+    });
+    expect(foreshadowSummary(foreshadowRows(p))).toContain("全部已回收");
   });
 });

@@ -207,6 +207,13 @@ export interface Location {
  * 条目可以堆很多条，每条自带**触发词**；提问命中哪条就带哪条进上下文，
  * 所以设定再大，单次进去的也只有相关的那几条。
  */
+/** 设定条目的实体链接：这条设定讲的是谁 / 在哪 / 属于哪一章 */
+export interface LoreLink {
+  toType: "character" | "location" | "chapter";
+  toId: string;
+  note?: string;
+}
+
 export interface LoreEntry {
   id: string;
   title: string;
@@ -218,6 +225,8 @@ export interface LoreEntry {
   pinned?: boolean;
   /** 同分时排序权重，大的优先 */
   priority?: number;
+  /** 实体链接：检索会沿着它多走一步（命中条目带出关联实体，反之亦然） */
+  links?: LoreLink[];
 }
 
 export interface CustomMapElementDef {
@@ -316,6 +325,8 @@ export interface LedgerForeshadow {
   plantedChapter?: string;
   /** open | paid */
   status?: string;
+  /** 在哪一章被回收（有了它才能说"埋了 N 章才收"） */
+  paidInChapter?: string | null;
   note?: string;
   updatedAt?: string;
 }

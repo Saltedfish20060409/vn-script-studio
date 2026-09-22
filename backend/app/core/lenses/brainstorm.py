@@ -53,7 +53,7 @@ def _work_snippet(
     ctx = project_to_context(project)
     if ctx:
         parts.append("## 作品节选\n" + ctx[:2800])
-    ledger = format_ledger_for_agent(get_ledger(project))
+    ledger = format_ledger_for_agent(get_ledger(project), chapters=project.chapters)
     if ledger.strip():
         parts.append(ledger[:1200])
     if chapter_id:

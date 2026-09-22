@@ -317,6 +317,30 @@
   font-size: 0.84rem;
 }
 
+/* 实体链接：已关联的显示成可点掉的 chip + 一个"＋关联…"下拉 */
+.linkRow {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.linkChip {
+  padding: 0.14rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--ink);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.linkPick {
+  flex: 1 1 10rem;
+  min-width: 8rem;
+  font-size: 0.78rem;
+}
+
 @media (max-width: 640px) {
   .list {
     grid-template-columns: 1fr;

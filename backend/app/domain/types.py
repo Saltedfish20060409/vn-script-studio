@@ -390,6 +390,21 @@ class Location(BaseModel):
     aliases: Optional[List[str]] = None
 
 
+class LoreLink(BaseModel):
+    """设定条目的实体链接（条目 → 角色 / 地点 / 章节）。
+
+    为什么加它：条目原来只有触发词，是**孤岛**——只有提问里恰好出现那个词才会被检索到。
+    而"这条设定讲的是谁、发生在哪"本来就该是显式的边：有了边，
+    命中条目就能把相关角色/地点一起带进来，命中角色也能反向带出相关条目。
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    toType: Literal["character", "location", "chapter"]
+    toId: str
+    note: Optional[str] = None
+
+
 class LoreEntry(BaseModel):
     """设定条目：一条可被检索的设定（门派 / 系统 / 规则 / 组织 / 历史事件…）。
 
@@ -411,6 +426,8 @@ class LoreEntry(BaseModel):
     pinned: Optional[bool] = None
     # 同分时的排序权重（越大越优先），默认 0
     priority: Optional[int] = None
+    # 实体链接：这条设定讲的是谁 / 在哪 / 属于哪一章（检索会沿边走一步）
+    links: Optional[List[LoreLink]] = None
 
 
 class CustomMapElementDef(BaseModel):

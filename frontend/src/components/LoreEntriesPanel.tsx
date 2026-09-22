@@ -1,16 +1,19 @@
 import { useMemo, useState } from "react";
 import { uploadAgentAttachment } from "../api/projects";
-import type { LoreEntry } from "../types/vn";
+import type { LoreEntry, LoreLink } from "../types/vn";
 import {
   draftFromImport,
   draftsToImports,
   importToEntries,
   keywordsToText,
+  loreLinkLabel,
   newLoreEntry,
   parseKeywords,
   parseLoreImport,
   toggleKeyword,
+  toggleLoreLink,
   type LoreImportDraft,
+  type LoreLinkOption,
 } from "../lib/loreEntries";
 import styles from "./LoreEntriesPanel.module.css";
 
@@ -19,6 +22,8 @@ type Props = {
   onChange: (next: LoreEntry[]) => void;
   /** 有 projectId 才能把 .docx/.md 等文件交给服务端解析（没有就只支持粘贴） */
   projectId?: string;
+  /** 可关联的实体（角色/地点/章节）——由上层从项目里算好传进来 */
+  linkOptions?: LoreLinkOption[];
 };
 
 /**
@@ -31,7 +36,7 @@ type Props = {
  * 导入刻意做成「先预览、再确认」：把一大堆设定文档塞进来的作者，
  * 最怕一次切错几百条又得手工重排；预览里可以逐条取消、改标题、点掉不要的触发词。
  */
-export function LoreEntriesPanel({ entries, onChange, projectId }: Props) {
+export function LoreEntriesPanel({ entries, onChange, projectId, linkOptions = [] }: Props) {
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [filter, setFilter] = useState("");
@@ -39,6 +44,28 @@ export function LoreEntriesPanel({ entries, onChange, projectId }: Props) {
   const [drafts, setDrafts] = useState<LoreImportDraft[] | null>(null);
   const [fileBusy, setFileBusy] = useState(false);
   const [fileError, setFileError] = useState("");
+
+  const isLinked = (e: LoreEntry, o: LoreLinkOption) =>
+    (e.links ?? []).some((l) => l.toType === o.toType && l.toId === o.toId);
+
+  /** 已关联的实体显示成可点掉的 chip（找不到实体时退回 id，不显示空白） */
+  const linkChips = (e: LoreEntry) =>
+    (e.links ?? []).map((l) => (
+      <button
+        key={`${l.toType}::${l.toId}`}
+        type="button"
+        className={styles.linkChip}
+        title="点一下取消关联"
+        onClick={() => {
+          const next = (e.links ?? []).filter(
+            (x) => !(x.toType === l.toType && x.toId === l.toId)
+          );
+          patch(e.id, { links: next.length ? next : undefined });
+        }}
+      >
+        {loreLinkLabel(l, linkOptions)} ×
+      </button>
+    ));
 
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -335,6 +362,42 @@ export function LoreEntriesPanel({ entries, onChange, projectId }: Props) {
                 placeholder="这条设定的内容（AI 只在命中时看到它，不会整段搬进正文）"
               />
             </label>
+            {/* 实体链接：点一下就能让检索沿边走一步（命中条目带出这个角色，反之亦然） */}
+            <div className={styles.field} data-testid={`lore-links-${e.id}`}>
+              <span>
+                关联
+                <small>（可选：这条设定讲的是谁 / 在哪。关联后命中它就顺手带出对方）</small>
+              </span>
+              <div className={styles.linkRow}>
+                {linkChips(e)}
+                {linkOptions.length > 0 ? (
+                  <select
+                    className={styles.linkPick}
+                    value=""
+                    aria-label="添加关联"
+                    data-testid={`lore-link-add-${e.id}`}
+                    onChange={(ev) => {
+                      const [toType, toId] = ev.target.value.split("::");
+                      if (!toType || !toId) return;
+                      const next = toggleLoreLink(e.links, {
+                        toType: toType as LoreLink["toType"],
+                        toId,
+                      });
+                      patch(e.id, { links: next });
+                    }}
+                  >
+                    <option value="">＋关联角色 / 地点 / 章节…</option>
+                    {linkOptions
+                      .filter((o) => !isLinked(e, o))
+                      .map((o) => (
+                        <option key={`${o.toType}::${o.toId}`} value={`${o.toType}::${o.toId}`}>
+                          {o.group}：{o.label}
+                        </option>
+                      ))}
+                  </select>
+                ) : null}
+              </div>
+            </div>
           </article>
         ))}
         {entries.length > 0 && shown.length === 0 ? (

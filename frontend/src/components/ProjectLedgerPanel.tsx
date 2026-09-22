@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import {
   buildChapterRows,
+  foreshadowRows,
+  foreshadowSummary,
   groupCharacterStates,
   summarizeLedger,
 } from "../lib/ledgerView";
@@ -35,6 +37,9 @@ function clip(s: string, n: number): string {
 export function ProjectLedgerPanel({ project, onOpenChapter }: Props) {
   const ledger = useMemo(() => project.writingLedger || {}, [project.writingLedger]);
   const foreshadows = useMemo(() => ledger.foreshadows || [], [ledger.foreshadows]);
+  /** 带"埋了多久 / 回收于第几章"的清单（未回收优先、埋得久的排前面） */
+  const hookRows = useMemo(() => foreshadowRows(project), [project]);
+  const foreshadowSummaryLine = useMemo(() => foreshadowSummary(hookRows), [hookRows]);
   const events = useMemo(() => ledger.events || [], [ledger.events]);
   const rows = useMemo(() => buildChapterRows(project), [project]);
   const byCharacter = useMemo(() => groupCharacterStates(project), [project]);
@@ -266,28 +271,43 @@ export function ProjectLedgerPanel({ project, onOpenChapter }: Props) {
           {paidCount > 0 ? (
             <span className={styles.dim}>（已回收 {paidCount}）</span>
           ) : null}
+          {foreshadowSummaryLine ? (
+            <span className={styles.dim} data-testid="ledger-foreshadow-summary">
+              {foreshadowSummaryLine}
+            </span>
+          ) : null}
         </h3>
         {foreshadows.length === 0 ? (
           <p className={styles.empty}>
             还没有伏笔。章末钩子会被自动记为「未回收」，续写时提示模型回收它。
           </p>
         ) : (
-          <ul className={styles.hookList}>
-            {foreshadows
-              .slice()
-              .reverse()
-              .map((f, k) => (
-                <li
-                  key={f.id || k}
-                  className={f.status === "paid" ? styles.hookPaid : styles.hookOpen}
-                >
-                  <span className={styles.hookStatus}>
-                    {f.status === "paid" ? "已回收" : "未回收"}
-                  </span>
-                  <span className={styles.hookText}>{clip(f.hook || "", 140)}</span>
-                  <span className={styles.dim}>{f.note || ""}</span>
-                </li>
-              ))}
+          <ul className={styles.hookList} data-testid="ledger-foreshadow-list">
+            {hookRows.map((f, k) => (
+              <li
+                key={f.id || k}
+                className={f.status === "paid" ? styles.hookPaid : styles.hookOpen}
+              >
+                <span className={styles.hookStatus}>
+                  {f.status === "paid" ? "已回收" : "未回收"}
+                </span>
+                <span className={styles.hookText}>{clip(f.hook || "", 140)}</span>
+                {/* 「埋了多久 / 回收于第几章」：长篇最需要盯的就是这个 */}
+                <span className={styles.dim} data-testid={`ledger-hook-age-${k}`}>
+                  {f.status === "paid"
+                    ? f.paidLabel
+                      ? `${f.plantedLabel ? `埋于 ${f.plantedLabel}，` : ""}回收于 ${f.paidLabel}`
+                      : "已回收"
+                    : f.plantedLabel
+                      ? `埋于 ${f.plantedLabel}` +
+                        (f.ageChapters !== null && f.ageChapters > 0
+                          ? `，已埋 ${f.ageChapters} 章`
+                          : "")
+                      : ""}
+                </span>
+                <span className={styles.dim}>{f.note || ""}</span>
+              </li>
+            ))}
           </ul>
         )}
       </section>

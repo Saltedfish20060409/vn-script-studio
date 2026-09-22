@@ -4,11 +4,15 @@ import {
   draftsToImports,
   importToEntries,
   keywordsToText,
+  loreLinkLabel,
+  loreLinkOptions,
   newLoreEntry,
   parseKeywords,
   parseLoreImport,
+  pruneLoreLinks,
   suggestKeywords,
   toggleKeyword,
+  toggleLoreLink,
 } from "./loreEntries";
 
 describe("parseKeywords / keywordsToText", () => {
@@ -161,5 +165,63 @@ describe("toggleKeyword", () => {
   it("点一下加上，再点一下去掉", () => {
     expect(toggleKeyword(["甲"], "乙")).toEqual(["甲", "乙"]);
     expect(toggleKeyword(["甲", "乙"], "乙")).toEqual(["甲"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 实体链接（条目 → 角色 / 地点 / 章节）
+// ---------------------------------------------------------------------------
+
+describe("loreLinkOptions", () => {
+  const project = {
+    characters: [{ id: "linxia", displayName: "林夏" }],
+    locations: [
+      { id: "loc1", name: "旧站台" },
+      { id: "", name: "坏数据" },
+    ],
+    chapters: [{ id: "ch1", title: "第一章 站台" }],
+  };
+
+  it("把角色/地点/章节都列成可选项，并带分组名", () => {
+    const opts = loreLinkOptions(project);
+    expect(opts.map((o) => `${o.group}:${o.label}`)).toEqual([
+      "角色:林夏",
+      "地点:旧站台",
+      "章节:第一章 站台",
+    ]);
+  });
+
+  it("缺 id 的脏数据不会变成选项（否则会关联到不存在的东西）", () => {
+    expect(loreLinkOptions(project).some((o) => o.toId === "")).toBe(false);
+  });
+
+  it("空项目返回空数组", () => {
+    expect(loreLinkOptions({})).toEqual([]);
+  });
+});
+
+describe("toggleLoreLink / loreLinkLabel / pruneLoreLinks", () => {
+  const options = [
+    { toType: "character" as const, toId: "linxia", label: "林夏", group: "角色" },
+    { toType: "chapter" as const, toId: "ch1", label: "第一章", group: "章节" },
+  ];
+
+  it("点一下加上，再点一下去掉", () => {
+    const one = toggleLoreLink(undefined, { toType: "character", toId: "linxia" });
+    expect(one).toEqual([{ toType: "character", toId: "linxia" }]);
+    expect(toggleLoreLink(one, { toType: "character", toId: "linxia" })).toEqual([]);
+  });
+
+  it("显示名优先用实体名，找不到就退回 id（不留空白）", () => {
+    expect(loreLinkLabel({ toType: "character", toId: "linxia" }, options)).toBe("林夏");
+    expect(loreLinkLabel({ toType: "character", toId: "ghost" }, options)).toBe("ghost");
+  });
+
+  it("prune 掉指向已删实体的边", () => {
+    const links = [
+      { toType: "character" as const, toId: "linxia" },
+      { toType: "character" as const, toId: "ghost" },
+    ];
+    expect(pruneLoreLinks(links, options)).toEqual([{ toType: "character", toId: "linxia" }]);
   });
 });

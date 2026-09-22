@@ -767,6 +767,75 @@ def build_agent_context(
         used_entry += len(block)
         picked_entry_titles.append(str(getattr(e, "title", "") or ""))
 
+    # ── 设定条目的实体链接：命中条目 → 带出它点名的角色/地点/章节 ──────────
+    # 条目原来只靠触发词命中，等于孤岛；有了 links，就能沿着边多走一步：
+    # ① 条目点名了谁 → 把那个角色/地点带进来；② 本轮命中了谁 → 把点名它的条目补进来。
+    lore_link_lines: List[str] = []
+    linked_extra_entries = 0
+    if entries:
+        picked_entry_ids = {
+            str(getattr(e, "id", "")) for e, _ in scored_entries[: len(entry_blocks)]
+        }
+        picked_entry_ids.update(
+            str(getattr(e, "id", "")) for e in pinned_entries[: len(entry_blocks)]
+        )
+        picked_char_ids = {r[0].id for r in picked_chars}
+        picked_loc_ids = {r[0].id for r in picked_locs}
+        char_by_id_all = {c.id: c for c in project.characters}
+        loc_by_id_all = {l.id: l for l in (project.locations or [])}
+        chapter_by_id_all = {str(c.id): c for c in (project.chapters or [])}
+
+        seen_link_lines: set = set()
+        for e, _score in scored_entries:
+            title = str(getattr(e, "title", "") or "")
+            for link in getattr(e, "links", None) or []:
+                kind = str(getattr(link, "toType", "") or "")
+                target_id = str(getattr(link, "toId", "") or "")
+                if not kind or not target_id:
+                    continue
+                line = ""
+                if kind == "character" and target_id not in picked_char_ids:
+                    c = char_by_id_all.get(target_id)
+                    if c is not None:
+                        brief = _clip((c.voice or c.bio or "").strip(), 80)
+                        line = f"- {c.displayName}（{title} 点名关联）" + (f"：{brief}" if brief else "")
+                elif kind == "location" and target_id not in picked_loc_ids:
+                    loc = loc_by_id_all.get(target_id)
+                    if loc is not None:
+                        brief = _clip((loc.description or "").strip(), 80)
+                        line = f"- {loc.name}（{title} 点名关联）" + (f"：{brief}" if brief else "")
+                elif kind == "chapter":
+                    ch = chapter_by_id_all.get(target_id)
+                    if ch is not None and title not in picked_entry_titles:
+                        line = f"- {ch.title or target_id}（{title} 关联章节）"
+                if line and line not in seen_link_lines:
+                    seen_link_lines.add(line)
+                    lore_link_lines.append(line)
+                if len(lore_link_lines) >= 8:
+                    break
+            if len(lore_link_lines) >= 8:
+                break
+
+        # 反向：本轮命中的角色/地点，把它们点名的条目补进上下文（预算允许时）
+        asked = picked_char_ids | picked_loc_ids
+        if asked and used_entry < entry_budget:
+            for e in entries:
+                eid = str(getattr(e, "id", ""))
+                if eid in picked_entry_ids:
+                    continue
+                hit = any(
+                    str(getattr(lk, "toId", "")) in asked
+                    for lk in (getattr(e, "links", None) or [])
+                )
+                if not hit:
+                    continue
+                block = _entry_block(e, "关联命中")
+                if used_entry + len(block) > entry_budget:
+                    break
+                entry_blocks.append(block)
+                used_entry += len(block)
+                linked_extra_entries += 1
+
     # 没进上下文的条目只列标题：让模型（和用户）知道"还有哪些设定可点名"
     rest_titles = [t for t in entry_titles_all if t and t not in picked_entry_titles]
     entry_index_note = ""
@@ -800,6 +869,39 @@ def build_agent_context(
         relation_lines = [
             ln for ln in relation_lines if not (ln in seen_rel2 or seen_rel2.add(ln))
         ][:8]
+
+    # ── 关系图的第二跳（只给需要跨章对照的任务）─────────────────────────
+    # 1 跳回答"他直接认识谁"；跨章一致性常常要问"通过谁连着"（A 的学生 C 与 B 的师父 D），
+    # 所以对 consistency / scene 多走一步。带上"（间接）"标记，避免模型把它当直接关系。
+    if char_links and picked_chars and resolved_task in ("consistency", "scene"):
+        hop1_ids = {r[0].id for r in picked_chars}
+        far_ids: set = set()
+        for link in char_links:
+            if link.fromId in hop1_ids and link.toId not in hop1_ids:
+                far_ids.add(link.toId)
+            elif link.toId in hop1_ids and link.fromId not in hop1_ids:
+                far_ids.add(link.fromId)
+        char_by_id = {c.id: c for c in project.characters}
+        seen2 = set(relation_lines)
+        for link in char_links:
+            near_far = None
+            if link.fromId in far_ids and link.toId not in hop1_ids:
+                near_far = (link.fromId, link.toId)
+            elif link.toId in far_ids and link.fromId not in hop1_ids:
+                near_far = (link.toId, link.fromId)
+            if near_far is None:
+                continue
+            a = char_by_id.get(near_far[0])
+            b = char_by_id.get(near_far[1])
+            if a is None or b is None:
+                continue
+            line = f"- （间接）{a.displayName} --{link.label}--> {b.displayName}"
+            if line in seen2:
+                continue
+            seen2.add(line)
+            relation_lines.append(line)
+            if len(relation_lines) >= 12:
+                break
 
     # Other chapters: prefer extractive digests; raw excerpt only if high score + short
     other_chapter_blocks: List[str] = list(digest_fmt.relatedBlocks)
@@ -849,6 +951,10 @@ def build_agent_context(
         included.append(f"设定条目×{len(entry_blocks)}")
     if relation_lines:
         included.append(f"角色关系×{len(relation_lines)}")
+    if lore_link_lines:
+        included.append(f"条目关联×{len(lore_link_lines)}")
+    if linked_extra_entries:
+        included.append(f"关联条目×{linked_extra_entries}")
     if related_loc_lines:
         included.append(f"相邻地点×{len(related_loc_lines)}")
     if var_lines:
@@ -920,6 +1026,17 @@ def build_agent_context(
                 + "\n\n".join(entry_blocks)
                 + entry_index_note
                 if entry_blocks
+                else ""
+            ),
+        ),
+        (
+            # 条目沿边带出来的实体（1 跳）。和 `rules` 一样不进可摘清单：
+            # 它是"这条设定点名关联的人/地"，属于命中条目的必要补充，不是可摘的资料块。
+            "loreLinks",
+            (
+                "\n## 设定条目关联到的角色/地点/章节（沿条目的 links 走一步）\n"
+                + "\n".join(lore_link_lines)
+                if lore_link_lines
                 else ""
             ),
         ),
