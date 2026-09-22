@@ -4,6 +4,11 @@ import { BrowserRouter } from "react-router-dom";
 import { registerSW } from "virtual:pwa-register";
 import App from "./App";
 import { installErrorReporter } from "./lib/errorReporter";
+// 自托管展示/等宽字体（仅 latin，中文走系统字体回退）
+import "@fontsource/baloo-2/latin-600.css";
+import "@fontsource/baloo-2/latin-700.css";
+import "@fontsource/jetbrains-mono/latin-400.css";
+import "@fontsource/jetbrains-mono/latin-500.css";
 import "./styles/globals.css";
 
 installErrorReporter();

@@ -118,9 +118,14 @@ def _set_refresh_cookie(response: Response, token: str, settings: Settings) -> N
     )
 
 
-def _clear_refresh_cookie(response: Response) -> None:
+def _clear_refresh_cookie(response: Response, settings: Settings) -> None:
+    # delete_cookie 必须与 set_cookie 的 secure/path/samesite 一致，否则 HTTPS
+    # 下浏览器可能清不掉 Secure cookie，登出后仍带旧 refresh。
     response.delete_cookie(
-        key="vnss_refresh", path="/api/v1/auth/refresh", samesite="strict"
+        key="vnss_refresh",
+        path="/api/v1/auth/refresh",
+        samesite="strict",
+        secure=settings.cookie_secure,
     )
 
 
@@ -487,9 +492,12 @@ async def refresh(
 
 
 @router.post("/logout", response_model=OkMessageOut)
-async def logout(response: Response):
+async def logout(
+    response: Response,
+    settings: Settings = Depends(get_settings),
+):
     """Clear the HttpOnly refresh cookie (client discards the access token)."""
-    _clear_refresh_cookie(response)
+    _clear_refresh_cookie(response, settings)
     return OkMessageOut(ok=True, message="已退出登录")
 
 

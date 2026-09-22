@@ -37,7 +37,8 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   if (loading) {
-    return <div style={{ padding: "3rem", textAlign: "center" }}>加载中…</div>;
+    // 未登录访客也会先探 /auth/me（可能带 refresh cookie）；用登录页同款底，避免像白屏卡死
+    return <div className="vnss-boot-fallback" role="status" aria-live="polite">加载中…</div>;
   }
   if (!token) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
@@ -46,7 +47,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 }
 
 function RouteFallback() {
-  return <div style={{ padding: "3rem", textAlign: "center" }}>加载中…</div>;
+  return <div className="vnss-boot-fallback" role="status" aria-live="polite">加载中…</div>;
 }
 
 export default function App() {

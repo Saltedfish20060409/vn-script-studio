@@ -18,8 +18,7 @@
   --shadow: 0 6px 18px -6px rgba(0, 47, 167, 0.18), 0 2px 6px rgba(10, 14, 26, 0.08);
   --shadow-lg: 0 18px 40px -12px rgba(0, 47, 167, 0.28), 0 8px 16px -8px rgba(10, 14, 26, 0.16);
   --shadow-hard: 4px 4px 0 rgba(0, 47, 167, 0.12);
-  /* 圆体优先的标题字体链：Baloo2/M PLUS Rounded 是圆润无衬线（如系统已装即生效），
-     中文回退到系统圆润款；后续网络可用时再自托管中文圆体 woff2 */
+  /* 圆体优先的标题字体链：Baloo 2 由 @fontsource 自托管；中文回退系统圆润款 */
   --font-display: "Baloo 2", "M PLUS Rounded 1c", "MiSans Rounded", "Noto Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
   --font-ui: "Noto Sans SC", "PingFang SC", "Public Sans", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -451,6 +450,21 @@ body {
   isolation: isolate;
   min-height: 100%;
   min-height: 100dvh;
+}
+
+/* 路由 / 鉴权引导：与登录页同款斜切底，避免白底「加载中」像故障 */
+.vnss-boot-fallback {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: var(--ink-soft);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  background-image: var(--page-bg);
+  background-color: var(--paper);
 }
 
 html:not([data-custom-bg="1"]) body {
