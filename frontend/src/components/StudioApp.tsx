@@ -3152,6 +3152,8 @@ export function StudioApp() {
                         anchorOffset={activeMarkOffset}
                         // 中文标点自动配对只在正文模式生效（RPY 是代码，不改它的输入行为）
                         autoPair={writeMode === "prose"}
+                        // 拼写检查同理：正文里作者需要"这个字像打错了"，代码里只会满屏波浪线
+                        spellCheck={writeMode === "prose"}
                         overlay={
                           activeMark ? (
                             <MarkCard

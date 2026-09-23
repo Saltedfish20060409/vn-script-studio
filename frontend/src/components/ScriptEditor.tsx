@@ -43,6 +43,14 @@ type Props = Omit<
    * 只在正文模式打开——RPY 是代码，别改它的输入行为。
    */
   autoPair?: boolean;
+  /**
+   * 浏览器自带的拼写检查（默认关）。
+   *
+   * 这里原来写死 `spellCheck={false}`——那是给代码编辑器挡红色波浪线的思路，
+   * 但正文里作者最需要的就是"这个字好像是打错的"。正文模式打开它（浏览器用系统
+   * 词典，中文下会标出它不认识的词；英文/拼音手误一般能抓到），RPY 模式保持关闭。
+   */
+  spellCheck?: boolean;
 };
 
 export function ScriptEditor({
@@ -59,6 +67,7 @@ export function ScriptEditor({
   selectionRange = null,
   selectionBar,
   autoPair = false,
+  spellCheck = false,
   onScroll,
   onClick,
   onKeyDown,
@@ -269,7 +278,7 @@ export function ScriptEditor({
         data-testid="script-editor"
         className={`${styles.input} vnss-editor-caret ${className}`.trim()}
         value={value}
-        spellCheck={false}
+        spellCheck={spellCheck}
         onChange={(e) => {
           onChange(e.target.value);
           syncScroll(e.target);
