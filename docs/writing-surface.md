@@ -178,6 +178,15 @@
 但判定需要语境，词表做不到零误报。一个会误报的错别字提示，作者用两天就会整个忽略掉。
 要覆盖那部分得靠模型，不在这一层假装能做。
 
+词表有**两份副本**（架构决定，不是偷懒）：前端 `frontend/src/lib/typoRules.ts` 在打字时跑
+（写作辅助的「笔误」行随输入更新），后端 `backend/app/core/typo_words.py` 在全书体检时跑
+（`novel_consistency` 逐章给行号与原文，Agent 工具 `novel_audit` 与「项目 → 稿件体检」
+面板因此也能报别字）。`backend/tests/test_typo_words.py` **直接解析 TS 源文件逐条比对**，
+两份一分叉测试就红——否则作者会遇到最难查的那种 bug：一边提示、另一边不报，而两边看着都对。
+
+别字在后端**逐条单独成问题**，不走同 code 合并：合并后一条消息里只剩"共 N 处 + 几个样本"，
+而每个别字要给的恰恰是"它应该怎么写"。
+
 ## 九、P0-4 分场导航：为什么没做侧栏大纲
 
 评判的结论是**保留横条并给它一个折叠开关，不改成侧栏**：
@@ -212,8 +221,13 @@ npm run build               # 体积闸：dist/assets/*.js 单块 > 500KB 即失
 cd backend; $env:PYTHONPATH="."
 .\.venv\Scripts\python.exe -m pytest tests/test_novel_consistency.py tests/test_novel_craft.py `
   tests/test_ln_template.py tests/test_novel_audit_surface.py tests/test_agent_tool_polish.py `
-  tests/test_export_submission.py tests/test_export_submission_route.py
+  tests/test_export_submission.py tests/test_export_submission_route.py tests/test_typo_words.py
 ```
+
+`test_typo_words.py` 覆盖：解析前端 TS 词表逐条比对（含顺序）、词表自身的自洽性
+（无重复、无 A→B/B→A、错写不是正确写法的子串）、命中位置与行号、干净正文零命中、
+**别字确实出现在 `analyze_novel_consistency` 的结果里**（词表再对，没接上链路也等于没有）、
+同一别字出现三次报三条而不是合并成"共 3 处"、脚本块工程同样查（只读 prose 会整章漏检）。
 
 `test_export_submission_route.py` 覆盖：路由返回 docx 与 zip 的两种内容类型、排版开关真的
 传到排版层（缩进/梗概/字数）、以及 `writingGenre` / `writingGoals` / `publishedAt` 存取往返

@@ -48,6 +48,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from app.core.agent_context import _blocks_to_plain
 from app.core.blocks import walk_blocks
+from app.core.typo_words import find_word_confusions
 from app.domain.types import VnProject
 
 # --------------------------------------------------------------------------- 参数
@@ -278,6 +279,13 @@ _TYPO_RULES: Dict[str, Dict[str, str]] = {
         "headline": "同一对关系的敬称层级来回摆",
         "advice": "确认是否有剧情理由（关系变化、场合变化）；若无，统一成一种称呼",
     },
+    # 别字：逐条单独成问题（不走 _grouped_issues 的合并），所以这里的 headline/advice
+    # 只在别处引用 _rule 时才会被用到；保留是为了让规则表完整可读。
+    "typo_confusion": {
+        "severity": "warn",
+        "headline": "疑是别字",
+        "advice": "核对一下这个成语/固定搭配的写法（可能是有意为之，比如角色故意写错）",
+    },
 }
 
 
@@ -493,6 +501,39 @@ def _chapter_text_hits(row: Dict[str, Any]) -> List[Dict[str, Any]]:
     for line_no, line in row["lines"]:
         for hit in _line_typography_hits(line):
             out.append({**hit, "line": line_no})
+    return out
+
+
+def _confusion_issues(row: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """常见别字（成语/固定搭配的同音别字），**逐条单独成问题**。
+
+    为什么不并进 `_grouped_issues` 的"同 code 合并"：合并后一条消息里只剩「共 N 处 +
+    几个样本」，而每个别字要给的恰恰是"它应该怎么写"——合并会把这条信息抹掉。
+    别字本身也不会像半角逗号那样几百处，逐条报不会淹掉其它问题。
+
+    口径与前端的写作辅助完全一致（同一份词表的两个副本，见 `app/core/typo_words.py`），
+    这样"打字时提示过"和"全书体检报出来"不会互相打架。
+    """
+    out: List[Dict[str, Any]] = []
+    for line_no, line in row["lines"]:
+        for hit in find_word_confusions(line):
+            wrong = str(hit["wrong"])
+            right = str(hit["right"])
+            out.append(
+                _issue(
+                    severity="warn",
+                    code="typo_confusion",
+                    category="typography",
+                    message=(
+                        f"{_chapter_label(row)}：疑是别字「{wrong}」，通常写作「{right}」"
+                        f"（{hit['kind']}）。若是有意为之（角色故意写错）请忽略。"
+                    ),
+                    row=row,
+                    line=line_no,
+                    quote=wrong,
+                    evidence={"wrong": wrong, "right": right, "kind": hit["kind"]},
+                )
+            )
     return out
 
 
@@ -1527,6 +1568,7 @@ def analyze_novel_consistency(
                         }
                     )
         findings.extend(_grouped_issues(hits, row))
+        findings.extend(_confusion_issues(row))
     findings.extend(_variant_issues(rows, known, cjk_terms))
 
     # B 组：视角与称呼
