@@ -168,7 +168,39 @@
    快照/上传/应用类端点（不调模型）只受"引用命名常量"与
    `test_llm_call_sites_use_named_budgets_only`（源码级：LLM 调用点禁止裸数字）两道约束。
 
-## 七、怎么自查
+## 七、同类问题的排查结果（"其他模块会不会也这样"）
+
+修完主症之后，专门按**缺陷类别**把整个后端过了一遍（AST 扫描 + 逐条人工核对）：
+
+| 检查项 | 结果 |
+| --- | --- |
+| 有没有**在循环里**调用模型（轮数随作品规模膨胀 → 最坏耗时无上界） | **没有**。扫出 `beat_check.py`、`recap.py` 两处"疑似"，逐行核对确认都是**准备数据的循环**，模型调用在循环之后（缩进相同但语义在循环外）——属误报 |
+| 每个会调模型的 HTTP 路由是否都知道自己的预算 | 共 **23 条**能到达 `chat_completions` 的路由，已全部登记。其中 `/harness/run`、`/ai`、`/pipeline/check` 目前**前端无调用方**（API-only），已在登记表注明 |
+| 客户端断开后是否还会白跑 | 见第四节；流式侧本来就有协作式取消，非流式侧现由 `disconnect.py` 覆盖 |
+| 会不会有新端点再犯同一个错 | 新增守卫 `backend/tests/test_llm_route_registry.py`：用 AST 自动发现"路由 → 处理函数 → 是否触达模型调用"，漏登记直接红（写完当场就抓到 `/pipeline/run` 漏登记）。已知盲区是**二级间接**调用（如 `/pipeline/gate` 经 `gate.py` → `stage_check_async`），这类在登记表里手工列出并注明 |
+
+### 多轮端点：改成作业，而不是继续加预算
+
+`/brainstorm` 是"2–3 位作家并发 + 责编综合"的**两轮串行**调用，思考档最坏 ~8 分钟。
+硬把等待预算拉到 10 分钟级只是"能对上账"，体验依然很差（转圈等 8 分钟）。
+所以按仓库既有范式（与 `pipeline/run`、`agent/chapter-revise` 同一套）改造：
+
+- 后端：`BrainstormIn.async_mode`；为 true 时只 `create_job(kind="brainstorm")` 并返回 jobId，
+  两轮调用在 detached 后台作业里跑（`job.touch` 报进度、`job.set_result` 存结果，
+  异常由 `_run` 兜成 `status=error`）；**同步路径原样保留**给 API 客户端。
+- 前端：UI 改走 `startBrainstormJob` + `waitProjectJob`（进度显示"作家们正在各自发言…/责编正在综合…"），
+  kickoff 预算回到 `upload`（180s）一档——**不再需要 600s**。
+- 契约测试新增 `mode: "job"`：断言调用点真带 `async_mode: true`、后端真注册了该作业 kind，
+  且不再按"轮次×预算"算（防止有人改回同步却留着旧预算）。
+- 顺带修了测试基建的坑：新增 `db_gate.background_jobs_use_test_db()`——作业在请求结束后自己开
+  `app.db.AsyncSessionLocal` 会话，而原夹具只覆盖了 HTTP 的 `get_db`，于是作业写到开发库、
+  测试里永远看到 `queued`（表现像"后台任务没执行"，极难查）。
+
+**没有一起改的**：`/marks/revise`（同为两轮）在前端**没有任何 UI 调用方**（只有 API 函数定义），
+作业化没有用户可见收益，且它的同步预算 600s 与后端最坏耗时是对得上的，所以留着——
+将来真接进 UI 时照同一范式改即可。`/agent/chapter-revise` 早就支持 `async_mode`。
+
+## 八、怎么自查
 
 ```bash
 # 后端：预算换算、重试策略、思考档加时、报错文案、源码级裸数字约束
@@ -176,6 +208,12 @@ cd backend && PYTHONPATH=. .venv/Scripts/python -m pytest tests/test_llm_timeout
 
 # 后端：客户端断开 → 中止在飞调用；后台作业不受影响
 cd backend && PYTHONPATH=. .venv/Scripts/python -m pytest tests/test_disconnect_cancel.py -q
+
+# 后端：所有能调模型的路由都登记在案（AST 自动发现 + 作业 kind 核对）
+cd backend && PYTHONPATH=. .venv/Scripts/python -m pytest tests/test_llm_route_registry.py -q
+
+# 后端：作业化的头脑风暴（需要测试库；无库自动跳过）
+cd backend && PYTHONPATH=. .venv/Scripts/python -m pytest tests/test_api_brainstorm_job.py -q
 
 # 前端：逐端点不变量（读后端源码核验）
 cd frontend && npx vitest run src/api/timeouts.test.ts
@@ -189,3 +227,4 @@ sed -n '1,80p' frontend/src/api/timeouts.ts
 或把 `_RETRYABLE_TRANSPORT` 里加回 `httpx.ReadTimeout`，前端契约测试就会指出某一档不够。
 复现"白烧 token"：把 `config.disconnect_cancel_enabled` 设为 false 或让
 `DisconnectGuard._gone()` 永远返回 False，`test_disconnect_cancel.py` 会红。
+复现"漏登记"：在任一端点里加一句 `await run_recap(...)`，`test_llm_route_registry.py` 会红。
