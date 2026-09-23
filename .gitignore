@@ -53,8 +53,13 @@ deploy/
 scripts/pack_upload.py
 restore-ui.ps1
 
-# 内部文档(运维/美术参考, 不入公开库)
-docs/
+# 内部文档(运维手册 / 安全审计 / 路线图 / 盲测答案键等, 不入公开库)
+#
+# 例外：下面两份是**对外**的技术记录，README 里直接链接它们——
+# 整目录忽略会让 README 的链接在仓库里变成死链。新增对外文档请在这里加白名单。
+docs/*
+!docs/longrange-consistency-and-eval.md
+!docs/llm-timeout-budget.md
 
 # react-bits 临时导出文件(不入库)
 _rb/
