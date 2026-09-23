@@ -74,12 +74,24 @@ interface Contract {
   apiFile: string;
   budget: keyof typeof TIMEOUTS;
   rounds: Round[];
+  /**
+   * `sync`（默认）：请求内跑完，预算必须覆盖所有串行轮次。
+   * `job`：**作业化**端点——请求只登记作业，真正的耗时走作业通道
+   * （`waitProjectJob` 轮询，不受 HTTP 超时约束），所以预算只需覆盖登记时间；
+   * 这条同时要求调用点真的带 `async_mode: true`、且后端注册了对应作业类型。
+   */
+  mode?: "sync" | "job";
+  /** job 模式：前端调用点必须出现这段源码（证明走的是异步分支）。 */
+  mustContain?: string;
+  /** job 模式：后端必须注册的作业 kind（形如 kind="brainstorm"）。 */
+  jobKind?: string;
   /** 为什么是这些轮数（人工核对过调用结构，写在这里以便复核）。 */
   why: string;
 }
 
 const CONTRACTS: Contract[] = [
   {
+    // 同步路径（仍保留给 API 客户端/脚本）：两轮串行，预算必须覆盖思考档最坏耗时。
     anchor: "/brainstorm",
     apiFile: "misc.ts",
     budget: "long",
@@ -88,6 +100,17 @@ const CONTRACTS: Contract[] = [
       { file: "core/lenses/brainstorm.py", constant: "CHAT" },
     ],
     why: "run_brainstorm：2–3 位作家 gather 并发一轮，再让责编综合一轮",
+  },
+  {
+    // UI 走的是作业化路径：预算回到"登记作业"这一档，不再承担两轮生成的耗时。
+    anchor: "startBrainstormJob",
+    apiFile: "misc.ts",
+    budget: "upload",
+    rounds: [],
+    mode: "job",
+    mustContain: "async_mode: true",
+    jobKind: 'kind="brainstorm"',
+    why: "两轮串行改后台作业：发起只登记，进度/结果走作业通道（waitProjectJob）",
   },
   {
     anchor: "/generate-rpy",
@@ -271,9 +294,18 @@ describe("超时预算阶梯", () => {
 
 describe("每个在请求内调用模型的端点", () => {
   for (const c of CONTRACTS) {
+    const isJob = c.mode === "job";
+
     it(`${c.anchor} 的前端预算覆盖后端最坏耗时（${c.why}）`, () => {
       const budgets = backendBudgets();
       const factor = thinkingFactor();
+      if (isJob) {
+        // 作业化端点：请求只登记作业，唯一要覆盖的是"登记 + 落库"这段时间，
+        // 所以断言的是"至少比 30s 默认值宽裕"，而不是 Σ(轮次×预算)。
+        expect(c.rounds, `${c.anchor} 作业化后不该再按轮次算预算`).toEqual([]);
+        expect(TIMEOUTS[c.budget]).toBeGreaterThanOrEqual(TIMEOUTS.fast + SLACK_MS);
+        return;
+      }
       // 后端单轮预算 → 思考档实际生效的预算 → 串行各轮求和
       const neededMs =
         c.rounds.reduce((sum, r) => {
@@ -303,7 +335,18 @@ describe("每个在请求内调用模型的端点", () => {
       expect(at, `${c.apiFile} 里找不到 ${c.anchor}`).toBeGreaterThanOrEqual(0);
       const call = src.slice(at, src.indexOf("});", at));
       expect(call).toMatch(/timeoutMs:\s*TIMEOUTS\.\w+/);
+      if (c.mustContain) {
+        expect(call, `${c.anchor} 必须走异步分支`).toContain(c.mustContain);
+      }
     });
+
+    if (isJob) {
+      it(`${c.anchor} 的后端确实注册了作业类型 ${c.jobKind}`, () => {
+        // 跨语言：作业 kind 写错（或忘了注册）时，前端会一直轮询一个查不到的作业。
+        const src = read(`${BACKEND_APP}api/v1/lenses.py`);
+        expect(src, `backend 里找不到 ${c.jobKind}`).toContain(c.jobKind);
+      });
+    }
   }
 });
 

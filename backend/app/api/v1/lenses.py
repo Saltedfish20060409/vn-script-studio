@@ -77,6 +77,10 @@ class BrainstormIn(BaseModel):
     chapter_id: Optional[str] = None
     selection: str = ""
     draft: str = ""
+    #: 作业化：一次头脑风暴是「多位作家独立发言 → 责编综合」两轮串行模型调用，
+    #: 思考档下最坏可到 8 分钟量级，超过任何合理的 HTTP 等待预算。置 true 时只
+    #: 返回 jobId，结果用 GET /projects/{id}/jobs/{jobId} 取（前端走 waitProjectJob）。
+    async_mode: bool = False
 
 
 @router.get("/lenses")
@@ -251,6 +255,58 @@ async def project_brainstorm(
         baseUrl=creds["base_url"],
         model=creds["model"],
     )
+
+    # ---- 作业化分支 ------------------------------------------------------
+    # 为什么：这是**两轮串行**的模型调用（作家并发一轮 + 责编综合一轮），思考档下
+    # 最坏 ~8 分钟。放在 HTTP 请求里意味着前端必须把等待预算拉到 10 分钟量级才
+    # 不会误判超时；做成作业后，发起请求只需覆盖"登记作业"的时间，进度与结果走
+    # 既有作业通道（与 pipeline/run、chapter-revise 的 async_mode 同一套）。
+    if body.async_mode:
+        from types import SimpleNamespace
+
+        from app.core.jobs import create_job
+        from app.db import AsyncSessionLocal
+
+        owner = SimpleNamespace(id=user.id)
+        payload = {
+            "question": (body.question or "").strip(),
+            "lens_ids": list(body.lens_ids) if body.lens_ids else None,
+            "chapter_id": body.chapter_id,
+            "selection": body.selection or "",
+            "draft": body.draft or "",
+        }
+
+        async def _runner(job) -> None:
+            await job.touch(
+                stage="authors", progress=0.15, message="作家们正在各自独立发言…"
+            )
+            # 用独立会话重读工程：作业在请求结束之后才真正跑，不能复用请求会话。
+            async with AsyncSessionLocal() as session:
+                row2 = await get_owned_project(session, owner, project_id)
+                vn2 = row_to_vn(row2)
+                result = await run_brainstorm(
+                    cfg,
+                    vn2,
+                    question=payload["question"],
+                    lens_ids=payload["lens_ids"],
+                    chapter_id=payload["chapter_id"],
+                    selection=payload["selection"],
+                    draft=payload["draft"],
+                )
+            await job.touch(stage="synth", progress=0.8, message="责编正在综合…")
+            # 与同步分支返回同一个形状（含 markdown），调用方两种模式都能直接用。
+            await job.set_result({**result, "markdown": format_brainstorm_markdown(result)})
+            await job.touch(stage="done", progress=1.0, message="头脑风暴完成")
+
+        job = await create_job(
+            db,
+            kind="brainstorm",
+            project_id=project_id,
+            user_id=user.id,
+            runner=_runner,
+        )
+        return {"jobId": job.id, "async": True, "status": job.status}
+
     try:
         result = await run_brainstorm(
             cfg,

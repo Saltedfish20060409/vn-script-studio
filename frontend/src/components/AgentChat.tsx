@@ -20,7 +20,8 @@ import {
   pipelineRunStream,
   waitProjectJob,
   putProjectLenses,
-  runBrainstorm,
+  startBrainstormJob,
+  type BrainstormResult,
   listAgentConversations,
   putAgentConversation,
   renameAgentConversation,
@@ -1245,13 +1246,30 @@ export function AgentChat({
     setLastContext("头脑风暴 · 分视角独立 → 综合");
     setPersonaOpen(false);
     try {
-      const data = await runBrainstorm(projectId, {
+      // 作业化：头脑风暴是两轮串行的模型调用，同步等待会把预算逼到 10 分钟级。
+      // 这里只发起，进度与结果走作业通道（与自动写作同一套）。
+      const started = await startBrainstormJob(projectId, {
         question: topic,
         lens_ids: activeLensIds,
         chapter_id: chapterId,
         selection: selection || undefined,
         draft: (draft || "").trim() || undefined,
       });
+      if (!started.jobId) throw new Error("头脑风暴启动失败");
+      const job = await waitProjectJob(projectId, started.jobId, {
+        onTick: (j) => {
+          const pct = Math.round((j.progress ?? 0) * 100);
+          setThinking(
+            `头脑风暴进行中（${j.stage || "处理中"}）· ${pct}%${
+              j.message ? ` — ${j.message}` : ""
+            }`
+          );
+        },
+      });
+      if (job.status === "error") {
+        throw new Error(job.error || job.message || "头脑风暴失败");
+      }
+      const data = (job.result ?? {}) as unknown as BrainstormResult;
       const content = data.markdown || data.synthesis || "（无结果）";
       const finalMessages = [...nextMessages, { role: "assistant" as const, content }];
       setMessages(finalMessages);

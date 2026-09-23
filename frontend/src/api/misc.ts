@@ -212,6 +212,32 @@ export function runBrainstorm(
   });
 }
 
+/**
+ * 异步（作业化）头脑风暴：只负责**发起**，结果用 `waitProjectJob` 取 `job.result`。
+ *
+ * 为什么：一次头脑风暴是两轮串行的模型调用（作家并发一轮 + 责编综合一轮），思考档下
+ * 最坏 8 分钟量级。放在请求里会逼前端把等待预算拉到 10 分钟级才不误判超时；作业化后
+ * 发起只需覆盖"登记作业"的时间，进度与结果走既有作业通道（与自动写作 / 章节回炉同一套）。
+ * 结果形状与同步的 `runBrainstorm` 一致（含 `markdown`），调用方两种都能直接用。
+ */
+export function startBrainstormJob(
+  id: string,
+  body: {
+    question: string;
+    lens_ids?: string[];
+    chapter_id?: string;
+    selection?: string;
+    draft?: string;
+  }
+): Promise<{ jobId: string; async: true; status: string }> {
+  return apiFetch(`/projects/${id}/brainstorm`, {
+    method: "POST",
+    // 只是登记作业：用最短的一档即可，真正的耗时走作业通道。
+    timeoutMs: TIMEOUTS.upload,
+    body: JSON.stringify({ ...body, async_mode: true }),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Shares
 // ---------------------------------------------------------------------------

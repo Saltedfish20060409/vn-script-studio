@@ -19,6 +19,8 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import AsyncGenerator
+from contextlib import contextmanager
+from unittest.mock import patch
 
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
@@ -109,6 +111,26 @@ async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency override → test database session."""
     async with SessionLocal() as session:
         yield session
+
+
+@contextmanager
+def background_jobs_use_test_db():
+    """让**后台作业**也连测试库。
+
+    `make_app()` 只覆盖了 HTTP 依赖 `get_db`；但作业是请求结束之后才跑的，
+    它自己开 `app.db.AsyncSessionLocal` 会话（`jobs._persist_job` 与各运行器都是在函数里
+    `from app.db import AsyncSessionLocal`，所以 patch `app.db` 上的这个名字就能同时覆盖）。
+
+    不覆盖的话：作业写到**开发库**，测试库里的行永远停在 queued —— 表现是
+    "后台任务像没执行"，非常难查。任何测 async_mode / 作业化端点的用例都该套这个。
+    """
+    if not DB_AVAILABLE:
+        yield
+        return
+    import app.db as db_module
+
+    with patch.object(db_module, "AsyncSessionLocal", SessionLocal):
+        yield
 
 
 # --------------------------------------------------------------------------
