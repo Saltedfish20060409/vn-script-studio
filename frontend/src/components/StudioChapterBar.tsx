@@ -1,4 +1,5 @@
 import type { SceneChapter, Volume } from "../types/vn";
+import { copyFor, type GenreCopy } from "../lib/genreCopy";
 import { LOOSE_VOLUME_ID, buildVolumeRows, volumeIdOfChapter } from "../lib/volumes";
 import { formatWords } from "../lib/wordCount";
 import styles from "./StudioApp.module.css";
@@ -6,6 +7,15 @@ import styles from "./StudioApp.module.css";
 type WriteSub = "script" | "analysis";
 
 type Props = {
+  /**
+   * 用词表，由调用方按当前作品的体裁注入。
+   *
+   * 为什么是可选：这里只认识"剧本 / 正文"一个词的差别，没有权力也没能力判断
+   * 当前作品是什么体裁——体裁来自 project，而 project 不归这个组件管。做成可选
+   * 是为了让这次改动**单独可上线**：调用方还没接上时，缺省用 VN 的词，
+   * 老用户看到的界面逐字不变；接上之后小说工程自然切到"正文"。
+   */
+  copy?: GenreCopy;
   writeSub: WriteSub;
   chapterId: string;
   chapters: SceneChapter[];
@@ -35,6 +45,7 @@ type Props = {
  * 与原来完全一样（只有一行章节条），所以老工程的使用习惯不受影响。
  */
 export function StudioChapterBar({
+  copy = copyFor("vn"),
   writeSub,
   chapterId,
   chapters,
@@ -71,7 +82,7 @@ export function StudioChapterBar({
         className={writeSub === "script" ? styles.subActive : styles.subTab}
         onClick={onSelectScript}
       >
-        剧本
+        {copy.writeTab}
       </button>
       <button
         type="button"

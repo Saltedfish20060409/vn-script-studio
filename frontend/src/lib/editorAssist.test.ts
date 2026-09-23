@@ -89,6 +89,19 @@ describe("lintProse 标点笔误", () => {
     expect(lintProse(text)).toEqual([]);
   });
 
+  it("常见别字并进体检里（词表口径，见 typoRules）", () => {
+    const issues = lintProse("他迫不急待地推开门。");
+    const hit = issues.find((i) => i.code === "typo_confusion");
+    expect(hit?.level).toBe("warn");
+    expect(hit?.message).toContain("迫不及待");
+    expect(hit?.line).toBe(1);
+  });
+
+  it("lineOf 对别字也算得对（第几行要能跳过去）", () => {
+    const issues = lintProse("第一行。\n第二行，迫不急待。\n第三行。");
+    expect(issues.find((i) => i.code === "typo_confusion")?.line).toBe(2);
+  });
+
   it("位置信息能对上原文（offset/line/snippet）", () => {
     const text = "第一行没问题\n第二行有 半角逗号,在这里\n第三行";
     const hit = lintProse(text).find((i) => i.code === "punct_halfwidth_near_cjk");
@@ -105,6 +118,11 @@ describe("lintProse 标点笔误", () => {
     expect(counts.error).toBeGreaterThan(0);
     expect(counts.warn).toBeGreaterThan(0);
     expect(counts.info).toBeGreaterThan(0);
+  });
+
+  it("别字级别是 warn，不混进 info 里（作者该看见它）", () => {
+    const counts = countIssues(lintProse("迫不急待"));
+    expect(counts.warn).toBe(1);
   });
 });
 

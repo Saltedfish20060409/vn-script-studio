@@ -1,8 +1,16 @@
 import type { ChangeEvent, RefObject } from "react";
+import { copyFor, type GenreCopy } from "../lib/genreCopy";
 import { openNotice } from "../lib/notice";
 import styles from "./StudioApp.module.css";
 
 type Props = {
+  /**
+   * 用词表，由调用方按当前作品体裁注入。
+   *
+   * 可选 + 缺省 VN：顶栏是常驻组件，单独改动它时必须能把"缺省路径"当成生产路径
+   * 跑——缺省值与改动前逐字相同，调用方接上之前界面不会有一丝变化。
+   */
+  copy?: GenreCopy;
   title: string;
   username?: string;
   /** Show the 专注 button only inside the script editor outside focus mode */
@@ -34,6 +42,7 @@ type Props = {
  * Pure presentational — every action is a prop callback.
  */
 export function StudioTopBar({
+  copy = copyFor("vn"),
   title,
   username,
   showFocusToggle,
@@ -100,7 +109,7 @@ export function StudioTopBar({
           <summary>更多</summary>
           <div className={styles.morePanel} role="menu">
             <button type="button" role="menuitem" onClick={onNewProject}>
-              新建剧本
+              {copy.newWork}
             </button>
             <button type="button" role="menuitem" onClick={onImportClick}>
               导入文件

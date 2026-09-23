@@ -17,6 +17,8 @@ export interface WorkspaceSnapshot {
     | "stats"
     // 稿件体检（离线统计，不调模型）：标点/引号/人名/视角 + 注音/拟声/章末钩子
     | "audit"
+    // 连载工作台：日更目标、连续天数、更新日历、存稿与发布状态
+    | "serial"
     | "analysis"
     | "assets"
     | "localization"

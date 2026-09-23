@@ -21,6 +21,8 @@ import {
   deleteSnapshot as apiDeleteSnapshot,
   duplicateProject as apiDuplicateProject,
   exportDocx,
+  exportSubmission,
+  type SubmissionOptions,
   exportJson,
   exportMarkdown,
   exportRenpyBundle,
@@ -71,6 +73,7 @@ import { useConfirm, usePrompt } from "../lib/confirmDialog";
 import { EmptyStage } from "./EmptyStage";
 import { FirstRunChecklist } from "./FirstRunChecklist";
 import { ProjectLibraryPanel } from "./ProjectLibraryPanel";
+import { copyForProject } from "../lib/genreCopy";
 import { CollabPanel } from "./CollabPanel";
 import { CommentsPanel } from "./CommentsPanel";
 import { MarksPanel } from "./MarksPanel";
@@ -262,6 +265,18 @@ function NovelAuditPanel(props: ComponentProps<typeof NovelAuditPanelImpl>) {
   );
 }
 
+// 连载工作台同理：只有点到那一页才加载（含日历与发布表）
+const SerialPanelImpl = lazy(() =>
+  import("./SerialPanel").then((m) => ({ default: m.SerialPanel }))
+);
+function SerialPanel(props: ComponentProps<typeof SerialPanelImpl>) {
+  return (
+    <Suspense fallback={<LazyPanelFallback label="连载" />}>
+      <SerialPanelImpl {...props} />
+    </Suspense>
+  );
+}
+
 // 桌面视图本身就是一整套外壳（图标/窗口/菜单），只在桌面模式下渲染
 const DesktopViewImpl = lazy(() =>
   import("./DesktopView").then((m) => ({ default: m.DesktopView }))
@@ -302,6 +317,7 @@ function tabIndex(tab: StudioTab): number {
 const PROJECT_SUBS_PRIMARY = [
   ["library", "剧本库"],
   ["stats", "写作统计"],
+  ["serial", "连载 / 发布"],
   ["audit", "稿件体检"],
   ["analysis", "结构分析"],
   ["export", "导出"],
@@ -440,6 +456,8 @@ export function StudioApp() {
   const [rpyPreview, setRpyPreview] = useState<string | null>(null);
   const [rpyStale, setRpyStale] = useState(false);
   const [bundleBusy, setBundleBusy] = useState(false);
+  /** 投稿包导出（单篇 / 分章包）进行中 */
+  const [submissionBusy, setSubmissionBusy] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   // 顶栏"审稿"按钮的展开信号：每次 +1 让 AgentFloat 把面板拉出来
   const [agentOpenTick, setAgentOpenTick] = useState(0);
@@ -1419,6 +1437,15 @@ export function StudioApp() {
     [project, chapterId]
   );
 
+  /**
+   * 界面用词（剧本 / 正文·分卷·投稿）。
+   *
+   * 依据是"这是哪一类作品"（`writingGenre` 显式选择，或按题材推断），**不是**当前在看
+   * 哪种稿——一本小说的脚本模式不该把界面切回"剧本"。没有 project 时返回视觉小说那套，
+   * 也就是改动前的原文案。
+   */
+  const copy = copyForProject(project);
+
   function loadEditorFromChapter(
     ch: VnProject["chapters"][number],
     characters: VnProject["characters"],
@@ -2296,6 +2323,29 @@ export function StudioApp() {
     }
   }
 
+  async function downloadSubmission(opts: SubmissionOptions) {
+    if (!project) return;
+    commitEditor();
+    setSubmissionBusy(true);
+    try {
+      setStatus(opts.split ? "打包投稿分章稿…" : "导出投稿稿…");
+      setError("");
+      const blob = await exportSubmission(project.id, opts);
+      const suffix = opts.split ? "_投稿分章.zip" : "_投稿.docx";
+      downloadBlob(`${project.title || "project"}${suffix}`, blob);
+      setStatus(
+        opts.split
+          ? "已下载投稿分章包（一章一个文件 + 投稿信息.txt）"
+          : "已下载投稿稿（首行缩进 / 每章分页 / 文末标字数）"
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "导出失败");
+      setStatus("");
+    } finally {
+      setSubmissionBusy(false);
+    }
+  }
+
   async function downloadRenpyBundle() {
     if (!project) return;
     commitEditor();
@@ -2460,6 +2510,7 @@ export function StudioApp() {
       defaultRect: { x: 120, y: 90, w: 620, h: 460 },
       render: () => (
         <ProjectLibraryPanel
+          copy={copy}
           projectsList={projectsList}
           activeId={project?.id ?? ""}
           renamingId={renamingId}
@@ -2728,6 +2779,7 @@ export function StudioApp() {
           />
         ) : null}
         <StudioTopBar
+          copy={copy}
           title={project.title}
           username={user?.username}
           showFocusToggle={tab === "write" && writeSub === "script" && !focusMode}
@@ -2834,6 +2886,7 @@ export function StudioApp() {
 
                 {projectSub === "library" && !showDesktop && project && (
                   <ProjectLibraryPanel
+                    copy={copy}
                     projectsList={projectsList}
                     activeId={project.id}
                     renamingId={renamingId}
@@ -2877,6 +2930,36 @@ export function StudioApp() {
                   />
                 )}
 
+                {projectSub === "serial" && project && (
+                  <SerialPanel
+                    project={project}
+                    onOpenChapter={(id) => {
+                      setChapterId(id);
+                      setTab("write");
+                    }}
+                    onTogglePublish={(id, publish) => {
+                      updateActive((p) => ({
+                        ...p,
+                        chapters: p.chapters.map((c) =>
+                          c.id === id
+                            ? {
+                                ...c,
+                                // 撤回时把字段删掉（而不是置空串）：老工程里这个键本来就
+                                // 不存在，留个空串会让"未发布"有两种表示
+                                publishedAt: publish ? new Date().toISOString() : undefined,
+                              }
+                            : c
+                        ),
+                      }));
+                      setStatus(
+                        publish
+                          ? "已标记为已发布（只在本工具里记账，正文与导出不受影响）"
+                          : "已撤回发布标记"
+                      );
+                    }}
+                  />
+                )}
+
                 {projectSub === "analysis" && project && (
                   <AnalysisPanels
                     project={project}
@@ -2915,6 +2998,8 @@ export function StudioApp() {
                     onDownloadDocx={() => void downloadDocxFile()}
                     onDownloadBundle={() => void downloadRenpyBundle()}
                     bundleBusy={bundleBusy}
+                    onDownloadSubmission={(opts) => void downloadSubmission(opts)}
+                    submissionBusy={submissionBusy}
                   />
                 )}
 
@@ -2965,6 +3050,7 @@ export function StudioApp() {
                   </div>
                 ) : null}
                 <StudioChapterBar
+                  copy={copy}
                   writeSub={writeSub}
                   chapterId={chapterId}
                   chapters={project.chapters}
@@ -3031,6 +3117,7 @@ export function StudioApp() {
                 {writeSub === "script" && (
                   <section className={styles.panel}>
                     <WriteToolbar
+                      copy={copy}
                       chapterTitle={chapter?.title ?? ""}
                       writeMode={writeMode}
                       rpyStale={rpyIsStale({
@@ -3380,6 +3467,16 @@ export function StudioApp() {
                   updateActive((p) => ({ ...p, logline: value }))
                 }
                 onGenreChange={(value) => updateActive((p) => ({ ...p, genre: value }))}
+                writingGenre={project.writingGenre ?? "auto"}
+                onWritingGenreChange={(value) => {
+                  updateActive((p) => ({ ...p, writingGenre: value }));
+                  const next = copyForProject({ ...project, writingGenre: value });
+                  setStatus(
+                    value === "auto"
+                      ? `界面用词改回「自动判断」（现在按题材是「${next.label}」）`
+                      : `界面用词已切换为「${next.label}」`
+                  );
+                }}
                 onBibleChange={updateBible}
               />
             )}

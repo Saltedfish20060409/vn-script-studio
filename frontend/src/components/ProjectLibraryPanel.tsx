@@ -1,9 +1,18 @@
 import type { RefObject } from "react";
 import type { ProjectSummary } from "../api/client";
+import { copyFor, type GenreCopy } from "../lib/genreCopy";
 import { TemplatePicker } from "./TemplatePicker";
 import styles from "./StudioApp.module.css";
 
 type Props = {
+  /**
+   * 用词表，由调用方按当前作品体裁注入。
+   *
+   * 这里只换"一份作品叫什么"（剧本 / 小说）这一个词——"剧本库"这个页签属于
+   * StudioApp 的标签体系，不在本组件职责内。可选 + 缺省 VN：调用方没接上时
+   * 界面与改动前逐字一致。
+   */
+  copy?: GenreCopy;
   projectsList: ProjectSummary[];
   activeId: string;
   renamingId: string | null;
@@ -23,6 +32,7 @@ type Props = {
 };
 
 export function ProjectLibraryPanel({
+  copy = copyFor("vn"),
   projectsList,
   activeId,
   renamingId,
@@ -43,10 +53,10 @@ export function ProjectLibraryPanel({
   return (
     <>
       <div className={styles.toolbar}>
-        <span>管理多个剧本：新建、导入 Word/文本/JSON，或载入示例</span>
+        <span>管理多个{copy.work}：新建、导入 Word/文本/JSON，或载入示例</span>
         <div className={styles.aiQuick}>
           <button type="button" onClick={onCreateBlank}>
-            空白剧本
+            {copy.blankWork}
           </button>
           <button type="button" onClick={onCreateDemo}>
             示例《雨夜车站》
@@ -86,7 +96,7 @@ export function ProjectLibraryPanel({
                     onCancelRename();
                   }
                 }}
-                aria-label="重命名剧本"
+                aria-label={`重命名${copy.work}`}
               />
             ) : (
               <h3
@@ -119,7 +129,7 @@ export function ProjectLibraryPanel({
               <button
                 type="button"
                 className={styles.ghost}
-                title="把这份剧本完整另存一份新的，可在两份上分别继续写"
+                title={`把这份${copy.work}完整另存一份新的，可在两份上分别继续写`}
                 onClick={() => onDuplicate(p.id)}
               >
                 另存副本

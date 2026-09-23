@@ -77,6 +77,7 @@ import {
   formatPipelineResult,
   normalizeMessages,
 } from "../lib/agentFormat";
+import { copyForProject } from "../lib/genreCopy";
 import { AgentMessagesList } from "./AgentMessagesList";
 import { AgentPersonaOverlay } from "./AgentPersonaOverlay";
 import { ChapterReviseModePicker } from "./ChapterReviseModePicker";
@@ -160,6 +161,10 @@ export function AgentChat({
   hidden,
 }: Props) {
   const projectId = project.id;
+  // Agent 的"写入动作"文案里，append_script / replace_script 要跟着作品体裁叫名字
+  // （剧本 / 正文）。体裁只能从 project 读，所以在组件里取一次；无需 useMemo——
+  // copyForProject 内部只是查表，返回的是模块级常量对象，不会造成额外渲染。
+  const copy = copyForProject(project);
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   // 上次运行检查点摘要（run_state）：status=interrupted/error 时显示"继续上次"
@@ -714,7 +719,7 @@ export function AgentChat({
     if (!id || busy) return;
     const ok = await confirm({
       title: "删除当前对话？",
-      body: "消息记录将从服务器移除，不会改动剧本内容。",
+      body: `消息记录将从服务器移除，不会改动${copy.work}内容。`,
       danger: true,
       confirmLabel: "确认删除",
     });
@@ -872,7 +877,7 @@ export function AgentChat({
       if (applied && res.project) {
         undoStack.current = [
           ...undoStack.current,
-          { label: describeActions(actions), project: snapshot },
+          { label: describeActions(actions, copy), project: snapshot },
         ].slice(-20);
         setUndoCount(undoStack.current.length);
         onProjectChange(res.project);
@@ -935,7 +940,7 @@ export function AgentChat({
       // 否则作者会以为"它说整理好了"其实什么都没进设定库。
       const proposed = actions.some((a) => String(a.op || "").startsWith("propose_"));
       const foot = [
-        applied ? `已落地：${describeActions(actions)}` : "",
+        applied ? `已落地：${describeActions(actions, copy)}` : "",
         proposed
           ? "上面的「提议」都放进了「项目 → 结构分析 → 待审列表」，你逐条勾选接受后才会写进工程（AI 不会直接改设定库）"
           : "",
@@ -1593,14 +1598,14 @@ export function AgentChat({
       if (res.wrote && res.project) {
         undoStack.current = [
           ...undoStack.current,
-          { label: describeActions(res.actions || []), project: snapshot },
+          { label: describeActions(res.actions || [], copy), project: snapshot },
         ].slice(-20);
         setUndoCount(undoStack.current.length);
         onProjectChange(res.project);
       }
       const foot = [
         res.wrote
-          ? `已落地：${(res.applied || []).join("；") || describeActions(res.actions || [])}`
+          ? `已落地：${(res.applied || []).join("；") || describeActions(res.actions || [], copy)}`
           : "未写入工程",
         (res.skipped || []).length ? `未执行：${res.skipped.join("；")}` : "",
         res.wrote
@@ -1945,6 +1950,7 @@ export function AgentChat({
               </div>
             )}
           <AgentMessagesList
+            copy={copy}
             messages={messages}
             busy={busy}
             thinking={thinking}

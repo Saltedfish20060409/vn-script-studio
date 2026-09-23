@@ -4,6 +4,7 @@ import { LorePanel } from "./LorePanel";
 import { LoreEntriesPanel } from "./LoreEntriesPanel";
 import type { Character, LoreEntry, StoryBible } from "../types/vn";
 import type { LoreLinkOption } from "../lib/loreEntries";
+import { genreOptions } from "../lib/genreCopy";
 import { ConstraintAuditCard } from "./ConstraintAuditCard";
 import styles from "./StudioApp.module.css";
 
@@ -27,6 +28,12 @@ type Props = {
   onUpdateCharacter: (id: string, patch: Partial<Character>) => void;
   onLoglineChange: (value: string) => void;
   onGenreChange: (value: string) => void;
+  /**
+   * 作品体裁：决定界面用哪套词（剧本 / 正文·分卷·投稿）。
+   * 默认按题材自动判断；作者在这里可以显式指定。
+   */
+  writingGenre?: "auto" | "vn" | "novel";
+  onWritingGenreChange?: (value: "auto" | "vn" | "novel") => void;
   onBibleChange: (patch: Partial<StoryBible>) => void;
   onLoreEntriesChange: (next: LoreEntry[]) => void;
   /** 可关联的实体（角色/地点/章节）：设定条目用它点名"这条讲的是谁/在哪" */
@@ -57,6 +64,8 @@ export function WorldPanel({
   onUpdateCharacter,
   onLoglineChange,
   onGenreChange,
+  writingGenre,
+  onWritingGenreChange,
   onBibleChange,
   onLoreEntriesChange,
   loreLinkOptions = [],
@@ -242,6 +251,26 @@ export function WorldPanel({
               类型 / 题材
               <input value={genre} onChange={(e) => onGenreChange(e.target.value)} />
             </label>
+            {onWritingGenreChange ? (
+              <label
+                className={styles.full}
+                title="决定界面里的用词：视觉小说用「剧本 / 选项」，小说用「正文 / 分卷 / 投稿」"
+              >
+                界面用词
+                <select
+                  value={writingGenre ?? "auto"}
+                  onChange={(e) =>
+                    onWritingGenreChange(e.target.value as "auto" | "vn" | "novel")
+                  }
+                >
+                  {genreOptions({ genre, writingGenre }).map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label} — {opt.hint}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label className={styles.full}>
               世界观
               <textarea

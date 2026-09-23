@@ -2,12 +2,20 @@ import { useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { getChapterReviseDraft } from "../lib/chapterReviseDraft";
 import { describeActions } from "../lib/agentFormat";
+import { copyFor, type GenreCopy } from "../lib/genreCopy";
 import type { AgentChatMessage, AgentTraceEvent } from "../types/vn";
 import { AgentMessageBody } from "./AgentMarkdown";
 import { WriterPortrait } from "./WriterPortrait";
 import styles from "./AgentChat.module.css";
 
-function AgentTracePanel({ events }: { events: AgentTraceEvent[] }) {
+function AgentTracePanel({
+  events,
+  copy,
+}: {
+  events: AgentTraceEvent[];
+  /** 轨迹里的"写入动作"要按体裁叫名字（追加剧本 / 追加正文），由上层注入 */
+  copy: GenreCopy;
+}) {
   const [open, setOpen] = useState(false);
   const useful = events.filter((e) => e.type !== "done");
   if (!useful.length) return null;
@@ -53,7 +61,7 @@ function AgentTracePanel({ events }: { events: AgentTraceEvent[] }) {
               const acts = Array.isArray(e.actions) ? e.actions : [];
               return (
                 <li key={i} className={styles.traceItem}>
-                  <strong>写入动作</strong> {describeActions(acts) || "（空）"}
+                  <strong>写入动作</strong> {describeActions(acts, copy) || "（空）"}
                 </li>
               );
             }
@@ -76,6 +84,11 @@ function AgentTracePanel({ events }: { events: AgentTraceEvent[] }) {
 }
 
 type Props = {
+  /**
+   * 用词表，由调用方按当前作品体裁注入。
+   * 可选 + 缺省 VN：与其它组件一致，调用方没接上时文案逐字不变。
+   */
+  copy?: GenreCopy;
   messages: AgentChatMessage[];
   busy: boolean;
   thinking: string;
@@ -109,6 +122,7 @@ type Props = {
  * 纯受控展示——state 与流式 / 发送 / 改稿逻辑留在 AgentChat。
  */
 export function AgentMessagesList({
+  copy = copyFor("vn"),
   messages,
   busy,
   thinking,
@@ -214,7 +228,7 @@ export function AgentMessagesList({
                 mode={m.role === "user" ? "plain" : "markdown"}
               />
               {m.role === "assistant" && m.trace?.length ? (
-                <AgentTracePanel events={m.trace} />
+                <AgentTracePanel events={m.trace} copy={copy} />
               ) : null}
               {reviseAction ? (
                 <div className={styles.msgActions}>
@@ -255,7 +269,7 @@ export function AgentMessagesList({
           (liveStream.events.length > 0 || liveStream.text) && (
             <div className={styles.liveStream}>
               {liveStream.events.length > 0 && (
-                <AgentTracePanel events={liveStream.events} />
+                <AgentTracePanel events={liveStream.events} copy={copy} />
               )}
               {liveStream.text && (
                 <p className={styles.liveText}>{liveStream.text}</p>

@@ -106,6 +106,11 @@ export interface SceneChapter {
   rpyFromProseHash?: string;
   /** 所属卷（可选）。没有卷 = 平铺章节，老工程行为不变。 */
   volumeId?: string;
+  /**
+   * 连载发布状态：有值 = 这一章标记为已发布（ISO 时间）。
+   * 记时间而不是布尔，是因为连载作者会回头改已发布的章、改完再发一次。
+   */
+  publishedAt?: string;
 }
 
 /** 一卷（轻小说/网文的连载单位）。顺序就是数组顺序。 */
@@ -475,6 +480,11 @@ export interface VnProject {
   analysisMeta?: AnalysisMeta;
   /** 写作目标（可选）：写作页显示进度与"还差多少"；缺省 = 不显示 */
   writingGoals?: WritingGoals;
+  /**
+   * 作品体裁：决定界面用哪套词（剧本 / 正文·分卷·投稿）。
+   * 缺省或 `"auto"` = 按 `genre` 关键词推断；作者选定后以这里为准。
+   */
+  writingGenre?: "auto" | "vn" | "novel";
   /** Phase 2: persisted voice-check reports */
   voiceReports?: Array<Record<string, unknown>>;
   /** Author style memory: LLM-learned writing-style guide from this novel */

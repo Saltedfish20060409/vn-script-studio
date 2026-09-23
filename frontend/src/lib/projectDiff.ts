@@ -22,6 +22,8 @@ const SECTION_KEYS = [
   "sprites",
   // 写作目标：漏了它，"只改目标"的那次保存不会被判定为有改动 → 目标永远存不上
   "writingGoals",
+  // 作品体裁（界面用哪套词）同理
+  "writingGenre",
 ] as const;
 
 export type ProjectDiff = {

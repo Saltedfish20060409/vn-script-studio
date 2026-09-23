@@ -259,6 +259,46 @@ export async function exportDocx(id: string): Promise<Blob> {
   return res.blob();
 }
 
+export type SubmissionOptions = {
+  /** true = 分章打包（一章一个 .docx + 投稿信息.txt） */
+  split?: boolean;
+  /** 正文首行缩进 2 字符（中文投稿惯例） */
+  indent?: boolean;
+  /** 每章另起一页 */
+  pageBreak?: boolean;
+  /** 每章末尾标注字数 */
+  counts?: boolean;
+  /** 是否带上章节梗概。默认 false：那是写给自己看的备注，会被编辑当正文 */
+  synopsis?: boolean;
+  author?: string;
+  contact?: string;
+};
+
+/**
+ * 投稿包导出：投稿排版单篇（.docx）或分章包（.zip）。
+ *
+ * 与 `exportDocx` 的分工：那个是"把作品读出来"的通用导出，排版中性、给作者自己看；
+ * 这个按投稿方的格式要求来（缩进/分页/字数/信息页/一章一文件）。
+ */
+export async function exportSubmission(
+  id: string,
+  opts: SubmissionOptions = {}
+): Promise<Blob> {
+  const params = new URLSearchParams();
+  if (opts.split) params.set("split", "1");
+  if (opts.indent === false) params.set("indent", "0");
+  if (opts.pageBreak === false) params.set("page_break", "0");
+  if (opts.counts === false) params.set("counts", "0");
+  if (opts.synopsis) params.set("synopsis", "1");
+  if (opts.author?.trim()) params.set("author", opts.author.trim());
+  if (opts.contact?.trim()) params.set("contact", opts.contact.trim());
+  const qs = params.toString();
+  const res = await authedRawFetch(
+    `/projects/${id}/export/submission${qs ? `?${qs}` : ""}`
+  );
+  return res.blob();
+}
+
 export type GenerateRpyOut = {
   rpy: string;
   blocks: import("../types/vn").ScriptBlock[];

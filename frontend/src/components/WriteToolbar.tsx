@@ -1,9 +1,18 @@
+import { copyFor, type GenreCopy } from "../lib/genreCopy";
 import { SpeechInputButton } from "./SpeechInputButton";
 import styles from "./StudioApp.module.css";
 
 export type WriteMode = "prose" | "rpy";
 
 type Props = {
+  /**
+   * 用词表，由调用方按当前作品体裁注入。
+   *
+   * 可选 + 缺省 VN，理由：这个工具栏里"剧本 / RPY / 根据剧本生成"是同一个概念的
+   * 三个叫法，必须整组一起换。调用方（StudioApp）还没接上时缺省走 VN 词，界面
+   * 与改动前逐字一致，不会出现"按钮叫正文、提示还叫剧本"的半吊子状态。
+   */
+  copy?: GenreCopy;
   chapterTitle: string;
   writeMode: WriteMode;
   rpyStale?: boolean;
@@ -21,6 +30,7 @@ type Props = {
 };
 
 export function WriteToolbar({
+  copy = copyFor("vn"),
   chapterTitle,
   writeMode,
   rpyStale,
@@ -51,7 +61,7 @@ export function WriteToolbar({
           className={writeMode === "prose" ? styles.modeOn : styles.modeOff}
           onClick={() => onWriteModeChange("prose")}
         >
-          剧本
+          {copy.proseMode}
         </button>
         <button
           type="button"
@@ -60,7 +70,7 @@ export function WriteToolbar({
           className={writeMode === "rpy" ? styles.modeOn : styles.modeOff}
           onClick={() => onWriteModeChange("rpy")}
         >
-          RPY
+          {copy.scriptMode}
         </button>
       </div>
       {writeMode === "rpy" ? (
@@ -69,13 +79,20 @@ export function WriteToolbar({
           className={styles.ghost}
           disabled={generating}
           onClick={onGenerateRpy}
-          title="根据自然语言剧本生成 Ren'Py 脚本"
+          title={copy.generateScriptHint}
         >
-          {generating ? "生成中…" : "根据剧本生成"}
+          {generating ? "生成中…" : copy.generateScript}
         </button>
       ) : null}
       {rpyStale && writeMode === "rpy" ? (
-        <span className={styles.hintInline}>剧本已改，RPY 可能过期</span>
+        // 过期提示按体裁组词，而不是写死。中英之间那个空格是分开处理的：
+        // VN 的 "RPY" 是拉丁字母，按排版习惯要和"可能过期"隔一个空格；
+        // 小说的"脚本"本身是中文，再加空格会显得像错字。
+        <span className={styles.hintInline}>
+          {copy.genre === "novel"
+            ? `${copy.proseMode}已改，${copy.scriptMode}可能过期`
+            : `${copy.proseMode}已改，${copy.scriptMode} 可能过期`}
+        </span>
       ) : null}
       {onFind ? (
         <button
@@ -109,9 +126,7 @@ export function WriteToolbar({
           </button>
         </div>
       ) : writeMode === "prose" ? (
-        <span className={styles.hintInline}>
-          默认写普通剧本文字（对白写成「角色名：台词」）；想做成可试玩的游戏时，再切到 RPY 自动转换
-        </span>
+        <span className={styles.hintInline}>{copy.proseHint}</span>
       ) : null}
     </div>
   );

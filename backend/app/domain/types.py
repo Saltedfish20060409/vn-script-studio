@@ -261,6 +261,10 @@ class SceneChapter(BaseModel):
     rpyFromProseHash: Optional[str] = None
     # 所属卷（可选）。没有卷时是 None，行为与"平铺章节"完全一致。
     volumeId: Optional[str] = None
+    # 连载发布状态（可选）：有值 = 这一章作者标记为"已发布"（ISO 时间）。
+    # 为什么不做成 bool：连载作者常回头改已发布的章，改完想再发一次，
+    # 记时间才能看出"这一章是什么时候发的"。缺省 = 未发布（老工程行为不变）。
+    publishedAt: Optional[str] = None
 
 
 class Volume(BaseModel):
@@ -653,6 +657,10 @@ class VnProject(BaseModel):
     localization: Optional[Dict[str, Any]] = None
     # 写作目标（可选）：日更/本章/本卷字数，写作页据此显示进度与"还差多少"
     writingGoals: Optional[WritingGoals] = None
+    # 作品体裁（可选）：决定界面用哪套词——"vn" 用剧本/选项/Ren'Py，
+    # "novel" 用正文/分卷/投稿；"auto" 或缺省 = 按 genre 关键词推断
+    # （推断规则在前端 lib/genreCopy.ts，显式值优先，作者可以在设定页改）
+    writingGenre: Optional[str] = None
     # Local read-only share id
     shareId: Optional[str] = None
     updatedAt: str

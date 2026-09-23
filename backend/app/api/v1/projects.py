@@ -584,6 +584,59 @@ async def export_docx(
     )
 
 
+@router.get("/{project_id}/export/submission")
+async def export_submission(
+    project_id: str,
+    split: bool = False,
+    indent: bool = True,
+    synopsis: bool = False,
+    page_break: bool = True,
+    counts: bool = True,
+    author: str = "",
+    contact: str = "",
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """投稿包：投稿排版单篇（.docx）或分章打包（.zip）。
+
+    与 `/export/docx` 的分工：那条是"把作品读出来"的通用导出（作者自己看、存档），
+    排版中性、行为不变；这条按投稿方的格式要求来——首行缩进 2 字符、每章另起一页、
+    文末标字数、投稿信息页，并且可以**一章一个文件**打包（很多渠道就是这么收稿的）。
+
+    `synopsis` 默认关：章节梗概是写给作者自己的备注，混在投稿稿里会被当成正文。
+    """
+    from app.core.export_submission import (
+        SubmissionOptions,
+        submission_docx,
+        submission_zip,
+    )
+    from app.core.export_text import attachment_disposition, safe_filename
+
+    row = await get_project_readable(db, user, project_id)
+    vn = row_to_vn(row)
+    opts = SubmissionOptions(
+        indent_first_line=bool(indent),
+        include_synopsis=bool(synopsis),
+        page_break_per_chapter=bool(page_break),
+        word_count_footer=bool(counts),
+        author=author,
+        contact=contact,
+    )
+    if split:
+        content = submission_zip(vn, opts)
+        media = "application/zip"
+        filename = safe_filename(vn.title, "_投稿分章.zip")
+    else:
+        content = submission_docx(vn, opts)
+        media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        filename = safe_filename(vn.title, "_投稿.docx")
+    return Response(
+        content=content,
+        media_type=media,
+        headers={"Content-Disposition": attachment_disposition(filename)},
+    )
+
+
 @router.post("/{project_id}/generate-rpy")
 async def generate_rpy_from_prose_api(
     project_id: str,

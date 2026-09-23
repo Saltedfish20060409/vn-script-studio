@@ -5,8 +5,17 @@ import type {
   HarnessLintResult,
   PipelineRunResult,
 } from "../api/client";
+import { copyFor, type GenreCopy } from "./genreCopy";
 import type { AgentAction, AgentChatMessage } from "../types/vn";
 
+/**
+ * 动作 → 中文名。
+ *
+ * `append_script` / `replace_script` **故意不在这里**：它们指的是"往正文里写"，
+ * 而正文在小说工程里叫"正文"、在 VN 工程里叫"剧本"。写在这个模块级常量里就
+ * 等于把 VN 的叫法钉死在所有体裁上（常量在模块加载时求值一次，根本拿不到
+ * 当前作品的体裁）。所以这两个 op 在 describeActions 里按传入的 copy 现取。
+ */
 const ACTION_LABEL: Record<string, string> = {
   add_character: "新增角色",
   update_character: "修改角色",
@@ -19,8 +28,6 @@ const ACTION_LABEL: Record<string, string> = {
   add_chapter: "新增章节",
   delete_chapter: "删除章节",
   rename_chapter: "重命名章节",
-  append_script: "追加剧本",
-  replace_script: "替换剧本",
   update_bible: "更新设定",
   update_meta: "更新元信息",
   propose_character_link: "提议关系",
@@ -35,9 +42,23 @@ const ACTION_LABEL: Record<string, string> = {
   scan_facts: "扫描事实",
 };
 
-export function describeActions(actions: AgentAction[]): string {
+/**
+ * 把一批写入动作拼成一句人话。
+ *
+ * 第二个参数缺省 `copyFor("vn")` 是刻意的向后兼容：调用点（含测试）不传时看到的
+ * 仍然是"追加剧本 / 替换剧本"，与改动前逐字一致；只有真的按体裁传了 copy 的
+ * 调用点才会在小说工程里显示"追加正文 / 替换正文"。
+ */
+export function describeActions(
+  actions: AgentAction[],
+  copy: GenreCopy = copyFor("vn")
+): string {
   if (actions.length === 0) return "";
-  const names = actions.map((a) => ACTION_LABEL[a.op] ?? a.op);
+  const names = actions.map((a) => {
+    if (a.op === "append_script") return copy.appendScript;
+    if (a.op === "replace_script") return copy.replaceScript;
+    return ACTION_LABEL[a.op] ?? a.op;
+  });
   return names.length <= 2 ? names.join("；") : `${names[0]} 等 ${names.length} 项`;
 }
 

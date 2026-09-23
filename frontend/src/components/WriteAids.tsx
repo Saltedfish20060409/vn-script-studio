@@ -38,6 +38,9 @@ const todayKey = (): string => {
   ).padStart(2, "0")}`;
 };
 
+/** 折叠状态存在本机（不属于作品数据，换设备不该跟着走） */
+const AIDS_COLLAPSED_KEY = "vnss-write-aids-collapsed";
+
 function Bar({ ratio, done }: { ratio: number; done: boolean }) {
   return (
     <span className={styles.bar} aria-hidden>
@@ -118,6 +121,34 @@ export function WriteAids({
   const [goalOpen, setGoalOpen] = useState(false);
   const [draft, setDraft] = useState({ daily: "", chapter: "", volume: "" });
   const [issueIndex, setIssueIndex] = useState(0);
+  /**
+   * 是否折叠这条辅助条。
+   *
+   * 这是对"它是不是只是在占地方"的正面回答：三行读数确实占掉正文上方一条空间，
+   * 而有的人一天只关心字数、不关心分场。所以给一个折叠开关，状态记在本机
+   * （localStorage：跟"上次打开的章节"一样属于本设备的记忆，不跟着作品走）。
+   * **不做侧栏大纲**：写作页已经是三栏 + 悬浮 Agent 面板，再加一列会挤掉正文宽度；
+   * 而分场信息要的是"点一下就跳过去"，横条已经能做到——需要一屏纵览全部场景时，
+   * 该去的是「结构分析」，那里有整章结构视图。
+   */
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(AIDS_COLLAPSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(AIDS_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        // 隐私模式下写不了：这次会话内仍然生效，不弹错
+      }
+      return next;
+    });
+  }
 
   // 今日净增 / 本卷字数只有服务端知道（/stats 已经在维护按天净增），
   // 切章时再拉一次即可——正文本身实时算，不需要等接口。
@@ -200,7 +231,19 @@ export function WriteAids({
         <span className={styles.hint}>
           字数目标 · 分场导航 · 笔误体检（点条目可直接跳到正文那一处）
         </span>
+        <button
+          type="button"
+          className={styles.ghost}
+          data-testid="toggle-write-aids"
+          aria-expanded={!collapsed}
+          title={collapsed ? "展开写作辅助" : "折叠起来（它只是占地方时）"}
+          onClick={toggleCollapsed}
+        >
+          {collapsed ? "展开" : "折叠"}
+        </button>
       </div>
+      {collapsed ? null : (
+        <>
       <div className={styles.row}>
         <span className={styles.rowLabel}>目标</span>
         {goalOpen ? (
@@ -352,6 +395,8 @@ export function WriteAids({
           )}
         </div>
       ) : null}
+        </>
+      )}
     </div>
   );
 }

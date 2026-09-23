@@ -16,6 +16,7 @@
  * "卷头 1200 字、进度条 1188 字"这种事。
  */
 import { countWords } from "./wordCount";
+import { findTypos, typoMessage } from "./typoRules";
 
 export type IssueLevel = "error" | "warn" | "info";
 
@@ -202,8 +203,29 @@ export function lintProse(text: string): TextIssue[] {
     ...scan(text, /[ \t]+(?=\n|$)/g, "info", "trailing_space", () =>
       "行尾有多余空格"
     ),
+    // 常见别字（成语/固定搭配词表，零误报口径；见 lib/typoRules.ts）
+    ...lintTypos(text),
   ];
   return issues.sort((a, b) => a.offset - b.offset || a.code.localeCompare(b.code));
+}
+
+/**
+ * 别字体检（词表命中，零误报口径）。
+ *
+ * 为什么并进 `lintProse` 而不是另开一组界面：作者看到的应该是"这一章有几处要留意"，
+ * 而不是先学会区分"标点问题"和"别字问题"。级别给 warn——成语里的同音别字
+ * 几乎不可能是本意，但仍由作者确认（可能有角色故意写错，比如小孩说话）。
+ */
+export function lintTypos(text: string): TextIssue[] {
+  return findTypos(text).map((hit) => ({
+    code: "typo_confusion",
+    level: "warn" as const,
+    message: typoMessage(hit),
+    offset: hit.offset,
+    length: hit.length,
+    line: lineOf(text, hit.offset),
+    snippet: snippetOf(text, hit.offset, hit.length),
+  }));
 }
 
 /** 按级别汇总（界面上的角标用） */
