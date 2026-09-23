@@ -5,6 +5,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
+from app.core import llm_budget
 from app.core.agent_context import _blocks_to_plain
 from app.core.ai import DeepSeekConfig
 from app.core.llm_http import chat_completions, content_from_response
@@ -69,7 +70,7 @@ async def enrich_chapter_ledger_payload(
             {"role": "user", "content": prompt},
         ],
         temperature=0.2,
-        timeout=90,
+        timeout=llm_budget.MEDIUM,
     )
     content, _ = content_from_response(res)
     parsed = _extract_json_obj(content) or {}

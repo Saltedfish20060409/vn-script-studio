@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List
 
+from app.core import llm_budget
 from app.core.ai import DeepSeekConfig
 from app.core.character_voice.corpus import corpus_stats, find_character
 from app.core.llm_http import content_from_response
@@ -95,7 +96,7 @@ async def synthesize_voice_mind(
             {"role": "user", "content": user},
         ],
         temperature=0.55,
-        timeout=120,
+        timeout=llm_budget.CHAT,
     )
     content, used_model = content_from_response(res)
     content = (content or "").strip()

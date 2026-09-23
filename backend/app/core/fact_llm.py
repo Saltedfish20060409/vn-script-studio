@@ -20,6 +20,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
+from app.core import llm_budget
 from app.core.ai import DeepSeekConfig
 from app.domain.types import VnProject
 
@@ -399,7 +400,7 @@ async def enrich_fact_candidates(
             messages=_build_messages(project, sent, chapter_texts),
             temperature=0.2,
             response_format={"type": "json_object"},
-            timeout=120,
+            timeout=llm_budget.CHAT,
         )
         content, used_model = content_from_response(res)
         stats.model = used_model or (config.model or "")

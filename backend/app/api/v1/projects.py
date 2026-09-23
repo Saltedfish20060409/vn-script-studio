@@ -483,21 +483,32 @@ async def duplicate_project(
 @router.get("/{project_id}/export/rpy")
 async def export_rpy(
     project_id: str,
+    adaptive_reader: bool = False,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """导出 .rpy。``adaptive_reader=true`` 时额外注入"读者倾向计数器"
+    （见 `core/adaptive_reader.py`）：每个会改变量的选项体内加一行
+    `$ persistent.reader_tendency_x += 1`，作者就能在后续条件里写自适应分支。
+
+    默认 false：这是会改变产物语义的开关，同一份剧本两次导出结果不同会让作者困惑。
+    """
     row = await get_project_readable(db, user, project_id)
-    text = export_to_renpy(row_to_vn(row))
+    text = export_to_renpy(row_to_vn(row), adaptive_reader=adaptive_reader)
     return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
 
 
 @router.get("/{project_id}/export/bundle")
 async def export_bundle(
     project_id: str,
+    adaptive_reader: bool = False,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Download a full Ren'Py project skeleton (script/options/gui/README) as zip."""
+    """Download a full Ren'Py project skeleton (script/options/gui/README) as zip.
+
+    ``adaptive_reader`` 与 `export/rpy` 同义（打进 zip 里的 script.rpy）。
+    """
     import io as _io
     import zipfile
 
@@ -505,7 +516,7 @@ async def export_bundle(
 
     row = await get_project_readable(db, user, project_id)
     vn = row_to_vn(row)
-    files = export_project_bundle(vn)
+    files = export_project_bundle(vn, adaptive_reader=adaptive_reader)
     buf = _io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for name, content in files.items():
@@ -823,6 +834,7 @@ async def translate_localization(
     - 默认不覆盖已有译文（人工填的、之前 AI 译的都不会被冲掉）；
     - 一次只处理有限句数（条数 + 字符双重预算），可以反复点直到翻完。
     """
+    from app.core import llm_budget
     from app.core.llm_http import chat_completions
     from app.core.localization import extract_entries, localization_stats
     from app.core.localization_ai import (
@@ -894,6 +906,8 @@ async def translate_localization(
             ],
             temperature=0.3,
             max_tokens=4000,
+            # 显式预算：此前靠 provider 默认值，前端预算表无法与之核对。
+            timeout=llm_budget.CHAT,
         )
         payload = res.json()
         text = payload["choices"][0]["message"]["content"]
@@ -1052,6 +1066,166 @@ async def analysis_branch_tree(
     row = await get_owned_project(db, user, project_id)
     tree = build_branch_tree(row_to_vn(row))
     return {"nodes": [_branch_node_to_dict(n) for n in tree]}
+
+
+@router.get("/{project_id}/analysis/branch-report")
+async def analysis_branch_report(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """分支结构体检：真实 label 图 / 环检测 / 分支覆盖 / 条件可满足性 / 无后果选项 / 结局对账。
+
+    与 `analysis/script-report` 的分工：那边是"工程体检"（时长、重复率、变量三态），
+    这边是**控制流推理**——它回答的是旧实现答不出的那几类问题：
+    这个选项按不按都一样吗？这个条件是不是永远不成立？玩家会卡在死循环里吗？
+    我声明的 5 个结局实际能走到几个？全部纯本地计算，不调模型。
+    """
+    from app.core.branch_analysis import analyze_branches
+
+    row = await get_project_readable(db, user, project_id)
+    return analyze_branches(row_to_vn(row))
+
+
+@router.get("/{project_id}/analysis/voice-report")
+async def analysis_voice_report(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """角色声线体检：逐角色语言画像 + 逐章声线漂移 + 角色间可混淆度。
+
+    这是"角色像不像本人"的**量化**量具（此前只有作者凭感觉读、或再调一次模型主观判断）。
+    阈值由该角色自己台词分布的留一法分位自校准，不设魔法常数；纯本地计算，不调模型。
+    """
+    from app.core.voice_fingerprint import analyze_voices
+
+    row = await get_project_readable(db, user, project_id)
+    return analyze_voices(row_to_vn(row))
+
+
+@router.get("/{project_id}/analysis/continuity")
+async def analysis_continuity(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """跨章事实一致性体检：未登记说话人 / 悬空关系边 / 重名 / 停留时间线 / 死亡后仍出场等。
+
+    全是确定性检查（不调模型），因此可以随手跑、也可以在保存路径上自动跑。
+    结果形状与 `/analysis/branch-report` 一致（`findings` + `counts`），前端同一套渲染。
+    """
+    from app.core.continuity_graph import analyze_continuity
+
+    row = await get_project_readable(db, user, project_id)
+    return analyze_continuity(row_to_vn(row))
+
+
+@router.get("/{project_id}/analysis/adaptive-plan")
+async def analysis_adaptive_plan(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """自适应选项方案：读者倾向计数器 + 可直接照抄的自适应条件（纯本地，不调模型）。
+
+    做法是**从现有的 `set` 块自动派生**：某个选项本来就会改 `affection`，
+    导出时就为该选项追加 `$ persistent.reader_tendency_affection += 1`，
+    于是作者不需要给选项打任何标签，就能在后续选项条件里写
+    `persistent.reader_tendency_affection >= 3` 做"按读者一贯倾向调整分支"。
+
+    返回里带：哪些菜单值得做成自适应、计数器清单、可直接粘贴的条件示例，
+    以及要写进 .rpy 的 `default` 声明块。**导出默认不开**（`adaptive_reader=True` 才注入），
+    以免同一份剧本两次导出产物不同。
+    """
+    from app.core.adaptive_reader import analyze_adaptive_opportunities
+    from app.core.branch_analysis import analyze_branches
+
+    row = await get_project_readable(db, user, project_id)
+    project = row_to_vn(row)
+    return analyze_adaptive_opportunities(project, branch=analyze_branches(project))
+
+
+@router.get("/{project_id}/analysis/story-metrics")
+async def analysis_story_metrics(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """故事层指标：**伏笔回收率** 与 **情感弧线**（纯本地，不调模型）。
+
+    - 伏笔回收率：埋了多少钩子、回收了几成、最老的一条挂了多久（账本维护，这里只统计）。
+    - 情感弧线：逐角色按台词推断"开头情绪 → 结尾情绪"；`beat_sheets` 可选，
+      传入历次节拍表时会与声明弧线对账（声明有变化而实际没变 / 方向相反）。
+
+    两者都是**推断**：情绪靠关键词，反讽与压抑会读错，所以每条都带证据句、只报明显不一致。
+    """
+    from app.core.story_metrics import analyze_story_metrics
+
+    row = await get_project_readable(db, user, project_id)
+    vn = row_to_vn(row)
+    # 节拍表存在 harnessRuns 里（历次 plan 阶段的产出），取得到就用来对账
+    sheets: list[dict] = []
+    for run in (vn.harnessRuns or [])[-20:]:
+        if not isinstance(run, dict):
+            continue
+        sheet = run.get("beatSheet") or run.get("beat_sheet")
+        if isinstance(sheet, dict):
+            sheets.append(sheet)
+    return analyze_story_metrics(vn, beat_sheets=sheets)
+
+
+@router.post("/{project_id}/analysis/consistency-scan")
+async def analysis_consistency_scan(
+    project_id: str,
+    size: int = 6,
+    overlap: int = 2,
+    focus: str = "",
+    max_windows: int | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """全书一致性**分片全量**扫描（有模型调用）。
+
+    与旧的一致性审计相比，这里修掉了那个硬上限：旧实现只扫前 14 章、每章截 1600 字，
+    且**静默截断**——作者无从知道第 30 章根本没被检查过。现在按重叠窗口扫完全部有正文的
+    章节，跨窗合并去重，并把覆盖率与"哪几章没扫到"如实报回来（`coverage` / `ceilingNote`）。
+
+    窗口上界：不传 `max_windows` 时按 `HTTP_DEFAULT_MAX_WINDOWS` 截断（不是"不限"）。
+    窗口是并发发出的，但进程内只有 16 个 LLM 并发闸，超过就要排队——**墙钟时间成倍增长**，
+    而调用方（HTTP 请求）自带超时预算：等不到结果等于白扫，还照付 token 与配额。
+    要扫更多就显式传 `max_windows` 并接受更长的等待；真被截断时
+    `coverage.maxWindowsHit=True` 且 `ceilingNote` 会写明还有几章没扫。
+    """
+    from app.core.consistency_scan import HTTP_DEFAULT_MAX_WINDOWS, run_consistency_scan
+
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    creds = await resolve_llm_credentials(db, user.id, settings)
+    if not creds["api_key"]:
+        raise HTTPException(
+            status_code=400,
+            detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
+        )
+    from app.core.usage import ensure_under_quota
+
+    await ensure_under_quota(db, user.id, settings, creds)
+    cfg = DeepSeekConfig(
+        apiKey=creds["api_key"],
+        baseUrl=creds["base_url"],
+        model=creds["model"],
+    )
+    return await run_consistency_scan(
+        cfg,
+        vn,
+        size=max(1, min(int(size), 20)),
+        overlap=max(0, min(int(overlap), 19)),
+        focus=focus,
+        max_windows=(
+            HTTP_DEFAULT_MAX_WINDOWS if max_windows is None else int(max_windows)
+        ),
+    )
 
 
 @router.post("/{project_id}/analysis/facts/reconcile")
@@ -2140,6 +2314,21 @@ async def upload_agent_attachment(
     }
 
 
+def _global_memory_block(vn: VnProject) -> Optional[str]:
+    """卷级/全局记忆的注入块；任何异常都返回 None（绝不拖垮 Agent 请求）。
+
+    为什么值得每轮都算：它是**纯本地模板拼装**、不调模型、不花钱，
+    而它给的是长篇续写最缺的那块——"整本书到目前为止"。
+    """
+    try:
+        from app.core.global_memory import build_global_memory, format_global_memory_for_agent
+
+        block = format_global_memory_for_agent(build_global_memory(vn))
+        return block.strip() or None
+    except Exception:  # noqa: BLE001 — 记忆层失败不该影响对话
+        return None
+
+
 async def _build_agent_request(
     db: AsyncSession,
     project_id: str,
@@ -2210,6 +2399,9 @@ async def _build_agent_request(
         longChapterMemory=(
             (await get_latest_continuity(db, project_id) or {}).get("agentBlock")
         ),
+        # 全局记忆层：纯本地模板拼装（不调模型），所以可以每轮都带。
+        # 它回答的是"整本书到目前为止"，与上面"最近这段归档"互补。
+        globalMemory=_global_memory_block(vn),
         loreCraft=lore_combined,
         referenceDocs=reference_docs,
         excludeSections=body.exclude_sections,

@@ -16,6 +16,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+from app.core import llm_budget
 from app.core.ai import DeepSeekConfig
 from app.core.llm_http import chat_completions, content_from_response
 from app.domain.types import VnProject
@@ -191,7 +192,7 @@ async def run_recap(
             config,
             messages=messages,
             temperature=0.4,
-            timeout=180,
+            timeout=llm_budget.WRITE,
         )
         content, used_model = content_from_response(res)
         text = clean_recap_text(content)

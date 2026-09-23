@@ -128,10 +128,24 @@ _background_tasks: "set[asyncio.Task]" = set()
 
 
 def _spawn(coro, *, name: str) -> None:
-    task = asyncio.create_task(coro, name=name)
+    task = asyncio.create_task(_detached(coro), name=name)
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     task.add_done_callback(_log_task_exception)
+
+
+async def _detached(coro):
+    """在脱离"客户端断开取消域"的上下文里跑后台作业。
+
+    平台承诺"客户端走了作业也跑完，结果能在运行记录里找到"，
+    所以作业必须 detach：否则用户关掉页面就会把管线掐掉。
+    脱离动作必须在新任务内部做——`create_task` 复制的是创建时的上下文，
+    在这里 set 只影响本任务及其子任务。
+    """
+    from app.core.disconnect import detach_guard
+
+    detach_guard()
+    return await coro
 
 
 def spawn_background_task(coro, *, name: str) -> None:

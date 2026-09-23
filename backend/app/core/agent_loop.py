@@ -6,6 +6,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
+from app.core import llm_budget
 from app.core.agent import (
     AGENT_SYSTEM,
     ApplyAgentResult,
@@ -151,7 +152,7 @@ async def _chat_json(
         messages=messages,
         temperature=temperature,
         response_format={"type": "json_object"},
-        timeout=180,
+        timeout=llm_budget.WRITE,
     )
     content, _ = content_from_response(res)
     return (content or "{}").strip() or "{}"
@@ -426,6 +427,7 @@ async def run_agent_loop(
             maxChars=None,
             chatMemory=request.chatMemory,
             longChapterMemory=request.longChapterMemory,
+            globalMemory=request.globalMemory,
             loreCraft=request.loreCraft,
             referenceDocs=request.referenceDocs,
             exclude=request.excludeSections,
@@ -452,6 +454,7 @@ async def run_agent_loop(
             maxChars=None,
             chatMemory=request.chatMemory,
             longChapterMemory=request.longChapterMemory,
+            globalMemory=request.globalMemory,
             loreCraft=request.loreCraft,
             referenceDocs=request.referenceDocs,
             exclude=request.excludeSections,

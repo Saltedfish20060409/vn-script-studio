@@ -4,6 +4,7 @@
 // runtime, so this does not create a runtime circular dependency.
 import type { TokenOut } from "./auth";
 import { applyLlmHeaders } from "../lib/llmCredentials";
+import { TIMEOUTS, networkErrorMessage, timeoutMessage } from "./timeouts";
 
 export const API_BASE = "/api/v1";
 
@@ -40,7 +41,10 @@ export class ApiError extends Error {
 interface ApiFetchOptions extends RequestInit {
   /** Skip the auto clear-token + redirect-to-login behavior on 401 (used by public endpoints). */
   skipAuthRedirect?: boolean;
-  /** Override the per-request timeout (default 30s). Slow LLM endpoints set this higher. */
+  /**
+   * Per-request timeout. LLM endpoints MUST pass an explicit `TIMEOUTS.*` budget —
+   * the fast default is only safe for non-LLM reads/writes (see ./timeouts.ts).
+   */
   timeoutMs?: number;
 }
 
@@ -81,8 +85,11 @@ function redirectToLogin() {
   window.location.href = "/login";
 }
 
-/** Default per-request timeout — long LLM endpoints override via options. */
-const REQUEST_TIMEOUT_MS = 30000;
+/**
+ * Default per-request timeout. Only safe for non-LLM endpoints — anything that
+ * calls a model inside the request must pass an explicit `TIMEOUTS.*` budget.
+ */
+const REQUEST_TIMEOUT_MS = TIMEOUTS.fast;
 
 async function fetchWithTimeout(
   input: string,
@@ -95,12 +102,11 @@ async function fetchWithTimeout(
     return await fetch(input, { ...init, signal: controller.signal });
   } catch (e) {
     if ((e as { name?: string })?.name === "AbortError") {
-      throw new ApiError(
-        408,
-        `请求超时（${Math.round(timeout / 1000)}s）——请确认后端服务已启动`
-      );
+      // NOTE: 这里**不能**说"请检查后端"。后端通常完全正常，只是这次调用比预算慢；
+      // 此前写成「请确认后端服务已启动」，慢思考模型的用户被这句话带偏了很久。
+      throw new ApiError(408, timeoutMessage(timeout));
     }
-    throw new ApiError(0, "网络连接失败，请检查网络或后端服务");
+    throw new ApiError(0, networkErrorMessage());
   } finally {
     window.clearTimeout(timer);
   }

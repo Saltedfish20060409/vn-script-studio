@@ -1,5 +1,6 @@
 import type { VnProject } from "../types/vn";
 import { API_BASE, apiFetch, buildApiHeaders } from "./http";
+import { JOB_POLL_TIMEOUT_MS, TIMEOUTS } from "./timeouts";
 // ---------------------------------------------------------------------------
 // Writing pipeline (Plan → Write → Check → Revise + quality gate)
 // ---------------------------------------------------------------------------
@@ -71,7 +72,7 @@ export function pipelineRun(
 ): Promise<PipelineRunResult | { jobId: string; async: true; status: string }> {
   return apiFetch(`/projects/${id}/pipeline/run`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify(body),
   });
 }
@@ -91,12 +92,17 @@ export type PipelineStreamEvent =
 /**
  * Streaming pipeline run (async_mode + stream). Resolves with the final JobStatus;
  * `onEvent` receives each stage-complete event as it happens.
+ *
+ * `onActivity` fires on every received chunk (including `: keepalive` heartbeats),
+ * so caller-side watchdogs can tell "still connected, model is slow" from
+ * "connection is dead". See runAgentStream for the same contract.
  */
 export async function pipelineRunStream(
   id: string,
   body: Parameters<typeof pipelineRun>[1] & { stream?: boolean },
   onEvent: (evt: PipelineStreamEvent) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onActivity?: () => void
 ): Promise<JobStatus> {
   const res = await fetch(`${API_BASE}/projects/${id}/pipeline/run`, {
     method: "POST",
@@ -118,6 +124,8 @@ export async function pipelineRunStream(
       throw new Error("请求已取消");
     }
     const { done, value } = await reader.read();
+    // 心跳也算"活着"（`: keepalive` 没有 data: 行，但连接确实还在）
+    if (value && value.byteLength > 0) onActivity?.();
     buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
     let idx: number;
     while ((idx = buffer.indexOf("\n\n")) >= 0) {
@@ -171,7 +179,7 @@ export async function waitProjectJob(
   }
 ): Promise<JobStatus> {
   const interval = opts?.intervalMs ?? 1200;
-  const timeout = opts?.timeoutMs ?? 15 * 60 * 1000;
+  const timeout = opts?.timeoutMs ?? JOB_POLL_TIMEOUT_MS;
   const start = Date.now();
   for (;;) {
     const job = await getProjectJob(projectId, jobId);
@@ -209,7 +217,9 @@ export function pipelineGate(
 }> {
   return apiFetch(`/projects/${id}/pipeline/gate`, {
     method: "POST",
-    timeoutMs: 180000,
+    // 质量门在请求内串行跑两次模型：节拍核对(QUICK) → 声线核对(CHAT)，
+    // 思考档下最坏 (60+120)×2 = 360s，所以不能用 chat 档。
+    timeoutMs: TIMEOUTS.write,
     body: JSON.stringify(body),
   });
 }
@@ -232,7 +242,7 @@ export function pipelineLedgerDigest(
 }> {
   return apiFetch(`/projects/${id}/pipeline/ledger/digest`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.quick,
     body: JSON.stringify({
       chapter_id: chapterId,
       enrich: opts?.enrich !== false,

@@ -10,6 +10,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Sequence
 
+from app.core import llm_budget
 from app.core.ai import DeepSeekConfig
 from app.core.character_voice.corpus import (
     confirmed_axes,
@@ -562,7 +563,7 @@ async def _post_json_with_model(
         ],
         temperature=temperature,
         response_format={"type": "json_object"},
-        timeout=120,
+        timeout=llm_budget.CHAT,
     )
     content, model_name = content_from_response(res)
     content = (content or "{}").strip()

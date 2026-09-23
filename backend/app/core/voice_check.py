@@ -10,6 +10,7 @@ import re
 from dataclasses import dataclass
 from typing import List, Optional
 
+from app.core import llm_budget
 from app.domain.types import VnProject
 from app.llm_models import DEFAULT_LLM_MODEL
 
@@ -77,7 +78,7 @@ async def run_voice_check(
         ],
         temperature=0.3,
         response_format={"type": "json_object"},
-        timeout=120,
+        timeout=llm_budget.CHAT,
     )
 
     raw, used_model = content_from_response(res)

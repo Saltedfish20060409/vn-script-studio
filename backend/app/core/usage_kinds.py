@@ -85,4 +85,3 @@ def kind_for_path(path: str) -> str:
         if needle in p:
             return kind
     return DEFAULT_KIND
-

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Character, GameVariable, SceneChapter, ScriptBlock } from "../types/vn";
+import type { Character, GameVariable, MenuChoice, SceneChapter, ScriptBlock } from "../types/vn";
 import {
   advance,
   choose,
+  enclosingLabelAt,
+  hasReturnAfter,
   INSTANT,
   MAX_PLAY_STEPS,
   PLAY_START,
@@ -10,6 +12,7 @@ import {
   visibleChoices,
   type PlayState,
 } from "../lib/playState";
+import type { LocalPlaytestChoice, PlaytestSession } from "../lib/playtestTelemetry";
 import styles from "./ScriptPlayer.module.css";
 
 type Props = {
@@ -18,8 +21,24 @@ type Props = {
   projectTitle: string;
   /** 项目「变量」表的初始值（好感度/旗标等），试玩中的 set 只改副本 */
   variables?: GameVariable[];
+  /**
+   * 工程 id：用来上报读者行为（遥测默认关闭，由后端按 opt-in 决定收不收）。
+   * 不给就完全不记录 —— 老调用方的行为一个字都不变。
+   */
+  projectId?: string;
   onExit: () => void;
 };
+
+/**
+ * 读者行为遥测模块**动态加载**：只有作者真的开始试玩时才需要它，
+ * 静态 import 会把它塞进主 chunk（StudioApp 那个 chunk 已经贴着体积门禁线了）。
+ */
+let telemetryModule: Promise<typeof import("../lib/playtestTelemetry")> | null = null;
+
+function loadPlaytestTelemetry(): Promise<typeof import("../lib/playtestTelemetry")> {
+  telemetryModule ??= import("../lib/playtestTelemetry");
+  return telemetryModule;
+}
 
 /** 试玩时的演出状态（由途中经过的瞬时指令驱动） */
 type StageState = {
@@ -47,7 +66,14 @@ function initialVariables(vars?: GameVariable[]): Record<string, unknown> {
  *
  * 演出效果（音乐、镜头、变量）由途中经过的瞬时指令驱动，见 lib/playState.ts。
  */
-export function ScriptPlayer({ chapter, characters, projectTitle, variables, onExit }: Props) {
+export function ScriptPlayer({
+  chapter,
+  characters,
+  projectTitle,
+  variables,
+  projectId,
+  onExit,
+}: Props) {
   const charMap = useMemo(
     () => new Map(characters.map((c) => [c.id, c])),
     [characters]
@@ -77,6 +103,33 @@ export function ScriptPlayer({ chapter, characters, projectTitle, variables, onE
 
   /** 初始变量值：来自项目「变量」表；试玩中的 set 指令只改这份副本，不写回项目。 */
   const runtimeVars = useRef<Record<string, unknown>>(initialVariables(variables));
+
+  /* ---------------------------------------------------------------- 读者行为记录
+   * 只**记录事实**：选了什么（menuId + 第几项 + 条件是否成立），不记任何文案。
+   * 库里没有任何自由文本列，选项文案/台词在物理上没有容器可放（隐私红线）。
+   * 上报是 fire-and-forget：失败不弹错、不阻塞、不重试，玩家完全感觉不到。
+   */
+  const telemetryRef = useRef<PlaytestSession | null>(null);
+  /** 模块还没加载完时先攒在这里，加载完补交（避免开演瞬间的选择丢掉） */
+  const pendingChoicesRef = useRef<LocalPlaytestChoice[]>([]);
+  /** 每次开演 +1：用它作废"上一代"迟到的加载回调，避免两次试玩记串 */
+  const telemetryGenRef = useRef(0);
+
+  /** 收尾一次试玩：构造上报体 → 入队 → 立刻发一次（重复调用是空操作）。 */
+  const endTelemetry = useCallback((opts?: { endingLabel?: string }) => {
+    telemetryGenRef.current += 1;
+    const session = telemetryRef.current;
+    telemetryRef.current = null;
+    if (!session) return;
+    try {
+      session.finish(opts);
+    } catch {
+      /* 遥测出任何问题都不该影响试玩 */
+    }
+  }, []);
+
+  // 组件卸载（作者中途退出试玩器）也要收尾：这次试玩算"没走到结局"的一次样本。
+  useEffect(() => () => endTelemetry(), [endTelemetry]);
 
   const applyExecuted = useCallback((executed: ScriptBlock[]) => {
     if (!executed.length) return;
@@ -152,6 +205,23 @@ export function ScriptPlayer({ chapter, characters, projectTitle, variables, onE
     if (current.type === "return") setPhase("ended");
   }, [current, phase]);
 
+  /**
+   * 一次试玩走到头（结局 / 本章演完 / 死循环兜底）就上报**一次**。
+   *
+   * 结局名只认"后面跟着 return"的那种终点：章末自然演完时终点落在哪一段是不确定的，
+   * 宁可不报（后端会算成"没走到结局"），也不编一个可能错的结局名去污染结局分布。
+   * 这个 effect 只依赖 phase：它记录的是这一刻的事实，不参与任何播放推进。
+   */
+  useEffect(() => {
+    if (phase !== "ended") return;
+    const scope = scopeOf(cursor, chapter.blocks ?? []);
+    const endingLabel = hasReturnAfter(scope, cursor.index + 1)
+      ? enclosingLabelAt(scope, cursor.index)
+      : "";
+    endTelemetry({ endingLabel });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
   const advanceStep = useCallback(() => {
     if (bumpStep()) return;
     setHistory((h) => [...h.slice(-300), cursor]);
@@ -187,6 +257,8 @@ export function ScriptPlayer({ chapter, characters, projectTitle, variables, onE
   }, []);
 
   const reset = useCallback(() => {
+    // 重播 = 新的一次样本：上一次试玩（如果还在记）先收尾，再开一个新的 clientRunId。
+    endTelemetry();
     stepRef.current = 0;
     setLoopStop(false);
     const fresh = initialVariables(variables);
@@ -195,9 +267,56 @@ export function ScriptPlayer({ chapter, characters, projectTitle, variables, onE
     setCursor(PLAY_START);
     setHistory([]);
     setPhase("playing");
-  }, [variables]);
 
-  const onChoose = (c: { text: string; jump?: string; blocks?: ScriptBlock[] }) => {
+    if (!projectId) return;
+    const generation = (telemetryGenRef.current += 1);
+    const pending: LocalPlaytestChoice[] = [];
+    pendingChoicesRef.current = pending;
+    void loadPlaytestTelemetry()
+      .then((telemetry) => {
+        const session = telemetry.startPlaytestSession({
+          projectId,
+          chapterId: chapter.id,
+        });
+        if (!session) return; // 没有可用随机源 → 宁可不记
+        for (const choice of pending) session.addChoice(choice);
+        if (generation !== telemetryGenRef.current) {
+          // 这次试玩在模块加载完成之前就结束了（或又被重播）：立刻收尾上报，
+          // 而不是把已经记下的选择丢掉。
+          session.finish();
+          return;
+        }
+        telemetryRef.current = session;
+      })
+      .catch(() => undefined);
+  }, [variables, projectId, chapter.id, endTelemetry]);
+
+  /**
+   * 记一次选择（**只记录，不改变播放**）。
+   *
+   * `rawIndex` 必须是选项在**菜单原始 choices 数组**里的下标（不是条件过滤后的位置），
+   * 后端拿它和静态分析的 option index 对齐 —— 对不齐就变成"选项从没被选"。
+   */
+  const recordChoice = (choice: MenuChoice, rawIndex: number, block: ScriptBlock | null) => {
+    if (!projectId) return;
+    if (block?.type !== "menu") return;
+    const scope = scopeOf(cursor, chapter.blocks ?? []);
+    const entry: LocalPlaytestChoice = {
+      chapterId: chapter.id,
+      label: enclosingLabelAt(scope, cursor.index),
+      menuId: block.id,
+      choiceIndex: rawIndex,
+      // 本地备注（后端白名单没有这个键，不会发出去）；conditionPassed 才是发出去的那个
+      condition: choice.condition ?? "",
+      conditionPassed: visibleChoices([choice], stage.variables).length > 0,
+    };
+    const session = telemetryRef.current;
+    if (session) session.addChoice(entry);
+    else pendingChoicesRef.current.push(entry);
+  };
+
+  const onChoose = (c: MenuChoice, rawIndex: number) => {
+    recordChoice(c, rawIndex, scopeOf(cursor, chapter.blocks ?? [])[cursor.index] ?? null);
     if (bumpStep()) return;
     setHistory((h) => [...h.slice(-300), cursor]);
     const { state, ended } = choose(cursor, chapter.blocks ?? [], c, labelIndex);
@@ -261,7 +380,7 @@ export function ScriptPlayer({ chapter, characters, projectTitle, variables, onE
           const choice = b.choices[idx];
           if (choice) {
             e.preventDefault();
-            onChoose(choice);
+            onChoose(choice, idx);
           }
         }
         return;
@@ -418,7 +537,9 @@ export function ScriptPlayer({ chapter, characters, projectTitle, variables, onE
                       key={`${c.text}-${i}`}
                       type="button"
                       className={styles.choice}
-                      onClick={() => onChoose(c)}
+                      // 上报用的下标取"原始选项数组里的位置"（不是过滤后的 i）：
+                      // 后端按原始下标与静态分析对齐，否则"被条件挡住的选项"会算错。
+                      onClick={() => onChoose(c, (block.choices ?? []).indexOf(c))}
                     >
                       {c.text}
                     </button>

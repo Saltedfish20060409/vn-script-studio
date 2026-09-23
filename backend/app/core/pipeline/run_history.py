@@ -23,8 +23,14 @@ def append_harness_run(
     applied: bool = False,
     enrich_meta: Optional[Dict[str, Any]] = None,
     instruction: str = "",
+    beat_sheet: Optional[Dict[str, Any]] = None,
 ) -> VnProject:
-    """Prepend a compact run record onto project.harnessRuns (capped)."""
+    """Prepend a compact run record onto project.harnessRuns (capped).
+
+    ``beat_sheet`` 会被一并存下：它是 plan 阶段的产出，而"声明的情感弧线"只有靠它才能
+    与写出来之后实际的情绪走向对账（`analysis/story-metrics`）。此前这条记录里**没有**
+    节拍表，于是那个对账在生产里**永远返回空**——一个看着有、其实从不报的功能。
+    """
     gate = gate or {}
     check = check or {}
     issues = check.get("issues") or []
@@ -55,6 +61,10 @@ def append_harness_run(
     }
     if enrich_meta:
         summary["enrichMeta"] = enrich_meta
+    if isinstance(beat_sheet, dict) and beat_sheet:
+        # 只留对账需要的字段，别把整张表塞进每次运行的历史里
+        keep = ("goal", "beats", "emotionStart", "emotionEnd", "triggers", "hooks", "constraints")
+        summary["beatSheet"] = {k: beat_sheet[k] for k in keep if k in beat_sheet}
 
     data = project.model_dump()
     runs = list(data.get("harnessRuns") or [])

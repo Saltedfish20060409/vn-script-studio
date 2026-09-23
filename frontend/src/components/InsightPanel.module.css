@@ -1,0 +1,449 @@
+/* 深度体检面板：与 ScriptReportPanel 同一套视觉语言（卡片 + 列表 + 灰注释）。 */
+
+.wrap {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 12px);
+  background: color-mix(in srgb, var(--accent) 3%, transparent);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.tab,
+.tabActive {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.16rem 0.6rem;
+  font-size: 0.68rem;
+  background: none;
+  color: var(--ink-soft, #4a5568);
+  cursor: pointer;
+}
+
+.tabActive {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.focusInput {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+  padding: 0.24rem 0.4rem;
+  font-size: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+}
+
+.cost {
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  border: 1px dashed #b26a00;
+  border-radius: 8px;
+  font-size: 0.68rem;
+  line-height: 1.6;
+  color: #b26a00;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  gap: 0.4rem;
+}
+
+.card {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 12px);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+  font-size: 0.66rem;
+  color: var(--ink-soft, #4a5568);
+}
+
+.card strong {
+  font-size: 0.88rem;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.bad {
+  color: #b26a00;
+}
+
+/* 需要作者当心、但还不是"错误"的一句话（例如「只有静态建议」） */
+.warnText {
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.6;
+  color: #b26a00;
+}
+
+.summary {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.block {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.blockTitle {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.24rem;
+  font-size: 0.7rem;
+}
+
+.list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: baseline;
+  line-height: 1.5;
+}
+
+.list code {
+  font-size: 0.66rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+/* severity / drift / 冲突等级色语义：一处在 JS 里定语义，这里只管上色 */
+.sev {
+  flex: 0 0 auto;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.04rem 0.34rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.sev[data-sev="error"],
+.sev[data-sev="high"],
+.sev[data-sev="drift"] {
+  color: #b3261e;
+}
+
+.sev[data-sev="warn"],
+.sev[data-sev="watch"] {
+  color: #b26a00;
+}
+
+.sev[data-sev="info"],
+.sev[data-sev="low"],
+.sev[data-sev="ok"] {
+  color: var(--accent);
+}
+
+.sev[data-sev="other"],
+.sev[data-sev="muted"] {
+  color: var(--ink-soft, #4a5568);
+}
+
+.msg {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.chip {
+  font-size: 0.64rem;
+  padding: 0.06rem 0.42rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip[data-sev="error"] {
+  color: #b3261e;
+}
+
+.chip[data-sev="warn"] {
+  color: #b26a00;
+}
+
+.chip[data-sev="info"] {
+  color: var(--accent);
+}
+
+.chip[data-sev="other"] {
+  color: var(--ink-soft, #4a5568);
+}
+
+.dim {
+  color: var(--ink-soft, #4a5568);
+  opacity: 0.85;
+}
+
+.ok {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--accent);
+}
+
+.note {
+  margin: 0;
+  font-size: 0.66rem;
+  line-height: 1.6;
+  color: var(--ink-soft, #4a5568);
+  opacity: 0.9;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.6;
+  color: var(--ink-soft, #4a5568);
+}
+
+.error {
+  margin: 0;
+  font-size: 0.7rem;
+  color: #b3261e;
+}
+
+.link {
+  justify-self: start;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 0.68rem;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+/* ---- 读者行为子标签：开关 + 选项占比条 ---- */
+
+.switchRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 12px);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+
+.switchLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.switchLabel input {
+  width: 0.95rem;
+  height: 0.95rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.switchLabel input:disabled {
+  cursor: progress;
+}
+
+/* 选项占比：一行 = 标签 / 条 / 数值。刻意与 .list 分开，避免继承它的 flex 布局。 */
+.bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.shareRow {
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) 1fr auto;
+  gap: 0.45rem;
+  align-items: center;
+  font-size: 0.7rem;
+}
+
+.shareLabel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.bar {
+  position: relative;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  overflow: hidden;
+}
+
+.barFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* 从没人选 = 空条 + 警告色标签（空条本身也要能看见"是 0"，不是没渲染） */
+.shareRow[data-never="1"] .barFill {
+  background: transparent;
+}
+
+.shareRow[data-never="1"] .shareLabel {
+  color: #b26a00;
+}
+
+.shareValue {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft, #4a5568);
+  white-space: nowrap;
+}
+
+/* ---- 改进建议子标签：门槛输入 + 可折叠的建议行 ---- */
+
+.numInput {
+  width: 4.2rem;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+}
+
+/* 一行建议 = <details open>：默认摊开「依据」与「怎么改」，作者可以收起来只看结论。 */
+.advice {
+  width: 100%;
+  min-width: 0;
+}
+
+.adviceHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: baseline;
+  cursor: pointer;
+  list-style: none;
+}
+
+.adviceHead::-webkit-details-marker {
+  display: none;
+}
+
+.adviceHead:hover .msg {
+  text-decoration: underline dotted;
+}
+
+/* 具体改法：这份功能的正文，视觉上要比"依据"更实 */
+.action {
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+/* ---- 故事层子标签：分段切换 + 可复制的条件 / 声明块 ---- */
+
+/* 分段（同一份结果的两个视角），比主标签更轻，避免与上面那排七个子标签抢注意力 */
+.segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px dashed var(--line);
+}
+
+/* 条件表达式 / .rpy 声明块：等宽 + 可选中（复制按钮不可用时也能手动拿走） */
+.codeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.code {
+  flex: 1 1 14rem;
+  min-width: 0;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.66rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: all;
+}
+
+.copyBtn {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+  font-size: 0.64rem;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.copyBtn:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}

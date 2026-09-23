@@ -1234,7 +1234,7 @@ html[data-panel-glass="ink"] .stageOverlay {
   font-size: 0.88rem;
 }
 
-/* 鎵撳瓧鏈轰笁鐐癸細渚濇璺冲姩 */
+/* 打字机三点：依次跳动 */
 .typingDots {
   display: inline-flex;
   gap: 3px;

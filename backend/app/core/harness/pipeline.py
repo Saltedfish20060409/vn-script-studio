@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Optional
 
+from app.core import llm_budget
 from app.core.ai import DeepSeekConfig
 from app.core.harness.ai_flavor import (
     issues_to_dict,
@@ -39,7 +40,7 @@ async def run_harness_llm(
             {"role": "user", "content": user_prompt},
         ],
         temperature=temperature,
-        timeout=120,
+        timeout=llm_budget.CHAT,
     )
     content, used_model = content_from_response(res)
     return {

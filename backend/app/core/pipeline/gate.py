@@ -132,6 +132,7 @@ async def finalize_chapter_async(
         update_ledger=update_ledger,
         enrich_meta=enrich_meta,
         ledger_kwargs=llm_kwargs,
+        beat_sheet=beat_sheet,
         persist_run=True,
     )
     out["enrichMeta"] = enrich_meta
@@ -149,6 +150,7 @@ def _finalize_body(
     update_ledger: bool,
     enrich_meta: Optional[Dict[str, Any]],
     ledger_kwargs: Optional[Dict[str, Any]] = None,
+    beat_sheet: Optional[Dict[str, Any]] = None,
     persist_run: bool = True,
 ) -> Dict[str, Any]:
     gate = result["gate"]
@@ -195,6 +197,8 @@ def _finalize_body(
             stages=["gate", "finalize"],
             applied=applied,
             enrich_meta=enrich_meta,
+            # 和 run_pipeline 一样把节拍表存进运行历史：story-metrics 的弧线对账要用
+            beat_sheet=beat_sheet,
         )
 
     return {

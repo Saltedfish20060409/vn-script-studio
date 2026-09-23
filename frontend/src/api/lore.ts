@@ -1,4 +1,5 @@
 import { apiFetch } from "./http";
+import { TIMEOUTS } from "./timeouts";
 export interface LoreCard {
   id: string;
   projectId?: string | null;
@@ -67,6 +68,7 @@ export function loreLookup(
 ): Promise<LoreLookupResult> {
   return apiFetch(`/projects/${id}/lore/lookup`, {
     method: "POST",
+    timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify({ term, prefer_live: preferLive }),
   });
 }
@@ -79,6 +81,7 @@ export function loreInspire(
 ): Promise<{ cards: LoreCard[]; agentBlock?: string }> {
   return apiFetch(`/projects/${id}/lore/inspire`, {
     method: "POST",
+    timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify({ text, kinds, limit }),
   });
 }

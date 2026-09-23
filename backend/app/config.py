@@ -44,6 +44,16 @@ class Settings(BaseSettings):
     # openai (default, e.g. DeepSeek) | ollama (local model via Ollama OpenAI endpoint)
     llm_provider: str = "openai"
 
+    # 思考模式档（*-think / reasoner）的 LLM 超时倍数：reasoning 期间上游不产出，
+    # 非流式请求的 read timeout 覆盖整段生成，同一个预算在思考档上会提前击中。
+    # 见 app/core/llm_budget.py；夹在 1.0–5.0。
+    llm_thinking_timeout_factor: float = 2.0
+
+    # 客户端断开时中止正在进行的模型调用（省 token、释放并发闸）。
+    # 只作用于"正在等模型"的窗口，不影响已落库的写入；后台作业不受影响。
+    # 链路若无法把断开告知应用层，探测不触发即退化为改造前的行为（不会误杀）。
+    disconnect_cancel_enabled: bool = True
+
     # Agent writing craft / self-review (server-only)
     agent_craft_mode: Literal["auto", "off", "lite", "full"] = "auto"
     agent_self_review: Literal["auto", "on", "off"] = "auto"

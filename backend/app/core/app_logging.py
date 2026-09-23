@@ -56,4 +56,3 @@ def configure_app_loggers(level: int = logging.INFO) -> list[str]:
             app_logger(name, level=level)
             names.append(name)
     return sorted(names)
-

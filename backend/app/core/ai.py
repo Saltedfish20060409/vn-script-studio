@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Optional
 
+from app.core import llm_budget
 from app.domain.types import AiRequest, AiResponse, VnProject
 from app.llm_models import DEFAULT_LLM_MODEL
 
@@ -73,7 +74,7 @@ async def run_ai(config: DeepSeekConfig, request: AiRequest) -> AiResponse:
             {"role": "user", "content": "\n\n".join(user_parts)},
         ],
         temperature=0.8 if request.action == "outline" else 0.7,
-        timeout=120,
+        timeout=llm_budget.CHAT,
     )
     content, used_model = content_from_response(res)
     return AiResponse(content=content, model=used_model or model)

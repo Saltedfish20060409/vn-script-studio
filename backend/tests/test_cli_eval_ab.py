@@ -15,7 +15,7 @@ import json
 import pytest
 from typer.testing import CliRunner
 
-from app.cli import cli
+from app.cli import cli, strip_test_hint
 
 runner = CliRunner()
 
@@ -184,3 +184,83 @@ def test_summary_reports_retention_and_boundary(tmp_path, monkeypatch, fake_llm)
     # 边界集的 lint 命中率会被"照写问题写法"这个指令混淆，必须把读法印出来
     assert "不作为优劣指标" in output
     assert "不作为优劣指标" in report["summaryNote"]
+
+
+# ---------------------------------------------------------------- 评测方法论
+# 这一节是补上"只印差值、不给不确定度"的旧毛病：n 很小时必须把区间与检验一起印出来，
+# 并且必须说清裁判是不是独立模型、裁判有没有被透题。
+
+
+def test_judge_prompt_never_sees_the_answer_key():
+    """用例里的评测元信息不能进裁判提示——那等于把参考答案发给判卷人。
+
+    以前边界集的指令里带着「（测试：审稿应抓住『设定宣讲』，判定不合格）」，
+    它原样进了 `_judge_rubric` 的 user 消息，于是"工具 vs 裸聊"的差值里
+    混进了"我们剧透了答案"这一项。
+    """
+    raw = "写一段对话：连续追问 3 次（照写，不要加入新信息）。（测试：审稿应抓住「问答乒乓」，判定不合格）"
+    cleaned = strip_test_hint(raw)
+    assert "测试" not in cleaned
+    assert "判定不合格" not in cleaned
+    # 作者原话（照写…）必须保留：那才是任务本身
+    assert "照写" in cleaned
+    assert cleaned.startswith("写一段对话")
+    assert strip_test_hint("") == ""
+
+
+def test_longrange_benchmark_runs_without_any_api_key():
+    """长程基准必须能在没有模型的情况下跑——否则它进不了 CI，也就守不住回归。"""
+    result = runner.invoke(
+        cli, ["eval", "--longrange", "--longrange-chapters", "40", "--seed", "5"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "旧方案" in result.output and "分片方案" in result.output
+    assert "暴露率" in result.output
+    # 旧方案在长距离上必须为 0，这是本基准要钉住的核心结论
+    assert "31+:0.00" in result.output
+
+
+def test_method_block_discloses_judge_independence(tmp_path, monkeypatch, fake_llm):
+    report, _, _, _ = _run_ab(tmp_path, monkeypatch, cases=2)
+    method = report["method"]
+    # 没配 CRITIC_*/--judge-model 时，裁判就是选手自己，必须如实标注并告警
+    assert method["judgeIndependent"] is False
+    assert "warning" in method
+    assert method["judgeSawTestHints"] is False
+    assert method["repeats"] == 1
+
+
+def test_summary_carries_uncertainty_not_just_a_difference(tmp_path, monkeypatch, fake_llm):
+    report, _, _, output = _run_ab(tmp_path, monkeypatch, cases=4)
+    for kind in ("retention", "boundary"):
+        stats = report["summary"][kind]["stats"]
+        assert stats["ci"]["n"] >= 1
+        assert "meanDiff" in stats
+        assert "p" in stats["signTest"]
+        assert "p" in stats["vetoMcNemar"]
+        assert 0.0 <= stats["signTest"]["p"] <= 1.0
+    # 区间与符号检验要印到终端，不能只躺在 JSON 里
+    assert "符号检验" in output
+
+
+def test_repeats_aggregate_instead_of_overwriting(tmp_path, monkeypatch, fake_llm):
+    monkeypatch.chdir(tmp_path)
+    out = tmp_path / "ab3.json"
+    result = runner.invoke(
+        cli,
+        [
+            "eval", "--ab", "--cases", "1", "--repeats", "3", "--seed", "3",
+            "--api-key", "test-key", "--out", str(out),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    report = json.loads(out.read_text(encoding="utf-8"))
+    case = report["cases"][0]
+    for arm in ("tool", "bare"):
+        assert case[arm]["repeatCount"] == 3
+        assert len(case[arm]["runs"]) == 3
+        assert case[arm]["rubricAvg"] == 3.0
+        assert case[arm]["vetoRate"] == 0.0
+    # 3 例 × 2 臂 × 3 重复 = 6 次写作调用（本题 1 个用例）
+    writes = [c for c in fake_llm if not c["json"]]
+    assert len(writes) == 6

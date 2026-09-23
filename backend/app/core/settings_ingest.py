@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from app.core import llm_budget
 from app.domain.types import AgentAction, Character, VnProject
 
 from .agent import _normalize_bible_patch, apply_agent_actions
@@ -182,7 +183,7 @@ async def ingest_attachments_to_settings(
         ],
         temperature=0.2,
         response_format={"type": "json_object"},
-        timeout=120,
+        timeout=llm_budget.CHAT,
     )
     raw, _model = content_from_response(res)
     raw = (raw or "{}").strip() or "{}"

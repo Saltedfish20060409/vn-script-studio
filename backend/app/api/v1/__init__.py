@@ -18,6 +18,7 @@ from app.api.v1 import (
     music,
     notice,
     pipeline,
+    playtest,
     projects,
     recap,
     settings,
@@ -50,3 +51,4 @@ api_router.include_router(notice.router)
 api_router.include_router(meta.router)
 api_router.include_router(errors.router)
 api_router.include_router(events.router)
+api_router.include_router(playtest.router)

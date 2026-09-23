@@ -5,6 +5,7 @@ import hashlib
 import re
 from typing import List, Optional, Sequence
 
+from app.core import llm_budget
 from app.core.pipeline.apply_draft import extract_script_body, plain_text_to_script_blocks
 from app.core.renpy import _char_lookup, _emit_block
 from app.domain.types import Character, ScriptBlock, VnProject
@@ -107,7 +108,7 @@ async def llm_prose_to_rpy(
             },
         ],
         temperature=0.4,
-        timeout=120,
+        timeout=llm_budget.CHAT,
     )
     content, _ = content_from_response(res)
     return extract_script_body(content)

@@ -1,5 +1,6 @@
 import type { VnProject } from "../types/vn";
 import { apiFetch } from "./http";
+import { TIMEOUTS } from "./timeouts";
 // ---------------------------------------------------------------------------
 // Character workshop (角色工坊)
 // ---------------------------------------------------------------------------
@@ -85,7 +86,7 @@ export function generateCharacterVoice(
 }> {
   return apiFetch(`/projects/${projectId}/characters/${characterId}/voice/generate`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.chat,
     body: JSON.stringify(body),
   });
 }
@@ -114,7 +115,7 @@ export function acceptCharacterVoiceSample(
 > {
   return apiFetch(`/projects/${projectId}/characters/${characterId}/voice/accept`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify(body),
   });
 }
@@ -126,7 +127,7 @@ export function rejectCharacterVoiceRound(
 ): Promise<{ voiceRejectNotes: string[]; project: VnProject }> {
   return apiFetch(`/projects/${projectId}/characters/${characterId}/voice/reject`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify(body),
   });
 }
@@ -155,7 +156,7 @@ export function synthesizeCharacterVoiceMind(
 }> {
   return apiFetch(`/projects/${projectId}/characters/${characterId}/voice/synthesize`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.chat,
     body: JSON.stringify(body),
   });
 }
@@ -177,7 +178,7 @@ export function extractCharacterVoice(
 }> {
   return apiFetch(`/projects/${projectId}/characters/${characterId}/voice/extract`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.upload,
     body: "{}",
   });
 }
@@ -196,7 +197,7 @@ export function acceptExtractedCharacterVoice(
   return apiFetch(
     `/projects/${projectId}/characters/${characterId}/voice/extract/accept`,
     { method: "POST",
-    timeoutMs: 180000, body: JSON.stringify(body) }
+    timeoutMs: TIMEOUTS.upload, body: JSON.stringify(body) }
   );
 }
 
@@ -221,7 +222,7 @@ export function importCharacterVoiceMind(
   return apiFetch(
     `/projects/${projectId}/characters/${characterId}/voice/import-mind`,
     { method: "POST",
-    timeoutMs: 180000, body: JSON.stringify(body) }
+    timeoutMs: TIMEOUTS.upload, body: JSON.stringify(body) }
   );
 }
 
@@ -252,7 +253,7 @@ export function workshopChat(
 }> {
   return apiFetch(`/projects/${projectId}/characters/${characterId}/workshop/chat`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.chat,
     body: JSON.stringify(body),
   });
 }

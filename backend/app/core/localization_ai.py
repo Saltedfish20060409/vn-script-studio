@@ -262,4 +262,3 @@ def apply_translations(
         out.append(row)
     unknown = len([k for k in (mapping or {}) if k not in known_keys])
     return {"entries": out, "applied": applied, "skipped": skipped, "unknown": unknown}
-

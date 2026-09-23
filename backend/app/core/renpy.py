@@ -5,6 +5,12 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
+from app.core.adaptive_reader import (
+    choice_increment_lines as adaptive_increment_lines,
+)
+from app.core.adaptive_reader import (
+    export_adaptive_prelude,
+)
 from app.core.conditions import ConditionError, condition_source
 from app.domain.types import Character, ScriptBlock, VnProject
 
@@ -191,7 +197,10 @@ def _char_lookup(characters: List[Character]) -> Dict[str, Character]:
 
 
 def _emit_block(
-    block: ScriptBlock, chars: Dict[str, Character], indent: str = ""
+    block: ScriptBlock,
+    chars: Dict[str, Character],
+    indent: str = "",
+    adaptive: bool = False,
 ) -> List[str]:
     lines: List[str] = []
     btype = block.get("type")
@@ -240,14 +249,20 @@ def _emit_block(
                     )
                     continue
             lines.append(f'{indent}    "{_escape_renpy_string(choice["text"])}"{cond}:')
+            # 自适应选项：选了它就给"读者倾向计数器"+1（persistent，跨存档）。
+            # 放在正文最前面：不管后面是 jump 还是内联正文，都要保证"选了它就计数"。
+            # 默认关闭，见 export_to_renpy 的参数说明。
+            increments = adaptive_increment_lines(choice) if adaptive else []
+            for inc in increments:
+                lines.append(f"{indent}        {inc}")
             jump = choice.get("jump")
             child_blocks = choice.get("blocks")
             if jump:
                 lines.append(f"{indent}        jump {_safe_ident(jump)}")
             elif child_blocks:
                 for child in child_blocks:
-                    lines.extend(_emit_block(child, chars, indent + "        "))
-            else:
+                    lines.extend(_emit_block(child, chars, indent + "        ", adaptive))
+            elif not increments:
                 lines.append(f"{indent}        pass")
     elif btype == "jump":
         lines.append(f"{indent}jump {_safe_ident(block.get('target'))}")
@@ -316,7 +331,7 @@ def _emit_block(
                 else:
                     lines.append(f"{indent}else:")
                 for c in child:
-                    lines.extend(_emit_block(c, chars, indent + "    "))
+                    lines.extend(_emit_block(c, chars, indent + "    ", adaptive))
                 emitted_any = True
                 break
             try:
@@ -329,7 +344,7 @@ def _emit_block(
                 continue
             lines.append(f"{indent}{keyword} {cond}:")
             for c in child:
-                lines.extend(_emit_block(c, chars, indent + "    "))
+                lines.extend(_emit_block(c, chars, indent + "    ", adaptive))
             emitted_any = True
         if not emitted_any:
             lines.append(f"{indent}pass")
@@ -358,10 +373,17 @@ def export_character_defines(project: VnProject) -> str:
     return "\n".join(lines) + "\n"
 
 
-def export_to_renpy(project: VnProject) -> str:
-    """Export full project to a single .rpy string"""
+def export_to_renpy(project: VnProject, *, adaptive_reader: bool = False) -> str:
+    """Export full project to a single .rpy string
+
+    ``adaptive_reader``（默认关）：开启后在每个"会改变量的选项"体内插入
+    ``$ persistent.reader_tendency_<key> += 1``，并声明对应 persistent 初值——
+    让导出后的作品能按读者一贯的选择倾向写自适应条件（见 ``core/adaptive_reader.py``）。
+    **默认必须关**：这是会改变产物语义的开关，同一份剧本两次导出结果不同会让作者困惑。
+    """
     chars = _char_lookup(project.characters)
     cameras = export_camera_transforms(project)
+    adaptive_prelude = export_adaptive_prelude(project) if adaptive_reader else ""
     parts: List[str] = [
         p
         for p in [
@@ -372,6 +394,8 @@ def export_to_renpy(project: VnProject) -> str:
             export_character_defines(project).rstrip("\n"),
             "",
             cameras.rstrip("\n") if cameras else None,
+            "",
+            adaptive_prelude or None,
         ]
         if p is not None
     ]
@@ -384,9 +408,11 @@ def export_to_renpy(project: VnProject) -> str:
         for block in chapter.blocks:
             if block.get("type") == "label":
                 in_label = True
-                parts.extend(_emit_block(block, chars, ""))
+                parts.extend(_emit_block(block, chars, "", adaptive_reader))
             else:
-                parts.extend(_emit_block(block, chars, "    " if in_label else ""))
+                parts.extend(
+                    _emit_block(block, chars, "    " if in_label else "", adaptive_reader)
+                )
         parts.append("")
 
     return re.sub(r"\n{3,}", "\n\n", "\n".join(parts))
@@ -443,9 +469,9 @@ define gui.insensitive_color = "#88888888"
 '''
 
 
-def export_script_rpy(project: VnProject) -> str:
+def export_script_rpy(project: VnProject, *, adaptive_reader: bool = False) -> str:
     """script.rpy — story + a start label bridging to the first chapter."""
-    body = export_to_renpy(project)
+    body = export_to_renpy(project, adaptive_reader=adaptive_reader)
     # Only inject a `start → first-label` bridge when the project does NOT
     # already define `start` itself (otherwise we'd emit a duplicate label
     # and Ren'Py would refuse to load the script).
@@ -471,15 +497,18 @@ def export_script_rpy(project: VnProject) -> str:
     return body
 
 
-def export_project_bundle(project: VnProject) -> Dict[str, str]:
+def export_project_bundle(
+    project: VnProject, *, adaptive_reader: bool = False
+) -> Dict[str, str]:
     """Full Ren'Py project skeleton: script.rpy + options.rpy + gui.rpy + README.
 
     Drop the contents into a Ren'Py project's game/ folder to run.
+    ``adaptive_reader`` 透传给 script.rpy（见 `core/adaptive_reader.py`）。
     """
     from app.core.localization import export_localization_renpy
 
     bundle = {
-        "script.rpy": export_script_rpy(project),
+        "script.rpy": export_script_rpy(project, adaptive_reader=adaptive_reader),
         "options.rpy": export_options_rpy(project),
         "gui.rpy": export_gui_rpy(project),
     }

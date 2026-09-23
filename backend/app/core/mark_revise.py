@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+from app.core import llm_budget
 from app.core.ai import DeepSeekConfig
 from app.core.llm_http import chat_completions, content_from_response
 from app.core.llm_params import MARK_ADVICE_TEMPERATURE, MARK_REVISE_TEMPERATURE
@@ -254,7 +255,7 @@ async def revise_marked_text(
             messages=messages,
             # 采样参数按任务分档（core/llm_params）：局部改写中等，建议类更保守
             temperature=MARK_ADVICE_TEMPERATURE if intent == "advice" else MARK_REVISE_TEMPERATURE,
-            timeout=120,
+            timeout=llm_budget.CHAT,
         )
         content, used_model = content_from_response(res)
         model = used_model or (config.model or "")
@@ -277,7 +278,7 @@ async def revise_marked_text(
                     config,
                     messages=build_retry_messages(messages, warnings),
                     temperature=MARK_REVISE_TEMPERATURE,
-                    timeout=120,
+                    timeout=llm_budget.CHAT,
                 )
                 retry_text, retry_model = content_from_response(retry)
                 retried = parse_variants(retry_text, 1)

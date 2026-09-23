@@ -3,6 +3,8 @@ import type { ScriptBlock } from "../types/vn";
 import {
   advance,
   choose,
+  enclosingLabelAt,
+  hasReturnAfter,
   nextVisible,
   PLAY_START,
   scopeOf,
@@ -14,6 +16,41 @@ const dialog = (text: string): ScriptBlock => ({
   type: "dialogue",
   characterId: "c",
   text,
+});
+
+describe("读者行为记录用的只读辅助（不影响播放）", () => {
+  it("enclosingLabelAt 取下标之前最近的 label", () => {
+    const blocks: ScriptBlock[] = [
+      narr("序"),
+      label("start"),
+      narr("A"),
+      label("route_b"),
+      narr("B"),
+    ];
+    expect(enclosingLabelAt(blocks, 0)).toBe("");
+    expect(enclosingLabelAt(blocks, 2)).toBe("start");
+    expect(enclosingLabelAt(blocks, 4)).toBe("route_b");
+    expect(enclosingLabelAt(blocks, 99)).toBe("route_b");
+  });
+
+  it("enclosingLabelAt 找不到 label / 空数组时给空串（不猜一个）", () => {
+    expect(enclosingLabelAt([narr("A"), narr("B")], 1)).toBe("");
+    expect(enclosingLabelAt([], 0)).toBe("");
+    expect(enclosingLabelAt([narr("A")], -1)).toBe("");
+  });
+
+  it("hasReturnAfter 忽略注释与 label，遇可见内容即判定为没有 return", () => {
+    const blocks: ScriptBlock[] = [
+      { type: "comment", text: "注" },
+      label("ending"),
+      { type: "return" },
+    ];
+    const withText: ScriptBlock[] = [narr("A"), { type: "return" }];
+    expect(hasReturnAfter(blocks, 0)).toBe(true);
+    expect(hasReturnAfter(withText, 0)).toBe(false);
+    expect(hasReturnAfter(withText, 1)).toBe(true);
+    expect(hasReturnAfter([], 0)).toBe(false);
+  });
 });
 
 describe("playState", () => {

@@ -2537,6 +2537,7 @@ export function StudioApp() {
           characters={project.characters ?? []}
           projectTitle={project.title}
           variables={project.variables ?? []}
+          projectId={project.id}
           onExit={() => setPlayOpen(false)}
         />
       )}

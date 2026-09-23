@@ -93,6 +93,21 @@ def test_every_agent_task_has_an_output_contract():
         assert "只输出" in TASK_OUTPUT_CONTRACT[task], task
 
 
+def test_no_task_silently_inherits_the_chat_contract():
+    """这条是**回归闸**：过去 `branch` 没进契约表，于是静默回落成 chat 的契约
+    （「先结论后理由」），而同一轮 system 的 task hint 却写着 append_script——
+    同一条 prompt 里自相矛盾。那时旧测试查的是"契约非空"，回落也算非空，所以没抓住。
+    现在改为查"任务专属"：除 chat 自己外，任何任务的契约都不能等于 chat 的。"""
+    from app.core.agent_context import AGENT_TASKS
+
+    chat_contract = TASK_OUTPUT_CONTRACT["chat"]
+    for task in AGENT_TASKS:
+        if task == "chat":
+            continue
+        assert output_contract(task) != chat_contract, f"{task} 回落到 chat 契约"
+        assert task in TASK_OUTPUT_CONTRACT, f"{task} 没有专属输出契约"
+
+
 def test_output_contract_is_placed_at_the_end_of_context():
     project = _project()
     ctx = build_agent_context(project, chapterId="c1", userMessage="接着写", task="continue")

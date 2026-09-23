@@ -158,6 +158,23 @@ def create_app() -> FastAPI:
             set_client_llm_override(None)
 
     @app.middleware("http")
+    async def disconnect_middleware(request, call_next):
+        """请求级断开护栏：客户端中途离开时中止在飞的模型调用。
+
+        只包住"正在等上游模型"的那一小段时间（见 app/core/disconnect.py），
+        所以不会打断提交写入；后台作业会 detach_guard() 主动脱离。
+        """
+        from app.core.disconnect import DisconnectGuard, set_guard
+
+        set_guard(
+            DisconnectGuard(request, enabled=settings.disconnect_cancel_enabled)
+        )
+        try:
+            return await call_next(request)
+        finally:
+            set_guard(None)
+
+    @app.middleware("http")
     async def access_log_middleware(request, call_next):
         """结构化访问日志：每请求一行 JSON（method/path/status/耗时ms）。
 

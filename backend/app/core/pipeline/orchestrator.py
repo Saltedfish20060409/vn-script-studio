@@ -6,6 +6,7 @@ import re
 import time
 from typing import Any, Callable, Dict, List, Optional
 
+from app.core import llm_budget
 from app.core.agent_context import _blocks_to_plain
 from app.core.ai import DeepSeekConfig
 from app.core.harness.audit_full import full_audit_draft
@@ -88,6 +89,7 @@ async def stage_write(
     long_memory: str = "",
     db_continuity: Optional[Dict[str, Any]] = None,
     on_token: Optional[Callable[[str], None]] = None,
+    temperature: float = 0.75,
 ) -> Dict[str, Any]:
     skill = load_style_skill()
     chapter_tail = ""
@@ -129,7 +131,10 @@ async def stage_write(
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            temperature=0.75,
+            temperature=temperature,
+            # 流式的 timeout 是"多久没有新字节"的空闲上限（不是整段生成的预算），
+            # 所以正文章节可以写很久；命名常量见 app/core/llm_budget.py。
+            timeout=llm_budget.WRITE,
         ):
             chunks.append(delta)
             try:
@@ -140,7 +145,7 @@ async def stage_write(
         model = cfg.model or DEFAULT_LLM_MODEL
     else:
         llm = await run_harness_llm(
-            cfg, role="writer", user_prompt=user, project=project, temperature=0.75
+            cfg, role="writer", user_prompt=user, project=project, temperature=temperature
         )
         content = llm.get("content") or ""
         model = llm.get("model")
@@ -274,6 +279,8 @@ async def run_pipeline(
     max_revise_rounds: int = 2,
     voice_check: bool = True,
     voice_hard: bool = False,
+    candidates: int = 1,
+    candidates_temperature: float = 0.75,
     persist_run: bool = True,
     on_stage: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     on_token: Optional[Callable[[str], None]] = None,
@@ -405,9 +412,117 @@ async def run_pipeline(
             beat_sheet=beat_sheet,
             db_continuity=continuity,
             on_token=on_token,
+            temperature=candidates_temperature,
         )
         result["stages"].append("write")
         current = written.get("content") or current
+
+        # best-of-N（默认关，N=1）：同一份 prompt、温度梯形多采几份，
+        # 再用**确定性量具**排序选优。成本是 N 倍模型调用，所以默认不开启，
+        # 并把 N、温度、每份得分与选它的理由全部写进 result，让调用方和作者看得见。
+        # on_token 流式只作用于第 1 份（多份无法共用一个打字机输出）。
+        from app.core.pipeline.candidates import (
+            MAX_CANDIDATES,
+            rank_candidates,
+            score_candidate,
+            temperature_ladder,
+        )
+
+        n_candidates = max(1, min(int(candidates or 1), MAX_CANDIDATES))
+        if n_candidates > 1:
+            profile_cache: Dict[str, Any] = {}
+            # 第 1 份已经用基准温度采过了，所以剩下要采的是**梯形里除基准温度以外的档位**，
+            # 并且总数要截到 n_candidates。两处都不能省：
+            # - 早先写成 `ladder[1:]` 是错的：梯形升序，那会跳掉最低档、又重复一次基准温度，
+            #   结果"N 份里有两份同温"，白花一次调用。
+            # - 只做"排除基准温度"也不够：`temperature_ladder` 在**偶数 n** 时梯形不含基准温度
+            #   （n=6 → 6 个非基准档位），不截断就会采 n+1 次，直接超预算。
+            ladder = temperature_ladder(candidates_temperature, n_candidates)
+            extras = [
+                t for t in ladder if abs(t - candidates_temperature) > 1e-9
+            ][: max(0, n_candidates - 1)]
+            rows: List[Dict[str, Any]] = [
+                {
+                    "temperature": candidates_temperature,
+                    "text": current,
+                    **score_candidate(
+                        current,
+                        vn,
+                        beat_sheet=beat_sheet,
+                        instruction=instruction,
+                        profile_cache=profile_cache,
+                    ),
+                }
+            ]
+            for temp in extras:
+                try:
+                    alt = await stage_write(
+                        cfg,
+                        vn,
+                        instruction=instruction,
+                        chapter_id=chapter_id,
+                        selection=selection,
+                        beat_sheet=beat_sheet,
+                        db_continuity=continuity,
+                        temperature=temp,
+                    )
+                except Exception as exc:  # noqa: BLE001 — 单份失败不影响其余候选
+                    rows.append(
+                        {
+                            "temperature": temp,
+                            "text": "",
+                            "hardErrorCount": 1,
+                            "score": 0.0,
+                            "error": f"{type(exc).__name__}:{str(exc)[:160]}",
+                        }
+                    )
+                    continue
+                text = (alt.get("content") or "").strip()
+                rows.append(
+                    {
+                        "temperature": temp,
+                        "text": text,
+                        **score_candidate(
+                            text,
+                            vn,
+                            beat_sheet=beat_sheet,
+                            instruction=instruction,
+                            profile_cache=profile_cache,
+                        ),
+                    }
+                )
+            ranked = rank_candidates(rows)
+            winner = ranked.get("winner") or {}
+            chosen = str(winner.get("text") or "")
+            if chosen.strip():
+                current = chosen
+            result["candidates"] = {
+                "requested": n_candidates,
+                # 实际采样数可能与请求值不同：温度靠边被夹平时，梯形里会出现重复档位，
+                # 那些档位不重复采样（省一次调用），这里如实报出实际份数。
+                "n": len(rows),
+                "sampled": len(rows),
+                "temperatures": [r.get("temperature") for r in rows],
+                "chosenTemperature": winner.get("temperature"),
+                "reason": ranked.get("reason"),
+                "ranked": [
+                    {
+                        "rank": r.get("rank"),
+                        "temperature": r.get("temperature"),
+                        "score": r.get("score"),
+                        "hardErrorCount": r.get("hardErrorCount"),
+                        "chars": len(str(r.get("text") or "")),
+                        "reason": r.get("reason"),
+                        "whyNotWinner": r.get("whyNotWinner"),
+                    }
+                    for r in (ranked.get("ranked") or [])
+                ],
+                "costNote": (
+                    f"best-of-{len(rows)}：本次发出最多 {len(rows)} 次模型调用，"
+                    f"费用约为单次生成的 {len(rows)} 倍（并发只压缩等待时间，不减少计费）"
+                ),
+            }
+
         result["draft"] = current
         _push_trace(
             "write",
@@ -600,6 +715,9 @@ async def run_pipeline(
             revise_rounds=revise_done,
             applied=bool(result.get("applied")),
             instruction=instruction,
+            # 把节拍表一起存进运行历史：story-metrics 的"声明 vs 实际"弧线对账靠它。
+            # 不传的话那个对账永远返回空（这是实现时踩过的坑）。
+            beat_sheet=beat_sheet,
         )
         result["project"] = stamped
         result["runId"] = (stamped.harnessRuns or [{}])[0].get("id")

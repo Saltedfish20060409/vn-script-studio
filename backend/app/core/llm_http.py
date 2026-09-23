@@ -8,12 +8,31 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 
 import httpx
 
+from app.core import llm_budget
 from app.core.ai import DeepSeekConfig
+from app.core.disconnect import model_call_watch
 from app.core.model_presets import supports_json_mode
 from app.llm_models import DEFAULT_LLM_MODEL, resolve_chat_model
 
 # Retry these transient upstream statuses
 _RETRY_STATUSES = {408, 429, 500, 502, 503, 504}
+
+# 只重试"连不上/连接被掐断"这一类——它们更可能是抖动，且单次只花掉很短的连接超时。
+# 读/写超时**不在**这里：那表示上游太慢，同样的预算重试必然再超时，只会多烧一次
+# token 并把用户多晾一整个超时窗口。见 app/core/llm_budget.py 的模块说明。
+#
+# 注意 httpx 的层级（0.28 实测）：ConnectTimeout 与 ReadTimeout / WriteTimeout 一样
+# 直接继承 TimeoutException，**不是** ConnectError 的子类，所以必须单独列出；
+# NetworkError 覆盖 ConnectError / ReadError / WriteError。
+_RETRYABLE_TRANSPORT = (
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+    httpx.NetworkError,
+    httpx.RemoteProtocolError,
+)
+
+# 连接阶段单独封顶：连不上时不该等满整个生成预算。
+_CONNECT_TIMEOUT_CAP = 10.0
 
 # Stream 重连只覆盖这些状态（无 Retry-After 时等 1s，最多重试 1 次）
 _STREAM_RETRY_STATUSES = {429, 500, 502, 503, 504}
@@ -130,18 +149,32 @@ async def chat_completions(
         "Content-Type": "application/json",
         "Authorization": f"Bearer {config.apiKey}",
     }
+    # 思考模式档自动加时：reasoning 期间上游不产出，非流式的 read timeout 覆盖整段
+    # 生成，同一个预算在 *-think 档上会提前击中（慢思考模型必超时的根因之一）。
+    thinking = _is_thinking_body(body)
+    budget = llm_budget.effective_timeout(timeout, thinking=thinking)
 
     last_exc: Optional[Exception] = None
     async with _LLM_SEMAPHORE:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=_client_timeout(budget)) as client:
             for attempt in range(max(1, max_retries)):
                 try:
-                    res = await client.post(
-                        _chat_url(base_url),
-                        headers=headers,
-                        json=body,
-                    )
-                except (httpx.TimeoutException, httpx.TransportError) as exc:
+                    # 客户端断开就立刻停手：思考档一次生成几十秒到几分钟，
+                    # 白跑完既烧 token 又占着并发闸。见 app/core/disconnect.py。
+                    async with model_call_watch():
+                        res = await client.post(
+                            _chat_url(base_url),
+                            headers=headers,
+                            json=body,
+                        )
+                except asyncio.CancelledError:
+                    raise
+                except (httpx.ReadTimeout, httpx.WriteTimeout) as exc:
+                    # 不重试：同一请求同一预算必然再超时，重试只会多烧一次 token。
+                    raise _timeout_error(
+                        model=model, base=timeout, thinking=thinking, stage=""
+                    ) from exc
+                except _RETRYABLE_TRANSPORT as exc:
                     last_exc = exc
                     if attempt + 1 >= max_retries:
                         raise RuntimeError(f"LLM 网络失败：{exc}") from exc
@@ -234,6 +267,41 @@ def _backoff_seconds(attempt: int) -> float:
     return min(20.0, base + random.uniform(0, 0.35))
 
 
+def _client_timeout(total: float) -> httpx.Timeout:
+    """把总预算用作 read/write/pool，连接阶段另设较短的封顶。
+
+    连接不上时不该等满 120s 才第一次重试：连接阶段只花几秒，重试才便宜。
+    """
+    return httpx.Timeout(total, connect=min(_CONNECT_TIMEOUT_CAP, total))
+
+
+def _is_thinking_body(body: Dict[str, Any]) -> bool:
+    """出站 body 是否带着 `thinking: enabled`（思考模式档）。"""
+    t = body.get("thinking")
+    return isinstance(t, dict) and t.get("type") == "enabled"
+
+
+def _timeout_error(
+    *,
+    model: str,
+    base: float,
+    thinking: bool,
+    stage: str,
+) -> RuntimeError:
+    """读超时的如实报错：问题在模型速度/预算，而不是"后端没启动"。
+
+    此前请求超时会被包成 "LLM 网络失败：..."，前端再翻译成"请确认后端服务
+    已启动"——后端明明活着。文案必须指向真正的原因，并给出可执行的下一步。
+    """
+    label = llm_budget.describe(base, thinking=thinking)
+    mode = "（思考模式）" if thinking else ""
+    return RuntimeError(
+        f"模型响应超时：{label}内没有返回结果{stage}（模型 {model}{mode}）。"
+        "常见原因是当前档位偏慢、上下文过长或上游波动——"
+        "可换成非思考档、缩短本次范围，或改用会持续输出进度的流式入口后重试。"
+    )
+
+
 async def stream_chat_completions(
     config: DeepSeekConfig,
     *,
@@ -251,7 +319,7 @@ async def stream_chat_completions(
     if not config.apiKey or "your-key" in config.apiKey:
         raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
     base_url = (config.baseUrl or "https://api.deepseek.com").rstrip("/")
-    _model, body = _chat_body(
+    model, body = _chat_body(
         config,
         messages=messages,
         temperature=temperature,
@@ -266,34 +334,41 @@ async def stream_chat_completions(
 
     received_any = False
     attempts = 0
+    thinking = _is_thinking_body(body)
+    # 流式：timeout 是"多久没有新字节"的空闲上限，不是整段生成的预算，
+    # 所以慢模型不会因为总时长而失败；思考档仍要加时（reasoning 期间无增量）。
+    budget = llm_budget.effective_timeout(timeout, thinking=thinking)
 
     async def _stream_once() -> AsyncIterator[str]:
         nonlocal received_any
         async with _LLM_SEMAPHORE:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                async with client.stream(
-                    "POST", _chat_url(base_url), headers=headers, json=body
-                ) as res:
-                    if res.status_code >= 400:
-                        err = (await res.aread()).decode("utf-8", "replace")
-                        raise _StreamUpstreamError(res.status_code, err, res.headers)
-                    async for line in res.aiter_lines():
-                        if not line or not line.startswith("data:"):
-                            continue
-                        payload = line[5:].strip()
-                        if not payload or payload == "[DONE]":
-                            continue
-                        try:
-                            data = json.loads(payload)
-                        except json.JSONDecodeError:
-                            continue
-                        choices = data.get("choices") or []
-                        if not choices:
-                            continue
-                        delta = ((choices[0] or {}).get("delta") or {}).get("content")
-                        if delta:
-                            received_any = True
-                            yield str(delta)
+            async with httpx.AsyncClient(timeout=_client_timeout(budget)) as client:
+                # 整个流式请求都在"客户端还在吗"的窗口内：断开就把当前任务取消掉，
+                # 免得一边没人看一边继续生成。
+                async with model_call_watch():
+                    async with client.stream(
+                        "POST", _chat_url(base_url), headers=headers, json=body
+                    ) as res:
+                        if res.status_code >= 400:
+                            err = (await res.aread()).decode("utf-8", "replace")
+                            raise _StreamUpstreamError(res.status_code, err, res.headers)
+                        async for line in res.aiter_lines():
+                            if not line or not line.startswith("data:"):
+                                continue
+                            payload = line[5:].strip()
+                            if not payload or payload == "[DONE]":
+                                continue
+                            try:
+                                data = json.loads(payload)
+                            except json.JSONDecodeError:
+                                continue
+                            choices = data.get("choices") or []
+                            if not choices:
+                                continue
+                            delta = ((choices[0] or {}).get("delta") or {}).get("content")
+                            if delta:
+                                received_any = True
+                                yield str(delta)
 
     # 最多重连 1 次：仅当 429/5xx 且尚未产出任何内容增量时，等
     # Retry-After（封顶 5s）或 1s 后重试；与 chat_completions 的
@@ -303,6 +378,11 @@ async def stream_chat_completions(
             async for delta in _stream_once():
                 yield delta
             return
+        except (httpx.ReadTimeout, httpx.WriteTimeout) as exc:
+            # 流式中途空闲超时：不再重连（已产出的内容无法回滚），如实报"模型卡住"。
+            raise _timeout_error(
+                model=model, base=timeout, thinking=thinking, stage="，且中途停止输出"
+            ) from exc
         except _StreamUpstreamError as exc:
             if (
                 attempts >= 1

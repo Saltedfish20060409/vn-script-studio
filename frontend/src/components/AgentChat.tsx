@@ -785,10 +785,13 @@ export function AgentChat({
           : "编辑正在检索设定 / 读当前章…"
     );
     setBusy(true);
-    // 防御：90s 内一个事件都没收到（模型连接黑洞/后端异常未上报）就中止，
-    // 否则 busy 永远为 true，界面卡死在"正在检索设定"。（声明在 try 外，
-    // 供 finally 清理）
-    let noEventTimer: number | undefined;
+    // 防御：**90 秒一个字节都没收到**（连服务端 20s 一次的 `: keepalive` 都没有）
+    // 才判定连接出了问题，否则 busy 永远为 true，界面卡死在"正在检索设定"。
+    //
+    // 判据必须是"收到任何数据"，不能是"收到业务事件"：慢思考模型在 reasoning
+    // 阶段只发心跳、不发业务事件，用后者会在模型正常思考时把连接掐掉，还弹出
+    // "请检查模型配置"——把"模型慢"误报成"配置错"。心跳会复位这个计时器。
+    let idleTimer: number | undefined;
     try {
       const snapshot = prepareProject ? prepareProject() : project;
       const streamEvents: AgentTraceEvent[] = [];
@@ -796,14 +799,19 @@ export function AgentChat({
       streamAbortRef.current?.abort();
       const controller = new AbortController();
       streamAbortRef.current = controller;
-      let gotEvent = false;
-      noEventTimer = window.setTimeout(() => {
-        if (gotEvent || controller.signal.aborted) return;
-        controller.abort();
-        setBusy(false);
-        setThinking("");
-        setError("Agent 长时间无响应：请检查模型配置（Base URL / API Key / 模型名）后重试");
-      }, 90_000);
+      const armIdleWatchdog = () => {
+        if (idleTimer !== undefined) window.clearTimeout(idleTimer);
+        idleTimer = window.setTimeout(() => {
+          if (controller.signal.aborted) return;
+          controller.abort();
+          setBusy(false);
+          setThinking("");
+          setError(
+            "连接已 90 秒没有任何数据（连心跳都没有）：请检查网络与后端进程是否正常，然后重试。"
+          );
+        }, 90_000);
+      };
+      armIdleWatchdog();
       const res = await runAgentStream(
         projectId,
         {
@@ -827,7 +835,6 @@ export function AgentChat({
               })),
         },
         (evt) => {
-          gotEvent = true;
           if (evt.type === "thought") {
             setLiveStream((p) => ({ events: p?.events ?? [], text: evt.text ?? "" }));
             return;
@@ -853,7 +860,9 @@ export function AgentChat({
             setLiveStream((p) => ({ events: [...streamEvents], text: p?.text ?? "" }));
           }
         },
-        controller.signal
+        controller.signal,
+        // 心跳也复位看门狗：模型在思考 ≠ 连接断了
+        armIdleWatchdog
       );
 
       const actions = res.actions ?? [];
@@ -970,7 +979,7 @@ export function AgentChat({
         { role: "assistant", content: `出错了：${msg}` },
       ]);
     } finally {
-      if (noEventTimer !== undefined) window.clearTimeout(noEventTimer);
+      if (idleTimer !== undefined) window.clearTimeout(idleTimer);
       setBusy(false);
       setLiveStream(null);
       // 同步服务器端 run_state（成功后为 done/空；失败后为 error → 显示"继续"）

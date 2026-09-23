@@ -16,6 +16,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from app.core import llm_budget
 from app.core.ai import DeepSeekConfig
 from app.core.llm_http import chat_completions, content_from_response
 from app.domain.types import VnProject
@@ -313,7 +314,7 @@ async def run_consistency_audit(
             messages=messages,
             temperature=0.2,
             response_format={"type": "json_object"},
-            timeout=180,
+            timeout=llm_budget.WRITE,
         )
         content, used_model = content_from_response(res)
         result.model = used_model or (config.model or "")

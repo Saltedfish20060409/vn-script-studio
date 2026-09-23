@@ -505,3 +505,110 @@ class ProductEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, index=True
     )
+
+
+# --------------------------------------------------------------------------
+# 读者/玩家行为建模（试玩遥测）
+#
+# product_events 只能回答"有没有人点过试玩"（playtest_opened），答不出玩家**选了
+# 什么**。下面三张表补齐这一半：一次试玩一行 run、一次选择一行 choice、每个工程一行
+# 采集开关。隐私红线见 app/services/playtest_telemetry.py 的模块 docstring：
+# 这里刻意**没有任何自由文本列**，所有字符串列都只放 ASCII 标识符。
+# --------------------------------------------------------------------------
+
+
+class PlaytestRun(Base):
+    """一次试玩的运行记录 —— 读者行为的根行。
+
+    隐私取舍：刻意**没有** user_id / ip / user_agent 列。一次试玩只对应客户端自己
+    生成的随机 ``client_run_id``（>=8 位），它不可反查个人；需要判断"谁在上报"时看
+    的是工程权限，而不是读者身份。
+
+    幂等取舍：``(project_id, client_run_id)`` 唯一 —— 同一个客户端重复上报同一次试玩
+    最多落到一行 run，配合 ``playtest_choices(run_id, seq)`` 唯一键，重复上报只会
+    "补上缺失的 seq"，不会产生重复行。
+    """
+
+    __tablename__ = "playtest_runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "client_run_id", name="uq_playtest_runs_project_client"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    client_run_id: Mapped[str] = mapped_column(String(64), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    chapter_count: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    choice_count: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    # 玩家走到的结局 label（不是结局文案；见 sanitize_identifier 的标识符白名单）
+    ending_label: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    project: Mapped["Project"] = relationship()
+    choices: Mapped[list["PlaytestChoice"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class PlaytestChoice(Base):
+    """玩家在试玩里选中的一个选项 —— 只记 id / 索引 / 布尔 / 计数。
+
+    隐私取舍（结构性红线）：这张表**没有** option_text / prompt / note / body 之类
+    的列。三个字符串列（chapter_id / label / menu_id）在写库前都要过 ASCII 标识符
+    白名单（``sanitize_identifier``），所以"台词、选项文案、旁白"在物理上没有容器
+    可放 —— 这不是靠"记得别写进去"，而是靠列设计 + 白名单双重约束。
+    """
+
+    __tablename__ = "playtest_choices"
+    __table_args__ = (UniqueConstraint("run_id", "seq", name="uq_playtest_choices_run_seq"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    run_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("playtest_runs.id", ondelete="CASCADE"), index=True
+    )
+    # 同一次试玩内递增；与 run_id 组成唯一键（重复上报的幂等依据）
+    seq: Mapped[int] = mapped_column(Integer, default=0)
+    chapter_id: Mapped[str] = mapped_column(String(64), default="")
+    # 选择发生时所在的 label 名（标识符，不是台词）
+    label: Mapped[str] = mapped_column(String(64), default="")
+    menu_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    choice_index: Mapped[int] = mapped_column(Integer, default=-1)
+    # 该选项在玩家选择的那一刻是否可选（False = 静态分析认为不可选，玩家却选了）
+    condition_passed: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    run: Mapped["PlaytestRun"] = relationship(back_populates="choices")
+
+
+class ProjectTelemetrySetting(Base):
+    """工程级读者行为采集开关 —— **默认关闭**（没有这一行 = 不采集）。
+
+    为什么单独一张表：开关是"是否授权采集"的状态，必须能被单独审计/查询/撤回。
+    塞进 ``projects.data`` 会跟正文一起被整体覆盖或版本回滚，授权状态也跟着漂。
+
+    为什么默认 False：这是"记录别人怎么玩我的作品"的采集行为，必须由作者显式打开；
+    默认开启等于让所有存量工程在升级瞬间开始采集，属于未经同意的数据收集。
+    """
+
+    __tablename__ = "project_telemetry_settings"
+
+    project_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

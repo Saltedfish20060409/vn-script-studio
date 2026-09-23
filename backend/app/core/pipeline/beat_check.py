@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional, Set
 
+from app.core import llm_budget
 from app.core.harness.ai_flavor import HarnessIssue
 
 _SPLIT = re.compile(r"[\s,，。！？、；;：:（）()\-\—「」『』\"“”]+")
@@ -282,7 +283,7 @@ async def lint_beat_sheet_semantic(
                 {"role": "user", "content": prompt},
             ],
             temperature=0.1,
-            timeout=60,
+            timeout=llm_budget.QUICK,
         )
         content, _ = content_from_response(res)
     except Exception as exc:  # noqa: BLE001

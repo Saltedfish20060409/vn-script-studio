@@ -5,6 +5,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from app.core import llm_budget
 from app.domain.types import Location, LocationLink, ScriptBlock, VnProject
 
 from .ai import DeepSeekConfig
@@ -364,7 +365,7 @@ async def _call_llm_map_extract(
         ],
         temperature=0.2,
         response_format={"type": "json_object"},
-        timeout=120,
+        timeout=llm_budget.CHAT,
     )
     content, _model = content_from_response(res)
     return _parse_llm_json(content)

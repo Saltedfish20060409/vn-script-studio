@@ -82,6 +82,8 @@ EXCLUDABLE_SECTIONS: Dict[str, str] = {
     "bible": "设定 bible（世界观 / 大纲 / 背景）",
     "lore": "设定条目",
     "longMemory": "长程章节记忆",
+    # 卷级/全局记忆层（core/global_memory.py）：四十章之后"到目前为止发生了什么"的压缩表示
+    "globalMemory": "全局记忆（卷级总述与未回收伏笔）",
     "craft": "ACG 工艺卡",
     "referenceDocs": "上传的参考资料",
     "chatMemory": "对话滚动记忆",
@@ -102,6 +104,12 @@ TASK_DROP_SECTIONS: Dict[str, set] = {
     "rewrite": {"sprites", "variables"},
     "polish": {"sprites", "variables"},
     "chat": {"otherChapters"},
+    # 下面几类同理：立绘是演出资源，对"怎么写"没有信息量。
+    # **variables 不丢**：分支与场景的条件判断依赖它，丢了会写出走不通的选项。
+    "branch": {"sprites"},
+    "scene": {"sprites"},
+    "voice": {"sprites", "variables"},
+    "outline": {"sprites", "variables"},
 }
 
 
@@ -136,6 +144,29 @@ TASK_KEY_RULES: Dict[str, List[str]] = {
         "逐条比对设定/台账与正文，指出冲突，并给出可执行的修法。",
         "不要为了「看起来没问题」而放过可疑处；拿不准就明确标出来。",
     ],
+    # 下面这几类是**曾经缺位的**：它们当初没进这张表，于是回落到了 chat 的规则
+    # （「除非我明确要求，否则不要改工程」），而同一轮 system 里的 task hint 却写着
+    # 「append_script」——同一条 prompt 里自相矛盾，写出来的东西自然就不稳定。
+    "branch": [
+        "本轮产出的是**分支结构**：每个选项必须真的通向不同的后果；禁止「三个选项接同一段」的假分支。",
+        "选项文案要短、有戏剧性、有取舍；不要在选项里解释设定。",
+        "分支正文里的台词照常遵守人设与反倾倒规则（选项正文也要能演）。",
+    ],
+    "scene": [
+        "写完整一小场戏：进场 → 冲突 → 收束钩子，不要停在半截。",
+        "设定与人物关系靠动作和对白露出，不要宣讲；不要写镜头术语或分镜表。",
+        "紧接当前章的时间与地点，不要无故跳场或引入未登场的人物。",
+    ],
+    "outline": [
+        "输出分级大纲（卷 / 章 / 节），每条一句话，不要展开成正文。",
+        "用戏剧事件推进，不要写成设定条目或世界观清单。",
+        "只给方案，不要顺手改动工程正文。",
+    ],
+    "voice": [
+        "只调整语气与用词，不改情节、不改专名。",
+        "对照角色 voice / bio 与思维卡找破人设的句子，逐句给改法。",
+        "只输出调整后的台词或段落，不写解释。",
+    ],
     "chat": [
         "给结论与理由，不要客套、不要复述我的问题。",
         "除非我明确要求，否则不要改工程。",
@@ -144,7 +175,7 @@ TASK_KEY_RULES: Dict[str, List[str]] = {
 
 
 def task_key_rules(task: str) -> List[str]:
-    return TASK_KEY_RULES.get(task or "chat", TASK_KEY_RULES["chat"])
+    return TASK_KEY_RULES.get(task or "chat") or TASK_KEY_RULES["chat"]
 
 
 # 每个任务的**输出契约**：长度与形态。写清楚"给我什么形状的东西"，
@@ -156,13 +187,17 @@ TASK_OUTPUT_CONTRACT: Dict[str, str] = {
     "polish": "只输出润色后的正文；不改情节、不改专名。",
     "consistency": "先列冲突（每条一行：位置 → 与什么设定冲突 → 建议改法），再给一句总体判断；不要重写正文。",
     "outline": "输出分级大纲：卷/章/节三层用缩进或编号表示；每条一句话，不要展开成正文。",
+    "branch": (
+        "输出 2–4 个分支（Ren'Py menu 形态）：每项一行选项文案，紧跟该选项的正文（或 jump 到 label）；"
+        "选项之间后果必须不同；不要解释、不要小结、不要给「建议」。"
+    ),
     "voice": "输出调整后的台词或段落；旁边不写解释。",
     "chat": "直接回答：先结论后理由；需要时给可执行的改法；不要复述我的问题。",
 }
 
 
 def output_contract(task: str) -> str:
-    return TASK_OUTPUT_CONTRACT.get(task or "chat", TASK_OUTPUT_CONTRACT["chat"])
+    return TASK_OUTPUT_CONTRACT.get(task or "chat") or TASK_OUTPUT_CONTRACT["chat"]
 
 
 TASK_HINTS: Dict[str, str] = {
@@ -231,7 +266,9 @@ def infer_agent_task(message: str) -> str:
 
 
 def task_hint(task: str) -> str:
-    return TASK_HINTS[task]
+    # 不再用 TASK_HINTS[task]：调用方（含 API）传了未登记的任务名时，
+    # 这里过去会抛 KeyError，把整轮对话打断；回落到 chat 才是合理行为。
+    return TASK_HINTS.get(task or "chat") or TASK_HINTS["chat"]
 
 
 def _js(v: Optional[str]) -> str:
@@ -533,6 +570,7 @@ def build_agent_context(
     maxChars: Optional[int] = None,
     chatMemory: Optional[str] = None,
     longChapterMemory: Optional[str] = None,
+    globalMemory: Optional[str] = None,
     loreCraft: Optional[str] = None,
     referenceDocs: Optional[str] = None,
     exclude: Optional[Iterable[str]] = None,
@@ -965,6 +1003,8 @@ def build_agent_context(
         included.append("对话记忆")
     if longChapterMemory and longChapterMemory.strip():
         included.append("长程章节记忆")
+    if globalMemory and globalMemory.strip():
+        included.append("全局记忆")
     if loreCraft and loreCraft.strip():
         included.append("ACG工艺卡")
     if referenceDocs and referenceDocs.strip():
@@ -1045,6 +1085,16 @@ def build_agent_context(
             (
                 f"\n{_clip(longChapterMemory.strip(), 3200)}"
                 if longChapterMemory and longChapterMemory.strip()
+                else ""
+            ),
+        ),
+        (
+            # 全局记忆排在长程记忆之后：先给"最近这段发生了什么"（更直接影响续写），
+            # 再给"整本书到目前为止"（影响主线判断）。两块都会在超预算时被压。
+            "globalMemory",
+            (
+                f"\n{_clip(globalMemory.strip(), 2400)}"
+                if globalMemory and globalMemory.strip()
                 else ""
             ),
         ),

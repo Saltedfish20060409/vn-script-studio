@@ -1,6 +1,7 @@
 import type { ServerSettingsOut } from "../lib/settings";
 import type { VnProject } from "../types/vn";
 import { apiFetch } from "./http";
+import { TIMEOUTS } from "./timeouts";
 // ---------------------------------------------------------------------------
 // Chapter long memory (NovelMaster-style, PG sliced)
 // ---------------------------------------------------------------------------
@@ -206,6 +207,7 @@ export function runBrainstorm(
 ): Promise<BrainstormResult> {
   return apiFetch(`/projects/${id}/brainstorm`, {
     method: "POST",
+    timeoutMs: TIMEOUTS.long,
     body: JSON.stringify(body),
   });
 }
@@ -298,6 +300,7 @@ export function testLlm(body: {
     {
       method: "POST",
       body: JSON.stringify(body),
+    timeoutMs: TIMEOUTS.probe,
     }
   );
 }

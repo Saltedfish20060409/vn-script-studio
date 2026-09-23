@@ -6,6 +6,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
+from app.core import llm_budget
 from app.core.ai import DeepSeekConfig
 from app.core.character_voice.corpus import (
     find_character,
@@ -123,7 +124,7 @@ async def workshop_chat(
         ],
         temperature=0.8,
         response_format={"type": "json_object"},
-        timeout=120,
+        timeout=llm_budget.CHAT,
     )
     content, used_model = content_from_response(res)
     content = (content or "{}").strip()

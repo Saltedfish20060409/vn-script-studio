@@ -128,4 +128,3 @@ async def record_first_event(
     if await has_event(db, user_id, name):
         return
     await record_event(db, user_id, name, props)
-

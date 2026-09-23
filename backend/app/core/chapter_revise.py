@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.core import llm_budget
 from app.domain.types import VnProject
 from app.llm_models import DEFAULT_LLM_MODEL
 
@@ -697,7 +698,7 @@ async def _chat_json(
         temperature=temperature,
         response_format={"type": "json_object"},
         max_tokens=max_tokens,
-        timeout=180,
+        timeout=llm_budget.WRITE,
     )
     raw, model = content_from_response(res)
     return raw or "{}", model or (config.model or DEFAULT_LLM_MODEL), usage_from_response(res)
@@ -719,7 +720,7 @@ async def _chat_text(
         ],
         temperature=temperature,
         max_tokens=max_tokens,
-        timeout=240,
+        timeout=llm_budget.LONG,
     )
     raw, model = content_from_response(res)
     return raw.strip(), model or (config.model or DEFAULT_LLM_MODEL), usage_from_response(res)

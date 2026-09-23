@@ -174,6 +174,15 @@ npm ci && npm run build
 | `POST …/agent/chapter-revise` · `…/apply` | 章节回炉（可 async_mode → job） |
 | `POST …/map/extract` · `…/extract/accept` | 地图智能提取预览与勾选写入 |
 | `POST …/analysis/facts/*` · `…/lint` · `…/branch-tree` | 事实总线与分支树 |
+| `GET …/analysis/branch-report` | 分支结构体检：label 图 / 环检测 / 分支覆盖 / 条件可满足性 / 无后果选项 / 结局对账（纯本地） |
+| `GET …/analysis/voice-report` | 角色声线体检：语言画像 / 逐章声线漂移 / 角色间可混淆度（纯本地） |
+| `GET …/analysis/continuity` | 跨章事实一致性：未登记说话人 / 悬空关系 / 时间线错序 / 死亡后仍出场（纯本地） |
+| `GET …/analysis/story-metrics` | 故事层指标：**伏笔回收率**（含最老未回收钩子的章龄）与**情感弧线**（逐角色 + 逐章断裂 + 与节拍表声明对账，纯本地） |
+| `GET …/analysis/adaptive-plan` | **自适应选项**：从现有 `set` 块自动派生"读者倾向"计数器（persistent、跨存档）与可照抄的条件（纯本地） |
+| `GET …/export/rpy` · `…/export/bundle` | 导出 .rpy / zip（支持 `?adaptive_reader=true` 注入读者倾向计数，默认关） |
+| `GET …/playtest/recommendations` | **分支改进建议**：把静态结构分析与读者实际行为融成可执行改法（"这个选项选哪个都一样""没人走到这个结局"） |
+| `POST …/playtest/record` · `GET/PUT …/playtest/settings` · `GET …/playtest/analytics` | 读者行为遥测：默认关闭、只存 id/索引/计数、不记任何正文；开启后可看选项占比、漏斗、没人选的选项/结局与读者侧覆盖率 |
+| `POST …/analysis/consistency-scan` | 全书**分片全量**一致性扫描（调模型；如实上报覆盖率，不再静默截断在前 14 章） |
 | `POST …/voice-check` | 语气检查（写入 voiceReports） |
 | `GET/POST …/memory/*` | 章节记忆归档 |
 | `POST /harness/*` · `POST /pipeline/*` · `GET …/jobs/{id}` | 文风体检 / 流水线 / 异步任务轮询 |
@@ -197,7 +206,10 @@ python -m app ai out.json continue --instruction "更压抑"
 python -m app eval
 python -m app eval -m qwen2.5:7b --base-url http://localhost:11434 --api-key ollama
 # 对照盲评：「工具流程」vs「裸聊」两臂，同一模型同一任务、量具完全相同
-python -m app eval --ab --cases 13 --out ab.json
+#   --repeats N 看采样方差；--judge-model 换成独立裁判（默认与选手同模型，会告警）
+python -m app eval --ab --repeats 3 --judge-model <独立模型> -o ab.json
+# 长程一致性基准：造带标准答案的合成长篇，量「章距 vs 暴露率/检出率」。**不需要 API key**
+python -m app eval --longrange --longrange-chapters 60
 ```
 
 对照盲评（`--ab`）用来回答「这软件是不是还不如直接跟聊天框说一句」这类质疑：
@@ -210,8 +222,32 @@ python -m app eval --ab --cases 13 --out ab.json
 - **随机标签盲评**：每例的甲/乙分配按 `--seed` 独立随机，盲评文件（`blind-ab.json`）
   **不含答案**、可直接交给别人或另一个模型评；答案单独写在 `blind-ab-key.json`，
   评完再拆封。换个 `--seed` 可复现另一套标签，用来检查评审自身是否稳定。
+- **不确定度一起报**：报告里给配对 bootstrap 95% 区间、符号检验与 veto 的 McNemar 精确检验；
+  区间跨 0 时会明确打印「未达显著」，不拿一个均值差当结论。
+- **裁判不再被透题**：用例文案里写给我们自己的评测元信息
+  （如「（测试：审稿应抓住…，判定不合格）」）会在送裁判前剔除；
+  裁判默认与选手同模型时会在报告与终端里**明确告警**（`judgeIndependent=false`）。
 - 报告里保留集看 lint 通过率与 Rubric 均分，边界集（`trap-*`）看检出率与 veto，
   并直接打印「工具 − 裸聊」的差值。
+
+长程一致性基准（`--longrange`）回答的是另一个问题：**长篇从第几章开始失效？**
+它造一部带标准答案的合成长篇，在受控章距上注入矛盾，同时埋入诱导项（看着可疑但不矛盾）
+用来量误报，然后分章距分桶给出：
+
+- **暴露率**：矛盾所在的章有没有被送进检测器视野（检测的必要条件，纯结构量、不需模型）；
+- **检出率 / precision / recall / F1**：拿现成的确定性检查当被测量具。
+
+实测结论：旧实现（只扫前 14 章）在 16 章以外的暴露率是 **0**——那些章的召回在构造上就不可能为 1；
+分片方案把暴露率做到 1.00。完整口径、数字与**仍未解决的部分**见
+[docs/longrange-consistency-and-eval.md](docs/longrange-consistency-and-eval.md)。
+
+### 超时预算（前端与后端必须对齐）
+
+前端每个请求等多久，必须覆盖后端在**同一次请求内**串行跑完的所有 LLM 调用（含思考档加时）。
+两侧的命名真源分别是 `backend/app/core/llm_budget.py` 与 `frontend/src/api/timeouts.ts`，
+并由 `frontend/src/api/timeouts.test.ts` 直接读后端源码逐端点校验。
+慢思考档（`*-think`）由后端自动加时，读超时**不重试**，流式路径不设总超时（靠 20s 心跳判活）。
+背景、失配表与残余风险见 [docs/llm-timeout-budget.md](docs/llm-timeout-budget.md)。
 
 ### 环境变量（backend/.env）
 
@@ -223,6 +259,8 @@ python -m app eval --ab --cases 13 --out ab.json
 | `LLM_PROVIDER` | `openai`（默认）/ `ollama`；或把 `DEEPSEEK_BASE_URL` 设为 `http://localhost:11434` 自动走本地 Ollama |
 | `AGENT_CRAFT_MODE` | 写作工艺：`auto` / `off` / `lite` / `full` |
 | `AGENT_SELF_REVIEW` | 自检：`auto` / `on` / `off` |
+| `LLM_THINKING_TIMEOUT_FACTOR` | 思考档（`*-think`）的 LLM 超时倍数，默认 `2.0`（夹在 1.0–5.0）。reasoning 期间上游不产出，非流式请求的 read 超时覆盖整段生成，所以思考档要更宽。见 `app/core/llm_budget.py` |
+| `DISCONNECT_CANCEL_ENABLED` | 客户端断开时是否中止正在进行的模型调用（默认 `true`，省 token 并释放并发闸）。只作用于"正在等模型"的窗口，不影响已落库的写入与后台作业；见 `app/core/disconnect.py` |
 | `CRITIC_API_KEY` / `CRITIC_API_BASE_URL` / `CRITIC_API_MODEL` | 可选责编模型（空则复用写作模型） |
 | `CORS_ORIGINS` | 前端源，逗号分隔 |
 | `REDIS_URL` | 协作 SSE 与接口限流跨 worker；留空 = 单进程内存。线上 compose 会写入 `redis://redis:6379/0` |

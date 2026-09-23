@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import List, Optional
 
+from app.core import llm_budget
 from app.domain.types import AgentAction, VnProject
 
 from .ai import DeepSeekConfig
@@ -214,7 +215,7 @@ async def run_narrative_self_review(
             ],
             temperature=0.25,
             response_format={"type": "json_object"},
-            timeout=120,
+            timeout=llm_budget.CHAT,
         )
     except RuntimeError as exc:
         if lint_has_blockers(lint_issues):

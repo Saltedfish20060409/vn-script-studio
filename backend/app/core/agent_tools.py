@@ -399,4 +399,3 @@ def format_tool_result_message(name: str, ok: bool, preview: str) -> str:
     status = "ok" if ok else "error"
     body = _clip(preview, 6000)
     return f"[tool_result name={name} status={status}]\n{body}"
-

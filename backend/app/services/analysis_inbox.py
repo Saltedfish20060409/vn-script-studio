@@ -143,4 +143,3 @@ def proposals_from_agent(raw: Sequence[Dict[str, Any]]) -> List[FactCandidate]:
             )
         )
     return out
-

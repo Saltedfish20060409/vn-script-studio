@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
@@ -17,6 +18,22 @@ from uuid import uuid4
 from app.core.agent_context import _blocks_to_plain
 from app.core.chapter_digest import chapter_content_hash, make_chapter_digest
 from app.domain.types import VnProject
+
+#: `chapter_digest` 会把结构块渲染成方括号标记（`[label start]` / `[scene bg_x]` /
+#: `[选项] …` / `[音乐 …]`）。它们不是"钩子"，只是演出结构。
+_MARKER_RE = re.compile(r"\[[^\]]*\]")
+
+
+def _hook_has_prose(close_hook: str) -> bool:
+    """章末钩子里必须含**真正的正文**才算一条伏笔。
+
+    原来只判 `len(close_hook) > 4`，于是"只写了一个 label 的空章"也会被记成
+    「章末钩子（自动）」——`[label start]` 有 13 个字符，轻松过线。后果有两层：
+    ① 伏笔回收率被结构标记污染（空章也算"埋了没收"）；
+    ② 那条假钩子会进 `format_ledger_for_agent` 的未回收清单，**当成事实喂给写作模型**。
+    """
+    stripped = _MARKER_RE.sub("", close_hook or "").strip()
+    return len(stripped) > 4
 
 
 def _now() -> str:
@@ -349,7 +366,7 @@ def digest_chapter_into_ledger(
                     "updatedAt": _now(),
                 }
             )
-    elif dig.closeHook and len(dig.closeHook) > 4:
+    elif dig.closeHook and _hook_has_prose(dig.closeHook):
         # avoid dup by hook text
         if not any(f.get("hook") == dig.closeHook for f in fores):
             fores.append(

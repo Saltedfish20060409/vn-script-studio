@@ -563,6 +563,28 @@ class AnalysisMeta(BaseModel):
     lastReconcileAt: Optional[str] = None
 
 
+class Ending(BaseModel):
+    """结局登记。
+
+    为什么需要"声明式结局"：在此之前"这作品有几个结局"只能从控制流**推断**
+    （`script_analysis._flow_ends` 看哪里 return / 断流），于是两类问题都查不出来——
+    写了 5 个结局但只有 3 个能从 start 走到，以及"某个终点其实是个 bug 不是结局"。
+    登记之后，"声明 vs 可达"才能对账。
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    name: str
+    # 结局所在 label（写 label 名；导出后对应 Ren'Py 的 label）
+    label: Optional[str] = None
+    # 进入该结局的条件（受控语法，与菜单选项条件同一套：core/conditions.py）
+    condition: Optional[str] = None
+    # 路线 / 攻略线名，如「雪见线」「真结局」
+    route: Optional[str] = None
+    description: Optional[str] = None
+
+
 class VnProject(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -590,6 +612,8 @@ class VnProject(BaseModel):
     timeline: Optional[List[TimelineEvent]] = None
     variables: Optional[List[GameVariable]] = None
     sprites: Optional[List[SpriteDef]] = None
+    # 结局登记（可选）：声明式多结局管理。不填则退回"按控制流推断结局"。
+    endings: Optional[List[Ending]] = None
     snapshots: Optional[List[ProjectSnapshot]] = None
     # Extractive chapter digests / content hashes (refreshed on save)
     chapterIndex: Optional[List[ChapterIndexEntry]] = None
@@ -676,6 +700,8 @@ class AgentRequest(BaseModel):
     chatMemory: Optional[str] = None
     # NovelMaster-style long chapter archive (assembled from PG slices)
     longChapterMemory: Optional[str] = None
+    # 卷级/全局记忆层：四十章之后"到目前为止发生了什么"的压缩表示（core/global_memory.py）
+    globalMemory: Optional[str] = None
     # Moegirl-inspired ACG craft cards (distilled; never paste wiki into script)
     loreCraft: Optional[str] = None
     # User-uploaded reference docs (already extracted plain text)

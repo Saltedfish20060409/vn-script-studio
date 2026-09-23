@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List, Optional
 
+from app.core import llm_budget
 from app.core.agent_context import _blocks_to_plain
 from app.core.ai import DeepSeekConfig
 from app.core.lenses import (
@@ -36,7 +37,7 @@ async def _chat(
             {"role": "user", "content": user},
         ],
         temperature=temperature,
-        timeout=120,
+        timeout=llm_budget.CHAT,
     )
     content, model = content_from_response(res)
     return {"content": content.strip(), "model": model or (cfg.model or DEFAULT_LLM_MODEL)}

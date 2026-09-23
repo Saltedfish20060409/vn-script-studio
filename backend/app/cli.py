@@ -4,17 +4,35 @@ from __future__ import annotations
 import asyncio
 import json
 import random
+import re
 from pathlib import Path
 from typing import List, Optional
 
 import typer
 
 from app.config import get_settings
-from app.core import create_demo_project, export_to_renpy, normalize_project, run_ai
+from app.core import create_demo_project, export_to_renpy, llm_budget, normalize_project, run_ai
 from app.core.ai import DeepSeekConfig
+from app.core.eval_stats import (
+    format_ci,
+    summarize_binary_paired,
+    summarize_paired,
+)
 from app.domain.types import AiRequest
 
 cli = typer.Typer(help="VN Script Studio CLI")
+
+#: 用例文案里的**评测元信息**（如「（测试：审稿应抓住『设定宣讲』，判定不合格）」）。
+#: 这些字是写给我们自己看的，不能给裁判看到——那等于把参考答案一起发给判卷人。
+_TEST_HINT_RE = re.compile(
+    r"[（(][^（()）]*?(?:测试|判定不合格|应抓住|一票否决)[^（()）]*?[）)]"
+)
+
+
+def strip_test_hint(text: str) -> str:
+    """去掉用例文案里的评测元信息，只留"作者真正会说的话"。"""
+    cleaned = _TEST_HINT_RE.sub("", text or "")
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
 
 
 @cli.command()
@@ -116,25 +134,68 @@ def eval(
     base_url: Optional[str] = typer.Option(None, "--base-url", help="OpenAI 兼容 base URL"),
     api_key: Optional[str] = typer.Option(None, "--api-key", help="API key（Ollama 可省略）"),
     out: Optional[Path] = typer.Option(None, "--out", help="评测报告 JSON 输出路径"),
-    cases: int = typer.Option(3, "--cases", help="运行前 N 个用例"),
+    cases: int = typer.Option(0, "--cases", help="运行前 N 个用例（0 = 全部）"),
     ab: bool = typer.Option(
         False,
         "--ab",
         help="对照盲评：同一模型同一任务跑「工具流程」与「裸聊」两臂，并输出随机标签的盲评文件",
     ),
+    repeats: int = typer.Option(
+        1, "--repeats", help="每个用例每臂重复采样次数（>1 时报告离散度）"
+    ),
+    judge_model: Optional[str] = typer.Option(
+        None, "--judge-model", help="独立裁判模型名（默认取 CRITIC_API_MODEL；空则复用目标模型）"
+    ),
+    judge_base_url: Optional[str] = typer.Option(
+        None, "--judge-base-url", help="裁判模型 base URL"
+    ),
+    judge_api_key: Optional[str] = typer.Option(
+        None, "--judge-api-key", help="裁判模型 API key"
+    ),
     blind_out: Optional[Path] = typer.Option(
         None, "--blind-out", help="盲评文件输出路径（默认写到 --out 同目录的 blind-ab.json）"
+    ),
+    longrange: bool = typer.Option(
+        False,
+        "--longrange",
+        help="长程一致性基准：造带标准答案的合成长篇，量章距 vs 检出/暴露率（不需要 API key）",
+    ),
+    longrange_chapters: int = typer.Option(
+        60, "--longrange-chapters", help="基准作品的章节数"
     ),
     seed: int = typer.Option(20260409, "--seed", help="盲评标签随机种子（同种子可复现）"),
 ):
     """生成质量评测：对写作任务跑目标模型，用确定性 lint 自动评分。
 
     用法：
-      python -m app eval                          # 用 .env 的模型
+      python -m app eval                          # 用 .env 的模型，跑全部用例
       python -m app eval -m deepseek-v4-flash
       python -m app eval -m qwen2.5:7b --base-url http://localhost:11434 --api-key ollama
-      python -m app eval --ab --cases 9 -o ab.json  # 对照盲评：工具流程 vs 裸聊
+      python -m app eval --ab --cases 13 -o ab.json  # 对照盲评：工具流程 vs 裸聊
+      python -m app eval --ab --repeats 3 --judge-model gpt-4o   # 重复采样 + 独立裁判
+      python -m app eval --longrange               # 长程一致性基准（无需 key）
     """
+    if longrange:
+        # 这条路径**不需要模型**：暴露率是"矛盾所在的章有没有被送进检测器视野"，
+        # 纯结构量；检测器用现成的确定性检查。所以它能在 CI 里当回归量具。
+        from app.core.eval_longrange import (
+            detect_deterministic,
+            format_report,
+            run_benchmark,
+        )
+
+        bench = run_benchmark(
+            chapters=max(20, min(int(longrange_chapters), 200)),
+            seed=seed,
+            detector=detect_deterministic,
+        )
+        typer.echo(format_report(bench))
+        if out:
+            out.write_text(
+                json.dumps(bench, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            typer.echo(f"基准报告已写入 {out}")
+        return
     from app.core.demo import create_demo_project
     from app.core.harness.audit_full import full_audit_draft
     from app.core.llm_http import chat_completions, content_from_response
@@ -164,6 +225,29 @@ def eval(
     if not cfg.apiKey:
         typer.echo("需要 API key（--api-key 或 .env 的 DEEPSEEK_API_KEY；Ollama 传任意值）", err=True)
         raise typer.Exit(1)
+
+    # 裁判模型：优先用显式参数，其次 CRITIC_* 环境变量，最后回落到目标模型。
+    # 为什么重要：裁判与选手是同一个模型时，评分里混进了"模型自己偏好自己的写法"，
+    # 而且它对提示里的措辞极其敏感。报告的 judgeIndependent 会如实标出这一点，
+    # 让读报告的人知道这份分数能不能当外部证据用。
+    judge_base = (judge_base_url or settings.critic_api_base_url or "").strip()
+    judge_key = (judge_api_key or settings.critic_api_key or "").strip()
+    judge_name = (judge_model or settings.critic_api_model or "").strip()
+    judge_cfg = DeepSeekConfig(
+        apiKey=judge_key or cfg.apiKey,
+        baseUrl=judge_base or cfg.baseUrl,
+        model=judge_name or cfg.model,
+        provider=cfg.provider,
+    )
+    judge_independent = bool(
+        judge_cfg.model != cfg.model or (judge_cfg.baseUrl or "") != (cfg.baseUrl or "")
+    )
+    if not judge_independent:
+        typer.echo(
+            "⚠ 裁判与选手是同一个模型（judgeIndependent=false）："
+            "结论只能当内部参考。想要外部证据请配 CRITIC_* 或 --judge-model。",
+            err=True,
+        )
 
     project = create_demo_project()
     ctx_parts = [
@@ -218,6 +302,11 @@ def eval(
          "（测试：审稿应抓住「副词+说标签 ai_said_tag」，判定不合格）"),
     ]
 
+    # 默认跑**全部**用例：以前默认只跑前 3 个（全是保留集），
+    # 于是"跑一次评测"看到的永远是"两臂都还行"，看不到边界集的真实差距。
+    selected = TASKS if cases <= 0 else TASKS[: max(1, min(cases, len(TASKS)))]
+    repeats_n = max(1, min(int(repeats), 8))
+
     async def _one(task: str, instruction: str) -> dict:
         res = await chat_completions(
             cfg,
@@ -230,7 +319,7 @@ def eval(
                 {"role": "user", "content": f"{ctx}\n\n【任务：{task}】{instruction}"},
             ],
             temperature=0.75,
-            timeout=180,
+            timeout=llm_budget.WRITE,
         )
         content, used_model = content_from_response(res)
         return {"text": content.strip(), "model": used_model}
@@ -298,7 +387,7 @@ def eval(
                 {"role": "user", "content": instruction},
             ],
             temperature=temp,
-            timeout=180,
+            timeout=llm_budget.WRITE,
         )
         text, used_model = content_from_response(res)
         text = text.strip()
@@ -350,7 +439,7 @@ def eval(
                 {"role": "user", "content": instruction},
             ],
             temperature=0.75,
-            timeout=180,
+            timeout=llm_budget.WRITE,
         )
         text, used_model = content_from_response(res)
         return {
@@ -389,24 +478,33 @@ def eval(
  "evidence":{"social":"引用原文","dialogue":"…"},"veto":false,
  "note":"一句话总评"}"""
 
-    async def _judge_rubric(cfg, ctx: str, task: str, draft: str, instruction: str = "") -> dict:
+    async def _judge_rubric(ctx: str, task: str, draft: str, instruction: str = "") -> dict:
+        """裁判打分。
+
+        两处刻意的设计：
+        1. 用 ``judge_cfg``（可能是独立模型），不再默认用选手自己的 cfg；
+        2. 送进去的"任务约束"先过 ``strip_test_hint``——**去掉用例里写给自己的
+           评测元信息**。以前那句「（测试：审稿应抓住『设定宣讲』，判定不合格）」
+           会原样进裁判提示，等于告诉判卷人标准答案，边界集的 0 vs 9 次否决里
+           很难说清有多少是模型真的差、有多少是我们透了题。
+        """
         try:
             res = await chat_completions(
-                cfg,
+                judge_cfg,
                 messages=[
                     {"role": "system", "content": JUDGE_SYSTEM},
                     {
                         "role": "user",
                         "content": (
                             f"{ctx}\n\n【任务：{task}】\n"
-                            f"任务约束（草稿不得违反，如「上下文无此人」）：{instruction[:300]}\n\n"
+                            f"任务要求（作者原话）：{strip_test_hint(instruction)[:300]}\n\n"
                             f"草稿：\n{draft[:2500]}"
                         ),
                     },
                 ],
                 temperature=0.2,
                 response_format={"type": "json_object"},
-                timeout=90,
+                timeout=llm_budget.MEDIUM,
             )
             content, _used = content_from_response(res)
             parsed = json.loads(content.strip() or "{}")
@@ -443,7 +541,7 @@ def eval(
     async def _score_arm(text: str, task: str, instruction: str) -> dict:
         """两臂用完全相同的量具：确定性 lint + 同一份 Rubric Judge。"""
         audit = full_audit_draft(text)
-        judge = await _judge_rubric(cfg, ctx, task, text, instruction)
+        judge = await _judge_rubric(ctx, task, text, instruction)
         return {
             "chars": len(text),
             "passed": bool(audit.get("pass")),
@@ -456,6 +554,50 @@ def eval(
             "judge": judge,
             "rubricAvg": _avg_rubric(judge),
             "veto": bool((judge or {}).get("veto")),
+        }
+
+    def _aggregate_runs(runs: List[dict]) -> dict:
+        """把同一臂的多次采样折成一条记录。
+
+        ``--repeats > 1`` 是为了看到**采样方差**：只跑一次时，"工具 2.9 vs 裸聊 1.1"
+        里混着模型的随机波动，无法区分"流程更好"和"这次抽得好"。
+        折算是"先算每例均值、再取多数票"，并在 ``runs`` 里保留每一次的原始分数，
+        方便外部复核；正文取第一次成功的采样，供盲评使用。
+        """
+        ok = [r for r in runs if "error" not in r]
+        if not ok:
+            return {"error": (runs[0].get("error") if runs else "no_runs"), "repeatCount": 0}
+        first = dict(ok[0])
+        rubrics = [r["rubricAvg"] for r in ok if r.get("rubricAvg") is not None]
+        vetos = [bool(r.get("veto")) for r in ok]
+        passes = [bool(r.get("passed")) for r in ok]
+        n = len(ok)
+        return {
+            **first,
+            "repeatCount": n,
+            "rubricValues": [r.get("rubricAvg") for r in ok],
+            "rubricAvg": round(sum(rubrics) / len(rubrics), 3) if rubrics else None,
+            "veto": (sum(vetos) / n) >= 0.5,
+            "vetoRate": round(sum(vetos) / n, 3),
+            "passed": (sum(passes) / n) >= 0.5,
+            "passRate": round(sum(passes) / n, 3),
+            "errorCount": round(sum(int(r.get("errorCount") or 0) for r in ok) / n),
+            "warnCount": round(sum(int(r.get("warnCount") or 0) for r in ok) / n),
+            "runs": [
+                {
+                    k: r.get(k)
+                    for k in (
+                        "rubricAvg",
+                        "veto",
+                        "passed",
+                        "errorCount",
+                        "warnCount",
+                        "chars",
+                        "selfRevised",
+                    )
+                }
+                for r in ok
+            ],
         }
 
     async def _run_ab(blind_path: Path):
@@ -477,9 +619,7 @@ def eval(
         blind_items = []
         key: dict = {}
 
-        for idx, (task, instruction) in enumerate(
-            TASKS[: max(1, min(cases, len(TASKS)))], start=1
-        ):
+        for idx, (task, instruction) in enumerate(selected, start=1):
             case_id = f"case-{idx:02d}-{task}"
             kind = "retention" if not task.startswith("trap-") else "boundary"
             agent_task = _agent_task_for(task)
@@ -491,17 +631,21 @@ def eval(
             }
             texts: dict = {}
             for arm, runner in (("tool", _arm_tool), ("bare", _arm_bare)):
-                try:
-                    if arm == "tool":
-                        r = await runner(task, instruction, agent_task)
-                    else:
-                        r = await runner(task, instruction)
-                except Exception as exc:  # noqa: BLE001
-                    entry[arm] = {"error": f"{type(exc).__name__}:{str(exc)[:200]}"}
-                    continue
-                scored = await _score_arm(r["text"], task, instruction)
-                entry[arm] = {**r, **scored}
-                texts[arm] = r["text"]
+                runs: List[dict] = []
+                for _rep in range(repeats_n):
+                    try:
+                        if arm == "tool":
+                            r = await runner(task, instruction, agent_task)
+                        else:
+                            r = await runner(task, instruction)
+                    except Exception as exc:  # noqa: BLE001
+                        runs.append({"error": f"{type(exc).__name__}:{str(exc)[:200]}"})
+                        continue
+                    scored = await _score_arm(r["text"], task, instruction)
+                    runs.append({**r, **scored})
+                entry[arm] = _aggregate_runs(runs)
+                if "error" not in entry[arm] and entry[arm].get("text"):
+                    texts[arm] = str(entry[arm]["text"])
 
             # 随机标签：谁叫「甲」谁叫「乙」每例独立随机（同 seed 可复现）
             labels = ["甲", "乙"]
@@ -564,16 +708,46 @@ def eval(
         # 汇总。注意边界集的读法：那里的指令是"照写问题写法"，
         # 所以"稿子被 lint 命中"只说明它按指令写得糟，**不是**优劣指标；
         # 边界集的优劣看 Rubric 均分与 veto 次数（保留集才看 lint 通过率）。
+        #
+        # 统计口径（这次补上的）：均值差 + 配对 bootstrap 95% 区间 + 符号检验 +
+        # veto 的 McNemar 精确检验。n 很小时区间会很宽——**宽就是实话**，
+        # 以前只印一个差值，读起来像结论，其实是噪声。
         report["summaryNote"] = (
             "边界集指令要求「照写问题写法」，因此 lint 命中率在对照模式下会被任务本身"
             "混淆（越听话写得越糟、命中越多），不作为优劣指标；边界集请看 Rubric 均分与 veto。"
         )
+        report["method"] = {
+            "repeats": repeats_n,
+            "judgeModel": judge_cfg.model,
+            "judgeBaseUrl": judge_cfg.baseUrl,
+            "judgeIndependent": judge_independent,
+            "judgeSawTestHints": False,
+            "note": (
+                "裁判提示里已剔除用例的评测元信息（如「（测试：…判定不合格）」），"
+                "避免把参考答案发给判卷人。"
+            ),
+        }
+        if not judge_independent:
+            report["method"]["warning"] = (
+                "裁判与选手是同一个模型：分数含自偏好，不能当外部证据；"
+                "请配置 CRITIC_API_MODEL / --judge-model 用独立裁判复跑。"
+            )
+        stats_rng = random.Random(seed)
         for kind, title in (("retention", "retention 保留集"), ("boundary", "boundary 边界集")):
             group = [c for c in report["cases"] if c["kind"] == kind]
             if not group:
                 continue
             a, b = _agg("tool", group), _agg("bare", group)
-            report["summary"][kind] = {"tool": a, "bare": b}
+            paired = summarize_paired(
+                [(c.get("tool") or {}).get("rubricAvg") for c in group],
+                [(c.get("bare") or {}).get("rubricAvg") for c in group],
+                rng=stats_rng,
+            )
+            paired["vetoMcNemar"] = summarize_binary_paired(
+                [bool((c.get("tool") or {}).get("veto")) for c in group],
+                [bool((c.get("bare") or {}).get("veto")) for c in group],
+            )
+            report["summary"][kind] = {"tool": a, "bare": b, "stats": paired}
             typer.echo(f"  {title}: n={a.get('n', 0)}")
             for arm, agg in (("工具流程", a), ("裸聊", b)):
                 if not agg.get("n"):
@@ -593,6 +767,23 @@ def eval(
                 typer.echo(
                     f"    差值（工具 − 裸聊）: lint通过 {d_lint:+.0%} · Rubric {d_rub:+.2f}{extra}"
                 )
+                st = paired
+                typer.echo(
+                    f"    Rubric 差 {format_ci(st['ci'])} · 符号检验 "
+                    f"{st['signTest']['positive']}胜/"
+                    f"{st['signTest']['negative']}负/"
+                    f"{st['signTest']['ties']}平 p={st['signTest']['p']}"
+                )
+                mc = paired["vetoMcNemar"]
+                if mc["discordant"]:
+                    typer.echo(
+                        f"    veto McNemar: 工具独有 {mc['b']} / 裸聊独有 {mc['c']} "
+                        f"p={mc['p']}（不一致例数 {mc['discordant']}）"
+                    )
+                if st["ci"].get("crossesZero"):
+                    typer.echo("    ⚠ 区间跨 0：在这个样本量下两臂差异**未达显著**，别当结论用。")
+            if not judge_independent:
+                typer.echo("    ⚠ 裁判与选手同模型，结论只能内部参考。")
         if report["summary"].get("boundary"):
             typer.echo(f"  读法：{report['summaryNote']}")
 
@@ -650,7 +841,7 @@ def eval(
             "cases": [],
             "summary": {"total": 0, "passed": 0, "errorCount": 0, "warnCount": 0},
         }
-        for task, instruction in TASKS[: max(1, min(cases, len(TASKS)))]:
+        for task, instruction in selected:
             try:
                 r = await _one(task, instruction)
             except Exception as exc:  # noqa: BLE001
@@ -663,7 +854,7 @@ def eval(
             passed = bool(audit.get("pass"))
             # LLM-as-a-Judge（第7章）：确定性 lint 之外，用同模型按 Rubric 逐维打分，
             # 引用证据；与 lint 互补，避免"只看规则、不看质量"。
-            judge = await _judge_rubric(cfg, ctx, task, r["text"], instruction)
+            judge = await _judge_rubric(ctx, task, r["text"], instruction)
             case = {
                 "task": task,
                 "kind": "retention" if not task.startswith("trap-") else "boundary",

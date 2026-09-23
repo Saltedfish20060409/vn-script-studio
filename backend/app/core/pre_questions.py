@@ -15,6 +15,8 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
+from app.core import llm_budget
+
 MAX_QUESTIONS = 3
 
 _SYSTEM = """你是这部作品的驻场责编。作者马上要写一场戏/一章，你要在动笔**之前**
@@ -106,7 +108,7 @@ async def generate_pre_questions(
             ],
             temperature=0.4,
             response_format={"type": "json_object"},
-            timeout=60,
+            timeout=llm_budget.QUICK,
         )
         content, _used = content_from_response(res)
         parsed = json.loads((content or "").strip() or "{}")

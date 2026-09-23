@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from app.core import llm_budget
 from app.domain.types import AgentChatMessage
 
 _LEADING_MARKER = re.compile(r"^[\s\-*\d.、)）]+")
@@ -151,7 +152,7 @@ async def summarize_chat_memory(
                 },
             ],
             temperature=0.2,
-            timeout=90,
+            timeout=llm_budget.MEDIUM,
             max_tokens=700,
         )
         from app.core.llm_http import content_from_response

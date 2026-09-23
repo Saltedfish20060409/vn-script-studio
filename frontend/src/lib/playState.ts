@@ -108,7 +108,7 @@ export function visibleChoices(
 }
 
 /** Is there a `return` later in this scope (past `from`, ignoring comments)? */
-function hasReturnAfter(blocks: ScriptBlock[], from: number): boolean {
+export function hasReturnAfter(blocks: ScriptBlock[], from: number): boolean {
   for (let i = from; i < blocks.length; i++) {
     const b = blocks[i];
     if (b.type === "return") return true;
@@ -116,6 +116,24 @@ function hasReturnAfter(blocks: ScriptBlock[], from: number): boolean {
     if (VISIBLE.has(b.type) || b.type === "jump" || b.type === "if") return false;
   }
   return false;
+}
+
+/**
+ * 该下标所在（最近一个在前面的）label 名 —— 只读，不参与播放。
+ *
+ * 用途：读者行为遥测要记「这次选择发生在哪个 label 下」，用作 analysis 里
+ * `playtest_choices.label` 列。找不到就返回空串**而不是**猜一个：label 列在分析里
+ * 只用于人工回编辑器定位，宁可空着也不要写一个错的。
+ *
+ * 注意它只在**同一个作用域数组**里往前找（菜单被包在 if 分支里时，外层 label 不在
+ * 这个数组里 → 返回空串），这是刻意的保守取舍。
+ */
+export function enclosingLabelAt(blocks: ScriptBlock[], index: number): string {
+  for (let i = Math.min(index, blocks.length - 1); i >= 0; i--) {
+    const b = blocks[i];
+    if (b && b.type === "label") return b.name;
+  }
+  return "";
 }
 
 /**

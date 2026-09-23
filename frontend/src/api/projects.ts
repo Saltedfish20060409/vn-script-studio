@@ -16,6 +16,7 @@ import {
   buildApiHeaders,
   readErrorPayload,
 } from "./http";
+import { TIMEOUTS } from "./timeouts";
 export interface ProjectSummary {
   id: string;
   title: string;
@@ -91,7 +92,7 @@ export function createProject(
 ): Promise<VnProject> {
   return apiFetch<VnProject>("/projects", {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify(body),
   });
 }
@@ -168,7 +169,7 @@ export function getRecap(
 ): Promise<RecapOut> {
   return apiFetch<RecapOut>(`/projects/${id}/recap`, {
     method: "POST",
-    timeoutMs: 240000,
+    timeoutMs: TIMEOUTS.write,
     body: JSON.stringify({
       volume_id: body.volumeId,
       mode: body.mode ?? "before",
@@ -207,7 +208,7 @@ export function reviseMark(
 ): Promise<MarkReviseOut> {
   return apiFetch<MarkReviseOut>(`/projects/${id}/marks/revise`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.long,
     body: JSON.stringify({
       chapter_id: body.chapterId,
       quote: body.quote,
@@ -231,7 +232,7 @@ export function importProjectFile(file: File, title?: string): Promise<VnProject
   if (title) form.append("title", title);
   return apiFetch<VnProject>("/projects/import", {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.upload,
     body: form,
   });
 }
@@ -274,6 +275,7 @@ export async function generateRpyFromProse(
   return apiFetch<GenerateRpyOut>(`/projects/${id}/generate-rpy`, {
     method: "POST",
     body: JSON.stringify({
+      timeoutMs: TIMEOUTS.chat,
       chapter_id: chapterId,
       prose,
       use_llm: useLlm,
@@ -368,7 +370,7 @@ export async function aiTranslateLocalization(
     }),
     // 这是一次真实的模型调用，默认 30s 太短：超时会让用户以为失败，
     // 而服务端其实已经写完并提交了译文（进度显示与实际不符）。
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.chat,
   });
 }
 
@@ -448,6 +450,351 @@ export async function fetchScriptReport(id: string): Promise<ScriptReportOut> {
   });
 }
 
+/* ------------------------------------------------------------------ 深度分析
+ * 四个只读分析端点：前三个纯本地计算（点一下就有，不花模型额度），
+ * 最后一个会调模型。形状对齐 backend/app/core/ 下的
+ * branch_analysis / voice_fingerprint / continuity_graph / consistency_scan。
+ * 结论等级沿用 error / warn / info 三态，后端口径是"没有 error 就算过"。
+ */
+
+/** 结论计数（`branch-report` 与 `continuity` 同形）。 */
+export interface AnalysisCounts {
+  error: number;
+  warn: number;
+  info: number;
+  /** 后端口径：没有 error 就算过，warn / info 只是提示不是失败 */
+  pass?: boolean;
+}
+
+/** 一条体检结论（`branch-report` 与 `continuity` 同形）。 */
+export interface AnalysisFinding {
+  /** 已知 error / warn / info；留 string 是为了后端将来加等级时不静默丢结论 */
+  severity: string;
+  code: string;
+  message: string;
+  /** 哪个分析器报的：branch / continuity */
+  source?: string;
+  /** 所在章节 id（可能为空：这条结论不属于某一章） */
+  chapterId?: string;
+  /** 相关 label（跳转点 / 结局） */
+  label?: string;
+  /** 相关角色（故事层的 `emotion_arc_break` 会带；其它分析器不带） */
+  character?: string;
+}
+
+export interface BranchCoverage {
+  labels: { total: number; reachable: number; ratio: number };
+  choices: {
+    /** 全部选项边 */
+    total: number;
+    /** 条件可满足 = 玩家看得见 */
+    usable: number;
+    /** 枚举出的可达路径确实走过 */
+    traversed: number;
+    /** 看得见、但没有任何路径走到 */
+    neverTraversed: number;
+    ratio: number;
+    satisfiableRatio: number;
+  };
+  paths: {
+    count: number;
+    /** true = 路径枚举到上限就停了，组合还没列完（不是"只有这么多"） */
+    truncated: boolean;
+    minLabels: number;
+    maxLabels: number;
+    avgLabels: number;
+  };
+  terminals: string[];
+  score: number;
+}
+
+export interface BranchCycle {
+  labels: string[];
+  length: number;
+  reachable: boolean;
+  hasVariableChange: boolean;
+  hasConditionalExit: boolean;
+  /** true = 玩家进去了出不来（视觉小说里最贵的一类 bug） */
+  canLoopForever: boolean;
+}
+
+export interface BranchMenuChoice {
+  index: number;
+  text: string;
+  condition: string;
+  /** 选项的后果形态：jump / return / inline */
+  effect: string;
+  target: string | null;
+  varsModified: string[];
+  /** false = 条件恒不成立，玩家永远看不到这个选项 */
+  available: boolean;
+}
+
+export interface BranchMenu {
+  chapterId: string;
+  label: string;
+  menuId: string;
+  prompt: string;
+  choices: BranchMenuChoice[];
+  findings: AnalysisFinding[];
+}
+
+export interface BranchEndingRow {
+  id: string;
+  name: string;
+  label: string;
+  route: string;
+  condition: string;
+  exists: boolean;
+  reachable: boolean;
+}
+
+export interface BranchReportOut {
+  graph: {
+    labels: number;
+    edges: number;
+    roots: string[];
+    edgeKinds: Record<string, number>;
+  };
+  coverage: BranchCoverage;
+  cycles: BranchCycle[];
+  deadBlocks: Array<{ chapterId: string; label: string; type: string; preview: string }>;
+  chapterEndWithoutExit: Array<{
+    chapterId: string;
+    label: string;
+    nextChapterId: string;
+  }>;
+  danglingJumps: Array<{ chapterId: string; label: string; target: string }>;
+  duplicateLabels: string[];
+  unreachableLabels: string[];
+  conditions: Array<{
+    chapterId: string;
+    where: string;
+    text: string;
+    detail: string;
+    branchIndex: number;
+    satisfiable: boolean;
+    unknown: boolean;
+    reason: string;
+    error?: string | null;
+  }>;
+  variables: Record<
+    string,
+    { type: string; values: string[]; unbounded?: boolean; declared?: boolean }
+  >;
+  menus: BranchMenu[];
+  endings: {
+    declared: BranchEndingRow[];
+    declaredCount: number;
+    reachableDeclared: number;
+    undeclaredTerminals: string[];
+    findings: AnalysisFinding[];
+  };
+  findings: AnalysisFinding[];
+  counts: AnalysisCounts;
+}
+
+/** 分支结构体检：真实 label 图 / 环检测 / 分支覆盖 / 条件可满足性 / 结局对账（纯本地）。 */
+export function fetchBranchReport(id: string): Promise<BranchReportOut> {
+  return apiFetch<BranchReportOut>(`/projects/${id}/analysis/branch-report`, {
+    skipAuthRedirect: true,
+  });
+}
+
+export interface VoiceDriftLine {
+  text: string;
+  drift: number;
+  reason: string;
+}
+
+/** 某角色在某一章的声线比对结果（参照画像是**其它章节**，被评的这章不参与建模）。 */
+export interface VoiceChapterDrift {
+  characterId: string;
+  displayName: string;
+  chapterId: string;
+  ready: boolean;
+  utteranceCount: number;
+  drift: number;
+  /** ok = 像本人；watch = 值得看一眼；drift = 明显跑味 */
+  level: string;
+  watchThreshold: number;
+  driftThreshold: number;
+  reasons: string[];
+  signatureHits: string[];
+  missingSignatures: string[];
+  flaggedLines: VoiceDriftLine[];
+}
+
+export interface VoiceSignaturePhrase {
+  phrase: string;
+  count: number;
+  sharePerMille: number;
+  distinctiveness: number;
+  othersSharePerMille: number;
+}
+
+export interface VoiceCharacterReport {
+  characterId: string;
+  displayName: string;
+  ready: boolean;
+  utteranceCount: number;
+  /** 未评估时后端给的原因（台词不足 / 本章无台词） */
+  reason?: string;
+  chaptersSpoken?: number;
+  /** calibrated = false 表示台词太少，没法用留一法自校准，阈值退回默认常数 */
+  calibration?: {
+    calibrated: boolean;
+    samples: number;
+    p50?: number;
+    p90?: number;
+    p975?: number;
+    max?: number;
+  };
+  signaturePhrases?: VoiceSignaturePhrase[];
+  averageFeatures?: Record<string, number>;
+  /** 只列漂移最明显的前几章 */
+  chapters?: VoiceChapterDrift[];
+  driftChapters?: string[];
+}
+
+export interface VoicePair {
+  a: string;
+  b: string;
+  aId: string;
+  bId: string;
+  /** 0–1，越小越"一个味"（后端 < 0.15 判为可混淆） */
+  distance: number;
+}
+
+export interface VoiceReportOut {
+  characters: VoiceCharacterReport[];
+  closestPairs: VoicePair[];
+  confusablePairs: VoicePair[];
+  notes: string[];
+}
+
+/** 角色声线体检：逐角色语言画像 + 逐章声线漂移 + 角色间可混淆度（纯本地）。 */
+export function fetchVoiceReport(id: string): Promise<VoiceReportOut> {
+  return apiFetch<VoiceReportOut>(`/projects/${id}/analysis/voice-report`, {
+    skipAuthRedirect: true,
+  });
+}
+
+export interface ContinuityReportOut {
+  findings: AnalysisFinding[];
+  counts: AnalysisCounts;
+  summary: {
+    chapters: number;
+    characters: number;
+    locations: number;
+    dialogueLines: number;
+    sceneImages: number;
+    timelineEvents: number;
+    characterLinks: number;
+    locationLinks: number;
+    /** 每个检查器查了多少条、报了几条 */
+    checks: Record<string, { checked: number; issues: number }>;
+    /** 查不了的地方（如实报未知，而不是当成通过） */
+    unknown: Record<string, number>;
+  };
+}
+
+/** 跨章事实一致性体检：未登记说话人 / 悬空关系边 / 重名 / 时间线错序 / 死亡后仍出场（纯本地）。 */
+export function fetchContinuityReport(id: string): Promise<ContinuityReportOut> {
+  return apiFetch<ContinuityReportOut>(`/projects/${id}/analysis/continuity`, {
+    skipAuthRedirect: true,
+  });
+}
+
+export interface ConsistencyScanCoverage {
+  chaptersTotal: number;
+  /** 有正文（可送审）的章节数 */
+  chaptersWithText: number;
+  chaptersScanned: number;
+  coverageRatio: number;
+  windowsPlanned: number;
+  windowsRun: number;
+  windowsFailed: number;
+  /** 没有被任何成功窗口覆盖的章节：预算砍掉的、窗口失败的、以及整体没跑的 */
+  truncatedChapters: string[];
+  maxWindowsHit: boolean;
+  /** 正文超过单章上限、截断后送审的章节 */
+  textTruncatedChapters: string[];
+  chaptersWithBlocksButNoText: number;
+}
+
+export interface ConsistencyScanIssue {
+  category: string;
+  /** high / medium / low */
+  severity: string;
+  chapterIds: string[];
+  quote: string;
+  description: string;
+  suggestion: string;
+  /** 被几个窗口独立报出 */
+  foundInWindows: number;
+  /** high = 跨窗复发（多组章节对照下都成立） */
+  confidence: string;
+  windowIndexes: number[];
+}
+
+export interface ConsistencyScanWindow {
+  index: number;
+  chapterIds: string[];
+  reported: boolean;
+  issueCount: number;
+  rawIssueCount: number;
+  summary: string;
+  error: string | null;
+}
+
+export interface ConsistencyScanOut {
+  issues: ConsistencyScanIssue[];
+  summary: string;
+  model: string;
+  /** 整体失败（如未配 key / 全部窗口失败）时的说明，null = 没有整体错误 */
+  error: string | null;
+  coverage: ConsistencyScanCoverage;
+  /** 后端写给作者的一句话：这次扫了多少章 / 共多少章、哪里被截断 */
+  ceilingNote: string;
+  windowErrors: Array<{ index: number; chapterIds: string[]; error: string }>;
+  windows: ConsistencyScanWindow[];
+  issuesTruncated: number;
+  issuesDroppedByWindowCap: number;
+}
+
+export type ConsistencyScanOpts = {
+  /** 每个窗口覆盖几章（后端夹在 1–20，默认 6） */
+  size?: number;
+  /** 相邻窗口重叠几章（后端夹在 0–19，默认 2） */
+  overlap?: number;
+  /** 聚焦某类问题，如「角色年龄」「时间线」 */
+  focus?: string;
+  /** 显式预算上限：不传 = 不限；被用上时后端会如实报未扫章节 */
+  maxWindows?: number;
+};
+
+/**
+ * 全书分片一致性扫描 —— **会调用模型、有成本**。
+ *
+ * 与旧的 `consistencyAudit` 的区别：按重叠窗口扫完所有有正文的章节，并如实报回
+ * 覆盖率（`coverage` / `ceilingNote`），修掉了旧实现"只扫前 14 章且不告知"的静默截断。
+ */
+export function consistencyScan(
+  id: string,
+  opts: ConsistencyScanOpts = {}
+): Promise<ConsistencyScanOut> {
+  const params = new URLSearchParams();
+  params.set("size", String(opts.size ?? 6));
+  params.set("overlap", String(opts.overlap ?? 2));
+  if (opts.focus && opts.focus.trim()) params.set("focus", opts.focus.trim());
+  if (opts.maxWindows != null) params.set("max_windows", String(opts.maxWindows));
+  return apiFetch<ConsistencyScanOut>(
+    `/projects/${id}/analysis/consistency-scan?${params.toString()}`,
+    { method: "POST", timeoutMs: TIMEOUTS.long }
+  );
+}
+
 /** Full Ren'Py project skeleton (script/options/gui/README) as a zip blob. */
 export async function exportRenpyBundle(id: string): Promise<Blob> {
   const res = await authedRawFetch(`/projects/${id}/export/bundle`);
@@ -479,7 +826,7 @@ export function mapExtract(
 ): Promise<MapExtractPreviewResult> {
   return apiFetch(`/projects/${id}/map/extract`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.chat,
     body: JSON.stringify({ mode: opts?.mode ?? "smart" }),
   });
 }
@@ -498,7 +845,7 @@ export function mapExtractAccept(
 }> {
   return apiFetch(`/projects/${id}/map/extract/accept`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify(body),
   });
 }
@@ -516,7 +863,7 @@ export function listSnapshots(id: string): Promise<SnapshotSummary[]> {
 export function createSnapshot(id: string, label: string): Promise<SnapshotSummary> {
   return apiFetch(`/projects/${id}/snapshots`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify({ label }),
   });
 }
@@ -524,7 +871,7 @@ export function createSnapshot(id: string, label: string): Promise<SnapshotSumma
 export function restoreSnapshot(id: string, snapshotId: string): Promise<VnProject> {
   return apiFetch(`/projects/${id}/snapshots/${snapshotId}/restore`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.upload,
   });
 }
 
@@ -571,7 +918,7 @@ export function compareSnapshot(
 ): Promise<SnapshotDiffResult> {
   return apiFetch(`/projects/${id}/snapshots/compare`, {
     method: "POST",
-    timeoutMs: 120000,
+    timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify(
       toSnapId ? { from_snap_id: fromSnapId, to_snap_id: toSnapId } : { from_snap_id: fromSnapId }
     ),
@@ -616,7 +963,7 @@ export function fetchPreQuestions(
 ): Promise<PreQuestionsResult> {
   return apiFetch(`/projects/${projectId}/agent/pre-questions`, {
     method: "POST",
-    timeoutMs: 90_000,
+    timeoutMs: TIMEOUTS.quick,
     body: JSON.stringify(body),
   });
 }
@@ -631,7 +978,7 @@ export function uploadAgentAttachment(
   form.append("persist", persist ? "true" : "false");
   return apiFetch(`/projects/${projectId}/agent/attachments`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.upload,
     body: form,
   });
 }
@@ -653,7 +1000,7 @@ export function ingestAttachmentSettings(
 }> {
   return apiFetch(`/projects/${projectId}/agent/ingest-settings`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.chat,
     body: JSON.stringify({
       attachments: body.attachments.map((a) => ({
         filename: a.filename,
@@ -705,7 +1052,7 @@ export function chapterRevise(
 > {
   return apiFetch(`/projects/${projectId}/agent/chapter-revise`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.batch,
     body: JSON.stringify({
       ...body,
       attachments: body.attachments?.map((a) => ({
@@ -733,7 +1080,7 @@ export function chapterReviseApply(
 }> {
   return apiFetch(`/projects/${projectId}/agent/chapter-revise/apply`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify(body),
   });
 }
@@ -772,12 +1119,18 @@ export type AgentStreamEvent =
  * `onEvent` receives each SSE event as it arrives (task / thought / tool / …).
  * Pass `signal` to cancel the stream (e.g. on component unmount); the fetch
  * and the read loop both observe it.
+ *
+ * `onActivity` fires on **every** received chunk, including the server's
+ * `: keepalive` comments. Keep-alives carry no business event, but they prove
+ * the connection is alive — a watchdog that only counts `data:` lines will kill
+ * a slow (thinking) model mid-run and blame the user's model config.
  */
 export async function runAgentStream(
   id: string,
   body: AgentRunInBody,
   onEvent: (evt: AgentStreamEvent) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onActivity?: () => void
 ): Promise<AgentRunOut> {
   const res = await fetch(`${API_BASE}/projects/${id}/agent/stream`, {
     method: "POST",
@@ -802,6 +1155,8 @@ export async function runAgentStream(
       throw new ApiError(499, "请求已取消");
     }
     const { done, value } = await reader.read();
+    // 心跳也算"活着"：`: keepalive` 不含 data: 行，但它证明连接没断。
+    if (value && value.byteLength > 0) onActivity?.();
     buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
     let idx: number;
     while ((idx = buffer.indexOf("\n\n")) >= 0) {
@@ -866,7 +1221,7 @@ export function createAgentConversation(
 ): Promise<AgentConversationOut> {
   return apiFetch(`/projects/${projectId}/agent/conversations`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify({
       title: title?.trim() || undefined,
     }),
@@ -922,7 +1277,7 @@ export function voiceCheck(
 ): Promise<VoiceReport> {
   return apiFetch(`/projects/${id}/voice-check`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.chat,
     body: JSON.stringify(body),
   });
 }
@@ -950,7 +1305,7 @@ export function consistencyAudit(
 ): Promise<ConsistencyAuditResult> {
   return apiFetch(`/projects/${id}/consistency/audit`, {
     method: "POST",
-    timeoutMs: 240000,
+    timeoutMs: TIMEOUTS.write,
     body: JSON.stringify(body ?? {}),
   });
 }
@@ -965,7 +1320,7 @@ export interface StyleMemoryOut {
 export function learnStyleMemory(id: string): Promise<StyleMemoryOut> {
   return apiFetch(`/projects/${id}/style-memory/learn`, {
     method: "POST",
-    timeoutMs: 240000,
+    timeoutMs: TIMEOUTS.write,
   });
 }
 
@@ -992,7 +1347,7 @@ export function factsReconcile(id: string): Promise<{
 }> {
   return apiFetch(`/projects/${id}/analysis/facts/reconcile`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.chat,
     body: JSON.stringify({}),
   });
 }
@@ -1017,7 +1372,7 @@ export function factsScan(
 }> {
   return apiFetch(`/projects/${id}/analysis/facts/scan`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.chat,
     body: JSON.stringify(body ?? {}),
   });
 }
@@ -1038,7 +1393,7 @@ export function factsAccept(
 }> {
   return apiFetch(`/projects/${id}/analysis/facts/accept`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify({ ids }),
   });
 }
@@ -1049,7 +1404,7 @@ export function factsReject(
 ): Promise<{ rejectedIds: string[] }> {
   return apiFetch(`/projects/${id}/analysis/facts/reject`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify({ ids }),
   });
 }
@@ -1060,7 +1415,530 @@ export function factsAckStale(
 ): Promise<{ project: import("../types/vn").VnProject }> {
   return apiFetch(`/projects/${id}/analysis/facts/ack-stale`, {
     method: "POST",
-    timeoutMs: 180000,
+    timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify(body),
+  });
+}
+
+/* ------------------------------------------------------------ 读者行为遥测
+ * 路由见 backend/app/api/v1/playtest.py，字段白名单与分析形状见
+ * backend/app/services/playtest_telemetry.py。类型与字段名是照着后端源码抄的，
+ * 三条硬约束：
+ * 1. 上报体的键是 **snake_case**（`sanitize_run_payload` / `sanitize_choice` 只认
+ *    `_RUN_KEYS` / `_CHOICE_KEYS` 里的键），未知键一律丢弃并在 `droppedFields` 里
+ *    回显 —— 所以发 camelCase 等于什么都没发。
+ * 2. 每个字符串列都要过 `^[A-Za-z_][A-Za-z0-9_.:-]{0,63}$`：中文会被落成空串。
+ *    库里没有任何自由文本列，选项文案、台词在物理上没有容器可放（隐私红线）。
+ * 3. `client_run_id` 必须是 8~64 位 URL 安全随机串，否则 400；它是幂等键的一半。
+ */
+
+/** 一次试玩的标量字段（键名与后端 `_RUN_KEYS` 一致）。 */
+export interface PlaytestRunIn {
+  client_run_id: string;
+  /** ISO 8601（带时区）。后端只接受 2000 年之后、且不晚于"明天"的时间 */
+  started_at: string;
+  ended_at: string;
+  chapter_count: number;
+  choice_count: number;
+  /** 结局登记里的 label（ASCII 标识符）；不确定就发空串，别编一个 */
+  ending_label: string;
+}
+
+/**
+ * 一次试玩里的一条选择（键名与后端 `_CHOICE_KEYS` 一致）。
+ *
+ * `condition` **刻意不在**这里：后端白名单没有这个键（条件表达式是正文类字符串，
+ * 由静态分析提供），发过去只会被丢弃并计入 `droppedFields`。
+ */
+export interface PlaytestChoiceIn {
+  /** 同一次试玩内唯一、从 0 开始；重复上报时后端只补库里缺失的 seq */
+  seq: number;
+  chapter_id: string;
+  /** 该选项所在 label（找不到就空串） */
+  label: string;
+  menu_id: string;
+  /** 选项在**菜单原始 choices 数组**里的下标（与分支推理的 option index 对齐） */
+  choice_index: number;
+  /** 选中时它的条件是否成立（键盘数字键能选到被条件隐藏的选项） */
+  condition_passed: boolean;
+}
+
+export interface PlaytestRecordIn {
+  run: PlaytestRunIn;
+  choices: PlaytestChoiceIn[];
+}
+
+export interface PlaytestRecordOut {
+  ok: boolean;
+  runId: string;
+  /** false = 这次 (project_id, client_run_id) 之前已经落过行，本次只补缺失 seq */
+  created: boolean;
+  /** 本次真正落库的选择条数 */
+  accepted: number;
+  duplicates: number;
+  /** 因 seq 缺失/越界被整条丢弃的选择数 */
+  rejected: number;
+  /** 被丢弃的非白名单字段名（含全部被清空成空串之外的未知键） */
+  droppedFields: string[];
+}
+
+/**
+ * 上报一次试玩（幂等：同 `(project_id, client_run_id)` 重复上报只补缺失的 seq）。
+ *
+ * 未开启采集时后端返回 403 `telemetry_disabled` 且**一行都不落**；
+ * 调用方必须把这种 403 判成"工程没开采集"而不是"上报失败"（见 lib/playtestTelemetry.ts）。
+ *
+ * @param opts.keepalive 页面正在离开时用 `fetch(..., {keepalive:true})` 兜底发完
+ *   （`sendBeacon` 带不了 Authorization 头，见 lib/playtestTelemetry.ts 的说明）
+ */
+export function recordPlaytest(
+  id: string,
+  body: PlaytestRecordIn,
+  opts: { keepalive?: boolean } = {}
+): Promise<PlaytestRecordOut> {
+  return apiFetch<PlaytestRecordOut>(`/projects/${id}/playtest/record`, {
+    method: "POST",
+    body: JSON.stringify(body),
+    keepalive: Boolean(opts.keepalive),
+    // 遥测不值得把作者踢去登录页：401 只静默失败（与 lib/track.ts 同姿态）
+    skipAuthRedirect: true,
+  });
+}
+
+export interface TelemetrySettingsOut {
+  projectId: string;
+  enabled: boolean;
+  /** 后端明示的口径：没有设置行 = 关闭。界面据此说明"默认关" */
+  defaultEnabled: boolean;
+}
+
+export function fetchTelemetrySettings(id: string): Promise<TelemetrySettingsOut> {
+  return apiFetch<TelemetrySettingsOut>(`/projects/${id}/playtest/settings`, {
+    skipAuthRedirect: true,
+  });
+}
+
+/** 写采集开关：需要 owner / editor，viewer 会 403（非成员 404）。 */
+export function saveTelemetrySettings(
+  id: string,
+  enabled: boolean
+): Promise<{ projectId: string; enabled: boolean }> {
+  return apiFetch(`/projects/${id}/playtest/settings`, {
+    method: "PUT",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+/** 计数类统计（`_stats`）：空输入时后端返回全 0，不返回 null。 */
+export interface PlaytestStat {
+  count: number;
+  sum: number;
+  avg: number;
+  median: number;
+  min: number;
+  max: number;
+}
+
+export interface PlaytestOptionRow {
+  /** 在菜单原始 choices 数组里的下标 —— 就是"第 index+1 个选项" */
+  index: number;
+  selected: number;
+  /** 该菜单本次样本里的占比（0~1） */
+  share: number;
+  /** true = 这次样本里没有任何人选它 */
+  neverSelected: boolean;
+  /** false = 静态分析判定条件恒不成立（玩家看不到） */
+  available: boolean;
+  /** 选项自己的条件表达式（脚本侧文本，不是玩家数据） */
+  condition: string;
+  /** 选中了它、但条件实际不成立的次数（键盘选择/条件求值差异） */
+  conditionBlockedSelections: number;
+}
+
+export interface PlaytestMenuRow {
+  menuId: string;
+  chapterId: string;
+  /** 菜单标题（脚本侧的 label / prompt），可能为空 */
+  label: string;
+  selections: number;
+  optionCount: number;
+  options: PlaytestOptionRow[];
+  neverSelected: number[];
+}
+
+export interface PlaytestFunnelChapter {
+  index: number;
+  chapterId: string;
+  /** 到达过这一章的试玩数（含更后面的章，是前缀口径，天然单调不增） */
+  reached: number;
+  /** 在这一章真的做过选择的试玩数 */
+  choosingRuns: number;
+  dropFromPrevious: number;
+  dropRate: number;
+  retention: number;
+}
+
+export interface PlaytestEndingRow {
+  label: string;
+  name: string;
+  runs: number;
+  share: number;
+  /** true = 这个 label 在工程里登记过为结局 */
+  declared: boolean;
+  declaredReachable: boolean;
+  declaredExists: boolean;
+  /** true = 静态分析的终点集合里有它（没登记但确实是个终点） */
+  isStaticTerminal: boolean;
+}
+
+export interface PlaytestAnalyticsOut {
+  sample: {
+    runs: number;
+    choices: number;
+    /** 后端建议的样本下限（默认 10 次试玩） */
+    minSample: number;
+    sufficient: boolean;
+    /** true = 试玩次数超过单次分析上限，只取了最近一批 */
+    truncated: boolean;
+  };
+  choices: {
+    totalSelections: number;
+    menus: PlaytestMenuRow[];
+    menuCount: number;
+    /** 选择记录里出现、但当前剧本里找不到的 menu_id */
+    unknownMenus: Array<{ menuId: string; selections: number }>;
+    /** 没有 menu_id 的选择（只参与总数与漏斗） */
+    unattributedSelections: number;
+    /** 剧本里重复的 menu_id（同名菜单会被合并统计） */
+    duplicateMenuIds: string[];
+    observedMenuCount: number;
+    /** 静态分析说"不可选"、玩家却选了的选项 */
+    selectedUnavailableOptions: Array<{
+      menuId: string;
+      index: number;
+      selections: number;
+    }>;
+  };
+  funnel: {
+    startedRuns: number;
+    chapters: PlaytestFunnelChapter[];
+    biggestDrop: PlaytestFunnelChapter | null;
+    deepestChapterId: string;
+    unknownChapters: Array<{ chapterId: string; selections: number }>;
+  };
+  endings: {
+    reached: PlaytestEndingRow[];
+    declaredTotal: number;
+    declaredReached: number;
+    /** 登记过、但没有任何玩家走到的结局 */
+    neverReached: Array<{
+      label: string;
+      name: string;
+      route: string;
+      reachableInScript: boolean;
+    }>;
+    /** 玩家走到了、但没登记为结局的 label */
+    undeclared: PlaytestEndingRow[];
+    unknownEndingLabels: PlaytestEndingRow[];
+    /** 登记了但没有 label 的结局（无法对账） */
+    declaredWithoutLabel: Array<{ name: string; route: string }>;
+    /** 没走到任何结局就结束的试玩数 */
+    unfinishedRuns: number;
+  };
+  runs: {
+    total: number;
+    finished: number;
+    withEnding: number;
+    /** 客户端自报的选择数 */
+    choicesReported: PlaytestStat;
+    /** 库里真实落下的选择行数（与自报不一致 = 有丢报或幂等合并） */
+    choicesObserved: PlaytestStat;
+    chaptersPlayed: PlaytestStat;
+    /** 没有任何一次试玩同时有 started_at / ended_at 时为 null */
+    durationSeconds: PlaytestStat | null;
+  };
+  /** 读者视角的分支覆盖率：实际被玩家碰过的选项 / 剧本里可选的选项 */
+  coverage: {
+    availableOptions: number;
+    observedOptions: number;
+    ratio: number;
+    menusTotal: number;
+    menusTouched: number;
+    menusNeverTouched: string[];
+    unmappedSelections: number;
+    selectedUnavailableOptions: Array<{
+      menuId: string;
+      index: number;
+      selections: number;
+    }>;
+  };
+  /** 后端写给作者的中文口径说明与样本量提示 */
+  notes: string[];
+}
+
+/** 读者行为分析（只读；响应里同样不含任何选项文案）。 */
+export function fetchPlaytestAnalytics(id: string): Promise<PlaytestAnalyticsOut> {
+  return apiFetch<PlaytestAnalyticsOut>(`/projects/${id}/playtest/analytics`, {
+    skipAuthRedirect: true,
+  });
+}
+
+/* ---------------------------------------------------------- 分支改进建议
+ * 路由见 backend/app/api/v1/playtest.py（`/playtest/recommendations`），
+ * 形状见 backend/app/core/branch_recommendations.py。
+ *
+ * 与 `/analysis/branch-report`、`/playtest/analytics` 的分工：那两条各给一半**事实**
+ * （结构上哪里写坏了 / 读者实际怎么玩），这条把两者融成**该怎么办**——每条建议都带
+ * `why`（依据）与 `action`（具体改法）。所以 `action` 是这条链路的核心字段。
+ *
+ * 两条不可省的语义（界面必须原样转述，见 lib/branchAdvice.ts）：
+ * 1. `basis === "script-only"` = 读者数据不足，**依赖读者行为的建议这一轮不会出现**。
+ *    这是"还看不出来"，不是"没问题"。
+ * 2. `confidence` 区分 `evidence`（有读者数据支撑）与 `static`（纯静态推断）。
+ */
+
+/** 建议等级：后端只发 error / warn / info（见 `branch_recommendations._SEVERITY_BASE`）。 */
+export type BranchRecommendationSeverity = "error" | "warn" | "info";
+
+/**
+ * 判断依据：`script-only` = 只做了静态分析（没有读者数据，或样本低于 `minRuns`）；
+ * `script+readers` = 静态分析 + 读者实际行为。
+ */
+export type BranchRecommendationBasis = "script-only" | "script+readers";
+
+/** 一条改稿建议（`recommendations[]` 的元素）。 */
+export interface BranchRecommendation {
+  /** 机器码：no_effect_menu / never_selected_option / loop_no_exit … */
+  code: string;
+  /** 已知 error / warn / info；留 string 是为了后端将来加等级时不静默丢建议 */
+  severity: string;
+  /** 确定性打分 = 严重度基数 + 经验证据加成（后端已按它降序） */
+  priority: number;
+  /** static = 只有静态推断；evidence = 有读者数据支撑 */
+  confidence: string;
+  title: string;
+  /** 依据（中文，含具体数字 / 条件） */
+  why: string;
+  /** **具体怎么改**（中文）—— 这条端点的核心价值，不是「建议优化剧情」这种空话 */
+  action: string;
+  /** 位置（如 `ch1/m1`、结局 label）；可能为空串（这条建议不属于某一处） */
+  where: string;
+  /** 结构化证据：不同 code 字段不同，界面只挑要用的读，不整体 dump */
+  evidence: Record<string, unknown>;
+}
+
+export interface BranchRecommendationCounts {
+  error: number;
+  warn: number;
+  info: number;
+  total: number;
+  /** 后端按 severity 原样累加：将来加等级时，未知等级也会成为这里的键 */
+  [severity: string]: number;
+}
+
+export interface BranchRecommendationsOut {
+  basis: BranchRecommendationBasis;
+  /** 后端写给作者的中文说明：为什么只有静态建议 / 已经用了多少次试玩 */
+  sampleNote: string;
+  /** 这次生效的经验判断门槛（后端夹在 1–10000，默认 10） */
+  minRuns: number;
+  /** 已按 priority 降序排好 */
+  recommendations: BranchRecommendation[];
+  counts: BranchRecommendationCounts;
+  summary: {
+    /** 纯静态推断的条数 */
+    static: number;
+    /** 有读者数据支撑的条数 */
+    evidence: number;
+    /** 优先级最高那条的 code（没有建议时为 null） */
+    topCode: string | null;
+  };
+  /** 剧本侧分支覆盖（与 `/analysis/branch-report` 同一个对象） */
+  coverage: BranchCoverage;
+  /** 后端的中文口径说明（含「没有建议 ≠ 剧本没问题」那句） */
+  notes: string[];
+}
+
+export type BranchRecommendationsOpts = {
+  /** 经验判断门槛：低于它只出静态建议（后端默认 10） */
+  minRuns?: number;
+  /** false = 不读读者数据，强制只看静态 */
+  includeReaders?: boolean;
+};
+
+/** 改稿建议（只读；不调模型，只用已落库的读者数据）。 */
+export function fetchBranchRecommendations(
+  id: string,
+  opts: BranchRecommendationsOpts = {}
+): Promise<BranchRecommendationsOut> {
+  const params = new URLSearchParams();
+  params.set("min_runs", String(opts.minRuns ?? 10));
+  params.set("include_readers", opts.includeReaders === false ? "false" : "true");
+  return apiFetch<BranchRecommendationsOut>(
+    `/projects/${id}/playtest/recommendations?${params.toString()}`,
+    { skipAuthRedirect: true }
+  );
+}
+
+/* ------------------------------------------------------------------ 故事层指标
+ * 路由见 backend/app/api/v1/projects.py（`/analysis/story-metrics`），
+ * 形状见 backend/app/core/story_metrics.py。字段名是照源码抄的，两条硬口径：
+ * 1. `foreshadow.resolutionRate` 可能是 **null**（分母为 0）—— "没有伏笔" ≠ "回收率 0%"
+ *    （后端就是为此返回 None 的），界面必须分开说（见 lib/storyReport.ts）。
+ * 2. 情绪是**台词关键词推断**，不是语义判断：反讽/压抑会读错，所以每条结论
+ *    都带证据句（`emotionArcBreaks.rows[].evidence`），让作者自己判断。
+ */
+
+/** 一条未回收的钩子（后端已按章龄降序）。 */
+export interface StoryOpenHook {
+  hook: string;
+  /** 埋点章节 id */
+  plantedChapter: string;
+  /** 埋点章节标题（可能为空） */
+  plantedChapterTitle: string;
+  /** 从埋点章算起挂了多久（章数，账本的 ageChapters） */
+  chaptersOpen: number;
+}
+
+export interface StoryForeshadow {
+  total: number;
+  paid: number;
+  open: number;
+  /** **null = 这个作品还没有记录任何伏笔**，不是 0% */
+  resolutionRate: number | null;
+  chapters: number;
+  oldestOpenChapters: number;
+  openHooks: StoryOpenHook[];
+  note: string;
+}
+
+/** 逐角色的情感弧线（开头情绪 → 结尾情绪 + 刻度差）。 */
+export interface StoryEmotionArc {
+  character: string;
+  start: string;
+  end: string;
+  delta: number;
+}
+
+export interface StoryEmotionArcs {
+  characters: StoryEmotionArc[];
+  /** 全篇情绪没动过的角色（|delta| 小于后端阈值） */
+  flatArcs: StoryEmotionArc[];
+  note: string;
+}
+
+/** 逐（角色 × 章）的情绪走向；每章至少 2 句台词才评估。 */
+export interface StoryEmotionChapterRow {
+  characterId: string;
+  character: string;
+  chapterId: string;
+  chapterTitle: string;
+  /** 在全书里的顺序；-1 = 章节已不在工程里 */
+  chapterIndex: number;
+  start: string;
+  end: string;
+  delta: number;
+  lines: number;
+  /** 证据原句（开头那句 / 结尾那句） */
+  evidence: string[];
+}
+
+/** 局部走向与全篇相反的那一章（带 chapterId → 界面上必须指得出是哪一章）。 */
+export interface StoryEmotionArcBreak {
+  character: string;
+  chapterId: string;
+  chapterTitle: string;
+  /** emotion_arc_break */
+  issue: string;
+  overallDelta: number;
+  chapterDelta: number;
+  /** 这一章实际的情绪走向："平静 → 低落" */
+  actual: string;
+  message: string;
+}
+
+export interface StoryEmotionArcBreaks {
+  rows: StoryEmotionChapterRow[];
+  breaks: StoryEmotionArcBreak[];
+}
+
+/** 与节拍表**声明**的弧线对账：arc_flat = 声明有变化、实际没变；arc_reversed = 方向相反。 */
+export interface StoryDeclaredArcMismatch {
+  character: string;
+  /** arc_flat | arc_reversed */
+  issue: string;
+  /** 节拍表声明的走向："平静 → 激动" */
+  declared: string;
+  /** 台词推断出来的走向 */
+  actual: string;
+  message: string;
+}
+
+export interface StoryMetricsOut {
+  foreshadow: StoryForeshadow;
+  emotionArcs: StoryEmotionArcs;
+  emotionArcBreaks: StoryEmotionArcBreaks;
+  declaredArcMismatches: StoryDeclaredArcMismatch[];
+  findings: AnalysisFinding[];
+  counts: AnalysisCounts;
+}
+
+/**
+ * 故事层体检：伏笔回收率 + 情感弧线（逐角色 / 逐章 / 与节拍表声明对账）。
+ *
+ * **纯本地计算，不调模型**；情绪那部分靠台词关键词推断，结论一律带证据句。
+ */
+export function fetchStoryMetrics(id: string): Promise<StoryMetricsOut> {
+  return apiFetch<StoryMetricsOut>(`/projects/${id}/analysis/story-metrics`, {
+    skipAuthRedirect: true,
+  });
+}
+
+/* ------------------------------------------------------------ 自适应选项方案
+ * 路由见 backend/app/api/v1/projects.py（`/analysis/adaptive-plan`），
+ * 形状见 backend/app/core/adaptive_reader.py。三条必须原样转述给作者的语义：
+ * 1. 计数器存在 `persistent` 里（**跨存档**），描述的是"这个读者一贯怎么选"。
+ * 2. `recipes[].condition` 是可以直接照抄进选项条件的表达式。
+ * 3. **导出默认不注入计数语句**，只有 `adaptive_reader=True` 才写进 .rpy ——
+ *    否则作者会以为"导出就有了"（见 lib/storyReport.ADAPTIVE_EXPORT_NOTE）。
+ */
+
+/** 一条自适应条件示例。 */
+export interface AdaptiveRecipe {
+  /** 正文里被改过的变量 key（如 affection） */
+  variableKey: string;
+  /** Ren'Py 里的计数器引用（含 `persistent.` 前缀） */
+  counter: string;
+  /** 可直接照抄的选项条件 */
+  condition: string;
+  meaning: string;
+}
+
+/** 一个值得做成自适应的菜单。 */
+export interface AdaptiveCandidate {
+  menuId: string;
+  chapterId: string;
+  optionCount: number;
+  /** 为什么值得做：所有选项后果相同 / 读者几乎总选同一个 */
+  reason: string;
+  suggestion: string;
+}
+
+export interface AdaptivePlanOut {
+  /** 变量 key → persistent 计数器名（**不含** `persistent.` 前缀） */
+  tendencyCounters: Record<string, string>;
+  /** 条件示例里用的门槛（后端固定 3） */
+  recipeThreshold: number;
+  recipes: AdaptiveRecipe[];
+  candidates: AdaptiveCandidate[];
+  /** 要写进 .rpy 开头的 default 声明块；**可能为空串**（没有任何会改变量的选项） */
+  prelude: string;
+  notes: string[];
+}
+
+/** 自适应选项方案（只读；纯本地计算，不调模型）。 */
+export function fetchAdaptivePlan(id: string): Promise<AdaptivePlanOut> {
+  return apiFetch<AdaptivePlanOut>(`/projects/${id}/analysis/adaptive-plan`, {
+    skipAuthRedirect: true,
   });
 }

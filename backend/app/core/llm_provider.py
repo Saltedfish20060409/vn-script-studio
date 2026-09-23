@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 import httpx
 
-from app.core import llm_http
+from app.core import llm_budget, llm_http
 from app.core.ai import DeepSeekConfig
 
 
@@ -19,8 +19,8 @@ class LlmProvider(Protocol):
         temperature: float = 0.7,
         response_format: Optional[Dict[str, Any]] = None,
         max_tokens: Optional[int] = None,
-        timeout: float = 120.0,
-        max_retries: int = 3,
+        timeout: float = llm_budget.CHAT,
+        max_retries: int = llm_budget.DEFAULT_MAX_RETRIES,
         stream: bool = False,
     ) -> httpx.Response: ...
 
@@ -38,8 +38,8 @@ class DeepSeekProvider:
         temperature: float = 0.7,
         response_format: Optional[Dict[str, Any]] = None,
         max_tokens: Optional[int] = None,
-        timeout: float = 120.0,
-        max_retries: int = 3,
+        timeout: float = llm_budget.CHAT,
+        max_retries: int = llm_budget.DEFAULT_MAX_RETRIES,
         stream: bool = False,
     ) -> httpx.Response:
         return await llm_http.chat_completions(
@@ -71,7 +71,7 @@ class OllamaProvider:
         temperature: float = 0.7,
         response_format: Optional[Dict[str, Any]] = None,
         max_tokens: Optional[int] = None,
-        timeout: float = 180.0,
+        timeout: float = llm_budget.WRITE,
         max_retries: int = 2,
         stream: bool = False,
     ) -> httpx.Response:

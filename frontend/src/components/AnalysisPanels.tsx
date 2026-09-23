@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   consistencyAudit,
   factsAccept,
@@ -30,6 +30,12 @@ import { ScriptReportPanel } from "./ScriptReportPanel";
 import { usePrompt } from "../lib/confirmDialog";
 import styles from "./AnalysisPanels.module.css";
 
+// 深度体检面板单开一个 chunk：只在作者点开这一页时才加载。它比其它面板大，
+// 而主 chunk（StudioApp）已经贴着体积门禁线了，不该再被它撑大。
+const InsightPanel = lazy(() =>
+  import("./InsightPanel").then((m) => ({ default: m.InsightPanel }))
+);
+
 type Props = {
   project: VnProject;
   chapterId: string;
@@ -60,7 +66,7 @@ export function AnalysisPanels({
 }: Props) {
   const prompt = usePrompt();
   const [sub, setSub] = useState<
-    "branch" | "chars" | "timeline" | "voice" | "consistency" | "arcs" | "style"
+    "branch" | "chars" | "timeline" | "voice" | "consistency" | "insight" | "arcs" | "style"
   >("branch");
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceReport, setVoiceReport] = useState<VoiceReport | null>(null);
@@ -392,6 +398,7 @@ export function AnalysisPanels({
             ["timeline", "时间线"],
             ["voice", "语气检查"],
             ["consistency", "一致性"],
+            ["insight", "深度体检"],
             ["arcs", "弧线"],
             ["style", "文风"],
           ] as const
@@ -783,6 +790,16 @@ export function AnalysisPanels({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {sub === "insight" && (
+        <div className={styles.panel}>
+          {/* 六类只读分析（分支推理 / 声线 / 跨章事实 / 全书一致性 / 读者行为 / 改进建议）
+              统一入口，首次进入不自动请求：其中一个会调模型，不能打开页面就烧额度 */}
+          <Suspense fallback={<p className={styles.hint}>正在加载深度体检面板…</p>}>
+            <InsightPanel projectId={project.id} chapters={project.chapters} />
+          </Suspense>
         </div>
       )}
 

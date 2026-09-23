@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from app.core import llm_budget
 from app.core.ai import DeepSeekConfig
 from app.core.llm_http import chat_completions, content_from_response
 from app.domain.types import VnProject
@@ -130,7 +131,7 @@ async def learn_style_memory(
             messages=_build_messages(project),
             temperature=0.3,
             response_format={"type": "json_object"},
-            timeout=180,
+            timeout=llm_budget.WRITE,
         )
         content, used_model = content_from_response(res)
         result = _parse(content)

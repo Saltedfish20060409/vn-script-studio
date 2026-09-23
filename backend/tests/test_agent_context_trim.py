@@ -169,3 +169,26 @@ def test_task_key_rules_exist_for_every_agent_task():
         rules = task_key_rules(task)
         assert rules, task
         assert len(rules) <= 5, task  # 硬规则必须短，否则等于没写
+
+
+def test_task_key_rules_are_task_specific_not_fallen_back_to_chat():
+    """回归闸：旧实现是 `TASK_KEY_RULES.get(task, chat)`，所以 branch/scene/outline/voice
+    拿到的其实是 chat 的「除非我明确要求，否则不要改工程」——而它们本该 append_script。
+    旧测试只查"非空"，回落也非空，于是这个矛盾一直躺在线上 prompt 里。"""
+    from app.core.agent_context import AGENT_TASKS, TASK_KEY_RULES
+
+    chat_rules = TASK_KEY_RULES["chat"]
+    for task in AGENT_TASKS:
+        if task == "chat":
+            continue
+        assert task in TASK_KEY_RULES, f"{task} 没有专属硬规则，会回落成 chat"
+        assert task_key_rules(task) != chat_rules, f"{task} 回落到 chat 硬规则"
+
+
+def test_unknown_task_falls_back_without_raising():
+    """API 传了没登记的任务名时，不能抛 KeyError 把整轮对话打断。"""
+    assert task_key_rules("no-such-task") == task_key_rules("chat")
+    from app.core.agent_context import output_contract, task_hint
+
+    assert task_hint("no-such-task") == task_hint("chat")
+    assert output_contract("no-such-task") == output_contract("chat")

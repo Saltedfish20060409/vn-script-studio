@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
+from app.core import llm_budget
 from app.core.ai import DeepSeekConfig
 from app.core.llm_client_override import _is_safe_base_url
 from app.core.llm_http import content_from_response
@@ -120,7 +121,7 @@ async def test_llm_api(
             messages=[{"role": "user", "content": "ping"}],
             temperature=0.0,
             max_tokens=8,
-            timeout=30,
+            timeout=llm_budget.PROBE,
             max_retries=1,
         )
         _, echo = content_from_response(res)
