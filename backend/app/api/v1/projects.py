@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from docx import Document
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -315,6 +315,19 @@ async def get_project(
     return project_to_dict(row_to_vn(row))
 
 
+def _tz_offset_minutes(raw: Optional[str]) -> int:
+    """把 `X-TZ-Offset` 请求头（作者当地相对 UTC 的分钟数，东八区 = 480）解析成整数。
+
+    为什么要这个头：写作活动按**作者当地日期**记账，否则东八区用户在本地
+    00:00–08:00 写的字会落到前一天，连载页的「今日净增」早上永远是 0。
+    缺失/乱填一律当 0（UTC）——老客户端行为不变；范围由 activity_date_key 夹住。
+    """
+    try:
+        return int(str(raw or "").strip())
+    except (TypeError, ValueError):
+        return 0
+
+
 async def _maybe_auto_learn_style(db, row, settings, user_id: str) -> None:
     """保存后按需自动学一次文风。失败静默——自动学习绝不能让保存失败。"""
     try:
@@ -330,15 +343,19 @@ async def _maybe_auto_learn_style(db, row, settings, user_id: str) -> None:
 
 
 @router.put("/{project_id}", response_model=dict)
-async def put_project(    project_id: str,
+async def put_project(
+    project_id: str,
     body: ProjectPutIn,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    x_tz_offset: Optional[str] = Header(default=None, alias="X-TZ-Offset"),
 ):
     row = await get_owned_project(db, user, project_id)
+    tz_offset = _tz_offset_minutes(x_tz_offset)
     # 并发写保护：在当前事务内锁定项目行直到 commit，使
-    # 「锁断言 → 合并 → 保存」成为临界区（此前锁只断言不持有，存在 TOCTOU）。    await db.refresh(row, with_for_update=True)
+    # 「锁断言 → 合并 → 保存」成为临界区（此前锁只断言不持有，存在 TOCTOU）。
+    await db.refresh(row, with_for_update=True)
 
     chapter_ids = body.chapter_ids or []
     sections = body.sections or []
@@ -355,7 +372,7 @@ async def put_project(    project_id: str,
         client_vn = normalize_project(dict(body.data))
         merged = merge_project_changes(server_vn, client_vn, chapter_ids, sections)
         # JSONB split stage 1: persist blob + chapter rows together.
-        await sync_chapter_rows_from_vn(db, row, merged)
+        await sync_chapter_rows_from_vn(db, row, merged, tz_offset_minutes=tz_offset)
         from app.services.snapshots import maybe_auto_snapshot
 
         await maybe_auto_snapshot(db, project_id, row_to_vn(row))
@@ -395,7 +412,7 @@ async def put_project(    project_id: str,
     data = dict(body.data)
     data["id"] = project_id
     vn = normalize_project(data)
-    await sync_chapter_rows_from_vn(db, row, vn)
+    await sync_chapter_rows_from_vn(db, row, vn, tz_offset_minutes=tz_offset)
     from app.services.snapshots import maybe_auto_snapshot
 
     await maybe_auto_snapshot(db, project_id, row_to_vn(row))
@@ -417,8 +434,10 @@ async def patch_project(
     body: ProjectPatchIn,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    x_tz_offset: Optional[str] = Header(default=None, alias="X-TZ-Offset"),
 ):
     row = await get_owned_project(db, user, project_id)
+    tz_offset = _tz_offset_minutes(x_tz_offset)
     # 与 put_project 相同：事务内行锁，防并发 patch 丢更新
     await db.refresh(row, with_for_update=True)
     vn = row_to_vn(row)
@@ -428,7 +447,7 @@ async def patch_project(
         vn.logline = body.logline
     if body.genre is not None:
         vn.genre = body.genre
-    await sync_chapter_rows_from_vn(db, row, vn)
+    await sync_chapter_rows_from_vn(db, row, vn, tz_offset_minutes=tz_offset)
     from app.services.snapshots import maybe_auto_snapshot
 
     await maybe_auto_snapshot(db, project_id, row_to_vn(row))

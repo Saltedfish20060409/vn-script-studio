@@ -112,6 +112,20 @@ async function fetchWithTimeout(
   }
 }
 
+/**
+ * 作者所在地相对 UTC 的分钟偏移（东八区 = +480）。
+ *
+ * 为什么每个请求都带上它：写作活动（热力图 / 连载页的今日净增、连续更新天数）在后端是
+ * 按**作者当地日期**记账的。不带这个头后端只能退回 UTC，于是东八区用户在本地
+ * 00:00–08:00 写的字会落到前一天，连载页的「今日净增」在早上永远是 0。
+ * 放在 `buildApiHeaders` 里统一带，是为了避免以后新增一条保存路径时漏掉——
+ * 那种漏法在界面上表现为"数据不见了"，很难查。
+ */
+export function tzOffsetMinutes(now: Date = new Date()): number {
+  // getTimezoneOffset 的符号与 ISO 相反（UTC+8 返回 -480）
+  return -now.getTimezoneOffset();
+}
+
 /** Auth + browser-local LLM credentials (X-LLM-*). */
 export function buildApiHeaders(init?: HeadersInit, jsonBody = false): Headers {
   const headers = new Headers(init);
@@ -120,6 +134,9 @@ export function buildApiHeaders(init?: HeadersInit, jsonBody = false): Headers {
   }
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (!headers.has("X-TZ-Offset")) {
+    headers.set("X-TZ-Offset", String(tzOffsetMinutes()));
+  }
   applyLlmHeaders(headers);
   return headers;
 }

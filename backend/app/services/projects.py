@@ -267,26 +267,38 @@ async def sync_chapter_rows_from_vn(
     db: AsyncSession,
     row: Project,
     vn: VnProject,
+    *,
+    tz_offset_minutes: int = 0,
 ) -> None:
     """Persist a project row AND mirror its chapters into project_chapter_rows.
 
     Every chapter-writing path should go through this so the blob and the
     shadow table stay consistent (stage-1 JSONB split). Also records the
     word-count delta into writing_activity for the stats dashboard.
+
+    字数口径必须与「写作统计」面板和连载页一致：**正文优先，正文为空才数脚本块**
+    （`count_chapter_words`）。这里原来用的是 `count_blocks_words(ch.blocks)`——
+    只数脚本块，于是纯正文写作（prose 有内容、blocks 只有一个 label）前后都是 0，
+    `record_activity` 见到 delta == 0 直接 return：**一个字都不会被记下来**，
+    热力图与连载页对小说作者永远是空的。这是实测确认过的缺陷（见
+    tests/test_writing_activity.py）。
     """
-    from app.services.writing_stats import count_blocks_words, record_activity
+    from app.services.writing_stats import count_chapter_words, record_activity
 
     prev_vn = row_to_vn(row)
-    prev_words = sum(
-        count_blocks_words(list(c.blocks or [])) for c in (prev_vn.chapters or [])
-    )
+    prev_words = sum(count_chapter_words(c) for c in (prev_vn.chapters or []))
     sync_row_from_vn(row, vn)
     chapters = [c.model_dump(mode="json") for c in (vn.chapters or [])]
     await upsert_chapter_rows(db, row.id, chapters)
-    current_words = sum(
-        count_blocks_words(list(c.get("blocks") or [])) for c in chapters
+    # 用 normalize 后的模型数，保证与 prev_words 同一口径（dict 与模型的字段访问不同）
+    current_words = sum(count_chapter_words(c) for c in (vn.chapters or []))
+    await record_activity(
+        db,
+        row.id,
+        previous_words=prev_words,
+        current_words=current_words,
+        tz_offset_minutes=tz_offset_minutes,
     )
-    await record_activity(db, row.id, previous_words=prev_words, current_words=current_words)
 
 
 async def member_role(db: AsyncSession, project_id: str, user_id: str) -> Optional[str]:

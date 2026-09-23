@@ -140,6 +140,28 @@ def volume_metrics(vn: VnProject) -> List[Dict[str, Any]]:
     return out
 
 
+#: 偏移量的现实范围（UTC-12..UTC+14 之外没有真实时区）；越界一律夹住，
+#: 免得一个乱填的请求头把某一章的字记到明年去。
+MIN_TZ_OFFSET_MINUTES = -12 * 60
+MAX_TZ_OFFSET_MINUTES = 14 * 60
+
+
+def activity_date_key(when: datetime, tz_offset_minutes: int = 0) -> str:
+    """把一个时刻换算成"作者当地的哪一天"（YYYY-MM-DD）。
+
+    单独抽出来是为了能被直接单测：日期口径错一天，界面上表现为"今天写的字不见了"，
+    而那种 bug 在集成测试里只能靠构造时间点才能发现。
+    """
+    try:
+        offset = int(tz_offset_minutes or 0)
+    except (TypeError, ValueError):
+        offset = 0
+    offset = max(MIN_TZ_OFFSET_MINUTES, min(MAX_TZ_OFFSET_MINUTES, offset))
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return (when.astimezone(timezone.utc) + timedelta(minutes=offset)).date().isoformat()
+
+
 async def record_activity(
     db: AsyncSession,
     project_id: str,
@@ -147,10 +169,16 @@ async def record_activity(
     previous_words: int,
     current_words: int,
     when: Optional[datetime] = None,
+    tz_offset_minutes: int = 0,
 ) -> None:
-    """Add today's word delta to writing_activity (upsert per project+date)."""
+    """Add today's word delta to writing_activity (upsert per project+date).
+
+    ``tz_offset_minutes`` = 作者所在地相对 UTC 的分钟偏移（东八区 = +480）。
+    记录用的是**作者当地日期**：否则东八区用户在本地 00:00–08:00 写的字会落到
+    前一天，「今日净增」在早上永远是 0。取不到偏移时退回 UTC（老客户端行为不变）。
+    """
     when = when or datetime.now(timezone.utc)
-    date_key = when.date().isoformat()
+    date_key = activity_date_key(when, tz_offset_minutes)
     delta = current_words - previous_words
     if delta == 0:
         return

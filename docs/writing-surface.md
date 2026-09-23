@@ -126,6 +126,24 @@
 - **节奏预估**：只在作者自己设了单章目标、且样本 ≥3 天时给结论；样本不足一律显示"样本不够"。
   编一个数字出来比不给更糟。
 
+### 这一页逼出来的两个后端缺陷（做的时候就发现了）
+
+`writing_activity` 是热力图与这一页的**唯一数据源**，而它在小说作者的使用路径上原本是空的：
+
+1. **记录口径只数脚本块**：`sync_chapter_rows_from_vn` 用 `count_blocks_words(ch.blocks)`
+   算字数增量，而纯正文写作的章节 `blocks` 只有一个 label → 前后都是 0 →
+   `record_activity` 见 `delta == 0` 直接 return，**一个字都不会被记下来**。
+   改成与面板/连载页同一口径（`count_chapter_words`：正文优先，正文为空才数脚本块）。
+2. **日期按 UTC 记**：东八区用户在本地 00:00–08:00 写的字会落到前一天，
+   「今日净增」在早上永远是 0。现在客户端通过 `X-TZ-Offset` 头带本地偏移
+   （`buildApiHeaders` 统一带，避免以后新增保存路径漏掉），后端按**作者当地日期**记账；
+   取不到偏移时退回 UTC（老客户端行为不变），偏移量夹在 -12h..+14h。
+3. 顺带修掉一处"注释吃掉了代码"：`put_project` 里那句"事务内行锁防 TOCTOU"的
+   `await db.refresh(row, with_for_update=True)` 当时被并进了上一行注释里，从未执行过。
+
+这三条都有测试守着（`backend/tests/test_writing_activity.py`，
+`frontend/src/api/tzOffset.test.ts`）。
+
 ## 六、投稿包导出（P1-7）
 
 `GET /projects/{id}/export/submission`（`app/core/export_submission.py`，11 项单测 + 3 项路由测试）。
