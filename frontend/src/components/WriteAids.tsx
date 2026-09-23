@@ -195,6 +195,12 @@ export function WriteAids({
 
   return (
     <div className={styles.wrap} data-testid="write-aids">
+      <div className={styles.head}>
+        <strong className={styles.headTitle}>写作辅助</strong>
+        <span className={styles.hint}>
+          字数目标 · 分场导航 · 笔误体检（点条目可直接跳到正文那一处）
+        </span>
+      </div>
       <div className={styles.row}>
         <span className={styles.rowLabel}>目标</span>
         {goalOpen ? (

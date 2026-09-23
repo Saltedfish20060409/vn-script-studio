@@ -3065,6 +3065,7 @@ export function StudioApp() {
                         insertAtCaret(text);
                         setStatus("已插入语音转写");
                       }}
+                      onFind={openFind}
                     />
                     {/* 写作手感条：字数目标 / 分场导航 / 笔误体检。
                         放在错误边界之外——它坏了不该连带把正文编辑器一起顶掉。 */}

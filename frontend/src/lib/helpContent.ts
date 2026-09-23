@@ -16,6 +16,10 @@ export const HELP_QUICK: Array<{ title: string; body: string }> = [
     title: "AI 用什么模型",
     body: "没配密钥时用站内免费模型（每日限额，适合先试）。想更稳：左下角齿轮 → 模型，填自己的 API Key。",
   },
+  {
+    title: "改稿：查找 / 标点 / 目标",
+    body: "写作页顶部有「查找 / 替换」（也可以按 Ctrl+F）。下面那条「写作辅助」能给本章设字数目标、插入分场标记跳着写、列出标点笔误。",
+  },
 ];
 
 export const HELP_FAQ: Array<{ q: string; a: string }> = [

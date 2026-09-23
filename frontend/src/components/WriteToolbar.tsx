@@ -15,6 +15,9 @@ type Props = {
   onOpenRevise: () => void;
   onDiscardRevise: () => void;
   onDictateInsert?: (text: string) => void;
+  /** 打开查找替换。键盘 Ctrl+F 也走同一个入口——但**必须有个看得见的按钮**：
+   *  只留快捷键等于没做（作者不会去猜有什么快捷键）。 */
+  onFind?: () => void;
 };
 
 export function WriteToolbar({
@@ -29,6 +32,7 @@ export function WriteToolbar({
   onOpenRevise,
   onDiscardRevise,
   onDictateInsert,
+  onFind,
 }: Props) {
   return (
     <div className={styles.toolbar}>
@@ -72,6 +76,17 @@ export function WriteToolbar({
       ) : null}
       {rpyStale && writeMode === "rpy" ? (
         <span className={styles.hintInline}>剧本已改，RPY 可能过期</span>
+      ) : null}
+      {onFind ? (
+        <button
+          type="button"
+          className={styles.ghost}
+          data-testid="open-find"
+          title="查找 / 替换（快捷键 Ctrl+F，Mac 为 ⌘F）"
+          onClick={onFind}
+        >
+          查找 / 替换
+        </button>
       ) : null}
       {onDictateInsert ? <SpeechInputButton onInsert={onDictateInsert} /> : null}
       {showReviseActions ? (
