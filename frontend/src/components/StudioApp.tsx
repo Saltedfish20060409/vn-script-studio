@@ -1,10 +1,13 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
+  type ComponentProps,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -56,13 +59,10 @@ import {
   type ChapterLockInfo,
 } from "../api/collab";
 import { ScriptEditor } from "./ScriptEditor";
-import { MapStudio } from "./MapStudio";
 import { MapExtractReview } from "./MapExtractReview";
 import { AgentFloat } from "./AgentFloat";
-import { AnalysisPanels } from "./AnalysisPanels";
 import { SystemPanel } from "./SystemPanel";
 import { SettingsGear, SettingsModal } from "./SettingsModal";
-import { CharacterWorkshop } from "./CharacterWorkshop";
 import { FocusChrome } from "./FocusChrome";
 import { FilingFooter } from "./FilingFooter";
 import { useConfirm, usePrompt } from "../lib/confirmDialog";
@@ -89,15 +89,13 @@ import { TemplatePicker } from "./TemplatePicker";
 import { QPet } from "./QPet";
 import { AdminPanel } from "./AdminPanel";
 import { ClickFx } from "./ClickFx";import { WorldPanel } from "./WorldPanel";
-import { DesktopView, type DesktopApp } from "./DesktopView";
-import { AgentChat } from "./AgentChat";
+import type { DesktopApp } from "./DesktopView";
 import { DeskPetApp } from "./DeskPetApp";
 import { shouldShowDesktop, rearmBoot } from "../lib/desktopView";
 import { openNotice } from "../lib/notice";
 import { WriteToolbar, type WriteMode } from "./WriteToolbar";
 import { ScriptCommandBar } from "./ScriptCommandBar";
 import { AssetAuditPanel } from "./AssetAuditPanel";
-import { LocalizationPanel } from "./LocalizationPanel";
 import { MusicPlayerBar } from "./MusicPlayerBar";
 import { HelpSheet } from "./HelpSheet";
 import { StudioErrorBoundary } from "./StudioErrorBoundary";
@@ -177,6 +175,90 @@ import {
 import { mascotLine } from "../lib/mascotCopy";
 import type { Character, StoryBible, VnProject } from "../types/vn";
 import styles from "./StudioApp.module.css";
+
+// ---------------------------------------------------------------------------
+// 大面板懒加载
+//
+// 这些面板只在「切到某个页签 / 打开某个窗口 / 进入桌面视图」时才渲染，但静态 import
+// 会把它们的代码塞进 StudioApp 这个**首屏 chunk**（改前 563 KiB raw / 193 KiB gzip，
+// CI 的 bundle 闸门就是被它顶破的）。挪进独立 chunk 后，首屏不再为"用户可能根本不会
+// 打开的面板"付费。
+//
+// 为什么用「同名包装组件」而不是在每个调用点外面套 <Suspense>：
+// 调用点分散在 3000 多行里，改 JSX 端点容易漏；同名包装让调用点一行都不用动。
+// 另外每个面板自带**局部** Suspense —— 只在路由层兜底的话，切页时会把整个工作室
+// 换成路由 fallback（整页闪一下）。
+// ---------------------------------------------------------------------------
+function LazyPanelFallback({ label }: { label: string }) {
+  return <p style={{ padding: "1rem", opacity: 0.7 }}>正在加载{label}…</p>;
+}
+
+const AgentChatImpl = lazy(() =>
+  import("./AgentChat").then((m) => ({ default: m.AgentChat }))
+);
+function AgentChat(props: ComponentProps<typeof AgentChatImpl>) {
+  return (
+    <Suspense fallback={<LazyPanelFallback label="AI 责编" />}>
+      <AgentChatImpl {...props} />
+    </Suspense>
+  );
+}
+
+const MapStudioImpl = lazy(() =>
+  import("./MapStudio").then((m) => ({ default: m.MapStudio }))
+);
+function MapStudio(props: ComponentProps<typeof MapStudioImpl>) {
+  return (
+    <Suspense fallback={<LazyPanelFallback label="地图工作台" />}>
+      <MapStudioImpl {...props} />
+    </Suspense>
+  );
+}
+
+const CharacterWorkshopImpl = lazy(() =>
+  import("./CharacterWorkshop").then((m) => ({ default: m.CharacterWorkshop }))
+);
+function CharacterWorkshop(props: ComponentProps<typeof CharacterWorkshopImpl>) {
+  return (
+    <Suspense fallback={<LazyPanelFallback label="角色工坊" />}>
+      <CharacterWorkshopImpl {...props} />
+    </Suspense>
+  );
+}
+
+const LocalizationPanelImpl = lazy(() =>
+  import("./LocalizationPanel").then((m) => ({ default: m.LocalizationPanel }))
+);
+function LocalizationPanel(props: ComponentProps<typeof LocalizationPanelImpl>) {
+  return (
+    <Suspense fallback={<LazyPanelFallback label="本地化面板" />}>
+      <LocalizationPanelImpl {...props} />
+    </Suspense>
+  );
+}
+
+const AnalysisPanelsImpl = lazy(() =>
+  import("./AnalysisPanels").then((m) => ({ default: m.AnalysisPanels }))
+);
+function AnalysisPanels(props: ComponentProps<typeof AnalysisPanelsImpl>) {
+  return (
+    <Suspense fallback={<LazyPanelFallback label="写作分析面板" />}>
+      <AnalysisPanelsImpl {...props} />
+    </Suspense>
+  );
+}
+
+// 桌面视图本身就是一整套外壳（图标/窗口/菜单），只在桌面模式下渲染
+const DesktopViewImpl = lazy(() =>
+  import("./DesktopView").then((m) => ({ default: m.DesktopView }))
+);
+function DesktopView(props: ComponentProps<typeof DesktopViewImpl>) {
+  return (
+    <Suspense fallback={<LazyPanelFallback label="桌面视图" />}>
+      <DesktopViewImpl {...props} />
+    </Suspense>
+  );
+}
 
 /** 顶栏只保留 5 组，细项用二级切换 */
 type Tab = StudioTab;
