@@ -1,0 +1,210 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.7rem 0.85rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-bg);
+  font-size: 0.88rem;
+}
+
+.badge {
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.4rem;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  color: var(--muted, #8a8f98);
+}
+
+.error {
+  color: var(--danger, #d64550);
+  margin: 0;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted, #8a8f98);
+  line-height: 1.55;
+}
+
+.warnLine {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--warn, #c9821c);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.7rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.85rem 0.95rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-bg);
+}
+
+.cardLabel {
+  font-size: 0.78rem;
+  color: var(--muted, #8a8f98);
+}
+
+.cardValue {
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cardUnit {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--muted, #8a8f98);
+}
+
+.cardSub {
+  font-size: 0.76rem;
+  color: var(--muted, #8a8f98);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.issues {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.issue {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--panel-bg);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.issueMsg {
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.sev_error,
+.sev_warn,
+.sev_info {
+  flex: 0 0 auto;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+}
+
+.sev_error {
+  color: var(--danger, #d64550);
+  border: 1px solid var(--danger, #d64550);
+}
+
+.sev_warn {
+  color: var(--warn, #c9821c);
+  border: 1px solid var(--warn, #c9821c);
+}
+
+.sev_info {
+  color: var(--muted, #8a8f98);
+  border: 1px solid var(--line);
+}
+
+.chapterBtn {
+  flex: 0 0 auto;
+  padding: 0.1rem 0.3rem;
+  border: none;
+  background: none;
+  color: var(--accent, #4c8bf5);
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chapterBtn:hover {
+  text-decoration: underline;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.table th,
+.table td {
+  padding: 0.35rem 0.45rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th {
+  color: var(--muted, #8a8f98);
+  font-weight: 500;
+}
+
+.hookOk {
+  color: var(--ok, #2f9e63);
+}
+
+.hookWeak {
+  color: var(--warn, #c9821c);
+}
+
+.ghost {
+  align-self: flex-start;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm, 6px);
+}

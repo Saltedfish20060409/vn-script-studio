@@ -21,7 +21,7 @@ from app.core.pipeline.ledger import (
     get_ledger,
     set_ledger,
 )
-from app.core.pipeline.orchestrator import run_pipeline, stage_check_async
+from app.core.pipeline.orchestrator import run_pipeline
 from app.core.pipeline.run_history import list_harness_runs
 from app.core.pipeline.style_skill import load_style_skill, style_skill_meta
 from app.db import get_db
@@ -391,45 +391,6 @@ async def project_job_status(
     if not job or job.project_id != project_id or job.user_id != user.id:
         raise HTTPException(status_code=404, detail="任务不存在")
     return job.to_dict(include_result=job.status in ("done", "error"))
-
-
-@router.post("/projects/{project_id}/pipeline/check")
-async def pipeline_check(
-    project_id: str,
-    body: GateIn,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
-):
-    row = await get_owned_project(db, user, project_id)
-    vn = row_to_vn(row)
-    draft = body.draft
-    if not draft.strip() and body.chapter_id:
-        from app.core.agent_context import _blocks_to_plain
-
-        ch = next((c for c in vn.chapters if c.id == body.chapter_id), None)
-        if not ch:
-            raise HTTPException(status_code=404, detail="章节不存在")
-        draft = _blocks_to_plain(ch.blocks, vn.characters) or ""
-    if not draft.strip():
-        raise HTTPException(status_code=400, detail="需要 draft 或 chapter_id")
-    cfg = None
-    try:
-        cfg = await _cfg(settings, db, user.id)
-    except HTTPException as exc:
-        if exc.status_code != 400:
-            raise
-        cfg = None
-    return await stage_check_async(
-        draft,
-        cfg=cfg,
-        beat_sheet=body.beat_sheet,
-        semantic_beats=body.semantic_beats and cfg is not None,
-        project=vn,
-        chapter_id=body.chapter_id,
-        voice_check=body.voice_check and cfg is not None,
-        voice_hard=body.voice_hard,
-    )
 
 
 @router.post("/projects/{project_id}/pipeline/gate")

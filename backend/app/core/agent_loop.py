@@ -22,8 +22,10 @@ from app.core.agent_context import (
     task_hint,
 )
 from app.core.agent_tools import (
+    ASYNC_TOOL_NAMES,
     format_tool_result_message,
     run_agent_tool,
+    run_agent_tool_async,
     tool_catalog_for_prompt,
 )
 from app.core.ai import DeepSeekConfig
@@ -239,12 +241,23 @@ async def _agent_steps(
                     }
                 )
                 await emit({"type": "tool_call", "id": tid, "name": name, "arguments": args})
-                ok, preview = run_agent_tool(
-                    name,
-                    args,
-                    project=working,
-                    chapter_id=request.chapterId,
-                )
+                if name in ASYNC_TOOL_NAMES:
+                    # 会调模型的工具（如 polish_prose）：走 async 通道。
+                    # config 从 provider 上取（两种 provider 都把 DeepSeekConfig 存在 .config）。
+                    ok, preview = await run_agent_tool_async(
+                        name,
+                        args,
+                        project=working,
+                        chapter_id=request.chapterId,
+                        config=getattr(provider, "config", None),
+                    )
+                else:
+                    ok, preview = run_agent_tool(
+                        name,
+                        args,
+                        project=working,
+                        chapter_id=request.chapterId,
+                    )
                 trace.append(
                     {
                         "type": "tool_result",

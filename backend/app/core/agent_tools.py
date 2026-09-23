@@ -5,6 +5,7 @@ No shell / filesystem — only in-memory VnProject data.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.agent_context import _blocks_to_plain
@@ -88,7 +89,39 @@ TOOL_SPECS: List[Dict[str, Any]] = [
         "description": "读取写作账本（事实/角色状态/伏笔）摘要。",
         "parameters": {},
     },
+    {
+        "name": "polish_prose",
+        "description": (
+            "让责编对一段正文做**最小改动**润色：先跑确定性体检，再按体检问题改写；"
+            "体检全过时不调用模型（省 token）。返回改写后的正文与仍须注意的点——"
+            "**由你判断要不要采纳**，不要把工具结果原样回显给作者。"
+        ),
+        "parameters": {
+            "text": "要润色的正文；不传则取当前章",
+            "chapterRef": "text 为空时用来指定章节（id 或标题）",
+            "flavor": "prose / vn / auto；默认 auto（按稿子里有无剧本标记判断）",
+        },
+    },
+    {
+        "name": "novel_audit",
+        "description": (
+            "稿件体检（**不调用模型**，纯文本统计，随时可跑）："
+            "consistency = 表记/引号配对/省略号/人名变体/视角偏移/称呼漂移；"
+            "craft = 注音写法、拟声与感叹密度、章末钩子分数、对白占比与长段落。"
+            "返回的是**线索**（带「第几章第几行 + 原样片段」），语义判断仍要你自己做，"
+            "不要把线索当成结论回显给作者。"
+        ),
+        "parameters": {
+            "scope": "consistency / craft / all，默认 all",
+            "chapterRef": "只体检这一章（craft 支持；consistency 请改用 focus）",
+            "focus": "只检查章标题或 id 含该子串的章节（可选）",
+        },
+    },
 ]
+
+#: 需要调用模型的工具：必须是协程，不能走同步的 run_agent_tool。
+#: agent_loop 见到这些名字会改走 run_agent_tool_async（见 app/core/agent_loop.py）。
+ASYNC_TOOL_NAMES = frozenset({"polish_prose"})
 
 
 def tool_catalog_for_prompt() -> str:
@@ -390,9 +423,135 @@ def run_agent_tool(
             block = format_ledger_for_agent(get_ledger(project), chapters=project.chapters)
             return True, block.strip() or "（账本为空）"
 
+        if name == "novel_audit":
+            scope = str(args.get("scope") or "all").strip().lower()
+            if scope not in ("consistency", "craft", "all"):
+                scope = "all"
+            focus = str(args.get("focus") or "").strip()
+            ch = _find_chapter(project, args.get("chapterRef"), chapter_id)
+            lines: List[str] = []
+            if scope in ("consistency", "all"):
+                from app.core.novel_consistency import analyze_novel_consistency
+
+                rep = analyze_novel_consistency(project, focus=focus, max_issues=60)
+                counts = rep.get("counts") or {}
+                lines.append(
+                    "【表记/视角】"
+                    f"错误 {counts.get('error', 0)} · 提醒 {counts.get('warn', 0)} · "
+                    f"提示 {counts.get('info', 0)}"
+                )
+                for iss in (rep.get("issues") or [])[:18]:
+                    if not isinstance(iss, dict):
+                        continue
+                    where = f"第{iss.get('chapterOrdinal')}章「{iss.get('chapterTitle')}」"
+                    line_no = iss.get("line")
+                    if isinstance(line_no, int) and line_no > 0:
+                        where += f" 第{line_no}行"
+                    lines.append(
+                        f"- [{iss.get('severity')}] {where} {iss.get('message')}"
+                        f"（片段：{iss.get('quote')}）"
+                    )
+                cov = rep.get("coverage") or {}
+                lines.append(
+                    f"（扫描 {cov.get('chaptersScanned', 0)}/{cov.get('chaptersTotal', 0)} 章，"
+                    f"覆盖率 {cov.get('coverageRatio', 0)}）"
+                )
+            if scope in ("craft", "all"):
+                from app.core.novel_craft import analyze_novel_craft
+
+                rep2 = analyze_novel_craft(
+                    project, chapter_id=(ch.id if ch is not None else None)
+                )
+                hooks = rep2.get("hookScores") or []
+                weak = [h for h in hooks if isinstance(h, dict) and h.get("level") == "weak"]
+                lines.append(
+                    f"【文面统计】注音问题 {len(rep2.get('rubyIssues') or [])} 处 · "
+                    f"章末钩子偏弱 {len(weak)}/{len(hooks)} 章"
+                )
+                for h in weak[:8]:
+                    lines.append(
+                        f"- 第{h.get('chapterOrdinal')}章「{h.get('chapterTitle')}」"
+                        f"钩子分 {h.get('score')}（{h.get('level')}）"
+                    )
+            return True, "\n".join(lines) if lines else "体检没有跑出任何结果。"
+
+        if name in ASYNC_TOOL_NAMES:
+            # 明确报错而不是伪装成"未知工具"：模型看到这句就会知道该换工具/收工，
+            # 而调试时也能一眼看出是分发通道走错了。
+            return False, f"{name} 是异步工具（需要调模型），应走 run_agent_tool_async"
+
         return False, f"未知工具：{name}"
     except Exception as exc:  # noqa: BLE001 — surface to model
         return False, f"工具错误：{exc}"
+
+
+#: `_blocks_to_plain` 会把结构标记写成 `[label start]` 这种形式
+_MARKER_RE = re.compile(r"\[[^\]]*\]")
+
+
+def _has_real_prose(text: str) -> bool:
+    """稿子里有没有**真正的正文**（而不只是 `[label start]` 这类结构标记）。
+
+    为什么需要：`normalize_project` 会给空工程自动补一章，`_blocks_to_plain` 对空章产出的
+    是 `[label start]`——它有内容、能过 `if not text`，但它不是正文。拿它去"润色"等于白跑
+    一次（体检还会"通过"），作者会以为工具坏了。与账本里 `_hook_has_prose` 同一个道理。
+    """
+    return len(_MARKER_RE.sub("", text or "").strip()) > 4
+
+
+async def run_agent_tool_async(
+    name: str,
+    arguments: Optional[Dict[str, Any]],
+    *,
+    project: VnProject,
+    chapter_id: Optional[str] = None,
+    config: Any = None,
+) -> Tuple[bool, str]:
+    """需要调用模型的工具（`run_agent_tool` 是纯同步的，所以单开一条 async 通道）。
+
+    目前只有 `polish_prose`（原 `/harness/run` 的 editor 角色）。它复用
+    `harness_editor_pass`：**先跑确定性体检，体检全过时不调模型**——这样"润色"在
+    稿子本来就干净时是零成本的。
+    """
+    args = arguments if isinstance(arguments, dict) else {}
+    if name not in ASYNC_TOOL_NAMES:
+        return False, f"未知的异步工具：{name}"
+    if name == "polish_prose":
+        if config is None:
+            return False, "润色需要模型配置，但当前上下文里没有拿到，请作者先在设置里配置模型。"
+        text = str(args.get("text") or "").strip()
+        if not text:
+            ch = _find_chapter(project, args.get("chapterRef"), chapter_id)
+            if ch is None:
+                return False, "没有可润色的正文：请传入 text，或指定一章（chapterRef）。"
+            text = _blocks_to_plain(ch.blocks or [], project.characters or [])
+        if not text.strip():
+            return False, "这段/这一章没有正文可润色。"
+        if not _has_real_prose(text):
+            return False, "这一章目前只有结构标记（还没写正文），先写点内容再来润色。"
+        flavor = str(args.get("flavor") or "auto").strip().lower()
+        if flavor not in ("auto", "prose", "vn"):
+            flavor = "auto"
+        from app.core.harness.pipeline import harness_editor_pass
+
+        try:
+            out = await harness_editor_pass(
+                config, text[:12000], project=project, flavor=flavor
+            )
+        except Exception as exc:  # noqa: BLE001 — surface to model
+            return False, f"润色失败：{exc}"
+        issues = [i for i in (out.get("issues") or []) if isinstance(i, dict)]
+        notes = "\n".join(
+            f"- [{i.get('severity')}] {i.get('message')}" for i in issues[:12]
+        )
+        if out.get("skippedLlm"):
+            return True, "确定性体检通过，未调用模型改写。" + (
+                f"\n仍可留意的点：\n{notes}" if notes else ""
+            )
+        body = str(out.get("content") or "").strip() or "（模型未返回内容）"
+        head = f"润色后的正文（{out.get('flavor') or 'auto'} 口径）：\n{body}"
+        return True, head + (f"\n\n仍须注意的点：\n{notes}" if notes else "")
+    return False, f"未实现的异步工具：{name}"
 
 
 def format_tool_result_message(name: str, ok: bool, preview: str) -> str:

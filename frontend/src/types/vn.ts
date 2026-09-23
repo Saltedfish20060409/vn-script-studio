@@ -411,6 +411,16 @@ export interface MapMeasure {
   transport: string;
 }
 
+/** 写作目标（可选）：三个口径的字数目标；留空 = 不显示进度 */
+export interface WritingGoals {
+  /** 日更目标（按写作统计的当日净增字数算） */
+  daily?: number;
+  /** 单章目标（按当前章节实时字数算） */
+  chapter?: number;
+  /** 单卷目标（按写作统计的该卷累计字数算） */
+  volume?: number;
+}
+
 export interface VnProject {
   id: string;
   title: string;
@@ -463,6 +473,8 @@ export interface VnProject {
     }>;
   };
   analysisMeta?: AnalysisMeta;
+  /** 写作目标（可选）：写作页显示进度与"还差多少"；缺省 = 不显示 */
+  writingGoals?: WritingGoals;
   /** Phase 2: persisted voice-check reports */
   voiceReports?: Array<Record<string, unknown>>;
   /** Author style memory: LLM-learned writing-style guide from this novel */

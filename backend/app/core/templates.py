@@ -11,6 +11,7 @@ from typing import Dict, List
 
 from app.domain.types import VnProject
 
+from .ln_template import build_ln_template_project
 from .project import normalize_project, uid
 
 
@@ -159,6 +160,15 @@ TEMPLATES: Dict[str, VnProject] = {
     ),
 }
 
+# 轻小说/长篇写作起步工程：不是"游戏脚本骨架"，而是有卷、有正文（prose）、有节拍表与
+# 预置伏笔的写作模板（见 app/core/ln_template.py）。
+TEMPLATES["light_novel"] = build_ln_template_project()
+
+#: 由函数生成、每次取用都是全新对象的模板。
+#: 这些模板的章节 id 被设定条目的 links / 写作账本 / 运行记录引用着，
+#: 所以**不能**走 build_from_template 里"重新分配章节 id"的流程——那会把引用打断。
+GENERATED_TEMPLATES = frozenset({"light_novel"})
+
 
 def list_template_meta() -> List[dict]:
     """Public metadata (no full project payload)."""
@@ -182,6 +192,13 @@ def build_from_template(template_id: str, title: str | None = None) -> VnProject
     if template is None:
         raise KeyError(template_id)
     import copy
+
+    if template_id in GENERATED_TEMPLATES:
+        # 函数式模板：每次调用本来就是全新对象，而且章节 id 被其它字段引用着，
+        # 走下面的重分配会把 links / 账本 / 运行记录的引用全部打断。
+        fresh = build_ln_template_project(title or template.title)
+        fresh.id = uid("proj")
+        return normalize_project(fresh)
 
     fresh = copy.deepcopy(template)
     fresh.id = uid("proj")

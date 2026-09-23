@@ -585,6 +585,24 @@ class Ending(BaseModel):
     description: Optional[str] = None
 
 
+class WritingGoals(BaseModel):
+    """写作目标（可选）：三个口径的字数目标，单位是"字"（口径同写作统计）。
+
+    为什么不塞进 writingMentors 之类的自由字典：目标要跟着作品走（换设备要还在），
+    而且是界面上会反复读写的小结构，声明成模型才能被 normalize 与合并逻辑带上。
+    留 None 表示"没设目标"——界面上不显示进度条，而不是显示一个 0/0。
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    # 日更目标（按 /stats 的当日净增字数算）
+    daily: Optional[int] = None
+    # 单章目标（按当前章节实时字数算）
+    chapter: Optional[int] = None
+    # 单卷目标（按 /stats 的该卷累计字数算）
+    volume: Optional[int] = None
+
+
 class VnProject(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -633,6 +651,8 @@ class VnProject(BaseModel):
     styleMemory: Optional[Dict[str, Any]] = None
     # 本地化：locales / entries（源文本 + 各语言译文 + 状态）/ glossary
     localization: Optional[Dict[str, Any]] = None
+    # 写作目标（可选）：日更/本章/本卷字数，写作页据此显示进度与"还差多少"
+    writingGoals: Optional[WritingGoals] = None
     # Local read-only share id
     shareId: Optional[str] = None
     updatedAt: str

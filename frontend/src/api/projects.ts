@@ -1942,3 +1942,142 @@ export function fetchAdaptivePlan(id: string): Promise<AdaptivePlanOut> {
     skipAuthRedirect: true,
   });
 }
+
+// ---- 稿件体检（离线统计，不调用模型） ----------------------------------------
+
+export type AuditSeverity = "error" | "warn" | "info";
+
+/** 表记 / 视角 / 称呼类线索：每条都带"第几章第几行 + 原样片段" */
+export type NovelAuditIssue = {
+  severity: AuditSeverity;
+  code: string;
+  category: string;
+  message: string;
+  chapterId: string;
+  chapterTitle: string;
+  chapterOrdinal: number;
+  /** 正文行号；按章级判定（如引号配对）时为 null */
+  line: number | null;
+  quote: string;
+};
+
+/** 注音写法问题（`｜汉字《注音》` / `{汉字|注音}` 写坏了） */
+export type NovelAuditRubyIssue = {
+  code: string;
+  severity: AuditSeverity;
+  chapterId: string;
+  chapterTitle: string;
+  line: number | null;
+  column: number | null;
+  snippet: string;
+  message: string;
+};
+
+export type NovelAuditCoverage = {
+  chaptersTotal: number;
+  chaptersScanned: number;
+  chaptersWithText: number;
+  coverageRatio: number;
+  chaptersWithoutText: string[];
+  textTruncatedChapters: string[];
+  unscannedChapters: string[];
+  issuesFound: number;
+  issuesReported: number;
+  issuesTruncated: number;
+  truncated: boolean;
+};
+
+export type NovelAuditConsistency = {
+  issues: NovelAuditIssue[];
+  counts: {
+    total: number;
+    bySeverity: Record<string, number>;
+    byCode: Record<string, number>;
+    byCategory: Record<string, number>;
+  };
+  summary: string;
+  coverage: NovelAuditCoverage;
+  notes: string[];
+  pov: {
+    dominant: string;
+    dominantLabel: string;
+    bookFirstPerson: number;
+    bookThirdPerson: number;
+    chapters: Array<Record<string, unknown>>;
+    heuristic: boolean;
+  };
+  address: { pairs: Array<Record<string, unknown>>; heuristic: boolean };
+};
+
+export type NovelAuditChapter = {
+  chapterId: string;
+  chapterTitle: string;
+  /** 全书序号（0 起算） */
+  chapterIndex: number;
+  volumeId: string;
+  /** prose = 数的是正文；blocks = 数的是脚本块 */
+  source: string;
+  truncated: boolean;
+  words: { total: number; dialogue: number; narration: number; choice: number; chars: number };
+  ratio: { dialogue: number | null; narration: number | null };
+  lines: { dialogue: number; narration: number; choice: number };
+  paragraphs: { count: number; avgChars: number; longCount: number; longRatio: number };
+  punctuation: Record<string, number>;
+  onomatopoeia: { count: number; strictCount: number; per1000Chars: number };
+  ruby: { count: number; per1000Chars: number };
+  hook: { score: number; level: string };
+  relativeHints?: string[];
+};
+
+export type NovelAuditCraft = {
+  perChapter: NovelAuditChapter[];
+  summary: string;
+  rubyIssues: NovelAuditRubyIssue[];
+  hookScores: Array<{
+    chapterId: string;
+    chapterTitle: string;
+    score: number;
+    level: string;
+    heuristic: boolean;
+    endingKind: string;
+    endingTail: string;
+    chapterIndex: number;
+  }>;
+  notes: string[];
+  coverage: {
+    chaptersTotal: number;
+    chaptersAnalyzed: number;
+    chaptersSkipped: string[];
+    truncated: boolean;
+    emptyChapters: string[];
+    wordsScanned: number;
+    note: string;
+  };
+};
+
+export type NovelAuditOut = {
+  parts: string[];
+  consistency?: NovelAuditConsistency;
+  craft?: NovelAuditCraft;
+};
+
+/**
+ * 稿件体检（**不调用模型**，纯文本统计）。
+ *
+ * 为什么不放进"一致性审计"：这条路径不烧 token、不占模型并发闸，几十毫秒就回来，
+ * 所以可以每改完一章顺手跑一次；带模型的一致性扫描语义层更贵，两者互补。
+ */
+export function fetchNovelAudit(
+  id: string,
+  opts: { parts?: string; focus?: string; chapterId?: string } = {}
+): Promise<NovelAuditOut> {
+  const params = new URLSearchParams();
+  if (opts.parts) params.set("parts", opts.parts);
+  if (opts.focus) params.set("focus", opts.focus);
+  if (opts.chapterId) params.set("chapter_id", opts.chapterId);
+  const qs = params.toString();
+  return apiFetch<NovelAuditOut>(
+    `/projects/${id}/analysis/novel-audit${qs ? `?${qs}` : ""}`,
+    { method: "POST", timeoutMs: TIMEOUTS.quick }
+  );
+}

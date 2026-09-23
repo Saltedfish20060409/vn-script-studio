@@ -83,6 +83,9 @@ MERGE_SECTIONS = [
     "writingMentors",
     "authorLenses",
     "voiceReports",
+    # 写作目标（本章/本卷/日更字数）：客户端按 section 声明保存，必须在这里，
+    # 否则"只改了目标"的那次保存会被服务端静默丢弃，界面看着像保存成功
+    "writingGoals",
 ]
 
 

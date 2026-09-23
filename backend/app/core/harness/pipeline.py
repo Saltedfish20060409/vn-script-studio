@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Dict, Optional
 
 from app.core import llm_budget
@@ -66,8 +67,15 @@ async def harness_editor_pass(
     config: DeepSeekConfig,
     draft: str,
     project: Optional[VnProject] = None,
+    *,
+    flavor: str = "auto",
 ) -> Dict[str, Any]:
-    """Lint first (full audit), then Editor LLM for minimal fixes if needed."""
+    """Lint first (full audit), then Editor LLM for minimal fixes if needed.
+
+    `flavor` 决定润色提示词的口径：`vn` 允许 ```renpy 代码块（VN 脚本），`prose` 明确要求
+    散文体、不要代码块或标记；`auto` 按稿子里有没有剧本标记判断。同一个"编辑"能力
+    对轻小说与 VN 都适用，但提示词不能混——之前写死 renpy 会让小说稿被要求输出剧本语法。
+    """
     from app.core.harness.audit_full import full_audit_draft
 
     audit = full_audit_draft(draft)
@@ -79,16 +87,34 @@ async def harness_editor_pass(
             "skippedLlm": True,
             "message": "确定性体检通过，无需责编改写",
         }
+    if flavor == "auto":
+        flavor = "vn" if _looks_like_rpy(draft) else "prose"
+    tail = (
+        "（可用 ```renpy 代码块）"
+        if flavor == "vn"
+        else "（散文体：只给正文，不要代码块、不要标题或分段标记）"
+    )
     prompt = (
         "请根据下列体检问题，给出最小改动后的文本（保持剧情意图）。"
-        "先用条目列出仍须注意的点，再给出改写正文（可用 ```renpy 代码块）。\n\n"
+        f"先用条目列出仍须注意的点，再给出改写正文{tail}。\n\n"
         f"## 体检\n{json.dumps(audit['issues'][:20], ensure_ascii=False)}\n\n"
         f"## 原文\n{draft[:8000]}"
     )
     llm = await run_harness_llm(
         config, role="editor", user_prompt=prompt, project=project, temperature=0.4
     )
-    return {**audit, **llm, "skippedLlm": False}
+    return {**audit, **llm, "skippedLlm": False, "flavor": flavor}
+
+
+def _looks_like_rpy(text: str) -> bool:
+    """粗判稿子是不是 Ren'Py 脚本（决定"编辑"提示词的口径）。
+
+    只看行首的剧本标记：`label` / `menu:` / `scene` / `show` / `jump` / 三引号块。
+    散文里偶尔出现英文单词不会命中（要求这些词出现在行首且后面跟空格或冒号）。
+    """
+    return bool(
+        re.search(r"^[ \t]*(label\s|menu:|scene\s|show\s|jump\s|hide\s|'''|\"\"\")", text, re.M)
+    )
 
 
 def build_writer_user_prompt(

@@ -60,6 +60,7 @@ export function normalizeProject(
     harnessRuns: raw.harnessRuns,
     writingMentors: raw.writingMentors,
     authorLenses: raw.authorLenses,
+    writingGoals: raw.writingGoals,
     analysisMeta: raw.analysisMeta,
     voiceReports: raw.voiceReports,
     shareId: raw.shareId,

@@ -15,6 +15,8 @@ export interface WorkspaceSnapshot {
     | "library"
     | "ledger"
     | "stats"
+    // 稿件体检（离线统计，不调模型）：标点/引号/人名/视角 + 注音/拟声/章末钩子
+    | "audit"
     | "analysis"
     | "assets"
     | "localization"

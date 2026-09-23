@@ -1,0 +1,214 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.4rem 0.6rem 0.5rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-bg);
+  font-size: 0.82rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  min-height: 1.6rem;
+}
+
+.rowLabel {
+  flex: 0 0 auto;
+  min-width: 2.2rem;
+  color: var(--muted, #8a8f98);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
+.hint {
+  color: var(--muted, #8a8f98);
+  line-height: 1.5;
+}
+
+.ghost {
+  padding: 0.22rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.ghost:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---- 目标进度 ---- */
+.goal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.goalLabel {
+  color: var(--muted, #8a8f98);
+  font-size: 0.78rem;
+}
+
+.goalNum {
+  font-variant-numeric: tabular-nums;
+}
+
+.goalLeft {
+  color: var(--muted, #8a8f98);
+  font-size: 0.76rem;
+}
+
+.goalDone {
+  color: var(--ok, #2f9e63);
+  font-size: 0.76rem;
+}
+
+.bar {
+  display: inline-block;
+  width: 4.5rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted, #8a8f98) 25%, transparent);
+  overflow: hidden;
+}
+
+.barFill,
+.barFillDone {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.15s ease-out;
+}
+
+.barFill {
+  background: var(--accent, #4c8bf5);
+}
+
+.barFillDone {
+  background: var(--ok, #2f9e63);
+}
+
+.goalForm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.goalInput {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--muted, #8a8f98);
+}
+
+.goalInput input {
+  width: 4.5rem;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--input-bg, transparent);
+  color: inherit;
+  font-size: 0.8rem;
+}
+
+/* ---- 分场导航 ---- */
+.scenes {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.sceneOn,
+.sceneOff {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.sceneOn {
+  border: 1px solid var(--accent, #4c8bf5);
+  background: color-mix(in srgb, var(--accent, #4c8bf5) 16%, transparent);
+  color: inherit;
+}
+
+.sceneOff {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+}
+
+.sceneWords {
+  color: var(--muted, #8a8f98);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.snippets {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.snippet {
+  padding: 0.16rem 0.4rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--muted, #8a8f98);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+/* ---- 笔误体检 ---- */
+.counts {
+  display: inline-flex;
+  gap: 0.45rem;
+}
+
+.countError {
+  color: var(--danger, #d64550);
+}
+
+.countWarn {
+  color: var(--warn, #c9821c);
+}
+
+.countInfo {
+  color: var(--muted, #8a8f98);
+}
+
+.issue {
+  flex: 1 1 240px;
+  min-width: 160px;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navNums {
+  color: var(--muted, #8a8f98);
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+}

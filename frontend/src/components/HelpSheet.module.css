@@ -171,3 +171,60 @@
     display: none;
   }
 }
+
+/* 两条路的开关：视觉小说 / 轻小说（见 HelpSheet 的注释） */
+.pathTabs {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0 0 0.9rem;
+  grid-column: 1 / -1;
+}
+
+.pathOn,
+.pathOff {
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.pathOn {
+  border: 1px solid var(--accent, #4c8bf5);
+  background: color-mix(in srgb, var(--accent, #4c8bf5) 16%, transparent);
+  color: inherit;
+}
+
+.pathOff {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted, #8a8f98);
+}
+
+.hint {
+  margin: 0 0 0.9rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--muted, #8a8f98);
+  grid-column: 1 / -1;
+}
+
+.stepWhere,
+.stepWhy,
+.stepPitfall {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.stepWhere {
+  color: var(--muted, #8a8f98);
+}
+
+.stepWhy {
+  color: var(--muted, #8a8f98);
+}
+
+.stepPitfall {
+  color: var(--warn, #c9821c);
+}
+

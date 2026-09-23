@@ -14,6 +14,7 @@ import {
   tokenizeScriptLine,
 } from "../lib/mapOccurrences";
 import { lineIndexOf, lineSegments, lineStarts, locateInNodes, type MarkRange } from "../lib/markHighlight";
+import { applyPairOnKey } from "../lib/editorAssist";
 import styles from "./ScriptEditor.module.css";
 
 type Props = Omit<
@@ -36,6 +37,12 @@ type Props = Omit<
   selectionRange?: { from: number; to: number } | null;
   /** 贴在选区旁边的浮层（「标记这段」按钮） */
   selectionBar?: ReactNode;
+  /**
+   * 中文标点自动配对（默认关）：
+   * 敲左引号/括号自动补右半边、有选区时把选区包起来、敲右半边且右边就是它时跳过。
+   * 只在正文模式打开——RPY 是代码，别改它的输入行为。
+   */
+  autoPair?: boolean;
 };
 
 export function ScriptEditor({
@@ -51,8 +58,10 @@ export function ScriptEditor({
   overlay,
   selectionRange = null,
   selectionBar,
+  autoPair = false,
   onScroll,
   onClick,
+  onKeyDown,
   ...rest
 }: Props) {
   const localRef = useRef<HTMLTextAreaElement | null>(null);
@@ -268,6 +277,33 @@ export function ScriptEditor({
         onScroll={(e) => {
           syncScroll(e.currentTarget);
           onScroll?.(e);
+        }}
+        onKeyDown={(e) => {
+          // 自动配对只在"真的要插入一个字符"时接管；带修饰键、输入法组字中的一律放过
+          if (!autoPair || e.nativeEvent.isComposing || e.ctrlKey || e.metaKey || e.altKey) {
+            onKeyDown?.(e);
+            return;
+          }
+          const ta = e.currentTarget;
+          const edit = applyPairOnKey(
+            value,
+            ta.selectionStart ?? 0,
+            ta.selectionEnd ?? 0,
+            e.key
+          );
+          if (!edit) {
+            onKeyDown?.(e);
+            return;
+          }
+          e.preventDefault();
+          if (edit.text !== value) onChange(edit.text);
+          const sel = edit.selection;
+          const caret = edit.caret;
+          // 等受控值真正渲染到 DOM 之后再放光标，否则会被 React 的 value 覆盖回去
+          window.requestAnimationFrame(() => {
+            if (sel) ta.setSelectionRange(sel.from, sel.to);
+            else ta.setSelectionRange(caret, caret);
+          });
         }}
         onClick={(e) => {
           onClick?.(e);

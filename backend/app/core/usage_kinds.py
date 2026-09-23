@@ -17,7 +17,6 @@ _RULES: Tuple[Tuple[str, str], ...] = (
     ("/agent/pipeline/run", "pipeline"),
     ("/pipeline/run", "pipeline"),
     ("/pipeline/gate", "finalize"),
-    ("/pipeline/check", "finalize"),
     ("/pipeline/ledger/digest", "ledger"),
     ("/agent/chapter-revise", "chapter_revise"),
     ("/generate-rpy", "rpy"),

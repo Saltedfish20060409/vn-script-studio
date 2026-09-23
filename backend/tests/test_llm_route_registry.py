@@ -35,14 +35,14 @@ REGISTERED: dict[str, str] = {
     "POST /projects/{project_id}/characters/{character_id}/voice/synthesize": "单次生成 → chat",
     "POST /projects/{project_id}/characters/{character_id}/workshop/chat": "单轮对话 → chat",
     "POST /{project_id}/consistency/audit": "单次审计 → write",
-    "POST /projects/{project_id}/harness/run": "API-only（前端无调用方）：预算由调用方自定",
     "POST /{project_id}/marks/revise": "首轮 + 校验不过时一轮重写 → long",
     "POST /projects/{project_id}/pipeline/ledger/digest": "单次补全 → quick",
     "POST /projects/{project_id}/pipeline/run": "SSE/作业：前端只等登记（upload 档），进度走 SSE 或作业轮询",
-    # 下面两条**自动发现扫不到**（它们是二级间接触达：路由 → gate.py → stage_check_async
-    # → beat_check / voice_check），属于该发现机制的已知盲区，所以手工登记在这里。
+    # `/pipeline/check` 与 `/harness/run` 已删除（无任何消费者；编辑润色改成 Agent 工具
+    # `polish_prose`，见 app/core/agent_tools.py）。这里的登记表随之移除——若有人再把它加回来，
+    # test_registered_routes_still_exist 之外还会因为"没登记"被 test_every_llm_route_is_registered 抓到。
+    # 下面两条**自动发现扫不到**（二级间接触达：路由 → gate.py → stage_check_async），手工登记。
     "POST /projects/{project_id}/pipeline/gate": "两轮串行（节拍 QUICK → 声线 CHAT）→ write；二级间接触达",
-    "POST /projects/{project_id}/pipeline/check": "同 gate 的检查路径（API-only）→ 预算由调用方自定",
     "POST /{project_id}/generate-rpy": "正文→Ren'Py 单次生成 → chat",
     "POST /{project_id}/map/extract": "单次抽取 → chat",
     "POST /{project_id}/localization/translate": "一批句子的单次翻译 → chat",

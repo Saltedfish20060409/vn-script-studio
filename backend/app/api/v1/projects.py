@@ -1228,6 +1228,46 @@ async def analysis_consistency_scan(
     )
 
 
+@router.post("/{project_id}/analysis/novel-audit")
+async def analysis_novel_audit(
+    project_id: str,
+    parts: str = "consistency,craft",
+    chapter_id: str = "",
+    focus: str = "",
+    max_issues: int = 200,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """稿件体检（**不调用模型**）：表记/引号/省略号/人名变体/视角/称呼 + 注音/拟声/章末钩子/对白比例。
+
+    为什么单独开一条而不是并进"一致性审计"：这两组检查全是确定性的文本统计
+    （正则 + 计数），跑一次通常几十毫秒，不烧 token、不占并发闸——作者可以每改完一章
+    就点一次。带模型的那条（`/consistency/scan`、`/consistency/audit`）语义层更贵，
+    两者互补而不是替代。
+
+    `parts` 只接受 `consistency` / `craft`（逗号分隔，默认两者都跑）。返回里
+    `coverage` 会如实说明扫了多少章、哪几章没扫到、有没有截断——不静默丢章节。
+    """
+    wanted = {p.strip() for p in str(parts).split(",") if p.strip()}
+    wanted &= {"consistency", "craft"}
+    if not wanted:
+        raise HTTPException(status_code=400, detail="parts 需要包含 consistency 或 craft")
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    out: dict = {"parts": sorted(wanted)}
+    if "consistency" in wanted:
+        from app.core.novel_consistency import analyze_novel_consistency
+
+        out["consistency"] = analyze_novel_consistency(
+            vn, focus=focus, max_issues=max(1, min(int(max_issues), 1000))
+        )
+    if "craft" in wanted:
+        from app.core.novel_craft import analyze_novel_craft
+
+        out["craft"] = analyze_novel_craft(vn, chapter_id=chapter_id or None)
+    return out
+
+
 @router.post("/{project_id}/analysis/facts/reconcile")
 async def analysis_facts_reconcile(
     project_id: str,

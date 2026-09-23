@@ -20,6 +20,8 @@ const SECTION_KEYS = [
   "timeline",
   "variables",
   "sprites",
+  // 写作目标：漏了它，"只改目标"的那次保存不会被判定为有改动 → 目标永远存不上
+  "writingGoals",
 ] as const;
 
 export type ProjectDiff = {

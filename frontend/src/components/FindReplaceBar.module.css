@@ -1,0 +1,75 @@
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem 0.6rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-bg);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.input {
+  flex: 1 1 180px;
+  min-width: 120px;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--input-bg, transparent);
+  color: inherit;
+  font-size: 0.88rem;
+}
+
+.count {
+  min-width: 6.5rem;
+  font-size: 0.82rem;
+  color: var(--muted, #8a8f98);
+  font-variant-numeric: tabular-nums;
+}
+
+.note {
+  font-size: 0.82rem;
+  color: var(--muted, #8a8f98);
+}
+
+.ghost {
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.ghost:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.toggleOn,
+.toggleOff {
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 0.78rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  cursor: pointer;
+}
+
+.toggleOn {
+  border: 1px solid var(--accent, #4c8bf5);
+  background: color-mix(in srgb, var(--accent, #4c8bf5) 18%, transparent);
+  color: inherit;
+}
+
+.toggleOff {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted, #8a8f98);
+}

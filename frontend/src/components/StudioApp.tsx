@@ -58,6 +58,8 @@ import {
   unlockChapter,
   type ChapterLockInfo,
 } from "../api/collab";
+import { FindReplaceBar } from "./FindReplaceBar";
+import { WriteAids } from "./WriteAids";
 import { ScriptEditor } from "./ScriptEditor";
 import { MapExtractReview } from "./MapExtractReview";
 import { AgentFloat } from "./AgentFloat";
@@ -248,6 +250,18 @@ function AnalysisPanels(props: ComponentProps<typeof AnalysisPanelsImpl>) {
   );
 }
 
+// 稿件体检面板只在点到「稿件体检」子页时才需要（连它的 CSS 一起延后加载）
+const NovelAuditPanelImpl = lazy(() =>
+  import("./NovelAuditPanel").then((m) => ({ default: m.NovelAuditPanel }))
+);
+function NovelAuditPanel(props: ComponentProps<typeof NovelAuditPanelImpl>) {
+  return (
+    <Suspense fallback={<LazyPanelFallback label="稿件体检" />}>
+      <NovelAuditPanelImpl {...props} />
+    </Suspense>
+  );
+}
+
 // 桌面视图本身就是一整套外壳（图标/窗口/菜单），只在桌面模式下渲染
 const DesktopViewImpl = lazy(() =>
   import("./DesktopView").then((m) => ({ default: m.DesktopView }))
@@ -288,6 +302,7 @@ function tabIndex(tab: StudioTab): number {
 const PROJECT_SUBS_PRIMARY = [
   ["library", "剧本库"],
   ["stats", "写作统计"],
+  ["audit", "稿件体检"],
   ["analysis", "结构分析"],
   ["export", "导出"],
 ] as const;
@@ -382,6 +397,10 @@ export function StudioApp() {
   });
   const writeModeRef = useRef<WriteMode>(writeMode);
   writeModeRef.current = writeMode;
+  /** 查找/替换条：正文在 textarea 里，浏览器自带的 Ctrl+F 搜不到它 */
+  const [findOpen, setFindOpen] = useState(false);
+  /** 打开查找时预填的词（一般是编辑器里刚选中的文字） */
+  const [findSeed, setFindSeed] = useState("");
   const [generatingRpy, setGeneratingRpy] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
@@ -759,6 +778,47 @@ export function StudioApp() {
     setCaretHint(null);
     if (offset === null) return;
     focusEditorRange(offset, offset);
+  }
+
+  /**
+   * 正文被改动后的统一处理（手打、语音转写、常用标点、分场标记、查找替换都走这里）。
+   * 集中一处是为了不漏事：RPY 过期标记、标记失效校验、自动保存，缺一个都会让作者
+   * 在"看起来改了其实没存"的状态里工作。
+   */
+  function applyEditorText(next: string) {
+    editorRef.current = next;
+    setEditor(next);
+    if (rpyPreview) setRpyStale(true);
+    // 人一动手写，"上次停在这里"就没意义了，收起来
+    setCaretHint(null);
+    // 正文一变就重新校验标记：被标记的那段没了 → 标成"已失效"
+    setMarks((prev) => (prev.length ? refreshMarks(next, prev) : prev));
+    scheduleEditorCommit();
+  }
+
+  /** 在光标处插入一段文本；光标落到插入内容之后（连着插两次不会叠在一起）。 */
+  function insertAtCaret(snippet: string) {
+    const ta = editorTaRef.current;
+    const current = editorRef.current;
+    const start = ta ? ta.selectionStart ?? current.length : current.length;
+    const end = ta ? ta.selectionEnd ?? start : start;
+    const hasCaret = Boolean(ta);
+    const next = hasCaret
+      ? current.slice(0, start) + snippet + current.slice(end)
+      : current
+        ? `${current}\n${snippet}`
+        : snippet;
+    const caretAt = hasCaret ? start + snippet.length : next.length;
+    applyEditorText(next);
+    window.requestAnimationFrame(() => focusEditorRange(caretAt, caretAt));
+  }
+
+  /** 打开查找条：编辑器里选中的文字直接当查找词（"这个词还在别处出现吗"）。 */
+  function openFind() {
+    const ta = editorTaRef.current;
+    const picked = ta ? ta.value.slice(ta.selectionStart ?? 0, ta.selectionEnd ?? 0) : "";
+    setFindSeed(picked.length > 0 && picked.length <= 80 && !picked.includes("\n") ? picked : "");
+    setFindOpen(true);
   }
 
   // ---- 标记批改：标记 / 处理 / 接受 / 撤回 -------------------------------------
@@ -2807,6 +2867,16 @@ export function StudioApp() {
                   <WritingStatsPanel projectId={project.id} />
                 )}
 
+                {projectSub === "audit" && project && (
+                  <NovelAuditPanel
+                    projectId={project.id}
+                    onOpenChapter={(id) => {
+                      setChapterId(id);
+                      setTab("write");
+                    }}
+                  />
+                )}
+
                 {projectSub === "analysis" && project && (
                   <AnalysisPanels
                     project={project}
@@ -2992,23 +3062,48 @@ export function StudioApp() {
                         setStatus("已放弃这次改稿的对照预览。正文保持原样，没有做任何改动。");
                       }}
                       onDictateInsert={(text) => {
-                        // Insert transcript at the editor caret; fall back to append.
-                        const ta = editorTaRef.current;
-                        let next = editorRef.current;
-                        if (ta && ta.selectionStart !== null && ta.selectionEnd !== null) {
-                          const pos = ta.selectionStart;
-                          next =
-                            next.slice(0, pos) + text + next.slice(ta.selectionEnd);
-                        } else {
-                          next = next ? `${next}\n${text}` : text;
-                        }
-                        editorRef.current = next;
-                        setEditor(next);
-                        if (rpyPreview) setRpyStale(true);
-                        scheduleEditorCommit();
+                        insertAtCaret(text);
                         setStatus("已插入语音转写");
                       }}
                     />
+                    {/* 写作手感条：字数目标 / 分场导航 / 笔误体检。
+                        放在错误边界之外——它坏了不该连带把正文编辑器一起顶掉。 */}
+                    <WriteAids
+                      projectId={project.id}
+                      chapterId={chapterId}
+                      volumeId={chapter?.volumeId}
+                      text={editor}
+                      caret={selectionRange?.from ?? 0}
+                      // 只有正文模式做中文标点体检：RPY 是代码，同一套规则会满屏误报
+                      lint={writeMode === "prose"}
+                      writingGoals={project.writingGoals}
+                      onSaveGoals={(goals) => {
+                        updateActive((p) => ({ ...p, writingGoals: goals }));
+                        const parts = [
+                          goals.chapter ? `本章 ${goals.chapter} 字` : "",
+                          goals.volume ? `本卷 ${goals.volume} 字` : "",
+                          goals.daily ? `今日 ${goals.daily} 字` : "",
+                        ].filter(Boolean);
+                        setStatus(
+                          parts.length
+                            ? `目标已保存：${parts.join("、")}（跟着作品走，换设备也在）`
+                            : "已清空字数目标"
+                        );
+                      }}
+                      onJump={(from, length) => focusEditorRange(from, from + length)}
+                      onInsert={insertAtCaret}
+                    />
+                    {findOpen ? (
+                      <FindReplaceBar
+                        // 每次打开都用新的查找词重新挂载（否则预填值不会更新）
+                        key={`find-${findSeed}`}
+                        text={editor}
+                        onChangeText={applyEditorText}
+                        onJump={(from, length) => focusEditorRange(from, from + length)}
+                        onClose={() => setFindOpen(false)}
+                        initialQuery={findSeed}
+                      />
+                    ) : null}
                     <StudioErrorBoundary label="写作编辑器">
                       {/* 「上次停在这里」：不自动跳光标，给一个可以点的入口（长章节才有用） */}
                       {caretHint !== null ? (
@@ -3054,6 +3149,8 @@ export function StudioApp() {
                         locations={project.locations ?? []}
                         marks={markRanges}
                         anchorOffset={activeMarkOffset}
+                        // 中文标点自动配对只在正文模式生效（RPY 是代码，不改它的输入行为）
+                        autoPair={writeMode === "prose"}
                         overlay={
                           activeMark ? (
                             <MarkCard
@@ -3107,17 +3204,20 @@ export function StudioApp() {
                             : 'Ren\'Py：旁白用 "……"，对白用 角色名 "台词"'
                         }
                         onChange={(next) => {
-                          editorRef.current = next;
-                          setEditor(next);
-                          if (rpyPreview) setRpyStale(true);
-                          // 人一动手写，"上次停在这里"就没意义了，收起来
-                          setCaretHint(null);
-                          // 正文一变就重新校验标记：被标记的那段没了 → 标成"已失效"
-                          setMarks((prev) => (prev.length ? refreshMarks(next, prev) : prev));
-                          scheduleEditorCommit();
+                          applyEditorText(next);
                         }}
                         onBlur={rememberCaretNow}
                         onKeyDown={(e) => {
+                          // Ctrl/Cmd+F：查找替换（浏览器自带的搜不到 textarea 里的正文）
+                          if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
+                            e.preventDefault();
+                            openFind();
+                            return;
+                          }
+                          if (e.key === "Escape" && findOpen) {
+                            setFindOpen(false);
+                            return;
+                          }
                           // Ctrl/Cmd+M：把选中的这段标成"要改"（标记批改的快捷键）
                           if ((e.ctrlKey || e.metaKey) && (e.key === "m" || e.key === "M")) {
                             e.preventDefault();
