@@ -2989,6 +2989,7 @@ export function StudioApp() {
 
                 {projectSub === "export" && (
                   <ProjectExportPanel
+                    project={project}
                     rpyPreview={rpyPreview}
                     rpyStale={rpyStale}
                     onGenerateRpy={() => void generateRpy()}

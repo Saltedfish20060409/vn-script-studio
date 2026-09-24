@@ -3,6 +3,7 @@ import { getProjectStats, type ProjectStats } from "../api/projects";
 import { countChapterWords, formatWords } from "../lib/wordCount";
 import { goalProgress } from "../lib/editorAssist";
 import {
+  calibrateDailyGoal,
   paceEstimate,
   publishState,
   serializationStats,
@@ -13,6 +14,16 @@ import {
 import { copyForProject } from "../lib/genreCopy";
 import type { VnProject } from "../types/vn";
 import styles from "./SerialPanel.module.css";
+
+/**
+ * 停留在这页时的自动刷新间隔。
+ *
+ * 为什么需要：这一页的数字是"反馈"，而目标设定理论里反馈的**及时性**与目标难度、
+ * 承诺度一样是决定成效的调节变量——只在切章时才刷新的数字，在"今天还差多少"这件事上
+ * 等于没有反馈（作者写完一章回来看，看到的还是进来时的旧值）。
+ * 30 秒是折中：够"及时"，又不会让每敲几下就发一次请求。
+ */
+const AUTO_REFRESH_MS = 30_000;
 
 type Props = {
   project: VnProject;
@@ -53,6 +64,16 @@ export function SerialPanel({ project, onOpenChapter, onTogglePublish }: Props) 
     void load();
   }, [load]);
 
+  // 数字要"活着"：停在这一页时定时重取，切走就停（不给后台添无谓请求）
+  useEffect(() => {
+    const tick = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      void load();
+    };
+    const timer = window.setInterval(tick, AUTO_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [load]);
+
   const activity = useMemo(() => stats?.activity ?? [], [stats]);
   const streak = useMemo(() => streakInfo(activity), [activity]);
   const weeks = useMemo(() => updateCalendar(activity, 12), [activity]);
@@ -61,6 +82,11 @@ export function SerialPanel({ project, onOpenChapter, onTogglePublish }: Props) 
   const todayNet = activity.find((d) => d.date === todayKey())?.net ?? 0;
   const dailyGoal = project.writingGoals?.daily ?? 0;
   const progress = goalProgress(todayNet, dailyGoal);
+  // 目标难度校准：目标是"有难度但可达"才有效，长期达不到只会让人不再看这个数字
+  const calibration = useMemo(
+    () => calibrateDailyGoal(activity, dailyGoal),
+    [activity, dailyGoal]
+  );
 
   // 节奏预估只在"作者自己设了单章目标、而且手里有存稿"时给：样本不足一律不编数字
   const nextDraft = serial.nextToPublish
@@ -110,6 +136,17 @@ export function SerialPanel({ project, onOpenChapter, onTogglePublish }: Props) 
           ) : (
             <span className={styles.cardSub}>写作页「写作辅助」里可以设日更目标</span>
           )}
+          {/* 目标难度校准：中性陈述事实，不劝也不夸（长期达不到的目标不会激励人） */}
+          {calibration.message ? (
+            <span
+              className={
+                calibration.verdict === "unreachable" ? styles.warnSub : styles.cardSub
+              }
+              data-testid="goal-calibration"
+            >
+              {calibration.message}
+            </span>
+          ) : null}
         </div>
 
         <div className={styles.card}>

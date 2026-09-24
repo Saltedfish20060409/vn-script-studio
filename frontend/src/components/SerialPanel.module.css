@@ -81,6 +81,13 @@
   color: var(--muted, #8a8f98);
 }
 
+/* 目标明显达不到时的中性提示：不是错误，只是"这个数字该调了" */
+.warnSub {
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--warn, #c9821c);
+}
+
 .bar {
   display: block;
   width: 100%;

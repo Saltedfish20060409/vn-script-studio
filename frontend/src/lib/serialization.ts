@@ -211,9 +211,13 @@ export function serializationStats(chapters: SceneChapter[]): SerializationStats
 /**
  * 发布节奏建议：按"每天能写多少"估这一章还要几天。
  *
- * 只在两个数都拿得到时给结论：作者自己写过的日均净增（近 7 个有产出的天），
+ * 只在两个数都拿得到时给结论：作者自己写过的日均净增（近 7 个**有产出的天**），
  * 以及当前章的实时字数。**样本不足时返回 null**，界面显示"样本不够"——
  * 编一个数字出来比不给更糟。
+ *
+ * 注意它算的是"开工日能写多少"（pace），不是"日历日均"（后者见
+ * `recentAverageOverDays`）。两个数用途不同：估"还要几天写完"用开工日产能才准；
+ * 核对"日更目标是否可达"必须把没写的天算进去。
  */
 export function paceEstimate(
   activity: WritingActivityDay[],
@@ -227,4 +231,89 @@ export function paceEstimate(
   const perDay = Math.round(recent.reduce((a, b) => a + b, 0) / recent.length);
   if (perDay <= 0) return null;
   return { perDay, days: Math.max(1, Math.ceil(remainingWords / perDay)) };
+}
+
+/**
+ * 近 N 个**日历日**的日均净增（没写的天按 0 计入）。
+ *
+ * 依据 Locke & Latham 的目标设定理论：目标要"有难度但可达"，否则承诺度会掉——
+ * 而这个数字是判断"可达"的唯一实据。用日历日均而不是开工日均：一周写三天、
+ * 每天 3000 字的人，日更 3000 是做不到的，但按开工日均算会显示"已达标"——那是自欺。
+ */
+export function recentAverageOverDays(
+  activity: WritingActivityDay[],
+  days = 7,
+  now: Date = new Date()
+): { perDay: number; totalNet: number; days: number; activeDays: number } {
+  const window = Math.max(1, Math.floor(days));
+  const keys = new Set<string>();
+  for (let i = 0; i < window; i += 1) keys.add(dayKey(shiftDays(now, -i)));
+  let total = 0;
+  let active = 0;
+  for (const day of activity ?? []) {
+    if (!keys.has(day.date)) continue;
+    if (day.net > 0) {
+      total += day.net;
+      active += 1;
+    }
+  }
+  return {
+    perDay: Math.round(total / window),
+    totalNet: total,
+    days: window,
+    activeDays: active,
+  };
+}
+
+export interface GoalCalibration {
+  /** 目标与近期实际节奏的关系 */
+  verdict: "no-goal" | "insufficient" | "comfortable" | "stretch" | "unreachable";
+  /** 给作者看的一句话（描述事实，不劝、不夸） */
+  message: string;
+}
+
+/**
+ * 日更目标与近期实际节奏的对照。
+ *
+ * 为什么值得专门做：目标设定理论里"反馈"与"目标难度"是决定成效的两个调节变量。
+ * 一个长期达不到的目标不会激励人，只会让人不再看这个数字——所以这里给的是**中性的事实
+ * 对照**（近期日历日均 vs 目标），不是鼓励也不是责备。
+ *
+ * 阈值是手调的经验值（代码里注明）：日均 ≥ 目标 → comfortable；≥ 一半 → stretch；
+ * 低于一半 → unreachable（这时该建议调目标，而不是让人硬撑）。
+ * 近 7 天产出少于 2 天时不下结论——样本不足时任何"你落后了"都是噪音。
+ */
+export function calibrateDailyGoal(
+  activity: WritingActivityDay[],
+  target: number,
+  now: Date = new Date()
+): GoalCalibration {
+  if (!(target > 0)) {
+    return { verdict: "no-goal", message: "" };
+  }
+  const recent = recentAverageOverDays(activity, 7, now);
+  if (recent.activeDays < 2) {
+    return {
+      verdict: "insufficient",
+      message: "近 7 天产出少于 2 天，样本不足——再写几天就有对照了",
+    };
+  }
+  if (recent.perDay >= target) {
+    return {
+      verdict: "comfortable",
+      message: `近 7 天日均 ${recent.perDay} 字，已经能稳定达到这个目标`,
+    };
+  }
+  if (recent.perDay * 2 >= target) {
+    return {
+      verdict: "stretch",
+      message: `近 7 天日均 ${recent.perDay} 字，目标 ${target} 字偏紧但够得着`,
+    };
+  }
+  return {
+    verdict: "unreachable",
+    message:
+      `近 7 天日均 ${recent.perDay} 字，离目标 ${target} 字差得较远——` +
+      "把它调低到能稳定做到的水平，比长期差一截更有用",
+  };
 }

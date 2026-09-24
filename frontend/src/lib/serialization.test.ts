@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { WritingActivityDay } from "../api/projects";
 import type { SceneChapter } from "../types/vn";
 import {
+  calibrateDailyGoal,
   dayKey,
   paceEstimate,
   publishState,
+  recentAverageOverDays,
   serializationStats,
   streakInfo,
   updateCalendar,
@@ -231,6 +233,80 @@ describe("publishState 与 serializationStats", () => {
 function countOf(ch: SceneChapter): number {
   return serializationStats([ch]).draftWords;
 }
+
+describe("recentAverageOverDays 日历日均（目标是否可达的实据）", () => {
+  it("没写的天按 0 计入（一周写三天不能算日更达标）", () => {
+    const r = recentAverageOverDays(
+      [day(dateOf(0), 3000), day(dateOf(-2), 3000), day(dateOf(-4), 3000)],
+      7,
+      NOW
+    );
+    expect(r.totalNet).toBe(9000);
+    expect(r.activeDays).toBe(3);
+    expect(r.perDay).toBe(Math.round(9000 / 7)); // ≈1286，而不是 3000
+  });
+
+  it("窗口外的记录不计入", () => {
+    const r = recentAverageOverDays([day(dateOf(-10), 99999)], 7, NOW);
+    expect(r.totalNet).toBe(0);
+    expect(r.perDay).toBe(0);
+    expect(r.activeDays).toBe(0);
+  });
+
+  it("删字的天不算产出（负净增不抵消别的天）", () => {
+    const r = recentAverageOverDays(
+      [day(dateOf(0), 700, 200), day(dateOf(-1), 500, 900)],
+      7,
+      NOW
+    );
+    expect(r.totalNet).toBe(500);
+    expect(r.activeDays).toBe(1);
+  });
+
+  it("空记录返回 0 而不是抛异常", () => {
+    expect(recentAverageOverDays([], 7, NOW)).toEqual({
+      perDay: 0,
+      totalNet: 0,
+      days: 7,
+      activeDays: 0,
+    });
+  });
+});
+
+describe("calibrateDailyGoal 目标难度校准", () => {
+  const steady = (perDay: number) =>
+    [0, -1, -2, -3, -4, -5, -6].map((o) => day(dateOf(o), perDay));
+
+  it("没设目标时不给结论", () => {
+    expect(calibrateDailyGoal(steady(3000), 0, NOW).verdict).toBe("no-goal");
+  });
+
+  it("达得到 → comfortable", () => {
+    const c = calibrateDailyGoal(steady(3000), 2000, NOW);
+    expect(c.verdict).toBe("comfortable");
+    expect(c.message).toContain("稳定达到");
+  });
+
+  it("偏紧但够得着 → stretch", () => {
+    expect(calibrateDailyGoal(steady(1200), 2000, NOW).verdict).toBe("stretch");
+  });
+
+  it("差得较远 → unreachable，并建议调目标（不劝人硬撑）", () => {
+    const c = calibrateDailyGoal(steady(300), 3000, NOW);
+    expect(c.verdict).toBe("unreachable");
+    expect(c.message).toContain("调低");
+  });
+
+  it("样本不足（近 7 天产出少于 2 天）不下结论", () => {
+    const c = calibrateDailyGoal([day(dateOf(0), 3000)], 2000, NOW);
+    expect(c.verdict).toBe("insufficient");
+    expect(c.message).toContain("样本");
+  });
+
+  it("一条记录都没有时也是 insufficient，不是失败", () => {
+    expect(calibrateDailyGoal([], 2000, NOW).verdict).toBe("insufficient");
+  });
+});
 
 describe("paceEstimate 节奏估算", () => {
   it("样本足够（≥3 个有产出的天）时给出日均与天数", () => {

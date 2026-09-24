@@ -1,10 +1,19 @@
 import { useState } from "react";
 import { EmptyStage } from "./EmptyStage";
 import { mascotLine } from "../lib/mascotCopy";
+import { fetchNovelAudit } from "../api/projects";
+import {
+  chapterBrief,
+  submissionPreflight,
+  type PreflightReport,
+} from "../lib/submissionPreflight";
 import type { SubmissionOptions } from "../api/projects";
+import type { VnProject } from "../types/vn";
 import styles from "./StudioApp.module.css";
 
 type Props = {
+  /** 当前作品：投稿前自检需要它（章节、元信息） */
+  project: VnProject;
   rpyPreview: string | null;
   rpyStale: boolean;
   onGenerateRpy: () => void;
@@ -25,6 +34,7 @@ type Props = {
  * Pure presentational — export/status logic stays in StudioApp.
  */
 export function ProjectExportPanel({
+  project,
   rpyPreview,
   rpyStale,
   onGenerateRpy,
@@ -45,6 +55,35 @@ export function ProjectExportPanel({
     author: "",
     contact: "",
   });
+  /** 投稿前自检结果（点了才跑：它会调一次离线体检接口） */
+  const [preflight, setPreflight] = useState<PreflightReport | null>(null);
+  const [preflightBusy, setPreflightBusy] = useState(false);
+  const [preflightError, setPreflightError] = useState("");
+
+  async function runPreflight() {
+    setPreflightBusy(true);
+    setPreflightError("");
+    try {
+      // 体检本身是离线的（不调模型、不占配额），所以这里可以随时跑
+      const audit = await fetchNovelAudit(project.id, { parts: "consistency" });
+      const issues = audit.consistency?.issues ?? [];
+      setPreflight(
+        submissionPreflight({
+          title: project.title ?? "",
+          genre: project.genre,
+          logline: project.logline,
+          chapters: (project.chapters ?? []).map(chapterBrief),
+          auditErrorCount: issues.filter((i) => i.severity === "error").length,
+          quoteUnbalancedCount: issues.filter((i) => i.code === "quote_unbalanced").length,
+          chapterGoal: project.writingGoals?.chapter ?? null,
+        })
+      );
+    } catch (e) {
+      setPreflightError(e instanceof Error ? e.message : "自检失败");
+    } finally {
+      setPreflightBusy(false);
+    }
+  }
   return (
     <>
       <div className={styles.toolbar}>
@@ -168,8 +207,45 @@ export function ProjectExportPanel({
           >
             {submissionBusy ? "打包中…" : "分章打包 (.zip)"}
           </button>
+          <button
+            type="button"
+            disabled={preflightBusy}
+            data-testid="run-preflight"
+            title="导出前检查一遍：空章、重复标题、引号不配对（会让导出吞台词）、元信息是否齐"
+            onClick={() => void runPreflight()}
+          >
+            {preflightBusy ? "检查中…" : "投稿前自检"}
+          </button>
         </div>
       </div>
+
+      {/* 投稿前自检：检查的是"我们写明的默认值 + 你这本书的状态"，不是某个平台的规范
+          （平台要求各不相同、也查不到权威来源，所以不假装对齐）。 */}
+      {preflightError ? <p className={styles.hint}>{preflightError}</p> : null}
+      {preflight ? (
+        <div className={styles.toolbar} data-testid="preflight-result">
+          <div>
+            <strong>
+              {preflight.okToSubmit
+                ? "自检通过：没有会破坏阅读的问题"
+                : `有 ${preflight.blockers} 项必须先处理`}
+            </strong>
+            <ul className={styles.hint}>
+              {preflight.checks.map((c) => (
+                <li key={c.id}>
+                  {c.level === "blocker" ? "⛔ " : c.level === "warn" ? "⚠️ " : "· "}
+                  <strong>{c.title}</strong>：{c.detail}
+                  {c.fix ? ` — ${c.fix}` : ""}
+                </li>
+              ))}
+            </ul>
+            <p className={styles.hint}>
+              自检只覆盖"交出去会出问题"的那几类。更多细节（标点/人名/注音/钩子）在
+              「项目 → 稿件体检」。
+            </p>
+          </div>
+        </div>
+      ) : null}
       <details className={styles.hint}>
         <summary>下载了 Ren'Py 项目包之后怎么跑？（三步）</summary>
         <ol>

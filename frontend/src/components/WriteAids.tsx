@@ -41,6 +41,9 @@ const todayKey = (): string => {
 /** 折叠状态存在本机（不属于作品数据，换设备不该跟着走） */
 const AIDS_COLLAPSED_KEY = "vnss-write-aids-collapsed";
 
+/** 「今日净增」的自动刷新间隔：与连载页同一个口径（及时，但别每敲几下就发请求） */
+const STATS_REFRESH_MS = 30_000;
+
 function Bar({ ratio, done }: { ratio: number; done: boolean }) {
   return (
     <span className={styles.bar} aria-hidden>
@@ -151,19 +154,31 @@ export function WriteAids({
   }
 
   // 今日净增 / 本卷字数只有服务端知道（/stats 已经在维护按天净增），
-  // 切章时再拉一次即可——正文本身实时算，不需要等接口。
+  // 正文本身实时算，不需要等接口。
+  //
+  // 但"今日净增"这个数字必须**及时**：作者写着写着瞟一眼，看到的是进来时的旧值，
+  // 那就不算反馈（目标设定理论里反馈的及时性与目标难度、承诺度同为调节变量）。
+  // 所以除了切章，停在这一页时每 30 秒补拉一次；页面不可见时不拉。
   useEffect(() => {
     let cancelled = false;
-    getProjectStats(projectId)
-      .then((s) => {
-        if (!cancelled) setStats(s);
-      })
-      .catch(() => {
-        // 统计拿不到不影响写作：进度条少两个数字，界面上不弹错
-        if (!cancelled) setStats(null);
-      });
+    const load = () => {
+      getProjectStats(projectId)
+        .then((s) => {
+          if (!cancelled) setStats(s);
+        })
+        .catch(() => {
+          // 统计拿不到不影响写作：进度条少两个数字，界面上不弹错
+          if (!cancelled) setStats(null);
+        });
+    };
+    load();
+    const timer = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      load();
+    }, STATS_REFRESH_MS);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, [projectId, chapterId]);
 
