@@ -29,6 +29,12 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 DEFAULT_ITERS = 5000
 DEFAULT_ALPHA = 0.05
 
+#: 比例读数的"样本太少"门槛（次数，不是试玩场次）。
+#: 与 `playtest_telemetry.MIN_SAMPLE_RUNS`（10 次试玩才做经验判断）同一套理由：
+#: 个位数的样本上，任何方向性结论都站不住。这里按**选择次数**算——一个菜单可能只被
+#: 选过 3 次，而全站有 20 场试玩。
+THIN_SAMPLE_N = 10
+
 
 def _percentile(sorted_vals: Sequence[float], q: float) -> float:
     if not sorted_vals:
@@ -187,3 +193,102 @@ def format_ci(ci: Dict[str, Any]) -> str:
         f"{ci['mean']:+.2f}  95%CI [{ci['lo']:+.2f}, {ci['hi']:+.2f}] "
         f"n={ci['n']}{flag}"
     )
+
+
+# --------------------------------------------------------------- 比例型指标
+
+
+def z_for_alpha(alpha: float = DEFAULT_ALPHA) -> float:
+    """双侧置信水平对应的正态分位数（``alpha=0.05`` → 1.96）。
+
+    用 Acklam 的有理逼近实现逆正态：误差 < 1e-9，纯 stdlib。
+    为什么要支持任意 alpha 而不是写死 1.96：报告里同时要用到 90% / 95% / 99%
+    （小样本时把区间放宽才不至于把噪声当结论），写死一个数会让调用方各自抄常量。
+    """
+    if not 0 < alpha < 1:
+        raise ValueError("alpha 必须在 (0,1) 之间")
+    p = 1.0 - alpha / 2.0
+    # Acklam 逼近
+    a = [-3.969683028665376e01, 2.209460984245205e02, -2.759285104469687e02,
+         1.383577518672690e02, -3.066479806614716e01, 2.506628277459239e00]
+    b = [-5.447609879822406e01, 1.615858368580409e02, -1.556989798598866e02,
+         6.680131188771972e01, -1.328068155288572e01]
+    c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e00,
+         -2.549732539343734e00, 4.374664141464968e00, 2.938163982698783e00]
+    d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e00,
+         3.754408661907416e00]
+    plow, phigh = 0.02425, 1 - 0.02425
+    if p < plow:
+        q = math.sqrt(-2 * math.log(p))
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+            (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1
+        )
+    if p > phigh:
+        q = math.sqrt(-2 * math.log(1 - p))
+        return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+            (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1
+        )
+    q = p - 0.5
+    r = q * q
+    return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (
+        (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r) + 1
+    )
+
+
+def wilson_interval(
+    successes: int,
+    total: int,
+    *,
+    alpha: float = DEFAULT_ALPHA,
+) -> Dict[str, Any]:
+    """比例的 **Wilson 得分区间**（比"正态近似"在小样本/极端比例下正确得多）。
+
+    为什么要它：试玩样本常常只有 5～20 次，而界面上显示的是 `share`（一个百分比）。
+    「80% 选了 A」在 n=5 时的 95% 区间大约是 38%～96%——把这种数字当结论会直接改错剧本。
+    本仓库早有同样的态度（"3 次试玩里没人选什么也说明不了"），这里把态度变成可显示的区间。
+
+    为什么用 Wilson 而不是朴素正态近似：后者在 p 接近 0 或 1、或 n 很小时会给出越界
+    （负的）或宽度为 0 的区间——而"没人选"恰恰是最常见的场景。
+
+    边界：``total <= 0`` 时返回全 None（没数据就说没数据，不编 0）。
+    """
+    n = int(total or 0)
+    k = int(successes or 0)
+    if n <= 0:
+        return {"n": 0, "k": 0, "p": None, "lo": None, "hi": None, "alpha": alpha}
+    k = max(0, min(k, n))
+    z = z_for_alpha(alpha)
+    phat = k / n
+    denom = 1 + z * z / n
+    centre = (phat + z * z / (2 * n)) / denom
+    half = (z * math.sqrt(phat * (1 - phat) / n + z * z / (4 * n * n))) / denom
+    lo = max(0.0, centre - half)
+    hi = min(1.0, centre + half)
+    width = hi - lo
+    return {
+        "n": n,
+        "k": k,
+        "p": round(phat, 4),
+        "lo": round(lo, 4),
+        "hi": round(hi, 4),
+        "alpha": alpha,
+        # 区间宽度：调用方据此决定"这条读数敢不敢下结论"
+        "width": round(width, 4),
+        # 区间宽到横跨半个单位区间：任何方向性结论都不成立
+        "wide": bool(width >= 0.5),
+        # 样本量本身就少（次数口径）。为什么不只看宽度：5/5 的区间是 57%–100%，
+        # 宽度 0.44 不到 0.5，但它显然不足以支撑"读者一致选它"这种结论。
+        "thin": bool(n < THIN_SAMPLE_N),
+    }
+
+
+def format_proportion(ci: Dict[str, Any]) -> str:
+    """给终端/日志用的一行人话：`80%（95%CI 38%–96%，n=5，样本太少）`。"""
+    if not ci or ci.get("p") is None:
+        return "n/a（没有样本）"
+    pct = f"{ci['p'] * 100:.0f}%"
+    lo = f"{ci['lo'] * 100:.0f}%"
+    hi = f"{ci['hi'] * 100:.0f}%"
+    pct_alpha = int(round((1 - float(ci.get("alpha") or DEFAULT_ALPHA)) * 100))
+    tail = "，样本太少" if (ci.get("thin") or ci.get("wide")) else ""
+    return f"{pct}（{pct_alpha}%CI {lo}–{hi}，n={ci['n']}{tail}）"

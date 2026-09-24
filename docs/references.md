@@ -193,7 +193,7 @@ Tail at Scale 的 hedging 决策。
 |---|---|---|
 | [Art or Artifice?](https://dl.acm.org/doi/fullHtml/10.1145/3613904.3642731) | LLM 的"创造力"判断与人类作家系统性不一致 | 支持我们的做法：结构量（暴露率/检出率）+ 人工盲测，而不是让模型打分 |
 | [The Silent Judge](https://arxiv.org/abs/2509.26072) | LLM-as-judge 存在捷径偏差（位置/长度） | 任何"模型当裁判"的环节（A/B、多变体）都要控偏差 |
-| [Dror et al., 显著性检验指南](https://aclanthology.org/P18-1128/) | 报告差异要给统计检验 | A/B 盲测报告应给区间而非单点差值（**待办**） |
+| [Dror et al., 显著性检验指南](https://aclanthology.org/P18-1128/) | 报差异就要报不确定度 | **离线 A/B 那一侧早就做了**（`core/eval_stats.py` 的配对 bootstrap 区间 / 符号检验 / McNemar）；本轮补的是**比例型读数**：试玩遥测的选项占比与结局到达率现在都带 **Wilson 区间**（`wilson_interval`），"读者证据"那条建议也会带上"样本还不足以说明共识"的提示 |
 | [Merging Facts, Crafting Fallacies](https://aclanthology.org/2024.findings-acl.160.pdf) | 原子事实法在"聚合后的矛盾"上失效 | `consistency_scan` 跨窗聚合的固有局限（已写进文档的残余风险） |
 | [Self-Refine](https://www.ijcai.org/proceedings/2024/0693.pdf) | 需要外部反馈才有增益，纯自我批评会退化 | `harness_editor_pass`：先跑确定性体检、体检全过就不调模型 |
 | [Best-of-N Selection via Self-Certainty](https://proceedings.neurips.cc/paper_files/paper/2025/hash/1c7eff166a8e345f664f0faa8f4e4d2e-Abstract-Conference.html) | 多变体应按自洽度/不确定性选，而不是抽签 | `processMark(..., 3)` 的多变体取舍（**待办**） |
@@ -258,6 +258,8 @@ Tail at Scale 的 hedging 决策。
 - [x] Riedl&Young / Plan-and-Write / Re3 / LongWriter / CALYPSO /
       Art or Artifice? / Silent Judge / Merging Facts / Self-Refine / MemGPT：
       **判定为"参考不改代码"并逐条写明理由**（见上方专节）——不是漏做
-- [ ] Dror：A/B 报告给区间（现在只给单点差值）
+- [x] Dror：比例型读数带 **Wilson 区间**（`eval_stats.wilson_interval`，含 `wide`/`thin`
+      两个"样本够不够"的信号）→ 接进试玩遥测的选项占比与结局到达率；"读者证据"建议里
+      如实提示"样本不足以说明共识"。离线 A/B 的 bootstrap/符号检验/McNemar 本来就有
 - [ ] Best-of-N：多变体按自洽度选（现在靠挑）
 - [ ] Tail at Scale：慢思考档的 hedged request（要先算清 2× token 成本这笔账）

@@ -170,6 +170,73 @@ def test_option_share_is_zero_when_menu_never_shown():
             assert option["neverSelected"] is True
 
 
+# ------------------------------------------------- 比例必须带区间（Dror et al.）
+
+# 为什么这几条重要：试玩样本常常只有个位数，而界面上显示的是百分比。
+# 「80% 选了 A」在 n=5 时的 95% 区间是 38%–96% —— 不带区间就会把噪声当结论。
+
+
+def test_option_share_carries_a_wilson_interval():
+    runs = [_run(f"r{i}") for i in range(5)]
+    # m1 被选了 4 次：3 次选 0、1 次选 1
+    choices = [
+        _choice("r0", 0, "m1", 0),
+        _choice("r1", 0, "m1", 0),
+        _choice("r2", 0, "m1", 0),
+        _choice("r3", 0, "m1", 1),
+        _choice("r4", 0, "m2", 0, chapter="chB"),
+    ]
+    menus = {m["menuId"]: m for m in _analytics(runs, choices)["choices"]["menus"]}
+    opt0 = next(o for o in menus["m1"]["options"] if o["index"] == 0)
+    ci = opt0["shareCi"]
+    assert ci["n"] == 4 and ci["k"] == 3
+    assert ci["p"] == 0.75
+    assert ci["lo"] < 0.75 < ci["hi"]
+    # 小样本：区间很宽，界面据此提示"样本太少"
+    assert ci["wide"] is True
+
+
+def test_reached_label_shares_carry_intervals_too():
+    # 结局分布只统计**走完的**试玩，所以这里必须给 ending（否则 reached 为空）
+    runs = [_run(f"r{i}", ending="true_end") for i in range(4)]
+    choices = [_choice("r0", 0, "m1", 0), _choice("r1", 0, "m1", 0)]
+    out = _analytics(runs, choices)
+    reached = {row["label"]: row for row in out["endings"]["reached"]}
+    assert reached, out["endings"]
+    row = reached["true_end"]
+    assert row["shareCi"]["n"] == 4
+    assert row["shareCi"]["k"] == row["runs"]
+    assert row["shareCi"]["lo"] <= row["share"] <= row["shareCi"]["hi"]
+
+
+def test_no_samples_means_no_interval_not_zero():
+    """没有样本时给全 None —— 不编一个 0%–100%。"""
+    out = _analytics([], [])
+    for menu in out["choices"]["menus"]:
+        for option in menu["options"]:
+            assert option["shareCi"]["n"] == 0
+            assert option["shareCi"]["p"] is None
+            assert option["shareCi"]["lo"] is None
+
+
+def test_intervals_stay_inside_zero_one_and_contain_the_point_estimate():
+    """边界性质：区间必须落在 [0,1] 且包含点估计（Wilson 的好处正在这里）。"""
+    for k, n in ((0, 1), (1, 1), (0, 7), (7, 7), (1, 2), (3, 10)):
+        from app.core.eval_stats import wilson_interval
+
+        ci = wilson_interval(k, n)
+        assert 0.0 <= ci["lo"] <= ci["p"] <= ci["hi"] <= 1.0, (k, n, ci)
+
+
+def test_interval_is_not_leaked_into_privacy_sensitive_fields():
+    """区间只是数字：加它不该让任何文案类字段出现（隐私红线仍守住）。"""
+    runs = [_run("r0")]
+    choices = [_choice("r0", 0, "m1", 0)]
+    payload = json.dumps(_analytics(runs, choices), ensure_ascii=False)
+    assert "选项文案" not in payload
+    assert "提示语" not in payload
+
+
 def test_unknown_menu_and_chapter_are_reported_separately():
     runs = [_run("r0")]
     choices = [
@@ -252,7 +319,10 @@ def test_ending_distribution_and_declared_never_reached():
     ]
     out = _analytics(runs, [])
     endings = out["endings"]
-    assert endings["reached"] == [
+    # 只比这条用例关心的字段：新加的 shareCi 由下面的专门用例断言
+    # （整字典相等会让每次加字段都变成"改测试"，那不叫回归保护）。
+    rows = [{k: v for k, v in row.items() if k != "shareCi"} for row in endings["reached"]]
+    assert rows == [
         {
             "label": "true_end",
             "name": "真结局",
@@ -264,6 +334,8 @@ def test_ending_distribution_and_declared_never_reached():
             "isStaticTerminal": True,
         }
     ]
+    # 但区间必须真的在（这是 Dror 那条：比例读数要带不确定度）
+    assert endings["reached"][0]["shareCi"]["n"] == 3
     assert [row["label"] for row in endings["neverReached"]] == ["bad_end"]
     assert endings["neverReached"][0]["name"] == "坏结局"
     assert endings["declaredTotal"] == 2

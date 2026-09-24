@@ -49,6 +49,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.eval_stats import wilson_interval
+
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------- 参数
@@ -421,6 +423,12 @@ def _menu_section(
                     "index": idx,
                     "selected": picked,
                     "share": round(picked / total, 4) if total else 0.0,
+                    # 比例必须带区间：试玩常常只有个位数样本，「80% 选了 A」在 n=5 时
+                    # 的 95% 区间是 38%–96%（见 core/eval_stats.wilson_interval）。
+                    # 口径说明：这里的分母是**这一菜单的选择次数**（一次试玩在每个菜单选一次），
+                    # 同一次试玩内的多次选择可能有相关性，所以区间是**近似**的——
+                    # 它够用来判断"这个数字敢不敢当结论"，不适合当精确推断。
+                    "shareCi": wilson_interval(picked, total),
                     "neverSelected": picked == 0,
                     "available": available,
                     "condition": str(opt.get("condition") or ""),
@@ -571,6 +579,10 @@ def _endings_section(
                 "name": str((item or {}).get("name") or label),
                 "runs": count,
                 "share": round(count / n_runs, 4) if n_runs else 0.0,
+                # 到达率同样是比例：n 小的时候「70% 的试玩到了这里」可能等价于
+                # 「任何 30%–95% 的值都成立」，所以一并给区间（Dror et al. 那条：
+                # 报差异/比例就要报不确定度）。
+                "shareCi": wilson_interval(count, n_runs),
                 "declared": item is not None,
                 "declaredReachable": bool((item or {}).get("reachable", False)),
                 "declaredExists": bool((item or {}).get("exists", False)),

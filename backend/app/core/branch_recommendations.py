@@ -287,13 +287,29 @@ def _reader_recommendations(
             others = [s for _o, s in shares if _o is not top[0]]
             if top[1] >= DOMINANT_SHARE and others and max(others) <= (1 - DOMINANT_SHARE):
                 top_idx = _as_int(top[0].get("index"))
+                # 区间（Dror et al.）：这个"占 X%"是从**同一次试玩内的选择**里算的，
+                # 样本少时区间很宽。区间宽到横跨大半个单位区间时，把"共识"当结论就是过度解读，
+                # 所以把它写进 evidence 与 why 里，让作者自己看到不确定度。
+                ci = top[0].get("shareCi") if isinstance(top[0], Mapping) else None
+                thin = bool(
+                    isinstance(ci, Mapping) and (ci.get("thin") or ci.get("wide"))
+                )
+                why = (
+                    f"第 {top_idx + 1} 个选项占了 {top[1]:.0%} 的选择，"
+                    f"其余选项合计不到 {(1 - DOMINANT_SHARE):.0%}。"
+                )
+                if thin and isinstance(ci, Mapping):
+                    why += (
+                        f"注意样本：这个比例来自 {ci.get('n')} 次选择，"
+                        f"区间是 {float(ci.get('lo') or 0):.0%}–{float(ci.get('hi') or 0):.0%}"
+                        "，还不足以说明读者真的达成了共识。"
+                    )
                 out.append(
                     _rec(
                         "dominant_option",
                         "info",
                         "这屏其实只有一个「真选项」",
-                        f"第 {top_idx + 1} 个选项占了 {top[1]:.0%} 的选择，"
-                        f"其余选项合计不到 {(1 - DOMINANT_SHARE):.0%}。",
+                        why,
                         "两条路：要么承认读者已经达成共识、把它改成正文以加快节奏；"
                         "要么给冷门选项一个读者现在看得见的好处（信息量、角色反应、道具），"
                         "让它进入权衡。",
@@ -302,6 +318,8 @@ def _reader_recommendations(
                             "topIndex": top_idx,
                             "topShare": round(top[1], 4),
                             "selections": selections,
+                            "shareCi": dict(ci) if isinstance(ci, Mapping) else None,
+                            "smallSample": thin,
                         },
                         confidence="evidence",
                         boost=boost,
