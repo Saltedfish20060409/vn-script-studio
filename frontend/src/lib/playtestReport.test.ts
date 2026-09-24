@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  ciText,
+  ciThin,
   coverageView,
   endingsView,
   formatShare,
@@ -92,6 +94,78 @@ describe("选项占比视图", () => {
     expect(rows[0].label).toBe("第 1 个选项");
     expect(rows[0].shareText).toBe("0.0%");
     expect(rows[0].percent).toBe(0);
+  });
+});
+
+describe("占比区间（Wilson，Dror 那条）", () => {
+  it("有区间时给出可读文本，并标出样本太少", () => {
+    const rows = optionRows({
+      menuId: "m1",
+      options: [
+        {
+          index: 0,
+          selected: 4,
+          share: 0.8,
+          shareCi: {
+            n: 5,
+            k: 4,
+            p: 0.8,
+            lo: 0.3756,
+            hi: 0.9638,
+            alpha: 0.05,
+            wide: true,
+            thin: true,
+          },
+        },
+      ],
+    });
+    expect(rows[0].shareText).toBe("80.0%");
+    expect(rows[0].ciText).toBe("95%CI 38–96%");
+    expect(rows[0].ciThin).toBe(true);
+  });
+
+  it("样本充足时不标「样本太少」", () => {
+    const rows = optionRows({
+      menuId: "m1",
+      options: [
+        {
+          index: 0,
+          selected: 800,
+          share: 0.8,
+          shareCi: {
+            n: 1000,
+            k: 800,
+            p: 0.8,
+            lo: 0.774,
+            hi: 0.823,
+            alpha: 0.05,
+            wide: false,
+            thin: false,
+          },
+        },
+      ],
+    });
+    expect(rows[0].ciText).toBe("95%CI 77–82%");
+    expect(rows[0].ciThin).toBe(false);
+  });
+
+  it("后端没给区间（老数据）时留空，界面不显示括号", () => {
+    const rows = optionRows({
+      menuId: "m1",
+      options: [{ index: 0, selected: 3, share: 0.6 }],
+    });
+    expect(rows[0].ciText).toBe("");
+    expect(rows[0].ciThin).toBe(false);
+  });
+
+  it("区间字段残缺（只有 lo）时不硬凑一行", () => {
+    expect(ciText({ lo: 0.3 })).toBe("");
+    expect(ciText(null)).toBe("");
+    expect(ciThin(null)).toBe(false);
+  });
+
+  it("置信水平按 alpha 显示（99% 时写 99%CI）", () => {
+    expect(ciText({ lo: 0.1, hi: 0.9, alpha: 0.01, n: 5 })).toBe("99%CI 10–90%");
   });
 });
 

@@ -1044,6 +1044,13 @@ export function InsightPanel({ projectId, chapters }: Props) {
                     </span>
                     <span className={styles.shareValue}>
                       {row.shareText} · {row.selected} 次
+                      {/* 比例必须带区间：样本少时「80%」可能只意味着"任何 38%–96% 都成立" */}
+                      {row.ciText ? (
+                        <span className={styles.dim}>
+                          （{row.ciText}
+                          {row.ciThin ? "，样本太少" : ""}）
+                        </span>
+                      ) : null}
                     </span>
                   </li>
                 ))}

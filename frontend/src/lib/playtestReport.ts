@@ -50,10 +50,44 @@ export type LooseOption = {
   index?: number;
   selected?: number;
   share?: number;
+  /** Wilson 区间（后端算的）：比例读数必须带不确定度 */
+  shareCi?: ProportionCi;
   neverSelected?: boolean;
   available?: boolean;
   conditionBlockedSelections?: number;
 };
+
+/** 后端 `eval_stats.wilson_interval` 的返回形状（只取前端要用到的字段）。 */
+export type ProportionCi = {
+  n?: number;
+  k?: number;
+  p?: number | null;
+  lo?: number | null;
+  hi?: number | null;
+  alpha?: number;
+  /** 区间宽度 ≥ 半个单位区间 */
+  wide?: boolean;
+  /** 样本次数 < 10（「样本太少」的另一半判据） */
+  thin?: boolean;
+};
+
+/**
+ * 区间 → 一行短文本：`95%CI 38–96%`。
+ *
+ * 为什么不把区间塞进 `shareText`：那个字段是"占比本身"，很多地方（条宽、既有断言）
+ * 按纯百分比解析它；区间是**附加信息**，单独一格更安全。
+ */
+export function ciText(ci?: ProportionCi | null): string {
+  if (!ci || typeof ci.lo !== "number" || typeof ci.hi !== "number") return "";
+  const pct = Math.round((1 - asNumber(ci.alpha, 0.05)) * 100);
+  return `${pct}%CI ${Math.round(ci.lo * 100)}–${Math.round(ci.hi * 100)}%`;
+}
+
+/** 这条比例读数"敢不敢下结论"：样本次数少或区间很宽时不该当结论。 */
+export function ciThin(ci?: ProportionCi | null): boolean {
+  if (!ci) return false;
+  return Boolean(ci.thin || ci.wide);
+}
 
 export type LooseMenu = {
   menuId?: string;
@@ -70,6 +104,10 @@ export type OptionRowView = {
   label: string;
   /** "42.9%" */
   shareText: string;
+  /** "95%CI 12–73%"；后端没给区间时为空串 */
+  ciText: string;
+  /** 样本够不够下结论（样本次数少或区间很宽） */
+  ciThin: boolean;
   /** 0~100，给条宽用 */
   percent: number;
   selected: number;
@@ -100,6 +138,8 @@ export function optionRows(menu: LooseMenu | null | undefined): OptionRowView[] 
       key: `${menu?.menuId ?? "menu"}#${index}`,
       label: optionLabel(index),
       shareText: formatShare(share),
+      ciText: ciText(opt?.shareCi),
+      ciThin: ciThin(opt?.shareCi),
       percent: Math.max(0, Math.min(100, share * 100)),
       selected,
       tone: neverSelected ? "warn" : "ok",
