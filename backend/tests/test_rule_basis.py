@@ -148,6 +148,10 @@ def test_frontend_and_backend_share_the_same_rule_vocabulary():
         "address_level_drift",
         # 全书级一致性：中英间距是否自相矛盾要看整本书（单看一行无从判断）
         "cjk_latin_spacing_mixed",
+        # 全书级一致性（GB/T 15835 的体例统一要求）：百分号形态、计量单位的中文/国际符号
+        # 混用同样要看整本书——单看一行既看不出混用，也没法给"两边各多少处"的证据。
+        "percent_style_mixed",
+        "unit_style_mixed",
     }
     assert backend - frontend <= allowed_backend_only, (
         f"后端有而前端没有的规则超出允许集合：{sorted(backend - frontend - allowed_backend_only)}"

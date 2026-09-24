@@ -228,7 +228,12 @@ Tail at Scale 的 hedging 决策。
 - [x] GB/T 15835：数值范围（`dash_ascii_range`）、公历年份用阿拉伯数字（`cjk_year_digits`）、
       「几」表约数用汉字（`arabic_with_ji`）、概数不用顿号（`arabic_dunhao_range`）
 - [x] CY/T 154-2017：中英间距**内部一致性**（`cjk_latin_spacing_mixed`）+ 为什么只判一致性
-- [ ] GB/T 15835 剩余：百分号与计量单位的写法（中文正文里 `%`/`％`、`km`/`公里` 的统一）
+- [x] GB/T 15835 剩余（体例统一）：`novel_consistency` 新增全书级两条——
+      `percent_style_mixed`（半角 `%` 与全角 `％` 混用）与 `unit_style_mixed`
+      （计量单位的中文符号与国际符号混用，如「五公里」与「5km」并存）+ 12 项测试。
+      判定纪律与上一条同款：**只判本书内部是否一致，不说哪种写法对**（两种都合规），
+      所以是 `info`；单位必须紧跟数字（`m`/`s`/`L` 这类单字母符号才不会在英文里误命中，
+      中文一侧允许汉字数字），两边各 ≥2 次才报；前后端防分叉守卫按"全书级规则"登记例外原因
 - [x] W3C Ruby：新增 `core/ruby_render.py`（源写法 → W3C `<ruby>/<rt>` / `<rp>` 回退），
       接进 Markdown、docx（含投稿稿）、.rpy 三条导出链路；
       **顺带修掉一个真实缺陷**：Ren'Py 字符串过去只转义 `\` 与 `"`，正文里的 `{` `}`

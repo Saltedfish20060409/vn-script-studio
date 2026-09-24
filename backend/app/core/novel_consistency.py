@@ -248,6 +248,16 @@ _TYPO_RULES: Dict[str, Dict[str, str]] = {
         "headline": "全角字母与半角字母混用",
         "advice": "拉丁字母统一用半角（全角字母只在极少数排版场景才用）",
     },
+    "percent_style_mixed": {
+        "severity": "info",
+        "headline": "半角 % 与全角 ％ 混用",
+        "advice": "百分号形态从全书统一（两种都合规，混用只是体例不一致）",
+    },
+    "unit_style_mixed": {
+        "severity": "info",
+        "headline": "计量单位的中文符号与国际符号混用",
+        "advice": "同一个量的写法从全书统一（如统一写「公里」或统一写 km）",
+    },
     "name_spaced_variant": {
         "severity": "warn",
         "headline": "名字内部多了空格或间隔号",
@@ -369,6 +379,14 @@ _RULE_BASIS: Dict[str, str] = {
     "cjk_latin_spacing_mixed": (
         "CY/T 154-2017《中文出版物夹用英文的编辑规范》；同一作品内部一致"
         "（**不判定加空格与不加空格哪种对**，只判定本书内部是否一致）"
+    ),
+    "percent_style_mixed": (
+        "GB/T 15835-2011《出版物上数字用法》（体例统一）；"
+        "**不判定半角与全角哪种对**，只判定同一作品内部是否一致"
+    ),
+    "unit_style_mixed": (
+        "GB/T 15835-2011《出版物上数字用法》（计量单位可用中文符号或国际符号，"
+        "但**同一出版物内应统一**）；只判定是否一致，不判定哪种对"
     ),
     "ellipsis_ascii_dots": "GB/T 15834-2011《标点符号用法》（省略号）",
     "ellipsis_fullwidth_period": "GB/T 15834-2011《标点符号用法》（省略号）",
@@ -1462,6 +1480,130 @@ def _issue(
     }
 
 
+def _style_consistency_issues(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """百分号与计量单位的写法在**整部作品里是否一致**（GB/T 15835-2011 能落地的部分）。
+
+    为什么要这条：GB/T 15835-2011《出版物上数字用法》除了"什么时候用阿拉伯数字"，
+    还有一条**体例统一**的要求——计量单位可以用中文符号（公里、公斤）也可以用国际符号
+    （km、kg），但同一出版物内要统一。作者往往两种都写过（前面写"五公里"、
+    后面写"5km"），导出成书后同一章里两种写法并排出现，读者会觉得"不干净"。
+
+    判定口径（与 `cjk_latin_spacing_mixed` 同款纪律）：
+    - **只判"本书内部是否一致"，不判哪种写法对**——中文符号与国际符号都合规，
+      我们没资格替作者定；所以严重度是 `info`，并给出两边的数量让他自己统一。
+    - 单位必须**紧跟在数字后**才算（`5km` / `5 公里` / `五公里`）：这是它的正常用法，
+      也让 `m`（米）、`s`（秒）、`L`（升）这类单字母符号不至于在英文
+      或变量名里误命中。中文符号一侧允许汉字数字（小说里「五公里」很正常），
+      国际符号一侧只认阿拉伯数字（没人写「五km」）。
+    - 两边各出现 **≥2 次**才报：一本书里孤零零一处 `10kg` 不值得打扰作者
+      （同 spacing 规则的"阈值取小但要有量"）。
+
+    百分号同理：半角 `%` 与全角 `％` 混用报一条（GB/T 15835 对百分数用阿拉伯数字，
+    符号形态同样属于"体例统一"问题）。
+    """
+    #: 量 → (中文符号正则里的别称, 国际符号别称)。别称只收**确定等价**的写法。
+    units: Sequence[Tuple[str, Sequence[str], Sequence[str]]] = (
+        ("公里", ("公里", "千米"), ("km",)),
+        ("公斤", ("公斤", "千克"), ("kg",)),
+        ("厘米", ("厘米",), ("cm",)),
+        ("毫米", ("毫米",), ("mm",)),
+        ("米", ("米",), ("m",)),
+        ("克", ("克",), ("g",)),
+        ("吨", ("吨",), ("t",)),
+        ("升", ("升",), ("L", "l")),
+        ("毫升", ("毫升",), ("mL", "ml")),
+        ("小时", ("小时",), ("h",)),
+        ("分钟", ("分钟",), ("min",)),
+        ("摄氏度", ("摄氏度",), ("℃", "°C")),
+    )
+
+    def _count(rows_in: Sequence[Dict[str, Any]], pattern: "re.Pattern[str]") -> Tuple[int, Optional[Dict[str, Any]], int, str]:
+        total = 0
+        first_row: Optional[Dict[str, Any]] = None
+        first_line = 0
+        first_quote = ""
+        for row in rows_in:
+            for line_no, line in row["lines"]:
+                matches = list(pattern.finditer(line))
+                total += len(matches)
+                if first_row is None and matches:
+                    first_row = row
+                    first_line = line_no
+                    first_quote = _quote_span(line, *matches[0].span())
+        return total, first_row, first_line, first_quote
+
+    issues: List[Dict[str, Any]] = []
+
+    percent_ascii = re.compile(r"\d\s*%")
+    percent_full = re.compile(r"\d\s*％")
+    a_count, a_row, a_line, a_quote = _count(rows, percent_ascii)
+    b_count, _b_row, _b_line, _b_quote = _count(rows, percent_full)
+    if a_count >= 2 and b_count >= 2 and a_row is not None:
+        issues.append(
+            _issue(
+                severity="info",
+                code="percent_style_mixed",
+                category="typography",
+                message=(
+                    f"百分号写法不一致：{a_count} 处用半角「%」、{b_count} 处用全角「％」。"
+                    "两种都能用，但**同一本书里应统一**（GB/T 15835 的体例统一要求）。"
+                ),
+                row=a_row,
+                line=a_line,
+                quote=a_quote,
+                evidence={"ascii": a_count, "fullwidth": b_count},
+            )
+        )
+
+    for label, chinese, symbols in units:
+        # 中文符号前后可以是**阿拉伯数字也可以是汉字数字**：「五公里」在小说里再正常不过，
+        # 它和「5km」出现在同一本书里就是这条规则要抓的不一致。
+        # 国际符号则只认阿拉伯数字（没人写「五km」）。
+        cn_re = re.compile(
+            r"[0-9０-９一二三四五六七八九十百千万零两半几]\s*(?:" + "|".join(chinese) + r")"
+        )
+        sym_re = re.compile(
+            r"\d\s*(?:" + "|".join(re.escape(s) for s in symbols) + r")(?![A-Za-z0-9])"
+        )
+        cn_count, cn_row, cn_line, cn_quote = _count(rows, cn_re)
+        sym_count, sym_row, sym_line, sym_quote = _count(rows, sym_re)
+        if cn_count < 2 or sym_count < 2:
+            continue
+        # 位置取更早出现的那一处（谁先出现就从谁开始说）
+        use_symbol = bool(
+            cn_row is not None
+            and sym_row is not None
+            and int(sym_row.get("ordinal") or 0) < int(cn_row.get("ordinal") or 0)
+        )
+        row = sym_row if use_symbol else cn_row
+        line = sym_line if use_symbol else cn_line
+        quote = sym_quote if use_symbol else cn_quote
+        if row is None:
+            continue
+        issues.append(
+            _issue(
+                severity="info",
+                code="unit_style_mixed",
+                category="typography",
+                message=(
+                    f"「{label}」的写法不一致：{cn_count} 处用中文符号、{sym_count} 处用国际符号"
+                    f"（{'/'.join(symbols)}）。两种都合规，但**同一本书里应统一**"
+                    "（GB/T 15835 的体例统一要求）；导出前统一一下，读者才不会觉得排版不干净。"
+                ),
+                row=row,
+                line=line,
+                quote=quote,
+                evidence={
+                    "unit": label,
+                    "chinese": cn_count,
+                    "symbol": sym_count,
+                    "symbols": list(symbols),
+                },
+            )
+        )
+    return issues
+
+
 def _spacing_consistency_issue(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """中英之间的空格用法在**整部作品里是否一致**（CY/T 154-2017 那一侧能落地的部分）。
 
@@ -1783,6 +1925,8 @@ def analyze_novel_consistency(
     findings.extend(_variant_issues(rows, known, cjk_terms))
     # 全书一处：中英之间的空格用法是否自相矛盾（CY/T 154-2017 那一侧能落地的部分）
     findings.extend(_spacing_consistency_issue(rows))
+    # 全书一处：百分号与计量单位的写法是否自相矛盾（GB/T 15835 的体例统一要求）
+    findings.extend(_style_consistency_issues(rows))
 
     # B 组：视角与称呼
     names = _name_forms(project)
