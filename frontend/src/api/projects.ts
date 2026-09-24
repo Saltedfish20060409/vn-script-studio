@@ -1993,6 +1993,8 @@ export type NovelAuditIssue = {
   code: string;
   category: string;
   message: string;
+  /** 这条规则的依据（国标 / 行业标准 / 作品自身一致性）——界面上要能显示"凭什么" */
+  basis?: string;
   chapterId: string;
   chapterTitle: string;
   chapterOrdinal: number;

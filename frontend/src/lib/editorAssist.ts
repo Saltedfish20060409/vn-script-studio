@@ -34,6 +34,49 @@ export interface TextIssue {
   line: number;
   /** 原文片段（截断到 24 字，供列表里直接看） */
   snippet: string;
+  /** 这条规则的依据（国标/排版需求/作品自身一致性）；见 RULE_BASIS */
+  basis: string;
+}
+
+/**
+ * 规则 → 依据。
+ *
+ * 为什么要把"依据"写进代码而不是只写在文档里：作者看到提示的第一反应是"凭什么"。
+ * 依据指向公开可查的推荐性国家标准与 W3C 排版需求（条款按**符号名**索引，不写会随版本
+ * 变化的条款号），没有公开规范可依的（视角、称呼、别字词表）就如实写成"作品自身的一致性"，
+ * 不假借国标。
+ *
+ * **推荐性 ≠ 强制**：文学写作里破例是常事，所以下面的规则全都只报 warn/info；
+ * 只有"引号不配对"是 error——它在导出时会把后续正文吞进台词。
+ *
+ * 后端 `app/core/novel_consistency.py` 的 `_RULE_BASIS` 是同一套依据的另一份副本
+ * （前端要在打字时跑、后端要在全书体检时跑），`backend/tests/test_rule_basis.py`
+ * 会解析本文件逐条比对，两边分叉就红。
+ */
+export const RULE_BASIS: Record<string, string> = {
+  quote_unbalanced: "GB/T 15834-2011《标点符号用法》（引号、括号成对使用）",
+  quote_nested_level:
+    "GB/T 15834-2011《标点符号用法》（引号里面还要用引号时，外面用双引号、里面用单引号）",
+  title_mark_nested:
+    "GB/T 15834-2011《标点符号用法》（书名号里面还要用书名号时用单书名号）；W3C《中文排版需求》(clreq)",
+  punct_half_full_adjacent:
+    "GB/T 15834-2011《标点符号用法》（标点符号的写法）；W3C《中文排版需求》(clreq)（标点的比例与位置）",
+  punct_halfwidth_near_cjk: "GB/T 15834-2011《标点符号用法》；CY/T 154-2017《中文出版物夹用英文的编辑规范》",
+  dash_ascii_double: "GB/T 15834-2011《标点符号用法》（破折号）",
+  dash_single_em: "GB/T 15834-2011《标点符号用法》（破折号占两个字的位置）",
+  dash_ascii_range:
+    "GB/T 15834-2011《标点符号用法》（连接号）；GB/T 15835-2011《出版物上数字用法》（数值范围）",
+  ellipsis_ascii_dots: "GB/T 15834-2011《标点符号用法》（省略号）",
+  ellipsis_fullwidth_period: "GB/T 15834-2011《标点符号用法》（省略号）",
+  ellipsis_with_deng: "编辑规范补充规则（省略号与「等」不宜并用）——不是国标正文，故只报 info",
+  space_between_cjk: "W3C《中文排版需求》(clreq)（中文正文的间距）；也可能是导入稿子带进来的",
+  trailing_space: "无规范依据（纯清洁度）：行尾空格不影响阅读，只影响 diff 与导出",
+  typo_confusion: "成语/固定搭配的通用写法（零歧义词表，见 lib/typoRules.ts）",
+};
+
+/** 取一条规则的依据；没有登记就返回空串（守卫测试不允许发生）。 */
+export function basisOf(code: string): string {
+  return RULE_BASIS[code] ?? "";
 }
 
 const CJK = "\\u3400-\\u4dbf\\u4e00-\\u9fff\\uf900-\\ufaff\\u3040-\\u30ff\\uac00-\\ud7af";
@@ -111,6 +154,7 @@ function checkQuotes(text: string): TextIssue[] {
         length: 1,
         line: lineOf(text, offset),
         snippet: snippetOf(text, offset, 1),
+        basis: basisOf("quote_unbalanced"),
       });
     }
   }
@@ -139,6 +183,7 @@ function scan(
         length: hit[0].length,
         line: lineOf(text, hit.index),
         snippet: snippetOf(text, hit.index, hit[0].length),
+        basis: basisOf(code),
       });
     }
     if (hit[0].length === 0) rx.lastIndex += 1;
@@ -157,6 +202,14 @@ export function lintProse(text: string): TextIssue[] {
   if (!text) return [];
   const issues: TextIssue[] = [
     ...checkQuotes(text),
+    // 半角与全角**直接连用**（`,。` / `！?`）：最强的混用信号，比"半角挨着汉字"更确定
+    ...scan(
+      text,
+      /[,.;:!?][，。；：！？]|[，。；：！？][,.;:!?]/g,
+      "warn",
+      "punct_half_full_adjacent",
+      (h) => `同一个标点位置混用了半角与全角「${h[0]}」，只留一种宽度（中文一般用全角）`
+    ),
     // 半角标点紧贴汉字：中文正文里出现 , ; : ! ? ( ) 基本是输入法没切或从英文稿粘来的
     ...scan(
       text,
@@ -203,10 +256,99 @@ export function lintProse(text: string): TextIssue[] {
     ...scan(text, /[ \t]+(?=\n|$)/g, "info", "trailing_space", () =>
       "行尾有多余空格"
     ),
+    // 嵌套层次：书名号里再用书名号用〈〉、引号里再用引号用单引号（GB/T 15834-2011）
+    ...checkNesting(text),
+    // 数字/年份区间用半角连字符（规范里用一字线或浪纹线）
+    ...scan(
+      text,
+      /(?<=[0-9])-(?=[0-9])/g,
+      "info",
+      "dash_ascii_range",
+      () => "起止数字之间按规范用一字线「—」或浪纹线「～」，不要用半角 -"
+    ),
+    // 省略号后面又用「等」（编辑规范补充规则，不是国标正文，故只报 info）
+    ...scan(
+      text,
+      /…{2,}[ \t]*等/g,
+      "info",
+      "ellipsis_with_deng",
+      () => "省略号与「等」都表示列举未尽，通常留一个即可"
+    ),
     // 常见别字（成语/固定搭配词表，零误报口径；见 lib/typoRules.ts）
     ...lintTypos(text),
   ];
   return issues.sort((a, b) => a.offset - b.offset || a.code.localeCompare(b.code));
+}
+
+/**
+ * 嵌套层次检查：书名号里再用书名号要用〈〉，引号里再用引号要用单引号。
+ *
+ * 为什么不能一条正则糊过去：判据是"此刻处在第几层"，那是状态不是模式。
+ * （后端 `_nesting_positions` 是同一套扫描；这里按行扫，因为跨行对白的开号
+ * 单看一行是合法的，按段扫会把整段对白都误判成嵌套。）
+ */
+function checkNesting(text: string): TextIssue[] {
+  const out: TextIssue[] = [];
+  const starts = lineStartsOf(text);
+  for (const [index, line] of text.split("\n").entries()) {
+    const lineStart = starts[index] ?? 0;
+    const push = (code: string, at: number, message: string) => {
+      const offset = lineStart + at;
+      out.push({
+        code,
+        level: "warn",
+        message,
+        offset,
+        length: 1,
+        line: index + 1,
+        snippet: snippetOf(text, offset, 1),
+        basis: basisOf(code),
+      });
+    };
+    for (const at of nestingPositions(line, "《", "》")) {
+      push("title_mark_nested", at, "书名号里再用书名号时应改为单书名号「〈〉」");
+    }
+    for (const [open, close] of [
+      ["“", "”"],
+      ["「", "」"],
+    ] as const) {
+      // 只在这一行里至少有两个开号时才判嵌套：只出现一个的是跨行对白，由配平规则管
+      if (line.split(open).length - 1 < 2) continue;
+      for (const at of nestingPositions(line, open, close)) {
+        push(
+          "quote_nested_level",
+          at,
+          `引号里再用引号时应降一级（${open}${close} 里用单引号）`
+        );
+      }
+    }
+  }
+  return out;
+}
+
+/** 每一行的起始偏移（用于把行内位置换算成全文偏移）。 */
+function lineStartsOf(text: string): number[] {
+  const starts = [0];
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] === "\n") starts.push(i + 1);
+  }
+  return starts;
+}
+
+/** 返回"在外层里面又开了一层"的那些开号在本行内的位置。 */
+function nestingPositions(line: string, open: string, close: string): number[] {
+  let depth = 0;
+  const out: number[] = [];
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === open) {
+      if (depth >= 1) out.push(i);
+      depth += 1;
+    } else if (ch === close && depth > 0) {
+      depth -= 1;
+    }
+  }
+  return out;
 }
 
 /**
@@ -225,6 +367,7 @@ export function lintTypos(text: string): TextIssue[] {
     length: hit.length,
     line: lineOf(text, hit.offset),
     snippet: snippetOf(text, hit.offset, hit.length),
+    basis: basisOf("typo_confusion"),
   }));
 }
 

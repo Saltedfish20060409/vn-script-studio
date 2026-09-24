@@ -177,7 +177,13 @@ export function NovelAuditPanel({ projectId, onOpenChapter }: Props) {
                       第 {iss.chapterOrdinal} 章 {iss.chapterTitle}
                       {iss.line ? ` · 第 ${iss.line} 行` : ""}
                     </button>
-                    <span className={styles.issueMsg}>{iss.message}</span>
+                    <span className={styles.issueMsg}>
+                      {iss.message}
+                      {/* 依据随手可查：作者看到提示的第一反应是"凭什么"，不藏在文档里 */}
+                      {iss.basis ? (
+                        <span className={styles.issueBasis}>依据：{iss.basis}</span>
+                      ) : null}
+                    </span>
                   </li>
                 ))}
               </ul>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  RULE_BASIS,
   SCENE_SEPARATOR,
   applyPairOnKey,
   countIssues,
@@ -15,8 +16,66 @@ import {
 // 字数口径由 wordCount.ts 提供（与后端 writing_stats.py 对齐），这里不再复制一份
 import { countWords } from "./wordCount";
 
-describe("lintProse 引号配对", () => {
-  it("一段里引号数量不等 → error，并给出两种数量", () => {
+/**
+ * 规则依据守卫（GB/T 15834-2011 那一层）。
+ *
+ * 为什么要有：这些提示过去只有"我们觉得该这样"，作者没有可以争辩的东西。
+ * 现在每条规则都必须写出**公开可查的依据**（国标/行业标准/W3C 排版需求），
+ * 或者如实标成"作品自身的一致性"。新加规则忘了写依据，这个测试就红。
+ */
+describe("规则依据（不允许没有出处的规则）", () => {
+  /** 跑一批会命中各种规则的文本，收集实际产生过的 code。 */
+  const CODES = new Set(
+    [
+      lintProse("他说：「今天不写了。\n所以呢。"), // 引号不配对
+      lintProse("你好,世界"), // 半角标点
+      lintProse("他说--不对"), // -- 破折号
+      lintProse("他—走了"), // 单个 —
+      lintProse("她说..."), // 半角省略号
+      lintProse("好的。。。"), // 。。。
+      lintProse("他 说了一句。"), // 汉字间空格
+      lintProse("他 说了一句。   "), // 行尾空格
+      lintProse("2019-2020 年间"), // 数字区间半角连字符
+      lintProse("带来了……等等东西"), // 省略号 + 等
+      lintProse("我在读《钟声与《第七个抽屉》》。"), // 书名号嵌套
+      lintProse("他说：“她叫我“小澪”。”"), // 引号嵌套
+      lintProse("他迫不急待地推开门。"), // 别字
+    ].flatMap((issues) => issues.map((i) => i.code))
+  );
+
+  it("每一条实际会报出来的规则都登记了依据", () => {
+    expect(CODES.size).toBeGreaterThanOrEqual(12);
+    for (const code of CODES) {
+      const basis = RULE_BASIS[code];
+      expect(basis, `规则 ${code} 没有登记依据`).toBeTruthy();
+      expect(basis.length, `规则 ${code} 的依据太短，等于没写`).toBeGreaterThan(8);
+    }
+  });
+
+  it("依据指向的是可查的规范或如实说明，不是空话", () => {
+    for (const [code, basis] of Object.entries(RULE_BASIS)) {
+      expect(basis.trim().length, code).toBeGreaterThan(8);
+      // 要么给出公开规范，要么如实写成"作品自身的一致性/无规范依据"
+      const ok =
+        basis.includes("GB/T") ||
+        basis.includes("CY/T") ||
+        basis.includes("clreq") ||
+        basis.includes("作品自身") ||
+        basis.includes("编辑规范") ||
+        basis.includes("无规范依据") ||
+        basis.includes("通用写法");
+      expect(ok, `${code} 的依据看不出出处：${basis}`).toBe(true);
+    }
+  });
+
+  it("每条 issue 上都带着它的依据（界面上要能直接显示）", () => {
+    for (const issue of lintProse("他迫不急待地说--完了。   ")) {
+      expect(issue.basis, issue.code).toBe(RULE_BASIS[issue.code]);
+    }
+  });
+});
+
+describe("lintProse 引号配对", () => {  it("一段里引号数量不等 → error，并给出两种数量", () => {
     const issues = lintProse("他说：「今天不写了。\n所以呢。");
     const hit = issues.find((i) => i.code === "quote_unbalanced");
     expect(hit?.level).toBe("error");

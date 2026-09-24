@@ -367,7 +367,7 @@ export function WriteAids({
                 type="button"
                 className={styles.issue}
                 data-testid="issue-jump"
-                title="跳到这一处"
+                title={`跳到这一处\n依据：${currentIssue?.basis || "（未登记）"}`}
                 onClick={() => currentIssue && onJump(currentIssue.offset, currentIssue.length)}
               >
                 第 {currentIssue?.line} 行：{currentIssue?.message}

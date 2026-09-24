@@ -61,6 +61,7 @@ docs/*
 !docs/longrange-consistency-and-eval.md
 !docs/llm-timeout-budget.md
 !docs/writing-surface.md
+!docs/references.md
 
 # react-bits 临时导出文件(不入库)
 _rb/

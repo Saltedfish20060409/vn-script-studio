@@ -125,6 +125,15 @@ _HW_DIGIT_RE = re.compile(r"[0-9]")
 _FW_LATIN_RE = re.compile(r"[Ａ-Ｚａ-ｚ]")
 _HW_LATIN_RE = re.compile(r"[A-Za-z]")
 
+#: 数字/年份区间用了半角连字符：`2019-2020`、`第3-5章`。按规范起止数字之间用一字线或浪纹线。
+#: 只在**两侧都是数字**时才算——`well-known`、`SARS-CoV-2` 这类不报（英文里的连字符是正常的）。
+_ASCII_DIGIT_RANGE_RE = re.compile(r"(?<=[0-9])-(?=[0-9])")
+
+#: 书名号嵌套：《……《……》……》 里层应该用单书名号〈〉；
+#: 引号嵌套：“……“…… 里层应该用单引号‘’；「……」里层用『』。
+#: 这两种都**不能**用一条正则糊过去（第一版就写错了）：要的是"当前已经处在第几层"，
+#: 那是状态，不是模式。所以用下面的 `_nesting_hits` 逐字符扫深度。
+
 #: 引号/括号配对表。ASCII 的 `"` `'` 不在此列：无法与英文引用、代码区分（见模块说明）。
 _QUOTE_PAIRS: Tuple[Tuple[str, str], ...] = (
     ("「", "」"),
@@ -289,12 +298,68 @@ _TYPO_RULES: Dict[str, Dict[str, str]] = {
 }
 
 
+#: **规则的依据**（code → 出处）。为什么单独一张表而不是塞进 `_TYPO_RULES`：
+#: 问题对象可能在几处产生（分组命中、逐条别字、视角/称呼），依据却只与 code 有关；
+#: 单独一张表能让"这条凭什么这么判"一眼看全，也方便被测试整体守卫。
+#:
+#: 三条原则：
+#: 1. 依据指向**公开可查**的规范：推荐性国家标准（GB/T）、行业标准（CY/T）、
+#:    W3C 排版需求（clreq）。条款按**符号名**索引（如「省略号」），不写条款号——
+#:    条款号随版本变化，而"哪条规范管哪个符号"是稳定、可核对的。
+#: 2. **推荐性 ≠ 强制**：文学写作里破例是常事，所以这些规则全都只报 warn/info，
+#:    由作者定夺；只有"引号不配对"是 error，因为它在导出时会把后续正文吞进台词。
+#: 3. 没有公开规范可依的（视角、称呼、人名变体、别字词表）如实写成
+#:    "作品自身的一致性（启发式）"，不假借国标。
+_RULE_BASIS: Dict[str, str] = {
+    "punct_half_full_adjacent": (
+        "GB/T 15834-2011《标点符号用法》（标点符号的写法）；"
+        "W3C《中文排版需求》(clreq)（标点的比例与位置）"
+    ),
+    "punct_halfwidth_near_cjk": (
+        "GB/T 15834-2011《标点符号用法》（标点符号的写法）；"
+        "CY/T 154-2017《中文出版物夹用英文的编辑规范》"
+    ),
+    "digit_width_mixed": "GB/T 15835-2011《出版物上数字用法》（数字的写法与宽度）",
+    "letter_width_mixed": "CY/T 154-2017《中文出版物夹用英文的编辑规范》",
+    "name_spaced_variant": (
+        "作品自身的一致性（角色卡里的正式写法为准）；间隔号写法见 GB/T 15834-2011（间隔号）"
+    ),
+    "quote_unbalanced": "GB/T 15834-2011《标点符号用法》（引号、括号成对使用）",
+    "quote_order_illegal": "GB/T 15834-2011《标点符号用法》（引号成对使用、由外向内）",
+    "quote_nested_level": (
+        "GB/T 15834-2011《标点符号用法》（引号里面还要用引号时，外面用双引号、里面用单引号）"
+    ),
+    "title_mark_nested": (
+        "GB/T 15834-2011《标点符号用法》（书名号里面还要用书名号时用单书名号）；"
+        "W3C《中文排版需求》(clreq)（书名号）"
+    ),
+    "dash_ascii_double": "GB/T 15834-2011《标点符号用法》（破折号）",
+    "dash_single_em": "GB/T 15834-2011《标点符号用法》（破折号占两个字的位置）",
+    "dash_ascii_range": (
+        "GB/T 15834-2011《标点符号用法》（连接号）；"
+        "GB/T 15835-2011《出版物上数字用法》（数值范围的写法）"
+    ),
+    "ellipsis_ascii_dots": "GB/T 15834-2011《标点符号用法》（省略号）",
+    "ellipsis_fullwidth_period": "GB/T 15834-2011《标点符号用法》（省略号）",
+    "ellipsis_style_mixed": "GB/T 15834-2011《标点符号用法》（省略号）；同一作品内部一致",
+    "ellipsis_with_deng": (
+        "编辑规范补充规则（省略号与「等」不宜并用）——**不是国标正文**，故只报 info"
+    ),
+    "name_char_variant": "作品自身的一致性（角色卡/别名/设定条目里的写法为准）",
+    "name_char_variant_suspect": "作品自身的一致性（启发式，宁漏不误报）",
+    "pov_shift": "作品自身的一致性（启发式统计，不是规范判定）",
+    "address_level_drift": "作品自身的一致性（启发式统计，不是规范判定）",
+    "typo_confusion": "成语/固定搭配的通用写法（零歧义词表，见 app/core/typo_words.py）",
+}
+
+
 def _rule(code: str) -> Dict[str, str]:
-    return _TYPO_RULES.get(code) or {
-        "severity": "info",
-        "headline": code,
-        "advice": "",
-    }
+    """规则文案 + 依据。两条表分开存，这里合并成一份给调用方。"""
+    rule: Dict[str, str] = dict(
+        _TYPO_RULES.get(code) or {"severity": "info", "headline": code, "advice": ""}
+    )
+    rule.setdefault("basis", _RULE_BASIS.get(code, ""))
+    return rule
 
 
 # ------------------------------------------------------------------- 文本视图
@@ -485,6 +550,34 @@ def _line_typography_hits(line: str) -> List[Dict[str, Any]]:
             {"code": "ellipsis_fullwidth_period", "quote": _quote_span(line, *m.span())}
         )
 
+    # 省略号与「等」并用：两者都表示列举未尽（编辑规范补充规则，只报 info）
+    for m in _ELLIPSIS_CJK_RE.finditer(line):
+        tail = line[m.end() : m.end() + 6]
+        if tail.lstrip().startswith("等"):
+            hits.append(
+                {"code": "ellipsis_with_deng", "quote": _quote_span(line, m.start(), m.end() + 3)}
+            )
+
+    # 数字/年份区间用半角连字符（2019-2020）：规范里用一字线或浪纹线
+    for m in _ASCII_DIGIT_RANGE_RE.finditer(line):
+        hits.append(
+            {"code": "dash_ascii_range", "quote": _quote_span(line, m.start(), m.end())}
+        )
+
+    # 书名号嵌套：《…《…》…》里层应为〈〉
+    for at in _nesting_positions(line, "《", "》"):
+        hits.append({"code": "title_mark_nested", "quote": _quote_span(line, at, at + 1)})
+
+    # 引号嵌套层次：“…“… 内层应为‘’；「…「… 内层应为『』
+    for open_ch, close_ch in (("“", "”"), ("「", "」")):
+        for at in _nesting_positions(line, open_ch, close_ch):
+            # 只有这一行里至少出现过两个开号才可能是"嵌套"；只出现一个的那是跨行对白，
+            # 交给章级的 quote_unbalanced 去判（按行报会大面积误报）。
+            if line.count(open_ch) >= 2:
+                hits.append(
+                    {"code": "quote_nested_level", "quote": _quote_span(line, at, at + 1)}
+                )
+
     return hits
 
 
@@ -493,6 +586,31 @@ def _in_dot_run(line: str, index: int) -> bool:
     left = index > 0 and line[index - 1] == "."
     right = index + 1 < len(line) and line[index + 1] == "."
     return left or right
+
+
+def _nesting_positions(line: str, open_ch: str, close_ch: str) -> List[int]:
+    """返回"在外层里面又开了一层"的那些**开号**的位置。
+
+    为什么必须扫深度而不是用正则：判断依据是"此刻已经处在第几层"，那是状态。
+    第一版我用 `“(?=[^”]*“[^”]*$)` 这类前瞻，结果是该报的不报（
+    `他说：“她叫我“小澪”。”` 里那段前瞻会因为后面有闭引号而失败）。
+
+    边界处理：
+    - 同层成对出现（`“A。”“B。”`）不报；
+    - 只由外层开号、本行内没闭合的情况（对白跨行）也会走到这里，于是"下一行的第一个开号"
+      可能被误判成嵌套。**所以调用方要按"行"用、且只在实际有多个开号时才有意义**——
+      这也是这里只返回位置、由调用方决定要不要报的原因。
+    """
+    depth = 0
+    out: List[int] = []
+    for i, ch in enumerate(line):
+        if ch == open_ch:
+            if depth >= 1:
+                out.append(i)
+            depth += 1
+        elif ch == close_ch and depth > 0:
+            depth -= 1
+    return out
 
 
 def _chapter_text_hits(row: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1283,12 +1401,17 @@ def _issue(
     quote: str = "",
     evidence: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """统一的问题结构，与 ``branch_analysis._finding`` 同形（前端可复用同一套渲染）。"""
+    """统一的问题结构，与 ``branch_analysis._finding`` 同形（前端可复用同一套渲染）。
+
+    ``basis`` = 这条规则的依据（国标/行业标准/作品自身一致性）。作者看到提示时，
+    第一反应是"凭什么"——所以它随每条问题一起回传，而不是只写在文档里。
+    """
     return {
         "severity": severity,
         "code": code,
         "category": category,
         "message": message,
+        "basis": _RULE_BASIS.get(code, ""),
         "chapterId": str((row or {}).get("id") or ""),
         "chapterTitle": str((row or {}).get("title") or ""),
         "chapterOrdinal": int((row or {}).get("ordinal") or 0),

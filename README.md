@@ -262,6 +262,14 @@ python -m app eval --longrange --longrange-chapters 60
 [docs/writing-surface.md](docs/writing-surface.md)：包括每条的取舍、项目级字段必须同时改
 的四处白名单（漏一处就静默丢数据），以及明确的未做清单。
 
+### 依据与参考（规范 / 论文 → 我们的哪个决定）
+
+每条表记规则的**依据**都写在代码里（`_RULE_BASIS` / `RULE_BASIS`，界面上逐条显示），
+指向 GB/T 15834-2011《标点符号用法》、GB/T 15835-2011《出版物上数字用法》、
+CY/T 154-2017《中文出版物夹用英文的编辑规范》、W3C《中文排版需求》(clreq) 等公开可查的规范；
+没有公开规范可依的（视角、称呼、别字词表）如实标成"作品自身的一致性（启发式）"，不假借国标。
+论文层面的技术依据、按模块的落点与**待办清单**见 [docs/references.md](docs/references.md)。
+
 ### 环境变量（backend/.env）
 
 | 变量 | 说明 |

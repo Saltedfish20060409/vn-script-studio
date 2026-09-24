@@ -118,6 +118,14 @@
   word-break: break-word;
 }
 
+/* 依据：比正文小一号、淡一档，但始终可见——作者要能一眼判断"该不该听" */
+.issueBasis {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.74rem;
+  color: var(--muted, #8a8f98);
+}
+
 .sev_error,
 .sev_warn,
 .sev_info {
