@@ -51,10 +51,22 @@ DEFAULT_CONTEXT_MAX_CHARS = 48000
 """
 
 MAX_CONTEXT_MAX_CHARS = 96000
-"""配置上限（字符）：超过这个量级，超时预算就不再能覆盖预填充（见上面的不变量）。
+"""配置上限（字符，**同步档**）：超过这个量级，超时预算就不再能覆盖预填充（见上面的不变量）。
 
 作者仍可用 AGENT_CONTEXT_MAX_CHARS 调整，但会被夹到这里；想真正突破，
 改的是 `llm_budget.PREFILL_*`（那意味着"愿意为一次请求等更久"）。
+"""
+
+MAX_CONTEXT_MAX_CHARS_STREAMED = 240000
+"""配置上限（字符，**流式档**）。
+
+流式端点（SSE + 心跳、前端不设总超时）可以等更久，所以这里给到 240k 字符
+（≈17 万 token）：长篇把"整章 + 全部记忆层 + 更多章节摘要"一起带上也装得下。
+它与 `llm_budget.PREFILL_MAX_BONUS_STREAMED`（240s）成对，同样由不变量测试钉住。
+
+代价如实记在这里：240k 字符的提示词按当前模型定价是**每次调用十几万输入 token**，
+多步 Agent 会乘上步数。所以它是"上限"，不是目标——真的用到这么大的上下文，
+应当先看 `GET /admin/llm-latency` 里的 promptChars 分布与截断率，再决定值不值。
 """
 
 MIN_CONTEXT_MAX_CHARS = 3000
@@ -88,11 +100,12 @@ _CLIP_SELECTION = 2000
 """用户选区：改写任务的焦点，超长选区本身就该先缩小。"""
 
 
-def _default_context_max_chars() -> int:
+def _default_context_max_chars(ceiling: int = MAX_CONTEXT_MAX_CHARS) -> int:
     """Agent 上下文主预算：优先 AGENT_CONTEXT_MAX_CHARS（Settings），默认 48000。
 
     用 try/except 包裹，保证纯上下文拼装（含测试）永远有可用默认值，
     不会因 SECRET_KEY 校验等环境问题抛错。
+    `ceiling` 是执行档对应的天花板（同步 96k / 流式 240k，见 `context_budget_for_model`）。
     """
     try:
         from app.config import get_settings
@@ -101,17 +114,31 @@ def _default_context_max_chars() -> int:
         configured = int(v) if v else DEFAULT_CONTEXT_MAX_CHARS
     except Exception:  # noqa: BLE001 - core util must never raise for tuning knob
         configured = DEFAULT_CONTEXT_MAX_CHARS
-    return max(MIN_CONTEXT_MAX_CHARS, min(configured, MAX_CONTEXT_MAX_CHARS))
+    return max(MIN_CONTEXT_MAX_CHARS, min(configured, max(ceiling, MIN_CONTEXT_MAX_CHARS)))
 
 
-def context_budget_for_model(model: Optional[str] = None, budget: Optional[int] = None) -> int:
-    """按**所选模型的窗口**再夹一次预算；窗口未知则不改行为。
+def context_budget_for_model(
+    model: Optional[str] = None,
+    budget: Optional[int] = None,
+    *,
+    streamed: Optional[bool] = None,
+) -> int:
+    """按**所选模型的窗口**与**执行档**夹一次预算；窗口未知则不改行为。
 
-    为什么要这一步：预设里既有 1000k 的 DeepSeek，也有 32k 的本地 Ollama。
+    为什么要按窗口夹：预设里既有 1000k 的 DeepSeek，也有 32k 的本地 Ollama。
     预算是个"能装多少就装多少"的上限，遇到小窗口模型会被上游直接拒
     （context length exceeded）——那比截断更难善后，用户拿不到任何结果。
+
+    为什么要按执行档分：天花板由**我们的超时预算**决定，而"能等多久"取决于
+    客户端是不是看着进度条（见 `core/execution_profile.py`）。同步档 96k、流式档 240k；
+    `streamed=None` 时读请求级档位（默认同步档，保守）。
     """
-    resolved = int(budget) if budget else _default_context_max_chars()
+    if streamed is None:
+        from app.core.execution_profile import is_streamed
+
+        streamed = is_streamed()
+    ceiling = MAX_CONTEXT_MAX_CHARS_STREAMED if streamed else MAX_CONTEXT_MAX_CHARS
+    resolved = int(budget) if budget else _default_context_max_chars(ceiling=ceiling)
     try:
         from app.core.model_presets import context_window_k
 
@@ -121,7 +148,7 @@ def context_budget_for_model(model: Optional[str] = None, budget: Optional[int] 
     if window_k:
         room = int(window_k * 1000 * _CHARS_PER_TOKEN * _WINDOW_INPUT_SHARE)
         resolved = min(resolved, room)
-    return max(MIN_CONTEXT_MAX_CHARS, min(resolved, MAX_CONTEXT_MAX_CHARS))
+    return max(MIN_CONTEXT_MAX_CHARS, min(resolved, ceiling))
 
 
 @dataclass
@@ -154,6 +181,10 @@ class AgentContextResult:
     excluded: List[str] = field(default_factory=list)
     # 「证明它记得」：这次实际依据了什么（可展开看摘录），前端默认摆出来
     includedDetails: List[Dict[str, str]] = field(default_factory=list)
+    # 这次上下文是否**被裁过**（正文截断 / 整块让位 / 中段压缩任一发生）。
+    # 单列一个布尔量是为了让调用方不必去解析 `included` 里的中文串就能统计截断率
+    # （`GET /admin/llm-latency` 的 context 系列就用它）。
+    truncated: bool = False
 
 
 # 可以被作者按需摘掉的资料块：key → 人话（前端「资料」面板直接用它渲染）
@@ -1286,6 +1317,7 @@ def build_agent_context(
 
     # Focus chapter — prefer tail for continue/polish/branch/scene
     focus_body = ""
+    focus_truncated = False
     focus_digest = next((d for d in digests if focus_chapter and d.chapterId == focus_chapter.id), None)
     if focus_chapter:
         plain = plain_of(focus_chapter)
@@ -1309,6 +1341,7 @@ def build_agent_context(
         if len(plain) > focus_budget:
             # 透明化：作者要能一眼看出"当前章被截了"，而不是以为模型读了全文
             included.append(f"当前章截断:{focus_budget}/{len(plain)}字")
+            focus_truncated = True
 
     if picked_chars:
         included.append(f"角色×{len(picked_chars)}")
@@ -1678,4 +1711,5 @@ def build_agent_context(
         task=resolved_task,
         excluded=sorted(dropped),
         includedDetails=details,
+        truncated=bool(focus_truncated or budget_dropped or budget_compressed),
     )

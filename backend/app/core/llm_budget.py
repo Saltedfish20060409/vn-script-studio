@@ -99,13 +99,24 @@ PREFILL_FREE_CHARS = 8000.0
 """
 
 PREFILL_MAX_BONUS = 60.0
-"""预填充加时的上限（秒）。
+"""预填充加时的上限（同步档，秒）。
 
 上限不是随手定的：它与 `agent_context.MAX_CONTEXT_MAX_CHARS`（96k 字符）成对，
 取值满足 `(MAX_CONTEXT_MAX_CHARS - PREFILL_FREE_CHARS) / PREFILL_CHARS_PER_SECOND ≤ 本值`。
 即"**允许拼出来的最长上下文，一定落在超时预算能覆盖的范围内**"。
 这条不变量由 `tests/test_context_budget_policy.py` 跨模块钉住：谁单方面放宽上下文预算，
 谁就得同时调整这里（前端阶梯表也读这个数）。
+"""
+
+PREFILL_MAX_BONUS_STREAMED = 240.0
+"""预填充加时的上限（**流式档**，秒）。
+
+流式端点（SSE + 20s 心跳，前端不设总超时）可以等更久：等第一个字节等三四分钟不会
+把连接掐掉。所以这里与 `agent_context.MAX_CONTEXT_MAX_CHARS_STREAMED`（240k 字符）成对，
+同样满足上面那条不变量（只是换成流式档的两个数）。
+
+用哪一档由 `core/execution_profile.py` 的请求级档位决定；**默认是同步档**，
+所以没显式声明流式的路径不会拿到这个宽预算。
 """
 
 # 退避参数（与 `llm_http` 的实际退避保持一致：0.6 * 2**attempt + jitter，封顶 20）
@@ -127,10 +138,12 @@ def thinking_factor() -> float:
     return min(_FACTOR_MAX, max(_FACTOR_MIN, raw))
 
 
-def prefill_allowance(prompt_chars: int | None) -> float:
+def prefill_allowance(prompt_chars: int | None, *, streamed: bool | None = None) -> float:
     """按提示词长度追加的预填充时间（秒）；小提示词为 0。
 
     `prompt_chars=None`（调用方不知道长度，例如第三方短提示词）保持旧行为不加时。
+    `streamed=None` 时按**请求级执行档**（`core/execution_profile.py`）取上限：
+    同步档 60s、流式档 240s。显式传 True/False 可以绕过档位（测试与特殊路径用）。
     """
     try:
         chars = float(prompt_chars)  # type: ignore[arg-type]
@@ -138,7 +151,12 @@ def prefill_allowance(prompt_chars: int | None) -> float:
         return 0.0
     if chars != chars or chars <= PREFILL_FREE_CHARS:  # NaN / 未超过免费额度
         return 0.0
-    return min(PREFILL_MAX_BONUS, (chars - PREFILL_FREE_CHARS) / PREFILL_CHARS_PER_SECOND)
+    if streamed is None:
+        from app.core.execution_profile import is_streamed
+
+        streamed = is_streamed()
+    cap = PREFILL_MAX_BONUS_STREAMED if streamed else PREFILL_MAX_BONUS
+    return min(cap, (chars - PREFILL_FREE_CHARS) / PREFILL_CHARS_PER_SECOND)
 
 
 def effective_timeout(
@@ -147,18 +165,20 @@ def effective_timeout(
     thinking: bool = False,
     factor: float | None = None,
     prompt_chars: int | None = None,
+    streamed: bool | None = None,
 ) -> float:
     """把调用点写的基础预算换算成实际生效的超时。
 
     `thinking=True`（出站模型带 `thinking: enabled`）时长按系数放大；
     `prompt_chars` 是本次出站提示词的总字符数，超过免费额度后按
-    `prefill_allowance` 追加预填充时间（思考档同样叠加）。
+    `prefill_allowance` 追加预填充时间（思考档同样叠加）；
+    `streamed` 选择预填充加时的上限（见 `prefill_allowance`）。
     """
     budget = float(base)
     if thinking:
         f = thinking_factor() if factor is None else float(factor)
         budget *= min(_FACTOR_MAX, max(_FACTOR_MIN, f))
-    return budget + prefill_allowance(prompt_chars)
+    return budget + prefill_allowance(prompt_chars, streamed=streamed)
 
 
 def backoff_seconds(attempt: int, *, jitter: float = 0.0) -> float:
@@ -183,6 +203,7 @@ def worst_case_seconds(
     attempts: int = DEFAULT_MAX_RETRIES,
     thinking: bool = False,
     prompt_chars: int | None = None,
+    streamed: bool | None = None,
 ) -> float:
     """一次 LLM 调用在最坏情况下占用多久（秒）。
 
@@ -190,16 +211,26 @@ def worst_case_seconds(
     所以"模型太慢"这条路径实际只花 `effective_timeout(base)`。
     """
     n = max(1, attempts)
-    return n * effective_timeout(base, thinking=thinking, prompt_chars=prompt_chars) + max_backoff_total(n)
+    return n * effective_timeout(
+        base, thinking=thinking, prompt_chars=prompt_chars, streamed=streamed
+    ) + max_backoff_total(n)
 
 
-def describe(base: float, *, thinking: bool = False, prompt_chars: int | None = None) -> str:
+def describe(
+    base: float,
+    *,
+    thinking: bool = False,
+    prompt_chars: int | None = None,
+    streamed: bool | None = None,
+) -> str:
     """给报错文案用的一句话：基础预算 + 思考模式加时后的实际预算。"""
-    eff = effective_timeout(base, thinking=thinking, prompt_chars=prompt_chars)
+    eff = effective_timeout(
+        base, thinking=thinking, prompt_chars=prompt_chars, streamed=streamed
+    )
     parts = []
     if thinking and eff != float(base):
         parts.append(f"基础 {base:.0f}s × 思考模式 {thinking_factor():.1f}")
-    extra = prefill_allowance(prompt_chars)
+    extra = prefill_allowance(prompt_chars, streamed=streamed)
     if extra > 0:
         # 说清楚"多出来的时间是长提示词的预填充"，用户才知道缩范围就能变快
         parts.append(f"长上下文预填充 +{extra:.0f}s")

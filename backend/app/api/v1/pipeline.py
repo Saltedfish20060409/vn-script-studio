@@ -159,9 +159,16 @@ async def pipeline_run(
     if body.async_mode:
         from types import SimpleNamespace
 
+        from app.core import execution_profile
         from app.core.jobs import create_job
         from app.db import AsyncSessionLocal
 
+        if body.stream:
+            # 流式（SSE + 心跳、客户端看得到进度）：可以用更宽的上下文天花板与预填充加时。
+            # 非流式的 async_mode 只是"作业化"，作业由我们自己的 worker 跑、没有客户端
+            # 在等这个 HTTP 请求，但也没有"心跳可见"的保证——所以不在这里放宽，
+            # 保持保守档（想放宽就先接进度通道）。
+            execution_profile.set_profile(execution_profile.PROFILE_STREAMED)
         payload = body.model_dump()
         owner = SimpleNamespace(id=user.id)
         stage_queue: Optional[asyncio.Queue[dict]] = asyncio.Queue() if body.stream else None

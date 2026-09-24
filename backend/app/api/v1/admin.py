@@ -307,11 +307,19 @@ async def list_users(
 async def llm_latency(
     _admin: User = Depends(get_admin_user),
 ):
-    """LLM 调用耗时的分位统计（进程内最近样本，只读）。
+    """LLM 调用耗时的分位统计 + 上下文体积（进程内最近样本，只读）。
 
     为什么要有：`llm_budget` 里的预算是按**最坏情况**推的，docs 里的取舍也只能靠推理——
-    此前没有任何耗时分布数据。"要不要给这条链路加预算 / 要不要为尾部 hedge"
-    这类问题必须先看到 p95/p99 才能回答（The Tail at Scale 的操作结论）。
+    此前没有任何耗时分布数据。"要不要给这条链路加预算 / 要不要为尾部 hedge /
+    要不要为更大上下文换架构"这类问题必须先看到实测分布才能回答
+    （The Tail at Scale 的操作结论）。
+
+    看什么：
+    - `total` / `firstToken` 的分位：链路有多慢、等第一个字节要多久；
+    - `promptChars` 的分位：**上下文预算有没有被用满**；
+    - `timeoutRate`：尾部事件发生率；`context|<task>` 系列的 `truncationRate`：
+      上下文拼装时是否发生过截断/整块让位（判据见 docs/long-context-policy.md 第七节）。
+
     边界如实写在 `core/latency_stats.py`：进程内、有界窗口、重启清零、多 worker 不合并。
     """
     from app.core.latency_stats import snapshot

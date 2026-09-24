@@ -201,6 +201,27 @@ def test_long_context_notice_only_appears_when_the_prompt_is_actually_long():
     assert any("长上下文提醒" in item for item in big.included)
 
 
+# ---- 截断标记：给统计用的显式布尔量（不必解析中文串） ------------------------
+
+
+def test_truncated_flag_is_false_for_a_small_context():
+    ctx = _context(_project())
+    assert ctx.truncated is False
+    assert not any("截断" in item for item in ctx.included)
+
+
+def test_truncated_flag_is_true_when_the_focus_chapter_is_cut():
+    ctx = _context(_project(focus_chars=120000))
+    assert ctx.truncated is True
+    assert any("当前章截断" in item for item in ctx.included)
+
+
+def test_truncated_flag_is_true_when_sections_are_dropped_by_budget():
+    ctx = _context(_project(), referenceDocs="囧" * 40000, maxChars=6000)
+    assert ctx.truncated is True
+    assert any("篇幅省去" in item for item in ctx.included)
+
+
 # ---- 3. 跨模块不变量：预算与超时必须成对 ------------------------------------
 
 

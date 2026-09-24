@@ -195,6 +195,7 @@ async def chat_completions(
                         thinking=thinking,
                         kind=latency_stats_kind(),
                         timed_out=True,
+                        prompt_chars=prompt_chars,
                     )
                     raise _timeout_error(
                         model=model,
@@ -232,12 +233,14 @@ async def chat_completions(
                     except Exception:  # noqa: BLE001 - accounting never breaks calls
                         pass
                     # 成功的调用也要记耗时：p50/p95/p99 是"要不要 hedge / 要不要加预算"
-                    # 的唯一依据（The Tail at Scale 的操作结论，见 core/latency_stats.py）
+                    # 的唯一依据（The Tail at Scale 的操作结论，见 core/latency_stats.py）；
+                    # promptChars 则回答"上下文预算有没有被用满"（long-context-policy.md）
                     latency_stats.record_latency(
                         time.monotonic() - started,
                         model=model,
                         thinking=thinking,
                         kind=latency_stats_kind(),
+                        prompt_chars=prompt_chars,
                     )
                     return res
 
@@ -466,6 +469,7 @@ async def stream_chat_completions(
                 thinking=thinking,
                 kind=latency_stats_kind(),
                 first_token=first_token_at,
+                prompt_chars=_prompt_chars(messages),
             )
             return
         except (httpx.ReadTimeout, httpx.WriteTimeout) as exc:
@@ -476,8 +480,9 @@ async def stream_chat_completions(
                 model=model,
                 thinking=thinking,
                 kind=latency_stats_kind(),
-                first_token=first_token_at,
                 timed_out=True,
+                first_token=first_token_at,
+                prompt_chars=_prompt_chars(messages),
             )
             raise _timeout_error(
                 model=model,

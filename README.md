@@ -293,7 +293,7 @@ CY/T 154-2017《中文出版物夹用英文的编辑规范》、W3C《中文排�
 | `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` | 可选：pgvector 语义搜索的 embedding 端点；留空 = 启发式关键词检索 |
 | `LLM_DAILY_TOKEN_CAP` | 用户自备 Key 的每日上限（**0 = 不限**，默认） |
 | `LLM_SHARED_KEY_DAILY_CAP` | 仅当请求落到**服务端** `DEEPSEEK_API_KEY` 时的**每用户每日**上限。代码默认 20 万；生产现设为 **200 万** |
-| `AGENT_CONTEXT_MAX_CHARS` | Agent 单次注入的项目上下文预算（字符）。代码默认 **48000**（质量优先，见 [docs/long-context-policy.md](docs/long-context-policy.md)），会被夹在 3000–96000 之间；**≥8000 字符的提示词会同步放宽 LLM 读超时**（预填充加时，最多 +60s），生产可按机器实测继续调 |
+| `AGENT_CONTEXT_MAX_CHARS` | Agent 单次注入的项目上下文预算（字符）。代码默认 **48000**（质量优先，见 [docs/long-context-policy.md](docs/long-context-policy.md)），会被夹在 3000–96000 之间（**流式端点**可到 240000，见下）；**≥8000 字符的提示词会同步放宽 LLM 读超时**（预填充加时，最多 +60s / 流式 +240s），生产可按机器实测继续调 |
 | `SAMPLE_PROJECT_ON_SIGNUP` | 注册时自动送示例项目（激活用，默认 `true`） |
 | `MEMORY_AUTO_ARCHIVE` | 每攒满 10 章自动重建章节记忆归档（纯本地计算、不调模型，默认 `true`） |
 | `MAX_PROJECTS_PER_USER` | 每账号项目数上限（默认 80） |

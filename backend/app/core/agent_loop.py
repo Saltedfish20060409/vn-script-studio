@@ -344,6 +344,26 @@ async def _agent_steps(
     return working, accumulated, trace, final_message, messages, last_tool_text
 
 
+def record_context_stats(ctx) -> None:  # noqa: ANN001
+    """把这次拼装的上下文体积与"是否被裁"记进统计（`/admin/llm-latency` 的 context 系列）。
+
+    它是"要不要为更大上下文放开预算（甚至换架构）"的判据：拼装量长期远低于天花板，
+    调大预算就是白花钱；反过来如果 `truncationRate` 高、`promptChars` 贴着顶，
+    那就说明真的被卡住了。统计失败绝不影响主链路（`latency_stats` 内部吞异常）。
+    """
+    try:
+        from app.core import latency_stats
+
+        latency_stats.record_context(
+            int(getattr(ctx, "charsUsed", 0) or 0),
+            task=str(getattr(ctx, "task", "") or ""),
+            truncated=bool(getattr(ctx, "truncated", False)),
+            dropped_sections=len(getattr(ctx, "excluded", None) or []),
+        )
+    except Exception:  # noqa: BLE001 - 统计不该打断写作
+        return
+
+
 def compose_agent_system(
     *,
     identity_block: str,
@@ -435,8 +455,8 @@ async def run_agent_loop(
             None,
         )
         # ctx 只做本地拼装（无 LLM 调用），供末尾 contextMeta 统计
-        # 预算按**当前生效的模型**再夹一次：预设里有 32k 窗口的本地模型，
-        # 硬塞 48k 字符会被上游直接拒答（见 agent_context.context_budget_for_model）。
+        # 预算按**当前生效的模型**与**执行档**再夹一次：预设里有 32k 窗口的本地模型，
+        # 硬塞 48k 字符会被上游直接拒答；流式路径（SSE + 心跳）可以用更高的天花板。
         ctx = build_agent_context(
             working,
             chapterId=request.chapterId,
@@ -451,6 +471,7 @@ async def run_agent_loop(
             referenceDocs=request.referenceDocs,
             exclude=request.excludeSections,
         )
+        record_context_stats(ctx)
     else:
         last_user = next(
             (m.content for m in reversed(request.messages) if m.role == "user"), None
@@ -478,6 +499,7 @@ async def run_agent_loop(
             referenceDocs=request.referenceDocs,
             exclude=request.excludeSections,
         )
+        record_context_stats(ctx)
 
         # 采样参数按任务分档（集中在一处，见 core/llm_params）：连续创作偏高、改稿/检查偏低
         temperature = task_temperature(task, craft.mode)

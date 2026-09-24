@@ -20,6 +20,7 @@ from app.core import (
     apply_agent_actions,
     build_branch_tree,
     build_map_extract_proposal,
+    execution_profile,
     export_to_renpy,
     extract_map_from_script,
     extract_map_smart,
@@ -2805,6 +2806,10 @@ async def run_project_agent_stream(
         baseUrl=creds["base_url"],
         model=creds["model"],
     )
+    # 这是**流式**端点：SSE + 20s 心跳、前端不设总超时（靠"多久没有新字节"判活），
+    # 所以上下文天花板与预填充加时可以用更宽的一档（见 core/execution_profile.py）。
+    # 同步端点（POST /agent）不设这一档，保持收在时间阶梯之内。
+    execution_profile.set_profile(execution_profile.PROFILE_STREAMED)
 
     # ---- 会话解析：检查点持久化（断点续跑）的落点 ----
     if body.conversation_id:

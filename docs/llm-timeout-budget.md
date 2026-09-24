@@ -269,6 +269,9 @@ sed -n '1,80p' frontend/src/api/timeouts.ts
 1. **后端不变量**：`(agent_context.MAX_CONTEXT_MAX_CHARS - PREFILL_FREE_CHARS) /
    PREFILL_CHARS_PER_SECOND ≤ PREFILL_MAX_BONUS`——"允许拼出来的最长上下文，一定落在
    超时预算能覆盖的范围内"（`tests/test_context_budget_policy.py`）。
+   **两个执行档各有一条**：同步档 96k 字符 ↔ +60s，流式档（SSE + 心跳、前端不设总超时）
+   240k 字符 ↔ +240s；档位由 `core/execution_profile.py` 的请求级 ContextVar 决定，
+   默认同步、只有流式路由放宽（`tests/test_execution_profile.py` 有源码级守卫）。
 2. **前端阶梯**：`timeouts.test.ts` 读同一个 `PREFILL_MAX_BONUS`，按
    `基础预算 × 思考档系数 + 预填充上限 + 余量` 逐端点校验，于是
    `quick 240→300s`、`chat 300→360s`、`write 480→540s`、`long 600→660s`、

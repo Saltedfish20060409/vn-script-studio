@@ -33,8 +33,18 @@ from typing import Any, Dict, List, Optional, Sequence
 #: 又不至于让内存随流量增长。
 WINDOW_SIZE = 200
 
-#: 会做分位统计的数值字段（`timedOut` 是布尔计数，不当分位算）。
-_NUMERIC_FIELDS = ("total", "firstToken")
+#: 会做分位统计的数值字段（布尔字段另算"发生率"）。
+#: `promptChars` 是"这次出站提示词多大"——它回答的是**上下文预算有没有被用满**，
+#: 也是"要不要为更大上下文换架构"的唯一依据（见 docs/long-context-policy.md）。
+_NUMERIC_FIELDS = ("total", "firstToken", "promptChars")
+
+#: 会被统计成"发生率"的布尔字段（字段名 → (次数键, 发生率键)）。
+#: 这些是**尾部/降级事件**：只统计成功的请求会把它们稀释掉。
+#: `timeouts` 这个键名是既有约定（管理员接口与测试都在用），不要改名。
+_FLAG_FIELDS = {
+    "timedOut": ("timeouts", "timeoutRate"),
+    "truncated": ("truncated", "truncationRate"),
+}
 
 _LOCK = threading.Lock()
 #: key -> 最近样本（每个样本是 dict：total / firstToken / timedOut）
@@ -61,8 +71,10 @@ def record_latency(
     kind: str = "",
     first_token: Optional[float] = None,
     timed_out: bool = False,
+    prompt_chars: Optional[int] = None,
+    truncated: bool = False,
 ) -> None:
-    """记一次调用耗时。任何异常都不许冒泡——统计不该影响主链路。"""
+    """记一次调用耗时（也可带上"这次提示词多大/上下文是否被裁"）。任何异常都不许冒泡。"""
     try:
         value = float(seconds)
         if value != value or value < 0:  # NaN / 负数
@@ -72,6 +84,12 @@ def record_latency(
             ft = float(first_token)
             if ft == ft and ft >= 0:
                 sample["firstToken"] = ft
+        if prompt_chars is not None:
+            pc = float(prompt_chars)
+            if pc == pc and pc >= 0:
+                sample["promptChars"] = pc
+        if truncated:
+            sample["truncated"] = True
         key = series_key(model, thinking=thinking, kind=kind)
         with _LOCK:
             bucket = _SAMPLES.setdefault(key, [])
@@ -79,6 +97,38 @@ def record_latency(
             if len(bucket) > WINDOW_SIZE:
                 del bucket[: len(bucket) - WINDOW_SIZE]
     except Exception:  # noqa: BLE001 - 统计永远不该打断调用
+        return
+
+
+def record_context(
+    chars_used: int,
+    *,
+    task: str,
+    truncated: bool = False,
+    dropped_sections: int = 0,
+) -> None:
+    """记一次**上下文拼装**的体积与是否被裁（口径见 `agent_context`）。
+
+    与 `record_latency` 分开是因为它统计的是"我们拼了多大的提示词"，
+    不是"模型花了多久"——但两者一起才能回答"预算是不是真的卡住了写作"：
+    - `promptChars` 的分位逼近天花板 + `truncationRate` 高 → 该放开预算（甚至换架构）；
+    - 两者都很低 → 调大预算是白花钱（线上实测拼装量长期只有几千字符）。
+    """
+    try:
+        value = float(chars_used)
+        if value != value or value < 0:
+            return
+        sample: Dict[str, Any] = {"total": value, "truncated": bool(truncated)}
+        dropped = int(dropped_sections)
+        if dropped > 0:
+            sample["droppedSections"] = float(dropped)
+        key = f"context|{(task or 'unknown').strip() or 'unknown'}"
+        with _LOCK:
+            bucket = _SAMPLES.setdefault(key, [])
+            bucket.append(sample)
+            if len(bucket) > WINDOW_SIZE:
+                del bucket[: len(bucket) - WINDOW_SIZE]
+    except Exception:  # noqa: BLE001
         return
 
 
@@ -126,9 +176,10 @@ def _summarize_samples(samples: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         values = [s[field] for s in samples if isinstance(s.get(field), (int, float))]
         if values:
             out[field] = _summarize(values)
-    timeouts = sum(1 for s in samples if s.get("timedOut"))
-    out["timeouts"] = timeouts
-    out["timeoutRate"] = round(timeouts / len(samples), 4)
+    for field, (count_key, rate_key) in _FLAG_FIELDS.items():
+        hits = sum(1 for s in samples if s.get(field))
+        out[count_key] = hits
+        out[rate_key] = round(hits / len(samples), 4)
     return out
 
 
