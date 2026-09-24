@@ -122,6 +122,52 @@ def sections_to_drop(task: str, exclude: Optional[Iterable[str]] = None) -> set:
     return drop
 
 
+#: 上下文分块的**位置策略**。
+#:
+#: 依据 **Lost in the Middle: How Language Models Use Long Contexts**（arXiv:2307.03172）：
+#: 长上下文里，模型对**开头**与**结尾**的信息利用最好，夹在中间的最容易被忽略；
+#: 上下文越长这个偏差越明显。我们这里还有一层放大效应：**超预算时的裁剪是"保头保尾、
+#: 压中段"**（见 build_agent_context 末尾），所以放在头部的块会被逐字保留，
+#: 放在中段的块最先被压掉。两件事叠加，位置就不是审美问题，而是"哪些事实会被模型看到"。
+#:
+#: 于是分三组：
+#: 1. **头部**——身份与"绝不能说错"的事实（硬规则、角色、关系、地点、设定、检索命中的
+#:    条目、长程/全局/对话记忆）。它们是这一轮的地基，而且会被裁剪原样保留。
+#: 2. **中段**——量大但通常不决定"这一步怎么写"的参考资料（章节目录、其它章摘录、
+#:    写作参考卡、作者上传的参考文档、变量与立绘）。**参考文档最大（上限 12000 字）**，
+#:    它过去排在头部，会把角色/关系挤进被压缩的中段——这正是这一版要修的。
+#: 3. **尾部**——贴着用户这次请求的东西（文风样例、当前章正文、用户选区），
+#:    紧接在末尾的硬规则与输出契约之前（那一小段是最后的"当场生效"区）。
+#:
+#: 任何一个 key 漏在这里都会被排到最后（`order_index.get(key, len(...))`），
+#: 所以 `tests/test_context_ordering.py` 会断言这张表与代码里的 key 完全一致。
+_SECTION_ORDER: Tuple[str, ...] = (
+    # —— 头部：地基，且会被裁剪原样保留
+    "meta",
+    "rules",
+    "characters",
+    "relations",
+    "locations",
+    "bible",
+    "lore",
+    "loreLinks",
+    "longMemory",
+    "globalMemory",
+    "chatMemory",
+    # —— 中段：量大但不决定"这一步怎么写"，超预算时最先被压
+    "index",
+    "otherChapters",
+    "craft",
+    "referenceDocs",
+    "variables",
+    "sprites",
+    # —— 尾部：贴着这次请求（最近优先）
+    "style",
+    "focus",
+    "selection",
+)
+
+
 # 每个任务的**硬规则**：短、可执行、且会在上下文末尾再重复一次。
 # 为什么单列：长上下文里夹在中间的要求最容易被忽略，末尾的位置才是"当场生效"的。
 TASK_KEY_RULES: Dict[str, List[str]] = {
@@ -1046,6 +1092,8 @@ def build_agent_context(
     # 每块都带一个 key：既方便按任务裁剪/作者摘掉，也让"这次带了什么"可解释。
     # 注意 `rules` 刻意**不在** EXCLUDABLE_SECTIONS 里：本次硬规则不是"可摘的参考资料"，
     # 而是这一轮的任务契约，必须首尾各出现一次（末尾那次见下方 tail）。
+    #
+    # **下面的书写顺序不代表输出顺序**：真正的顺序由 `_SECTION_ORDER` 决定（见那里的理由）。
     head_rules = task_key_rules(resolved_task)
     keyed_sections: List[Tuple[str, str]] = [
         ("meta", "\n".join(meta_lines)),
@@ -1175,6 +1223,9 @@ def build_agent_context(
     ]
 
     dropped = sections_to_drop(resolved_task, exclude)
+    # 顺序由 _SECTION_ORDER 决定（下面这行排序），这里的书写顺序不影响输出。
+    order_index = {key: i for i, key in enumerate(_SECTION_ORDER)}
+    keyed_sections.sort(key=lambda kv: order_index.get(kv[0], len(_SECTION_ORDER)))
     kept_sections = [text for key, text in keyed_sections if text and key not in dropped]
     if dropped:
         # 透明化：告诉作者这次省掉了什么（前端会把没省的显示成"依据"）
