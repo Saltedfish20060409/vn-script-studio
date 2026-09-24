@@ -295,6 +295,7 @@ export function AgentChat({
     missing: [],
     byDesign: [],
     hasMissing: false,
+    hasRetrievable: false,
   });
   /** 本次用的是谁的钱：own / shared（免费档） */
   const [credentialsMode, setCredentialsMode] = useState("");
