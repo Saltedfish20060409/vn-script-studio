@@ -34,6 +34,10 @@ PROFILE_STREAMED = "streamed"
 PROFILES = (PROFILE_SYNC, PROFILE_STREAMED)
 
 _profile: ContextVar[str] = ContextVar("execution_profile", default=PROFILE_SYNC)
+#: 用户声明的模型窗口（千 token）。0 = 没声明；负值 = 明确"不用夹"。
+#: 与档位一样是**请求级**的：凭据解析处（`services.projects.resolve_llm_credentials`）设一次，
+#: 之后所有 `context_budget_for_model` 都能看到——不用把参数一路透传到 agent 循环里。
+_declared_window_k: ContextVar[int] = ContextVar("declared_window_k", default=0)
 
 
 def normalize_profile(name: Optional[str]) -> str:
@@ -60,3 +64,29 @@ def is_streamed() -> bool:
 def reset_profile() -> None:
     """回到默认档（测试与后台任务用：后台作业不该继承某个请求的宽松预算）。"""
     _profile.set(PROFILE_SYNC)
+
+
+def set_declared_window_k(value: Optional[int]) -> int:
+    """设置"用户声明的模型窗口"（千 token）；返回规范化后的值。
+
+    0 = 没声明（交给预设表 / 服务端保守假设）；负值 = 明确不夹。
+    非数字/超大值一律夹到合理范围——这是配置项，不该让一个错字把预算打穿。
+    """
+    try:
+        raw = int(value or 0)
+    except (TypeError, ValueError):
+        raw = 0
+    if raw < 0:
+        raw = -1
+    elif raw > 10_000:
+        raw = 10_000
+    _declared_window_k.set(raw)
+    return raw
+
+
+def declared_window_k() -> int:
+    return int(_declared_window_k.get() or 0)
+
+
+def reset_declared_window() -> None:
+    _declared_window_k.set(0)

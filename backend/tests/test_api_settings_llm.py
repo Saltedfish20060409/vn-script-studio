@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import db_gate
 import httpx
 import pytest
+from sqlalchemy import text
 
 pytestmark = [
     pytest.mark.db,
@@ -18,6 +19,21 @@ pytestmark = [
 ]
 
 APP = db_gate.make_app()
+
+
+def _ensure_window_column() -> None:
+    """已存在的测试库不会走 create_all 增列——幂等补列（与 0029 迁移一致）。"""
+
+    async def _run():
+        async with db_gate.engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "ALTER TABLE user_settings "
+                    "ADD COLUMN IF NOT EXISTS api_context_window_k INTEGER NOT NULL DEFAULT 0"
+                )
+            )
+
+    asyncio.run(_run())
 
 
 def _run(coro):
@@ -46,6 +62,53 @@ def test_model_catalogue_shape():
             assert body["active"] is not None  # server test key always present
             assert body["active"]["model"]
             assert body["active"]["source"] in ("user", "server", "client")
+
+    _run(_scenario())
+
+
+def test_declared_model_window_round_trips_and_is_clamped():
+    """用户声明的模型窗口：存得下、读得回、填错不会打穿预算。
+
+    为什么要这条：上下文预算按模型窗口夹一次；窗口只有用户自己知道
+    （预设表收不全，撑爆窗口会被上游直接拒答）。
+    """
+    _ensure_window_column()
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "llm_window")
+
+            # 默认：没声明（0 = 自动）
+            r = await client.get("/api/v1/settings", headers=headers)
+            assert r.status_code == 200, r.text
+            assert r.json().get("api_context_window_k", 0) == 0
+
+            # 声明 32k：读得回
+            r = await client.put(
+                "/api/v1/settings", headers=headers, json={"api_context_window_k": 32}
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["api_context_window_k"] == 32
+            r = await client.get("/api/v1/settings", headers=headers)
+            assert r.json()["api_context_window_k"] == 32
+
+            # 超大值夹到上限（配置项写错不该把预算打成天文数字）
+            r = await client.put(
+                "/api/v1/settings", headers=headers, json={"api_context_window_k": 999_999}
+            )
+            assert r.json()["api_context_window_k"] == 10_000
+
+            # 负值 = 明确"不用夹"，统一记成 -1
+            r = await client.put(
+                "/api/v1/settings", headers=headers, json={"api_context_window_k": -7}
+            )
+            assert r.json()["api_context_window_k"] == -1
+
+            # 回到自动
+            r = await client.put(
+                "/api/v1/settings", headers=headers, json={"api_context_window_k": 0}
+            )
+            assert r.json()["api_context_window_k"] == 0
 
     _run(_scenario())
 

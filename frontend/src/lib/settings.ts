@@ -122,6 +122,8 @@ export interface ServerSettingsOut {
   api_key_masked?: string;
   api_base_url?: string;
   api_model?: string;
+  /** 用户声明的模型窗口（千 token）。0/缺省 = 自动（预设表 → 服务端保守假设） */
+  api_context_window_k?: number;
   has_critic_api_key?: boolean;
   critic_api_key_masked?: string;
   critic_api_base_url?: string;

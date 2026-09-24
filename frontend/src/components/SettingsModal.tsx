@@ -18,6 +18,7 @@ import {
 } from "../api/misc";
 import { t } from "../lib/i18n";
 import { jsonModeWarning } from "../lib/modelCapabilities";
+import { parseWindowK, readDeclaredK, windowHintText } from "../lib/modelWindow";
 import {
   loadLlmCredentials,
   loadStorageMode,
@@ -139,6 +140,8 @@ function LlmPane() {
   const [criticKey, setCriticKey] = useState("");
   const [criticBaseUrl, setCriticBaseUrl] = useState("");
   const [criticModel, setCriticModel] = useState("");
+  /** 用户声明的模型窗口（千 token，输入框原样保存；"": 自动）。见 lib/modelWindow.ts */
+  const [windowK, setWindowK] = useState("");
   const [storageMode, setStorageModeState] = useState<LlmStorageMode>(loadStorageMode);
   const [presets, setPresets] = useState<ModelPreset[]>([]);
   const [presetId, setPresetId] = useState<string>("");
@@ -164,6 +167,9 @@ function LlmPane() {
     getSettings()
       .then((s) => {
         setServerFallback(s);
+        // 声明的模型窗口是**账号级**设置：从服务端读回来（本机存储模式下不生效）
+        const declared = readDeclaredK(s.api_context_window_k);
+        setWindowK(declared > 0 ? String(declared) : "");
         // account 模式：服务端只回显 masked key，不回明文
         if (loadStorageMode() === "account" && s.has_api_key) {
           setApiKey("");
@@ -187,6 +193,21 @@ function LlmPane() {
     load();
   }, [load]);
 
+  const parsedWindow = parseWindowK(windowK);
+  /** 当前模型在预设表里的窗口（千 token）；没有就是"未知模型" */
+  const presetWindowK = (() => {
+    const hit = presets.find(
+      (p) => String(p.model || "").trim().toLowerCase() === model.trim().toLowerCase()
+    );
+    const value = Number(hit?.context_k ?? 0);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  })();
+  const windowHint = windowHintText({
+    declaredK: parsedWindow.value,
+    presetK: presetWindowK,
+    localStorage: storageMode !== "account",
+  });
+
   const persist = (next: {
     apiKey: string;
     baseUrl: string;
@@ -206,10 +227,17 @@ function LlmPane() {
         criticBaseUrl: "",
         criticModel: "",
       });
+      const parsedWindow = parseWindowK(windowK);
+      if (parsedWindow.error && parsedWindow.error.includes("只填数字")) {
+        setError(parsedWindow.error);
+        return;
+      }
       void putSettings({
         api_key: opts?.clearAccountKey ? "" : next.apiKey === "" ? undefined : next.apiKey,
         base_url: next.baseUrl || undefined,
         api_model: next.model || undefined,
+        // 留空 = 自动（0）；不合法/超限时用解析后的值（并在提示里说明）
+        api_context_window_k: parsedWindow.value,
         critic_api_key: opts?.clearAccountKey ? "" : next.criticKey === "" ? undefined : next.criticKey,
         critic_api_base_url: next.criticBaseUrl || undefined,
         critic_api_model: next.criticModel || undefined,
@@ -446,6 +474,19 @@ function LlmPane() {
           placeholder="deepseek-v4-flash"
         />
       </label>
+      {/* 模型窗口：填了才按它夹上下文预算（撑爆窗口时上游会直接拒答） */}
+      <label>
+        上下文窗口（千 token，留空 = 自动）
+        <input
+          type="text"
+          inputMode="numeric"
+          value={windowK}
+          data-testid="settings-context-window"
+          onChange={(e) => setWindowK(e.target.value)}
+          placeholder={presetWindowK ? `如 ${presetWindowK}（该预设）` : "如 128"}
+        />
+      </label>
+      <p className={styles.note}>{windowHint}</p>
       {savedNote && <p className={styles.okNote}>{savedNote}</p>}
       {testResult && (
         <p className={testResult.ok ? styles.okNote : styles.error}>

@@ -157,18 +157,30 @@ def context_budget_for_model(
 
 
 def _effective_window_k(model: Optional[str]) -> Optional[int]:
-    """生效的模型窗口（千 token）：能查到就用它，查不到用保守假设。
+    """生效的模型窗口（千 token）；`None` = 不用夹。
 
-    优先级：预设表（`model_presets.context_window_k`）→ `AGENT_UNKNOWN_MODEL_WINDOW_K`
-    （作者声明自己模型的窗口）→ `UNKNOWN_MODEL_WINDOW_K`（保守默认）。
-    显式声明为 0 或负数表示"不用夹"（自建大窗口模型的作者自己负责）。
+    优先级（每一条都有理由）：
+    1. **用户声明的窗口**（账号设置，请求级上下文）
+       - 已知模型：`min(预设, 声明)`——用户只能调**低**，不可能超过厂商窗口；
+       - 未知模型：直接用声明值（他自己知道自建端点的窗口，比我们的保守假设准）；
+       - 声明为负 = 明确"不用夹"。
+    2. **预设表**（`model_presets.context_window_k`）。
+    3. **服务端保守假设** `AGENT_UNKNOWN_MODEL_WINDOW_K`（0/负 = 不夹）。
     """
+    from app.core.execution_profile import declared_window_k
+
+    declared = declared_window_k()
     try:
         from app.core.model_presets import context_window_k
 
         known = context_window_k(model or "")
     except Exception:  # noqa: BLE001 - 预设表不可用时不缩小（保持原行为）
-        return None
+        known = None
+
+    if declared < 0:
+        return None  # 用户明确表示不用夹
+    if declared > 0:
+        return min(known, declared) if known else declared
     if known:
         return known
     try:
@@ -178,7 +190,7 @@ def _effective_window_k(model: Optional[str]) -> Optional[int]:
     except Exception:  # noqa: BLE001 - 配置不可用时用保守默认
         raw = UNKNOWN_MODEL_WINDOW_K
     if raw <= 0:
-        return None  # 明确声明"不用夹"
+        return None  # 服务端明确声明"不用夹"
     return raw
 
 

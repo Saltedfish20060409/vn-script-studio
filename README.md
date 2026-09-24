@@ -286,7 +286,7 @@ CY/T 154-2017《中文出版物夹用英文的编辑规范》、W3C《中文排�
 | `AGENT_CRAFT_MODE` | 写作工艺：`auto` / `off` / `lite` / `full` |
 | `AGENT_SELF_REVIEW` | 自检：`auto` / `on` / `off` |
 | `LLM_THINKING_TIMEOUT_FACTOR` | 思考档（`*-think`）的 LLM 超时倍数，默认 `2.0`（夹在 1.0–5.0）。reasoning 期间上游不产出，非流式请求的 read 超时覆盖整段生成，所以思考档要更宽。见 `app/core/llm_budget.py` |
-| `AGENT_UNKNOWN_MODEL_WINDOW_K` | 预设表里**没收录的模型**按多大的窗口保守处理（千 token，默认 `128`）。为什么不默认"不夹"：撑爆窗口时上游直接拒答，用户什么都拿不到。自部署大窗口模型可以在这里声明真实值；**0 或负数 = 不夹** |
+| `AGENT_UNKNOWN_MODEL_WINDOW_K` | 预设表里**没收录的模型**按多大的窗口保守处理（千 token，默认 `128`）。为什么不默认"不夹"：撑爆窗口时上游直接拒答，用户什么都拿不到。自部署大窗口模型可以在这里声明真实值；**0 或负数 = 不夹**。用户也可以在「设置 → 模型 → 上下文窗口」按账号声明（那会覆盖这里的保守假设；已知模型只能调低） |
 | `DISCONNECT_CANCEL_ENABLED` | 客户端断开时是否中止正在进行的模型调用（默认 `true`，省 token 并释放并发闸）。只作用于"正在等模型"的窗口，不影响已落库的写入与后台作业；见 `app/core/disconnect.py` |
 | `CRITIC_API_KEY` / `CRITIC_API_BASE_URL` / `CRITIC_API_MODEL` | 可选责编模型（空则复用写作模型） |
 | `CORS_ORIGINS` | 前端源，逗号分隔 |

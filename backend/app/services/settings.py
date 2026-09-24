@@ -73,6 +73,7 @@ def settings_to_out(row: UserSettings) -> SettingsOut:
         api_key_masked=mask_api_key(api_key),
         api_base_url=row.api_base_url or "",
         api_model=row.api_model or "",
+        api_context_window_k=int(getattr(row, "api_context_window_k", 0) or 0),
         has_critic_api_key=bool(critic_key),
         critic_api_key_masked=mask_api_key(critic_key),
         critic_api_base_url=row.critic_api_base_url or "",
@@ -121,6 +122,16 @@ async def update_settings(
         row.api_base_url = body.api_base_url.strip()
     if body.api_model is not None:
         row.api_model = body.api_model.strip()
+    if body.api_context_window_k is not None:
+        # 夹取：1..10000 千 token（负值原样保留 = "明确不夹"，见 agent_context._effective_window_k）。
+        # 不夹一遍的话，填错一个 999999999 就会让预算变成天文数字。
+        raw = int(body.api_context_window_k)
+        if raw < 0:
+            row.api_context_window_k = -1
+        elif raw == 0:
+            row.api_context_window_k = 0
+        else:
+            row.api_context_window_k = max(1, min(10_000, raw))
     if body.critic_api_key is not None:
         row.critic_api_key_enc = encrypt_secret(body.critic_api_key.strip(), settings)
     if body.critic_api_base_url is not None:
@@ -155,6 +166,8 @@ async def user_llm_credentials(
         or settings.deepseek_base_url
         or "https://api.deepseek.com",
         "model": row.api_model or settings.deepseek_model or DEFAULT_LLM_MODEL,
+        # 用户声明的模型窗口（千 token）；0 = 没声明（由 agent_context 走预设表/保守假设）
+        "context_window_k": int(getattr(row, "api_context_window_k", 0) or 0),
         "provider": settings.llm_provider or "openai",
         "source": "user",
         "critic_api_key": critic_key,

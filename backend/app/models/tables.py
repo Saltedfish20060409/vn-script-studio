@@ -152,6 +152,10 @@ class UserSettings(Base):
     api_key_enc: Mapped[str] = mapped_column(Text, default="")
     api_base_url: Mapped[str] = mapped_column(String(255), default="https://api.deepseek.com")
     api_model: Mapped[str] = mapped_column(String(128), default="deepseek-v4-flash")
+    # 用户声明的模型上下文窗口（**千 token**；0 = 自动）。
+    # 为什么让用户声明：预设表收不全（自建端点、自部署模型、厂商新名字），
+    # 而"撑爆窗口"是上游直接拒答、什么都拿不到的硬失败（见 core/agent_context.py）。
+    api_context_window_k: Mapped[int] = mapped_column(Integer, default=0)
     critic_api_key_enc: Mapped[str] = mapped_column(Text, default="")
     critic_api_base_url: Mapped[str] = mapped_column(String(255), default="")
     critic_api_model: Mapped[str] = mapped_column(String(128), default="")

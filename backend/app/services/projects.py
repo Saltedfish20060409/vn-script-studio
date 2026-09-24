@@ -419,8 +419,22 @@ async def resolve_llm_credentials(
     from app.services.settings import user_llm_credentials
 
     user_creds = await user_llm_credentials(db, user_id, settings)
-    return merge_llm_credentials(
+    merged = merge_llm_credentials(
         override=get_client_llm_override(),
         user_creds=user_creds,
         server=server_llm_credentials(settings),
     )
+    # 用户声明的模型窗口（千 token）挂到**请求级**上下文上：上下文预算要按模型窗口夹一次
+    # （撑爆窗口会被上游直接拒答，用户什么都拿不到），而窗口只有用户自己知道。
+    # 放在这里而不是每个路由里：这是所有"解析凭据"的必经之路，一个地方就够。
+    # 客户端头部覆盖（X-LLM-*）里没有模型窗口的概念，所以只用账号设置里的值。
+    try:
+        from app.core.execution_profile import set_declared_window_k
+
+        declared = 0
+        if isinstance(user_creds, dict) and merged.get("source") == "user":
+            declared = int(user_creds.get("context_window_k") or 0)
+        set_declared_window_k(declared)
+    except Exception:  # noqa: BLE001 - 声明窗口是优化项，绝不能因此让请求失败
+        pass
+    return merged

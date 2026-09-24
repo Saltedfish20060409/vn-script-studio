@@ -32,8 +32,11 @@ from app.core.execution_profile import (
     PROFILE_STREAMED,
     PROFILE_SYNC,
     current_profile,
+    declared_window_k,
     normalize_profile,
+    reset_declared_window,
     reset_profile,
+    set_declared_window_k,
     set_profile,
 )
 
@@ -46,6 +49,7 @@ def _clean():
     latency_stats.reset()
     yield
     reset_profile()
+    reset_declared_window()
     latency_stats.reset()
 
 
@@ -135,6 +139,64 @@ def test_window_clamp_still_wins_over_the_streamed_ceiling():
     streamed = context_budget_for_model("qwen3:8b", streamed=True)
     assert streamed < MAX_CONTEXT_MAX_CHARS
     assert streamed == context_budget_for_model("qwen3:8b", streamed=False)
+
+
+# ---- 用户声明的模型窗口（窗口保护的最后一块债） ------------------------------
+
+
+def test_declared_window_overrides_the_conservative_guess_for_custom_models(monkeypatch):
+    """自建端点/没收录的模型：用户声明就以他为准（只有他知道真实窗口）。"""
+    import app.config as config
+
+    class _S:
+        agent_context_max_chars = 96_000  # 预算调大，才看得出窗口的作用
+        agent_unknown_model_window_k = 128
+
+    monkeypatch.setattr(config, "get_settings", lambda: _S())
+
+    assert context_budget_for_model("my-own-model") == 76_800  # 保守假设
+    set_declared_window_k(256)
+    assert context_budget_for_model("my-own-model") == 96_000  # 声明更大 → 不再是瓶颈
+    set_declared_window_k(32)
+    assert context_budget_for_model("my-own-model") == 19_200  # 声明更小 → 按他说的夹
+
+
+def test_declared_window_can_only_lower_a_known_model(monkeypatch):
+    """已知模型：声明只能调**低**，不可能超过厂商窗口（否则就是把请求送去撞墙）。"""
+    import app.config as config
+
+    class _S:
+        agent_context_max_chars = 96_000
+        agent_unknown_model_window_k = 128
+
+    monkeypatch.setattr(config, "get_settings", lambda: _S())
+
+    set_declared_window_k(32)
+    assert context_budget_for_model("deepseek-flash") == 19_200  # 预设 1000k → 取小的 32k
+    set_declared_window_k(2000)
+    assert context_budget_for_model("deepseek-flash") == 96_000  # 预设 1000k 胜出
+
+
+def test_negative_declared_window_means_do_not_clamp(monkeypatch):
+    import app.config as config
+
+    class _S:
+        agent_context_max_chars = 96_000
+        agent_unknown_model_window_k = 128
+
+    monkeypatch.setattr(config, "get_settings", lambda: _S())
+    set_declared_window_k(-1)
+    assert context_budget_for_model("my-own-model") == 96_000
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [(None, 0), ("", 0), ("abc", 0), (-5, -1), (0, 0), (128, 128), (999_999, 10_000)],
+)
+def test_declared_window_is_normalized(raw, expected):
+    assert set_declared_window_k(raw) == expected
+    assert declared_window_k() == expected
+
 
 
 def test_both_profiles_satisfy_the_cross_module_invariant():
