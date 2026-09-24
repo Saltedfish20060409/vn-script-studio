@@ -54,6 +54,22 @@ class _SlowHandler(BaseHTTPRequestHandler):
         return
 
 
+@pytest.fixture(autouse=True)
+def _ignore_system_proxy(monkeypatch):
+    """把"系统代理"隔离掉——本文件只测回环，不该受本机代理影响。
+
+    为什么必须做：httpx 在 `trust_env=True`（默认）时用 `urllib.request.getproxies()`
+    取代理，而它在 **Windows 上读的是注册表里的系统代理设置**（不是环境变量，所以
+    `Get-ChildItem env:` 里看不到）。开发者机器上开着本地代理（例如 127.0.0.1:10090
+    的 Clash/v2ray）时，连 `127.0.0.1` 的假服务器也会被塞进代理：代理没转发就变成
+    502/读取超时，于是这三条用例变成"本机代理此刻好不好"的探测——它们本来是用来
+    证明"真实 socket 上的超时行为"的，却因为这个变量随机红。
+
+    代理本身不是被测对象（生产环境由部署决定），所以这里只把用量例自己的假服务器。
+    """
+    monkeypatch.setattr("httpx._utils.getproxies", lambda: {})
+
+
 @pytest.fixture()
 def slow_server():
     _SlowHandler.hits = 0

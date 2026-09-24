@@ -96,6 +96,19 @@ def _read_timeout_sent(model: str, **kwargs) -> float:  # noqa: ANN003
     return asyncio.run(_run())
 
 
+def _read_timeout_for(messages, **kwargs) -> float:  # noqa: ANN001
+    """出站 read 预算（按给定 messages），用于验证"提示词越长、预算越大"。"""
+    posts = AsyncMock(return_value=_ok_response())
+    mock_client = _client(posts)
+
+    async def _run():
+        with patch("app.core.llm_http.httpx.AsyncClient", return_value=mock_client) as ctor:
+            await chat_completions(_cfg(), messages=messages, **kwargs)
+        return ctor.call_args.kwargs["timeout"]
+
+    return asyncio.run(_run())
+
+
 def test_thinking_model_gets_multiplied_outbound_timeout():
     """慢思考档必须拿到更长的 read 预算 —— 否则 reasoning 期间就被判超时。"""
     normal = _read_timeout_sent("deepseek-flash", timeout=120)
@@ -110,6 +123,111 @@ def test_connect_phase_is_capped_short():
     timeout = _read_timeout_sent("deepseek-flash", timeout=120)
     assert timeout.connect <= 10
     assert timeout.read == 120
+
+
+# --- 预填充加时：长提示词必须拿到更长的 read 预算 ---------------------------
+#
+# 背景（同一次政策调整）：上下文预算放大到能装整章正文，而 read timeout 覆盖的是
+# "预填充 + 整段生成"。若不按提示词长度加时，放大上下文就会重新制造
+# "后端明明活着，前端却说它挂了"——这正是用户报障过的那个 bug。
+
+
+def test_small_prompt_keeps_the_old_budget_exactly():
+    """小提示词逐字保持旧行为：加时只对长上下文生效。"""
+    timeout = _read_timeout_for([{"role": "user", "content": "hi"}], timeout=120)
+    assert timeout.read == 120
+    assert llm_budget.prefill_allowance(len("hi")) == 0
+
+
+def test_long_prompt_gets_prefill_allowance():
+    prompt = "雨" * 48000
+    timeout = _read_timeout_for([{"role": "user", "content": prompt}], timeout=120)
+    expected = 120 + llm_budget.prefill_allowance(48000)
+    assert expected > 120
+    assert timeout.read == pytest.approx(expected)
+
+
+def test_prompt_size_is_summed_over_all_messages():
+    """system + user 都算进预填充（只数 user 会低估一半）。"""
+    msgs = [
+        {"role": "system", "content": "雨" * 30000},
+        {"role": "user", "content": "雨" * 18000},
+    ]
+    timeout = _read_timeout_for(msgs, timeout=120)
+    assert timeout.read == pytest.approx(120 + llm_budget.prefill_allowance(48000))
+
+
+def test_thinking_factor_and_prefill_stack():
+    """思考档 ×2 与预填充**叠加**，不是二选一。"""
+    props = llm_budget.effective_timeout(
+        120, thinking=True, factor=2.0, prompt_chars=48000
+    )
+    assert props == pytest.approx(240 + llm_budget.prefill_allowance(48000))
+    assert llm_budget.worst_case_seconds(
+        120, attempts=2, thinking=True, prompt_chars=48000
+    ) > 2 * props
+
+
+def test_timeout_message_names_the_long_context_term():
+    """文案要把"多出来的时间是长提示词预填充"说出来，用户才知道缩范围就能变快。"""
+    posts = AsyncMock(side_effect=_read_timeout())
+    mock_client = _client(posts)
+
+    async def _run():
+        with patch("app.core.llm_http.httpx.AsyncClient", return_value=mock_client):
+            with pytest.raises(RuntimeError) as err:
+                await chat_completions(
+                    _cfg(),
+                    messages=[{"role": "user", "content": "雨" * 48000}],
+                    timeout=120,
+                )
+            return err.value
+
+    err = asyncio.run(_run())
+    assert "模型响应超时" in str(err)
+    assert "长上下文预填充" in str(err)
+
+
+def test_stream_idle_budget_also_counts_prefill():
+    """流式的"多久没有新字节"里包含等第一个字节的时间，也就是预填充。"""
+    from app.core.llm_http import stream_chat_completions
+
+    class _FakeStream:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        @property
+        def status_code(self):
+            return 200
+
+        async def aiter_lines(self):
+            raise httpx.ReadTimeout(
+                "stalled",
+                request=httpx.Request("POST", "https://api.example.com/v1/chat/completions"),
+            )
+            yield  # pragma: no cover - 让它是异步生成器
+
+    mock_client = MagicMock()
+    mock_client.stream = MagicMock(return_value=_FakeStream())
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    async def _run():
+        with patch("app.core.llm_http.httpx.AsyncClient", return_value=mock_client) as ctor:
+            with pytest.raises(RuntimeError):
+                async for _ in stream_chat_completions(
+                    _cfg(),
+                    messages=[{"role": "user", "content": "雨" * 48000}],
+                    timeout=180,
+                ):
+                    pass
+        return ctor.call_args.kwargs["timeout"]
+
+    timeout = asyncio.run(_run())
+    assert timeout.read == pytest.approx(180 + llm_budget.prefill_allowance(48000))
 
 
 # --- 重试策略：读超时不重试 -------------------------------------------------

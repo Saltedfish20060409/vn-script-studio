@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.core.agent_context import _blocks_to_plain
+from app.core.agent_context import chapter_plain
 from app.core.character_voice.corpus import format_corpus_for_prompt
 from app.core.harness.audit_full import full_audit_draft
 from app.core.pipeline.ledger import format_ledger_for_agent, get_ledger
@@ -18,11 +18,12 @@ TOOL_SPECS: List[Dict[str, Any]] = [
     {
         "name": "get_chapter",
         "description": "读取一章或多章正文（可截断）。不传 chapterRef 则用当前焦点章；"
-        "传 chapterRefs（逗号分隔多个 id/标题）可一次读多章做跨章对照。",
+        "传 chapterRefs（逗号分隔多个 id/标题）可一次读多章做跨章对照。"
+        "正文与脚本块都读得到（正文优先）。",
         "parameters": {
             "chapterRef": "章节 id 或标题，可选",
             "chapterRefs": "多个章节 id/标题，逗号分隔，可选（与 chapterRef 二选一）",
-            "maxChars": "每章最大字符，默认 4000",
+            "maxChars": "每章最大字符，默认 12000（读到一半发现不够可再调大）",
         },
     },
     {
@@ -230,7 +231,10 @@ def run_agent_tool(
     args = arguments if isinstance(arguments, dict) else {}
     try:
         if name == "get_chapter":
-            max_c = int(args.get("maxChars") or 4000)
+            # 默认上限从 4000 提到 12000：这个工具是"模型发现上下文里缺材料"时的
+            # 唯一补救手段，4000 字符连一章的中等长度都读不完——补不回来的检索
+            # 等于没有检索（上下文预算放大后更是如此）。
+            max_c = int(args.get("maxChars") or 12000)
             refs = [
                 r.strip()
                 for r in str(args.get("chapterRefs") or "").split(",")
@@ -245,7 +249,7 @@ def run_agent_tool(
                     if not ch:
                         missing.append(ref)
                         continue
-                    plain = _blocks_to_plain(ch.blocks or [], project.characters or [])
+                    plain = chapter_plain(ch, project.characters)
                     parts.append(f"### {ch.title or ch.id}\n{_clip(plain, max_c)}")
                 if missing:
                     parts.append(f"（未找到章节：{', '.join(missing)}）")
@@ -255,7 +259,7 @@ def run_agent_tool(
             ch = _find_chapter(project, args.get("chapterRef"), chapter_id)
             if not ch:
                 return False, "未找到章节"
-            plain = _blocks_to_plain(ch.blocks or [], project.characters or [])
+            plain = chapter_plain(ch, project.characters)
             return True, f"#{ch.title or ch.id}\n{_clip(plain, max_c)}"
 
         if name == "search_script":
@@ -268,7 +272,7 @@ def run_agent_tool(
             candidates = [
                 (
                     ch.title or ch.id,
-                    _blocks_to_plain(ch.blocks or [], project.characters or []),
+                    chapter_plain(ch, project.characters),
                 )
                 for ch in project.chapters or []
             ]
@@ -401,7 +405,7 @@ def run_agent_tool(
                 ch = _find_chapter(project, args.get("chapterRef"), chapter_id)
                 if not ch:
                     return False, "无正文可检"
-                text = _blocks_to_plain(ch.blocks or [], project.characters or [])
+                text = chapter_plain(ch, project.characters)
             audit = full_audit_draft(text)
             issues = audit.get("issues") or []
             if not issues:
@@ -524,7 +528,7 @@ async def run_agent_tool_async(
             ch = _find_chapter(project, args.get("chapterRef"), chapter_id)
             if ch is None:
                 return False, "没有可润色的正文：请传入 text，或指定一章（chapterRef）。"
-            text = _blocks_to_plain(ch.blocks or [], project.characters or [])
+            text = chapter_plain(ch, project.characters)
         if not text.strip():
             return False, "这段/这一章没有正文可润色。"
         if not _has_real_prose(text):

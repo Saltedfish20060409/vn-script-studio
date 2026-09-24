@@ -17,6 +17,7 @@ from app.core.agent import (
 )
 from app.core.agent_context import (
     build_agent_context,
+    context_budget_for_model,
     infer_agent_task,
     is_agent_task,
     task_hint,
@@ -71,6 +72,9 @@ _LOOP_PROTOCOL = """
 }
 规则：
 - 需要查章/设定/角色/地点/体检/账本时，先 tool_calls（可 1～3 个），done=false；不要瞎编工程内容。
+- 上下文末尾若有「篇幅说明 / 长上下文提醒」，表示某些资料这次**没带来**（不是作者没写）：
+  需要时用工具取回（get_chapter / search_script / search_lore），取不到就说明不确定，
+  不要凭印象补写设定或前情。
 - 工具结果会在下一轮以 user 消息注入；看完再决定继续查或收工。
 - 收工：done=true，或 tool_calls 为空；把完整意见写进 message；需要改工程时填 actions。
 - 写正文后应用 lint_draft 自检更佳；与【忌讳】/设定冲突时先改再交。
@@ -431,13 +435,15 @@ async def run_agent_loop(
             None,
         )
         # ctx 只做本地拼装（无 LLM 调用），供末尾 contextMeta 统计
+        # 预算按**当前生效的模型**再夹一次：预设里有 32k 窗口的本地模型，
+        # 硬塞 48k 字符会被上游直接拒答（见 agent_context.context_budget_for_model）。
         ctx = build_agent_context(
             working,
             chapterId=request.chapterId,
             selection=request.selection,
             userMessage=last_user,
             task=task,
-            maxChars=None,
+            maxChars=context_budget_for_model(model),
             chatMemory=request.chatMemory,
             longChapterMemory=request.longChapterMemory,
             globalMemory=request.globalMemory,
@@ -464,7 +470,7 @@ async def run_agent_loop(
             selection=request.selection,
             userMessage=last_user,
             task=task,
-            maxChars=None,
+            maxChars=context_budget_for_model(model),
             chatMemory=request.chatMemory,
             longChapterMemory=request.longChapterMemory,
             globalMemory=request.globalMemory,

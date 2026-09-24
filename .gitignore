@@ -60,6 +60,7 @@ restore-ui.ps1
 docs/*
 !docs/longrange-consistency-and-eval.md
 !docs/llm-timeout-budget.md
+!docs/long-context-policy.md
 !docs/writing-surface.md
 !docs/references.md
 

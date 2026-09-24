@@ -32,11 +32,15 @@ class Settings(BaseSettings):
     icp_beian_number: str = ""
     gongan_beian_number: str = ""
 
-    # Agent 写作上下文主预算（字符数）。默认 12000 是成本/质量平衡值而非
-    # 模型窗口限制；用环境变量 AGENT_CONTEXT_MAX_CHARS 可调大试跑。
-    # 注意：调大 = 每次请求输入 token 线性变多（费用/耗时/免费档限流都受影响），
-    # 而且治不了"记住整本书"——跨章连贯靠检索与滚动记忆，不是单次窗口。
-    agent_context_max_chars: int = 12000
+    # Agent 写作上下文主预算（字符数）。**质量优先**：默认给到 48000（旧值 12000 的
+    # 4 倍），因为"写差一次再花 token 重写"比"多带资料"更浪费。
+    # 上限由两件硬事实决定，两者都在 app/core/agent_context.py 里写着：
+    #   1. 所选模型的窗口（预设 context_k，见 model_presets.context_window_k）；
+    #   2. 我们自己的超时预算——预填充耗时随提示词线性增长，而 read timeout 覆盖
+    #      "预填充 + 生成"（见 app/core/llm_budget.py 的 PREFILL_*）。
+    # 环境变量 AGENT_CONTEXT_MAX_CHARS 可调，但会被夹在 3000–96000 之间；
+    # 想再放宽就得同时放宽 PREFILL_MAX_BONUS（有跨模块不变量测试钉着）。
+    agent_context_max_chars: int = 48000
 
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"

@@ -151,8 +151,10 @@ async def chat_completions(
     }
     # 思考模式档自动加时：reasoning 期间上游不产出，非流式的 read timeout 覆盖整段
     # 生成，同一个预算在 *-think 档上会提前击中（慢思考模型必超时的根因之一）。
+    # 预填充也占这个预算：read timeout 覆盖"预填充 + 整段生成"，长上下文必须加时。
     thinking = _is_thinking_body(body)
-    budget = llm_budget.effective_timeout(timeout, thinking=thinking)
+    prompt_chars = _prompt_chars(messages)
+    budget = llm_budget.effective_timeout(timeout, thinking=thinking, prompt_chars=prompt_chars)
 
     last_exc: Optional[Exception] = None
     async with _LLM_SEMAPHORE:
@@ -172,7 +174,11 @@ async def chat_completions(
                 except (httpx.ReadTimeout, httpx.WriteTimeout) as exc:
                     # 不重试：同一请求同一预算必然再超时，重试只会多烧一次 token。
                     raise _timeout_error(
-                        model=model, base=timeout, thinking=thinking, stage=""
+                        model=model,
+                        base=timeout,
+                        thinking=thinking,
+                        stage="",
+                        prompt_chars=prompt_chars,
                     ) from exc
                 except _RETRYABLE_TRANSPORT as exc:
                     last_exc = exc
@@ -281,19 +287,34 @@ def _is_thinking_body(body: Dict[str, Any]) -> bool:
     return isinstance(t, dict) and t.get("type") == "enabled"
 
 
+def _prompt_chars(messages: List[Dict[str, str]]) -> int:
+    """本次出站提示词的总字符数（预填充加时的依据）。
+
+    只数文本长度，不做 token 估算：这里要的是"提示词变长了就得给更多时间"这个
+    单调关系，精确 token 数对超时预算没有意义（见 llm_budget.PREFILL_*）。
+    """
+    total = 0
+    for m in messages or []:
+        content = m.get("content") if isinstance(m, dict) else None
+        if isinstance(content, str):
+            total += len(content)
+    return total
+
+
 def _timeout_error(
     *,
     model: str,
     base: float,
     thinking: bool,
     stage: str,
+    prompt_chars: int | None = None,
 ) -> RuntimeError:
     """读超时的如实报错：问题在模型速度/预算，而不是"后端没启动"。
 
     此前请求超时会被包成 "LLM 网络失败：..."，前端再翻译成"请确认后端服务
     已启动"——后端明明活着。文案必须指向真正的原因，并给出可执行的下一步。
     """
-    label = llm_budget.describe(base, thinking=thinking)
+    label = llm_budget.describe(base, thinking=thinking, prompt_chars=prompt_chars)
     mode = "（思考模式）" if thinking else ""
     return RuntimeError(
         f"模型响应超时：{label}内没有返回结果{stage}（模型 {model}{mode}）。"
@@ -336,8 +357,11 @@ async def stream_chat_completions(
     attempts = 0
     thinking = _is_thinking_body(body)
     # 流式：timeout 是"多久没有新字节"的空闲上限，不是整段生成的预算，
-    # 所以慢模型不会因为总时长而失败；思考档仍要加时（reasoning 期间无增量）。
-    budget = llm_budget.effective_timeout(timeout, thinking=thinking)
+    # 所以慢模型不会因为总时长而失败；思考档仍要加时（reasoning 期间无增量），
+    # 长上下文的**预填充**同样在这条空闲线之内（第一个字节要等预填充跑完）。
+    budget = llm_budget.effective_timeout(
+        timeout, thinking=thinking, prompt_chars=_prompt_chars(messages)
+    )
 
     async def _stream_once() -> AsyncIterator[str]:
         nonlocal received_any
@@ -381,7 +405,11 @@ async def stream_chat_completions(
         except (httpx.ReadTimeout, httpx.WriteTimeout) as exc:
             # 流式中途空闲超时：不再重连（已产出的内容无法回滚），如实报"模型卡住"。
             raise _timeout_error(
-                model=model, base=timeout, thinking=thinking, stage="，且中途停止输出"
+                model=model,
+                base=timeout,
+                thinking=thinking,
+                stage="，且中途停止输出",
+                prompt_chars=_prompt_chars(messages),
             ) from exc
         except _StreamUpstreamError as exc:
             if (

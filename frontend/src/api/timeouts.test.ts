@@ -58,6 +58,22 @@ function thinkingFactor(): number {
 }
 
 /**
+ * 预填充加时上限（秒）：长提示词让后端 read timeout 变长，前端必须跟上。
+ *
+ * 为什么这是**每一轮**都要加、而不是"某一档"的常数：非流式请求的 read timeout
+ * 覆盖"预填充 + 整段生成"，而上下文预算放大后（默认 48k 字符，上限 96k），
+ * 预填充本身就是几十秒量级。后端 `llm_budget.PREFILL_MAX_BONUS` 与
+ * `agent_context.MAX_CONTEXT_MAX_CHARS` 成对，后端有跨模块不变量测试钉着；
+ * 这里读同一个数，保证"后端能拼出来的最长上下文"前端也等得起。
+ */
+function prefillAddMs(): number {
+  const budgets = backendBudgets();
+  const bonus = budgets.PREFILL_MAX_BONUS;
+  expect(bonus, "llm_budget.py 里找不到 PREFILL_MAX_BONUS").toBeGreaterThan(0);
+  return bonus * 1000;
+}
+
+/**
  * 一轮 = 请求内**串行**的一次 LLM 调用。
  * 并发调用（gather）只算一轮；串行的两段就必须写两轮。
  */
@@ -85,6 +101,12 @@ interface Contract {
   mustContain?: string;
   /** job 模式：后端必须注册的作业 kind（形如 kind="brainstorm"）。 */
   jobKind?: string;
+  /**
+   * 这一轮会不会带上"按预算拼装的整书上下文"（默认 true，保守）。
+   * 只有**确认提示词固定且极短**的端点才可写 false——那类请求的预填充是秒级，
+   * 给它加 60s 只会让"卡住"的报错变迟钝（例如设置页的连通性测试）。
+   */
+  prefill?: boolean;
   /** 为什么是这些轮数（人工核对过调用结构，写在这里以便复核）。 */
   why: string;
 }
@@ -252,6 +274,8 @@ const CONTRACTS: Contract[] = [
     apiFile: "misc.ts",
     budget: "probe",
     rounds: [{ file: "api/v1/settings.py", constant: "PROBE" }],
+    // 提示词是一句固定的探测文本（几百字符），永远不会带整书上下文 → 不加预填充。
+    prefill: false,
     why: "测试连接用 PROBE，思考档 ×2 后正好顶到旧的前端 30s 默认值以上",
   },
 ];
@@ -306,12 +330,13 @@ describe("每个在请求内调用模型的端点", () => {
         expect(TIMEOUTS[c.budget]).toBeGreaterThanOrEqual(TIMEOUTS.fast + SLACK_MS);
         return;
       }
-      // 后端单轮预算 → 思考档实际生效的预算 → 串行各轮求和
+      // 后端单轮预算 → 思考档实际生效的预算 → 加上预填充上限 → 串行各轮求和
+      const perRoundAdd = c.prefill === false ? 0 : prefillAddMs();
       const neededMs =
         c.rounds.reduce((sum, r) => {
           const base = budgets[r.constant];
           expect(base, `llm_budget.${r.constant} 不存在`).toBeGreaterThan(0);
-          return sum + base * factor * 1000;
+          return sum + base * factor * 1000 + perRoundAdd;
         }, 0) + SLACK_MS;
       expect(
         TIMEOUTS[c.budget],
@@ -326,6 +351,14 @@ describe("每个在请求内调用模型的端点", () => {
           src.includes(`llm_budget.${r.constant}`),
           `${r.file} 里没有 llm_budget.${r.constant}（预算表已过期）`
         ).toBe(true);
+        if (c.prefill === false) {
+          // `prefill: false` 是在断言"这个端点的提示词固定且极短"。这条把谎话钉住：
+          // 端点所在模块一旦开始拼装整书上下文，它就不再享有豁免。
+          expect(
+            src.includes("build_agent_context"),
+            `${r.file} 开始拼装 agent 上下文了，不能再用 prefill: false 豁免预填充`
+          ).toBe(false);
+        }
       }
     });
 

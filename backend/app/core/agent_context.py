@@ -30,8 +30,66 @@ def is_agent_task(v: Any) -> bool:
     return isinstance(v, str) and v in AGENT_TASKS
 
 
+# --- 上下文预算政策（质量优先） ---------------------------------------------
+#
+# 立场（作者明确要求）：**"写差一次再花 token 重写"比"多带资料"更浪费**。
+# 所以预算不是要省的资源，能装就装——上限只由两件硬事实决定：
+#
+# 1. **模型窗口**：塞爆窗口上游直接拒答，用户什么都拿不到（见 context_budget_for_model）。
+# 2. **我们自己的超时预算**：预填充耗时随提示词线性增长，而 read timeout 覆盖
+#    "预填充 + 生成"。预算放开而超时不放，就会重演用户报障过的假"后端没启动"。
+#
+# 于是 MAX 与 `llm_budget.PREFILL_MAX_BONUS` 成对存在，由
+# `tests/test_context_budget_policy.py` 跨模块钉住不变量：
+#     (MAX_CONTEXT_MAX_CHARS - PREFILL_FREE_CHARS) / PREFILL_CHARS_PER_SECOND ≤ PREFILL_MAX_BONUS
+# 谁想再把上限调大，必须同时把预填充加时上限调大（前端阶梯表也读那个数）。
+DEFAULT_CONTEXT_MAX_CHARS = 48000
+"""默认主预算（字符）：旧值 12000 的 4 倍，为长篇留出"整章 + 记忆层 + 摘要"的余地。
+
+按 1 token ≈ 1.4 汉字估，约 3.4 万 token——远小于最小预设窗口（128k），
+也够放下一章正文（续写场景 24k）+ 长程记忆 8k + 全局记忆 6k + 人设与摘要。
+"""
+
+MAX_CONTEXT_MAX_CHARS = 96000
+"""配置上限（字符）：超过这个量级，超时预算就不再能覆盖预填充（见上面的不变量）。
+
+作者仍可用 AGENT_CONTEXT_MAX_CHARS 调整，但会被夹到这里；想真正突破，
+改的是 `llm_budget.PREFILL_*`（那意味着"愿意为一次请求等更久"）。
+"""
+
+MIN_CONTEXT_MAX_CHARS = 3000
+"""预算下限：低于这个数连人设+硬规则都装不下，拼出来的上下文只会误导模型。"""
+
+_CHARS_PER_TOKEN = 1.2
+"""1 token 至少装多少字符（**保守**取值：中文实测 ≈1.4–1.7，这里按 1.2 算窗口）。
+
+算窗口容量时宁可低估：低估只是少带资料，高估会被上游直接拒答。
+"""
+
+_WINDOW_INPUT_SHARE = 0.5
+"""输入最多占窗口的比例：另一半留给输出、思考过程、多轮工具结果。"""
+
+# 各资料块的**单块上限**。全部提到模块级，是为了让"预算够不够装下它们"这件事
+# 可被测试断言（见 tests/test_context_budget_policy.py），而不是散在拼装代码里。
+#
+# 长程/全局记忆是**抗失忆的主要手段**（"四十章之前发生过什么"只有这两层有），
+# 所以它们随预算一起放宽：旧值 3200/2400 在两百章的书里只够放十来条。
+_CLIP_LONG_MEMORY = 8000
+"""长程章节记忆（滚动归档）：最近这一段发生了什么。"""
+_CLIP_GLOBAL_MEMORY = 6000
+"""全局记忆（卷级总述与未回收伏笔）：整本书到目前为止的骨架。"""
+_CLIP_CHAT_MEMORY = 2800
+"""对话滚动记忆：非正式剧情，压得比较狠。"""
+_CLIP_CRAFT = 2400
+"""ACG 工艺卡：写作技法提示，属于"建议"而非"事实"，不必全带。"""
+_CLIP_REFERENCE_DOCS = 12000
+"""作者上传的参考资料：量大且与本章相关性最低，超预算时整块让位（排在丢弃序最前）。"""
+_CLIP_SELECTION = 2000
+"""用户选区：改写任务的焦点，超长选区本身就该先缩小。"""
+
+
 def _default_context_max_chars() -> int:
-    """Agent 上下文主预算：优先 AGENT_CONTEXT_MAX_CHARS（Settings），默认 12000。
+    """Agent 上下文主预算：优先 AGENT_CONTEXT_MAX_CHARS（Settings），默认 48000。
 
     用 try/except 包裹，保证纯上下文拼装（含测试）永远有可用默认值，
     不会因 SECRET_KEY 校验等环境问题抛错。
@@ -40,9 +98,30 @@ def _default_context_max_chars() -> int:
         from app.config import get_settings
 
         v = get_settings().agent_context_max_chars
-        return int(v) if v and v > 0 else 12000
+        configured = int(v) if v else DEFAULT_CONTEXT_MAX_CHARS
     except Exception:  # noqa: BLE001 - core util must never raise for tuning knob
-        return 12000
+        configured = DEFAULT_CONTEXT_MAX_CHARS
+    return max(MIN_CONTEXT_MAX_CHARS, min(configured, MAX_CONTEXT_MAX_CHARS))
+
+
+def context_budget_for_model(model: Optional[str] = None, budget: Optional[int] = None) -> int:
+    """按**所选模型的窗口**再夹一次预算；窗口未知则不改行为。
+
+    为什么要这一步：预设里既有 1000k 的 DeepSeek，也有 32k 的本地 Ollama。
+    预算是个"能装多少就装多少"的上限，遇到小窗口模型会被上游直接拒
+    （context length exceeded）——那比截断更难善后，用户拿不到任何结果。
+    """
+    resolved = int(budget) if budget else _default_context_max_chars()
+    try:
+        from app.core.model_presets import context_window_k
+
+        window_k = context_window_k(model or "")
+    except Exception:  # noqa: BLE001 - 预设表不可用时不缩小（保持原行为）
+        window_k = None
+    if window_k:
+        room = int(window_k * 1000 * _CHARS_PER_TOKEN * _WINDOW_INPUT_SHARE)
+        resolved = min(resolved, room)
+    return max(MIN_CONTEXT_MAX_CHARS, min(resolved, MAX_CONTEXT_MAX_CHARS))
 
 
 @dataclass
@@ -323,6 +402,25 @@ def _js(v: Optional[str]) -> str:
     return v if v is not None else "undefined"
 
 
+def chapter_plain(ch: Optional[SceneChapter], characters: Optional[List[Character]] = None) -> str:
+    """一章的纯文本：**正文优先**，正文为空才回落到脚本块。
+
+    这是全项目读"一章的正文"的唯一口径（工具、摘要、上下文都走它）：
+    - 口径与 `consistency_scan._chapter_source_text`、`writing_stats.count_chapter_words`
+      一致：正文（`prose`）优先，正文为空才渲染脚本块。
+    - 曾经的坑：`agent_tools.get_chapter` / `agent_context.plain_of` 只读 `blocks`，
+      对本作品的主写作面（`prose`）等于瞎——纯正文工程里 `get_chapter` 返回空、
+      「当前章节」只剩标题。这正是记忆探针（`core/memory_probe.py` 的 focus-body
+      探针）抓到的"证据根本没进上下文"，它的表现与"模型记不住"一模一样。
+    """
+    if ch is None:
+        return ""
+    prose = str(getattr(ch, "prose", None) or "").strip()
+    if prose:
+        return prose
+    return _blocks_to_plain(list(getattr(ch, "blocks", None) or []), list(characters or []))
+
+
 def _blocks_to_plain(blocks: List[ScriptBlock], characters: List[Character]) -> str:
     char_map = {c.id: c for c in characters}
     lines: List[str] = []
@@ -594,18 +692,130 @@ def _loc_card(l: Location) -> str:
     )
 
 
-def _chapter_tail(plain: str, max_len: int) -> str:
+def _focus_budget(max_chars: int, task: str) -> int:
+    """焦点章正文能占多少字符（按总预算分档，而不是写死 5000）。
+
+    写死 5000 的直接后果：一章三千字的稿子没问题，**一章两万字的稿子续写时模型只
+    看得到最后一小截**，于是"失忆"发生在作者最需要连贯的地方。所以这里改成按预算
+    比例给，续写类给到一半——"接着写"本来就该以本章正文为主体。
+    """
+    if task == "outline":
+        return max(1800, int(max_chars * 0.06))  # 大纲任务不需要正文，只要摘要
+    if task in ("continue", "branch", "scene"):
+        return max(12000, int(max_chars * 0.5))
+    return max(6000, int(max_chars * 0.35))
+
+
+def _chapter_tail(plain: str, max_len: int, *, hint: str = "") -> str:
+    """保留末尾（续写要接的就是末尾），省略量如实写在标记里。
+
+    标记里必须带上"省了多少字"和取回方式：作者看到自己三千字的前情没进去，
+    才知道该用工具取或缩小范围；模型看到同一行，也不会以为这章只有这么长。
+    """
     if len(plain) <= max_len:
         return plain
-    return f"…(前文省略)\n{plain[len(plain) - max_len:]}"
+    dropped = len(plain) - max_len
+    return f"…(本章前 {dropped} 字未展开{hint})…\n{plain[len(plain) - max_len:]}"
 
 
-def _chapter_head_tail(plain: str, max_len: int) -> str:
+def _chapter_head_tail(plain: str, max_len: int, *, hint: str = "") -> str:
     if len(plain) <= max_len:
         return plain
     head = int(max_len * 0.35)
     tail = max_len - head - 20
-    return f"{plain[:head]}\n…(中间省略)…\n{plain[len(plain) - tail:]}"
+    dropped = len(plain) - head - tail
+    return f"{plain[:head]}\n…(本章中段 {dropped} 字未展开{hint})…\n{plain[len(plain) - tail:]}"
+
+
+#: 正文被压缩时提示模型"缺的东西可以取回来"的唯一说明（不要在各处重写一遍）。
+_RETRIEVE_HINT = "，可用 get_chapter 工具取回整章"
+
+
+def _section_label(key: str) -> str:
+    """资料块 key → 人话（复用可摘清单里的说法，避免两处各起一个名字）。"""
+    return EXCLUDABLE_SECTIONS.get(key, key)
+
+
+def _light_other_chapters(project: VnProject, focus_chapter: Any) -> str:
+    """「其他章节」的降级版：只剩标题 + 一句话摘要（正文摘录全部让位）。
+
+    保留标题与摘要而不是整块丢掉，是因为"这本书有哪些章、各写了什么"是连续性
+    的最低需要；丢掉的只是那些可被 `get_chapter` 取回的正文摘录。
+    """
+    parts: List[str] = []
+    for ch in project.chapters:
+        if focus_chapter and ch.id == focus_chapter.id:
+            continue
+        if ch.synopsis:
+            parts.append(f"### {ch.title}\n摘要: {_clip(ch.synopsis, 100)}")
+        else:
+            parts.append(f"### {ch.title}")
+    if not parts:
+        return ""
+    return (
+        "\n## 其他章节（仅摘要，因篇幅压缩；需要正文可用 get_chapter / search_script）\n"
+        + "\n\n".join(parts)
+    )
+
+
+def _budget_notice(dropped_keys: Sequence[str], compressed_keys: Sequence[str]) -> str:
+    """把"这次上下文被怎么处理过"写进提示词本身。
+
+    这是"失忆"的结构性对策之一：模型不知道提示词被裁过时，会把缺失当成"作者没写"，
+    于是编造或前后矛盾。写清楚"哪块没带、用什么工具能取"，它就能自己补。
+    """
+    lines: List[str] = ["## 篇幅说明（本次上下文经过压缩，请据此判断）"]
+    if dropped_keys:
+        lines.append(
+            "- 已整块省去："
+            + "、".join(_section_label(k) for k in dropped_keys)
+            + "（需要时用 get_chapter / search_script / search_lore 取回）"
+        )
+    if compressed_keys:
+        lines.append(
+            "- 已压缩："
+            + "、".join(_section_label(k) for k in compressed_keys)
+            + "（正文标记里写了省略量）"
+        )
+    lines.append(
+        "- 提示词里**没有**的设定/章节就是「这次没带来」，"
+        "不要凭印象补写；缺什么先用工具取，取不到就明确说不确定。"
+    )
+    return "\n".join(lines)
+
+
+#: 末尾"编排说明 + 硬规则 + 输出契约"的哨兵 key：不在 `_SECTION_ORDER` 里，永不丢弃。
+_TAIL_KEY = "__tail__"
+
+#: 超预算时的**整块让位**顺序（从最可替代的往下）。
+#: 只列"中段"的量大块：它们与"这一步怎么写"关系最弱，且大多能用工具取回。
+_BUDGET_DROP_ORDER: Tuple[str, ...] = (
+    "referenceDocs",  # 作者上传资料：量最大、相关性最低，可重新上传
+    "craft",  # 工艺卡是"建议"不是"事实"
+    "otherChapters",  # 其他章摘录：可用 get_chapter / search_script 取
+    "sprites",  # 演出资源（立绘）：对"怎么写"没有信息量
+    "variables",  # 机制类：分支/场景需要，所以排在立绘之后
+    "index",  # 章节目录：检索结果里已经有章节标题
+    "loreLinks",  # 条目沿边带出的一跳关联
+)
+
+#: 仍然超预算时的**第二级让位**：这些是"最好别丢"的块，所以只在整块表丢完之后动，
+#: 而且必须如实写进篇幅说明。排序理由：先丢"能用工具取回"的，最后才动记忆层
+#: （长程/全局记忆没有工具能补——它们是从数据库滚动归档出来的）。
+_BUDGET_DROP_ORDER_LAST: Tuple[str, ...] = (
+    "lore",  # 设定条目：检索命中，可用 search_lore / get_lore_entry 取回
+    "chatMemory",  # 对话滚动记忆（非正式剧情）
+    "globalMemory",  # 全局记忆：整本书骨架，尽量留到最后
+    "longMemory",  # 长程记忆：最近发生了什么，最不该丢
+)
+
+#: 给"篇幅说明"预留的字符数：说明本身也要算进预算，否则会把它自己挤掉。
+_NOTICE_RESERVE = 420
+
+#: 超过这个长度才写「长上下文提醒」（约 1.4 万 token）。
+#: 依据：Lost in the Middle（arXiv:2307.03172）显示中段信息在长上下文里利用率明显下降，
+#: 而这类"以哪里为准"的指令本身很短，宁可在长上下文里多重复一次。
+_LONG_CONTEXT_NOTICE_CHARS = 20000
 
 
 def _timeline_lines(project: VnProject, focus_chapter: Any) -> Tuple[List[str], str]:
@@ -705,22 +915,12 @@ def build_agent_context(
     plain_cache: Dict[str, str] = {}
 
     def plain_of(ch: Optional[SceneChapter]) -> str:
-        """一章的纯文本：**正文优先**，正文为空才回落到脚本块。
-
-        这里曾经只读 `blocks`——对本作品的主写作面（`prose`）等于瞎：纯正文工程里
-        「当前章节」只剩一个标题（模型被要求"紧接正文末尾续写"，却看不到那段正文），
-        章摘要也全成了「（空章）」。口径与 `consistency_scan._chapter_source_text`、
-        `writing_stats.count_chapter_words` 一致：**正文优先，正文为空才数块**。
-
-        这是记忆探针（`core/memory_probe.py` 的 `focus-body` 探针）抓到的：
-        "证据根本没进上下文"的表现与"模型记不住"一模一样，但修法完全不同。
-        """
+        """一章的纯文本（正文优先）——口径见模块级 `chapter_plain`，这里只做缓存。"""
         if ch is None:
             return ""
         cached = plain_cache.get(ch.id)
         if cached is None:
-            prose = str(getattr(ch, "prose", None) or "").strip()
-            cached = prose or _blocks_to_plain(ch.blocks, project.characters)
+            cached = chapter_plain(ch, project.characters)
             plain_cache[ch.id] = cached
         return cached
 
@@ -1079,7 +1279,8 @@ def build_agent_context(
         if score >= 8 and plain and len(plain) < 2500 and not already:
             budget = min(900, 300 + score * 40)
             other_chapter_blocks.append(
-                f"### {ch.title}（正文摘录 score={score}）\n{_chapter_head_tail(plain, budget)}"
+                f"### {ch.title}（正文摘录 score={score}）\n"
+                f"{_chapter_head_tail(plain, budget, hint='，可用 get_chapter 取该章')}"
             )
             included.append(f"摘录章:{ch.title}")
 
@@ -1088,24 +1289,26 @@ def build_agent_context(
     focus_digest = next((d for d in digests if focus_chapter and d.chapterId == focus_chapter.id), None)
     if focus_chapter:
         plain = plain_of(focus_chapter)
-        focus_budget = (
-            1800
-            if resolved_task == "outline"
-            else 5000
-            if resolved_task in ("continue", "branch", "scene")
-            else 4200
-        )
+        # 预算随总预算走（旧值 1800/5000/4200 是"省 token"年代的产物）。
+        focus_budget = _focus_budget(max_chars, resolved_task)
         use_tail = resolved_task in ("continue", "polish", "branch", "scene")
         focus_body = "\n".join(
             p
             for p in [
                 f"## 当前章节：{focus_chapter.title}",
                 f"Synopsis: {focus_chapter.synopsis}" if focus_chapter.synopsis else "",
-                _chapter_tail(plain, focus_budget) if use_tail else _chapter_head_tail(plain, focus_budget),
+                (
+                    _chapter_tail(plain, focus_budget, hint=_RETRIEVE_HINT)
+                    if use_tail
+                    else _chapter_head_tail(plain, focus_budget, hint=_RETRIEVE_HINT)
+                ),
             ]
             if p
         )
         included.append(f"当前章:{focus_chapter.title}")
+        if len(plain) > focus_budget:
+            # 透明化：作者要能一眼看出"当前章被截了"，而不是以为模型读了全文
+            included.append(f"当前章截断:{focus_budget}/{len(plain)}字")
 
     if picked_chars:
         included.append(f"角色×{len(picked_chars)}")
@@ -1223,7 +1426,7 @@ def build_agent_context(
         (
             "longMemory",
             (
-                f"\n{_clip(longChapterMemory.strip(), 3200)}"
+                f"\n{_clip(longChapterMemory.strip(), _CLIP_LONG_MEMORY)}"
                 if longChapterMemory and longChapterMemory.strip()
                 else ""
             ),
@@ -1233,7 +1436,7 @@ def build_agent_context(
             # 再给"整本书到目前为止"（影响主线判断）。两块都会在超预算时被压。
             "globalMemory",
             (
-                f"\n{_clip(globalMemory.strip(), 2400)}"
+                f"\n{_clip(globalMemory.strip(), _CLIP_GLOBAL_MEMORY)}"
                 if globalMemory and globalMemory.strip()
                 else ""
             ),
@@ -1241,7 +1444,7 @@ def build_agent_context(
         (
             "craft",
             (
-                f"\n{_clip(loreCraft.strip(), 2400)}"
+                f"\n{_clip(loreCraft.strip(), _CLIP_CRAFT)}"
                 if loreCraft and loreCraft.strip()
                 else ""
             ),
@@ -1249,7 +1452,7 @@ def build_agent_context(
         (
             "referenceDocs",
             (
-                f"\n{_clip(referenceDocs.strip(), 12000)}"
+                f"\n{_clip(referenceDocs.strip(), _CLIP_REFERENCE_DOCS)}"
                 if referenceDocs and referenceDocs.strip()
                 else ""
             ),
@@ -1257,7 +1460,7 @@ def build_agent_context(
         (
             "chatMemory",
             (
-                f"\n## 对话滚动记忆（更早轮次压缩，非正式剧情）\n{_clip(chatMemory.strip(), 2800)}"
+                f"\n## 对话滚动记忆（更早轮次压缩，非正式剧情）\n{_clip(chatMemory.strip(), _CLIP_CHAT_MEMORY)}"
                 if chatMemory and chatMemory.strip()
                 else ""
             ),
@@ -1310,7 +1513,7 @@ def build_agent_context(
                 else ""
             ),
         ),
-        ("selection", f"\n## 用户选区（审稿/改写焦点）\n{_clip(selection, 2000)}" if selection else ""),
+        ("selection", f"\n## 用户选区（审稿/改写焦点）\n{_clip(selection, _CLIP_SELECTION)}" if selection else ""),
         ("style", style_block),
     ]
 
@@ -1318,11 +1521,31 @@ def build_agent_context(
     # 顺序由 _SECTION_ORDER 决定（下面这行排序），这里的书写顺序不影响输出。
     order_index = {key: i for i, key in enumerate(_SECTION_ORDER)}
     keyed_sections.sort(key=lambda kv: order_index.get(kv[0], len(_SECTION_ORDER)))
-    kept_sections = [text for key, text in keyed_sections if text and key not in dropped]
+    # 保留 key（不只是文本）：超预算时要按 key 决定"丢哪一块"，而不是从中间砍一刀。
+    kept_keyed: List[Tuple[str, str]] = [
+        (key, text) for key, text in keyed_sections if text and key not in dropped
+    ]
     if dropped:
         # 透明化：告诉作者这次省掉了什么（前端会把没省的显示成"依据"）
         included.append("省去:" + "、".join(sorted(dropped)))
-    tail = f"\n## 编排说明\n上下文按任务「{resolved_task}」检索拼装：章摘要本地抽取、大纲节拍检索、对话记忆压缩。人设与 bible 是作者备忘不是讲稿。续写请紧接「当前章节」正文末尾。"
+    # 长上下文里模型会"读到但没用上"（Lost in the Middle）：明确告诉它**以哪两处为准**，
+    # 以及"缺的东西可以取回来"。只在真的长时才写，短上下文里这句话本身就是噪音。
+    long_note = ""
+    if sum(len(t) for _, t in kept_keyed) >= _LONG_CONTEXT_NOTICE_CHARS:
+        long_note = (
+            "\n\n## 长上下文提醒\n"
+            "本次上下文较长：请以**开头的角色/设定与末尾的硬规则、「当前章节」正文**为准；"
+            "中间的资料是按检索拼上的，可能与本步无关，不要为了用上它们而离题。"
+            "提示词里没有的章节或设定就是这次没带来——用 get_chapter / search_script / "
+            "search_lore 取，不要凭印象补写。"
+        )
+        included.append("长上下文提醒")
+    tail = (
+        f"\n## 编排说明\n上下文按任务「{resolved_task}」检索拼装：章摘要本地抽取、"
+        "大纲节拍检索、对话记忆压缩。人设与 bible 是作者备忘不是讲稿。"
+        "续写请紧接「当前章节」正文末尾。"
+        + long_note
+    )
     # 硬规则在**末尾再出现一次**：长上下文里夹在中间的要求最容易被忽略。
     key_rules = task_key_rules(resolved_task)
     if key_rules:
@@ -1355,7 +1578,7 @@ def build_agent_context(
             f"- {r}" for r in author_rules
         )
         included.append(f"作者硬约束×{len(author_rules)}")
-    kept_sections.append(tail)
+    kept_keyed.append((_TAIL_KEY, tail))
 
     # 「证明它记得」：把这次真正用到的资料连同摘录列出来（前端可展开看），
     # 这是"聊天给不了"的东西——作者能核对它到底读了什么，而不是只能猜。
@@ -1387,36 +1610,66 @@ def build_agent_context(
             }
         )
 
-    text = "\n".join(kept_sections)
+    # --- 超预算：**整块让位 + 如实说明**，而不是"从中间砍一刀" -----------------
+    #
+    # 旧实现是 `text[:keep_head] + text[-keep_tail:]`：一句话把上下文从中段切成两半。
+    # 后果有两层：块边界被切碎（人设/设定只剩半句），而且**没人知道少了什么**——
+    # 模型把缺失当成"作者没写"，于是编造；作者以为模型读了全书。
+    #
+    # 现在分三级，每一级都留痕（写进提示词末尾的「篇幅说明」+ API 的 included）：
+    #   1. 中段量大的块整块让位（_BUDGET_DROP_ORDER）；
+    #   2. 仍然超预算才动"可用工具取回"的块与记忆层（_BUDGET_DROP_ORDER_LAST）；
+    #   3. 最后手段才是首尾保留的字符级压缩——真发生时标记里写明省了多少字。
+    budget_dropped: List[str] = []
+    budget_compressed: List[str] = []
+    # 给「篇幅说明」留位：说明本身也算上下文长度，否则它会把自己挤掉。
+    budget = max(1000, max_chars - _NOTICE_RESERVE)
 
+    def _join_sections() -> str:
+        return "\n".join(t for k, t in kept_keyed if k not in budget_dropped and t)
 
-    # Trim from the least critical middle (other chapters) if over budget
-    if len(text) > max_chars:
-        overflow = len(text) - max_chars
-        if overflow > 0 and other_chapter_blocks:
-            light_others_parts = []
-            for ch in project.chapters:
-                if focus_chapter and ch.id == focus_chapter.id:
-                    continue
-                if ch.synopsis:
-                    light_others_parts.append(f"### {ch.title}\n摘要: {_clip(ch.synopsis, 100)}")
-                else:
-                    light_others_parts.append(f"### {ch.title}")
-            light_others = "\n\n".join(light_others_parts)
-            pattern = re.compile(
-                r"## 其他章节[\s\S]*?(?=\n## 当前章节|\n## 用户选区|\n## 编排说明|\Z)"
-            )
-            text = pattern.sub(
-                f"## 其他章节（仅摘要，因篇幅压缩）\n{light_others}\n\n", text, count=1
-            )
-            included.append("已压缩其他章摘录")
-        if len(text) > max_chars:
+    if len(_join_sections()) > budget:
+        stored_keys = {k for k, _ in kept_keyed}
+        if other_chapter_blocks and "otherChapters" in stored_keys:
+            light = _light_other_chapters(project, focus_chapter)
+            if light:
+                kept_keyed = [
+                    (k, light if k == "otherChapters" else t) for k, t in kept_keyed
+                ]
+                budget_compressed.append("otherChapters")
+                included.append("已压缩其他章摘录")
+        for key in _BUDGET_DROP_ORDER + _BUDGET_DROP_ORDER_LAST:
+            if len(_join_sections()) <= budget:
+                break
+            if key in {k for k, _ in kept_keyed} and key not in budget_dropped:
+                budget_dropped.append(key)
+                included.append(f"篇幅省去:{key}")
+        text = _join_sections()
+        if len(text) > budget:
             keep_tail = min(
-                int(max_chars * 0.55), len(focus_body) + len(selection or "") + 400
+                int(budget * 0.55), len(focus_body) + len(selection or "") + 400
             )
-            keep_head = max_chars - keep_tail - 30
-            text = f"{text[:keep_head]}\n\n…(上下文中段压缩)…\n\n{text[len(text) - keep_tail:]}"
+            keep_head = max(0, budget - keep_tail - 40)
+            removed = max(0, len(text) - keep_head - keep_tail)
+            text = (
+                f"{text[:keep_head]}\n\n"
+                f"…(上下文中段压缩：省去约 {removed} 字，用工具取回需要的那一块)…\n\n"
+                f"{text[len(text) - keep_tail:]}"
+            )
+            budget_compressed.append("中段")
             included.append("中段压缩")
+    else:
+        text = _join_sections()
+
+    notice = ""
+    if budget_dropped or budget_compressed:
+        notice = "\n\n" + _budget_notice(budget_dropped, budget_compressed)
+        if len(text) + len(notice) > max_chars:
+            # 装不下说明本身时，宁可不要说明（作者仍能在界面上看到 included），
+            # 也不要让上下文超出预算。
+            notice = ""
+        else:
+            text = f"{text}{notice}"
 
     return AgentContextResult(
         text=text,

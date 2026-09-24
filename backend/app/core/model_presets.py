@@ -267,6 +267,29 @@ def find_preset(preset_id: str) -> Dict[str, object] | None:
     return None
 
 
+def context_window_k(model: str) -> int | None:
+    """该模型名的上下文窗口（**千 token**）；认不出来返回 None。
+
+    用途只有一个：给 Agent 上下文预算做**上限保护**（见 `agent_context`）——
+    预设里既有 1000k 的 DeepSeek，也有 32k 的本地 Ollama，按同一个字符数硬塞
+    会把小窗口模型直接撑爆（上游报 context length exceeded，比截断更难善后）。
+
+    认不出来就返回 None（**保持原行为**，不擅自缩小）：预设只是帮忙填端点，
+    用户完全可能手填一个我们没收录的模型名，见 `supports_json_mode` 的同款取舍。
+    """
+    name = (model or "").strip().lower()
+    if not name:
+        return None
+    for p in MODEL_PRESETS:
+        if str(p.get("model") or "").strip().lower() == name:
+            return int(p.get("context_k") or 0) or None
+    for p in MODEL_PRESETS:
+        preset_model = str(p.get("model") or "").strip().lower()
+        if preset_model and (name.startswith(preset_model) or preset_model.startswith(name)):
+            return int(p.get("context_k") or 0) or None
+    return None
+
+
 # JSON 模式（structured outputs）在部分档位上不可用：硬发 response_format 会被
 # 对方拒绝（Anthropic 的 OpenAI 兼容层就直接报错），所以出站前要按模型名判断。
 #

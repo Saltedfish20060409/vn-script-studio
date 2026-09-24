@@ -87,6 +87,7 @@
      > 这也正是前端预算能收得住的前提：最坏耗时不再是无脑 ×3。
   3. 超时**如实报错**：`模型响应超时：240s（基础 120s × 思考模式 2.0）内没有返回结果（模型 …）。
      常见原因是当前档位偏慢…可换成非思考档…或改用会持续输出进度的流式入口后重试。`
+  4. **长提示词的预填充加时**（后续补充，见本节末尾"补记"）。
 - 31 处 `chat_completions(timeout=…)` 全部换成 `llm_budget.*`；给 `localization/translate`
   补上原本缺失的显式预算（此前吃 provider 默认值，前端无法与之核对）。
 - **客户端断开时中止在飞的模型调用**（新增 `backend/app/core/disconnect.py`）：
@@ -203,8 +204,11 @@
 ## 八、怎么自查
 
 ```bash
-# 后端：预算换算、重试策略、思考档加时、报错文案、源码级裸数字约束
+# 后端：预算换算、重试策略、思考档加时、预填充加时、报错文案、源码级裸数字约束
 cd backend && PYTHONPATH=. .venv/Scripts/python -m pytest tests/test_llm_timeout_budget.py -q
+
+# 后端：上下文预算政策 + "上下文上限 ≤ 预填充加时上限"的跨模块不变量
+cd backend && PYTHONPATH=. .venv/Scripts/python -m pytest tests/test_context_budget_policy.py -q
 
 # 后端：客户端断开 → 中止在飞调用；后台作业不受影响
 cd backend && PYTHONPATH=. .venv/Scripts/python -m pytest tests/test_disconnect_cancel.py -q
@@ -228,3 +232,39 @@ sed -n '1,80p' frontend/src/api/timeouts.ts
 复现"白烧 token"：把 `config.disconnect_cancel_enabled` 设为 false 或让
 `DisconnectGuard._gone()` 永远返回 False，`test_disconnect_cancel.py` 会红。
 复现"漏登记"：在任一端点里加一句 `await run_recap(...)`，`test_llm_route_registry.py` 会红。
+
+## 九、补记：长提示词的预填充加时（同一类 bug 的第二种形态）
+
+用户后来明确要求"上下文限额加长很多甚至不限额不是问题"（质量优先，见
+[docs/long-context-policy.md](long-context-policy.md)）。这件事有一个**必然的副作用**：
+非流式请求的 read timeout 覆盖的是**预填充 + 整段生成**，预填充耗时随提示词长度线性增长。
+只把上下文预算放大而超时不动，就会以另一种形式重演本文档开头的那个 bug——
+用户看到「请确认后端已启动」，而后端只是还没吐出第一个字。
+
+所以 `llm_budget` 增加了一条与提示词长度挂钩的加时项：
+
+```
+加时 = min(PREFILL_MAX_BONUS, max(0, 提示词字符数 - PREFILL_FREE_CHARS) / PREFILL_CHARS_PER_SECOND)
+     = min(60s, (chars - 8000) / 1500)
+```
+
+- `PREFILL_FREE_CHARS = 8000`：这个长度以下不加时。既符合事实（小提示词的预填充是秒级），
+  也保证**既有行为逐字不变**（`effective_timeout(120) == 120` 仍然成立）。
+- `PREFILL_CHARS_PER_SECOND = 1500`：刻意保守的下界。真实预填充（尤其命中上下文缓存时）
+  快得多，但排队/冷启动/免费档限流会明显更慢——延续"宁可多等，也不要在结果已生成好时
+  把连接掐掉"的取舍。
+- **思考档 ×2 与预填充叠加**，两者是不同来源的时间。
+- 流式路径同样计入：那里的 timeout 是"多久没有新字节"的空闲上限，而**等第一个字节**
+  的时间就包含预填充。
+- 文案也变得可执行：`模型响应超时：146s（长上下文预填充 +27s）内没有返回结果…`。
+
+配套的两处对齐（缺一处就会重新失配）：
+
+1. **后端不变量**：`(agent_context.MAX_CONTEXT_MAX_CHARS - PREFILL_FREE_CHARS) /
+   PREFILL_CHARS_PER_SECOND ≤ PREFILL_MAX_BONUS`——"允许拼出来的最长上下文，一定落在
+   超时预算能覆盖的范围内"（`tests/test_context_budget_policy.py`）。
+2. **前端阶梯**：`timeouts.test.ts` 读同一个 `PREFILL_MAX_BONUS`，按
+   `基础预算 × 思考档系数 + 预填充上限 + 余量` 逐端点校验，于是
+   `quick 240→300s`、`chat 300→360s`、`write 480→540s`、`long 600→660s`、
+   `batch 900→1020s`、作业轮询 `15→20min`。唯一豁免的是设置页的连通性测试
+   （提示词固定是 `"ping"`，且契约测试会钉住"该模块不得拼装 agent 上下文"）。
