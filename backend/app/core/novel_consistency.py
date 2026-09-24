@@ -129,6 +129,26 @@ _HW_LATIN_RE = re.compile(r"[A-Za-z]")
 #: 只在**两侧都是数字**时才算——`well-known`、`SARS-CoV-2` 这类不报（英文里的连字符是正常的）。
 _ASCII_DIGIT_RANGE_RE = re.compile(r"(?<=[0-9])-(?=[0-9])")
 
+# ------------------------------------------------- GB/T 15835-2011（数字用法）
+
+#: 年份写成了汉字：`二〇一九年`。规范里公历年份用阿拉伯数字（文学风格例外，故只报 info）。
+#: 只认四个汉字数字 + 年，避免把「这一年」「三年」这类正常写法卷进来。
+_CJK_YEAR_RE = re.compile(r"[〇零一二三四五六七八九]{4}年")
+
+#: 阿拉伯数字与汉字「几」混用表示约数：`10几个人`。规范里「几」表示约数时应写汉字
+#: （「十几个人」），或改用「多」（「10 多个人」）。
+_ARABIC_WITH_JI_RE = re.compile(r"[0-9]+几")
+
+#: 相邻数字用阿拉伯数字 + 顿号表示概数：`3、4年`。规范里概数用汉字且不用顿号（「三四年」）。
+#: 排除前面有「第」的情形——那是并列编号（`第3、4章`）而不是概数。
+_ARABIC_DUNHAO_RANGE_RE = re.compile(r"(?<!第)[0-9]+、[0-9]+(?=[年月日天周人个次元米斤吨页条句])")
+
+#: 中英之间的空格用法：`中文 English`（加了空格）与 `中文English`（没加）。
+#: 两种写法各有各的规范主张（CY/T 154 与中文排版惯例都不要求加，西文出版物常要求加），
+#: 所以**不判定哪种对**，只判定"同一部作品里不一致"——那才是客观问题。
+_CJK_SPACE_LATIN_RE = re.compile(f"[{_CJK}][ \\t]+[A-Za-z]")
+_CJK_TIGHT_LATIN_RE = re.compile(f"[{_CJK}][A-Za-z]")
+
 #: 书名号嵌套：《……《……》……》 里层应该用单书名号〈〉；
 #: 引号嵌套：“……“…… 里层应该用单引号‘’；「……」里层用『』。
 #: 这两种都**不能**用一条正则糊过去（第一版就写错了）：要的是"当前已经处在第几层"，
@@ -338,6 +358,17 @@ _RULE_BASIS: Dict[str, str] = {
     "dash_ascii_range": (
         "GB/T 15834-2011《标点符号用法》（连接号）；"
         "GB/T 15835-2011《出版物上数字用法》（数值范围的写法）"
+    ),
+    "cjk_year_digits": "GB/T 15835-2011《出版物上数字用法》（公历年份用阿拉伯数字）",
+    "arabic_with_ji": (
+        "GB/T 15835-2011《出版物上数字用法》（「几」表示约数时用汉字数字）"
+    ),
+    "arabic_dunhao_range": (
+        "GB/T 15835-2011《出版物上数字用法》（相邻数字并列连用表示概数时用汉字、不用顿号）"
+    ),
+    "cjk_latin_spacing_mixed": (
+        "CY/T 154-2017《中文出版物夹用英文的编辑规范》；同一作品内部一致"
+        "（**不判定加空格与不加空格哪种对**，只判定本书内部是否一致）"
     ),
     "ellipsis_ascii_dots": "GB/T 15834-2011《标点符号用法》（省略号）",
     "ellipsis_fullwidth_period": "GB/T 15834-2011《标点符号用法》（省略号）",
@@ -577,6 +608,16 @@ def _line_typography_hits(line: str) -> List[Dict[str, Any]]:
                 hits.append(
                     {"code": "quote_nested_level", "quote": _quote_span(line, at, at + 1)}
                 )
+
+    # ---- GB/T 15835-2011 数字用法 ----
+    for m in _CJK_YEAR_RE.finditer(line):
+        hits.append({"code": "cjk_year_digits", "quote": _quote_span(line, *m.span())})
+
+    for m in _ARABIC_WITH_JI_RE.finditer(line):
+        hits.append({"code": "arabic_with_ji", "quote": _quote_span(line, *m.span())})
+
+    for m in _ARABIC_DUNHAO_RANGE_RE.finditer(line):
+        hits.append({"code": "arabic_dunhao_range", "quote": _quote_span(line, *m.span())})
 
     return hits
 
@@ -1421,6 +1462,53 @@ def _issue(
     }
 
 
+def _spacing_consistency_issue(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """中英之间的空格用法在**整部作品里是否一致**（CY/T 154-2017 那一侧能落地的部分）。
+
+    为什么不判定"加空格"与"不加空格"哪种对：两派都有依据（中文排版惯例不加，靠字体留白；
+    西文出版物常要求加），我们没有资格替作者定。但**同一本书里两种写法混用**是客观问题：
+    导出后每页的疏密都不一样，读起来就是"不干净"。所以只报不一致，并给出两边的数量，
+    由作者决定统一到哪一种（导出侧将来可以按他的选择统一处理）。
+
+    阈值取小：一本书里只要有两处加了空格、两处没加，就值得提一句；总量少于 4 处不提。
+    """
+    spaced = 0
+    tight = 0
+    first_line: Optional[int] = None
+    first_row: Optional[Dict[str, Any]] = None
+    first_quote = ""
+    for row in rows:
+        for line_no, line in row["lines"]:
+            a = len(_CJK_SPACE_LATIN_RE.findall(line))
+            b = len(_CJK_TIGHT_LATIN_RE.findall(line))
+            spaced += a
+            tight += b
+            if first_row is None and (a or b):
+                hit = _CJK_SPACE_LATIN_RE.search(line) or _CJK_TIGHT_LATIN_RE.search(line)
+                if hit is not None:
+                    first_row = row
+                    first_line = line_no
+                    first_quote = _quote_span(line, *hit.span())
+    if spaced < 2 or tight < 2 or first_row is None:
+        return []
+    return [
+        _issue(
+            severity="info",
+            code="cjk_latin_spacing_mixed",
+            category="typography",
+            message=(
+                f"中英之间的空格用法不一致：有 {spaced} 处加了空格（如「中文 English」）、"
+                f"{tight} 处没加（如「中文English」）。两种写法都有依据，但**同一本书里应统一**"
+                "——导出后每页疏密不同，读起来不干净。"
+            ),
+            row=first_row,
+            line=first_line,
+            quote=first_quote,
+            evidence={"spaced": spaced, "tight": tight},
+        )
+    ]
+
+
 def _grouped_issues(
     hits: Sequence[Dict[str, Any]], row: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
@@ -1693,6 +1781,8 @@ def analyze_novel_consistency(
         findings.extend(_grouped_issues(hits, row))
         findings.extend(_confusion_issues(row))
     findings.extend(_variant_issues(rows, known, cjk_terms))
+    # 全书一处：中英之间的空格用法是否自相矛盾（CY/T 154-2017 那一侧能落地的部分）
+    findings.extend(_spacing_consistency_issue(rows))
 
     # B 组：视角与称呼
     names = _name_forms(project)

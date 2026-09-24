@@ -47,6 +47,10 @@ EXPECTED_CODES = {
     "dash_ascii_double",
     "dash_single_em",
     "dash_ascii_range",
+    "cjk_year_digits",
+    "arabic_with_ji",
+    "arabic_dunhao_range",
+    "cjk_latin_spacing_mixed",
     "ellipsis_ascii_dots",
     "ellipsis_fullwidth_period",
     "ellipsis_style_mixed",
@@ -142,6 +146,8 @@ def test_frontend_and_backend_share_the_same_rule_vocabulary():
         # 全书级启发式：前端没有全书视野（也不该为了一句话去扫描整部作品）
         "pov_shift",
         "address_level_drift",
+        # 全书级一致性：中英间距是否自相矛盾要看整本书（单看一行无从判断）
+        "cjk_latin_spacing_mixed",
     }
     assert backend - frontend <= allowed_backend_only, (
         f"后端有而前端没有的规则超出允许集合：{sorted(backend - frontend - allowed_backend_only)}"

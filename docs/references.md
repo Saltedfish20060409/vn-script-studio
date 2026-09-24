@@ -18,7 +18,7 @@
 |---|---|---|
 | **GB/T 15834-2011《标点符号用法》**<br>（推荐性国标；[全文转载](https://cbimg.cnki.net/Editor/2016/1222/misy/10004b10-38f3-47ad-a43f-356437b3b0a3.docx)） | 标点符号的写法与用法：引号/括号成对、引号内再引号降一级、书名号内再书名号用〈〉、破折号（——）、省略号（……）、连接号 | `novel_consistency` 与 `editorAssist.lintProse` 的 `quote_unbalanced` / `quote_nested_level` / `title_mark_nested` / `dash_ascii_double` / `dash_single_em` / `ellipsis_ascii_dots` / `ellipsis_fullwidth_period` |
 | **GB/T 15835-2011《出版物上数字用法》** | 数字的写法与宽度；数值范围的写法（起止数字之间用一字线/浪纹线） | `digit_width_mixed`、`dash_ascii_range` |
-| **CY/T 154-2017《中文出版物夹用英文的编辑规范》**<br>（[标准平台](https://std.samr.gov.cn/hb/search/stdHBDetailed?id=8B1827F23645BB19E05397BE0A0AB44A)、[全文](https://www.spc.org.cn/online/8ae3828864f5e2f8c43455ed49bd4b88.html)） | 中文里夹用英文的间距、大小写与标点 | `punct_halfwidth_near_cjk`、`letter_width_mixed`、`space_between_cjk` |
+| **CY/T 154-2017《中文出版物夹用英文的编辑规范》**<br>（[标准平台](https://std.samr.gov.cn/hb/search/stdHBDetailed?id=8B1827F23645BB19E05397BE0A0AB44A)、[全文](https://www.spc.org.cn/online/8ae3828864f5e2f8c43455ed49bd4b88.html)） | 中文里夹用英文的间距、大小写与标点 | `punct_halfwidth_near_cjk`、`letter_width_mixed`、`space_between_cjk`；**中英间距只判"内部是否一致"**（见下方说明） |
 | **W3C《中文排版需求》(clreq)**（[W3C TR](https://www.w3.org/TR/2023/DNOTE-clreq-20230301/)） | 标点的比例与位置、行首行尾禁则、书名号、注音（旁注）等中文排版的行业需求 | 标点类规则的并列依据；注音导出（待办：见第四节） |
 | **W3C HTML Ruby Markup Extensions / Ruby Annotation**（[W3C TR](https://www.w3.org/TR/html-ruby-extensions/)） | 注音标记的规范形态（`<ruby>` / `<rt>`） | `novel_craft` 的注音校验（**待办**：把自定的 `｜汉字《注音》`、`{汉字\|注音}` 与 W3C 形态对齐） |
 | **JTF 日本語標準スタイルガイド**（[PDF](https://www.jtf.jp/pdf/jtf_style_guide.pdf)） | 日文的注音（ルビ）、送假名、记号规则 | 轻小说/日文路径（**待办**：目前只做中文注音） |
@@ -28,6 +28,14 @@
 **注意"推荐性"三个字**：国标是推荐性的，文学写作里破例是常事。所以除「引号不配对」外
 （它会让我们在导出时把后续正文吞进台词），所有表记规则都只报 warn/info，并附依据，
 由作者定夺。
+
+### 中英之间要不要加空格：只判"一致"，不判"对错"
+
+中文里夹用英文（`中文 English` vs `中文English`）这件事，两派都有依据：中文排版惯例
+不加空格（靠字体在行内自动留白），西文出版物则常要求加。**我们没有资格替作者定风格**，
+所以 `cjk_latin_spacing_mixed` 只报一种情况：**同一部作品里两种写法混用**
+（例如本书里 12 处加了空格、156 处没加）。那是客观问题——导出后每页疏密都不一样。
+依据栏里也如实写明"不判定加空格与不加空格哪种对，只判定本书内部是否一致"。
 
 没有公开规范可依、只能靠作品自身一致性的：人名变体、视角偏移、称呼漂移、别字词表——
 依据里如实写成"作品自身的一致性（启发式）"，不假借国标。
@@ -96,9 +104,10 @@
 
 - [x] 规则依据层：`_RULE_BASIS` / `RULE_BASIS` + 界面上显示依据 + 防分叉守卫
 - [x] GB/T 15834 新增三条：书名号嵌套、引号嵌套层次、连接号（数字区间用半角连字符）
-- [x] GB/T 15835 起步：数值范围的写法（`dash_ascii_range`）
-- [ ] GB/T 15835 其余：概数用汉字、年份用阿拉伯数字、百分号/单位写法
-- [ ] CY/T 154-2017：中英之间的间距与标点细则
+- [x] GB/T 15835：数值范围（`dash_ascii_range`）、公历年份用阿拉伯数字（`cjk_year_digits`）、
+      「几」表约数用汉字（`arabic_with_ji`）、概数不用顿号（`arabic_dunhao_range`）
+- [x] CY/T 154-2017：中英间距**内部一致性**（`cjk_latin_spacing_mixed`）+ 为什么只判一致性
+- [ ] GB/T 15835 剩余：百分号与计量单位的写法（中文正文里 `%`/`％`、`km`/`公里` 的统一）
 - [ ] W3C Ruby：把自定的注音写法与 `<ruby>/<rt>` 对齐，并让导出真能产出 ruby
 - [ ] JTF 样式指南：日文注音/送假名（日文稿子真正落地时）
 - [ ] 目标设定理论：核对现在的目标/连续天数设计（具体、可测、即时反馈、难度适中）

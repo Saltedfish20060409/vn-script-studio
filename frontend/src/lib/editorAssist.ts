@@ -66,6 +66,10 @@ export const RULE_BASIS: Record<string, string> = {
   dash_single_em: "GB/T 15834-2011《标点符号用法》（破折号占两个字的位置）",
   dash_ascii_range:
     "GB/T 15834-2011《标点符号用法》（连接号）；GB/T 15835-2011《出版物上数字用法》（数值范围）",
+  cjk_year_digits: "GB/T 15835-2011《出版物上数字用法》（公历年份用阿拉伯数字）",
+  arabic_with_ji: "GB/T 15835-2011《出版物上数字用法》（「几」表示约数时用汉字数字）",
+  arabic_dunhao_range:
+    "GB/T 15835-2011《出版物上数字用法》（相邻数字并列连用表示概数时用汉字、不用顿号）",
   ellipsis_ascii_dots: "GB/T 15834-2011《标点符号用法》（省略号）",
   ellipsis_fullwidth_period: "GB/T 15834-2011《标点符号用法》（省略号）",
   ellipsis_with_deng: "编辑规范补充规则（省略号与「等」不宜并用）——不是国标正文，故只报 info",
@@ -273,6 +277,23 @@ export function lintProse(text: string): TextIssue[] {
       "info",
       "ellipsis_with_deng",
       () => "省略号与「等」都表示列举未尽，通常留一个即可"
+    ),
+    // ---- GB/T 15835-2011 数字用法 ----
+    // 公历年份用阿拉伯数字（文学风格偶尔用汉字，故只报 info）
+    ...scan(text, /[〇零一二三四五六七八九]{4}年/g, "info", "cjk_year_digits", () =>
+      "公历年份按规范用阿拉伯数字（「2019 年」），汉字年份多见于书法/仿古文体"
+    ),
+    // 阿拉伯数字与汉字「几」混用表示约数
+    ...scan(text, /[0-9]+几/g, "info", "arabic_with_ji", () =>
+      "「几」表示约数时用汉字数字（「十几个人」），或用「多」（「10 多个人」）"
+    ),
+    // 相邻数字用阿拉伯数字 + 顿号表示概数（排除「第3、4章」这类并列编号）
+    ...scan(
+      text,
+      /(?<!第)[0-9]+、[0-9]+(?=[年月日天周人个次元米斤吨页条句])/g,
+      "info",
+      "arabic_dunhao_range",
+      () => "概数按规范用汉字且不用顿号（「三四年」）；若是并列编号，请在前面加「第」"
     ),
     // 常见别字（成语/固定搭配词表，零误报口径；见 lib/typoRules.ts）
     ...lintTypos(text),

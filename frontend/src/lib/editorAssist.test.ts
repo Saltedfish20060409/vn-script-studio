@@ -36,6 +36,9 @@ describe("规则依据（不允许没有出处的规则）", () => {
       lintProse("他 说了一句。"), // 汉字间空格
       lintProse("他 说了一句。   "), // 行尾空格
       lintProse("2019-2020 年间"), // 数字区间半角连字符
+      lintProse("二〇一九年的秋天"), // 汉字年份
+      lintProse("大约10几个人"), // 阿拉伯数字 + 几
+      lintProse("那是3、4年前的事"), // 阿拉伯数字 + 顿号表概数
       lintProse("带来了……等等东西"), // 省略号 + 等
       lintProse("我在读《钟声与《第七个抽屉》》。"), // 书名号嵌套
       lintProse("他说：“她叫我“小澪”。”"), // 引号嵌套
@@ -44,7 +47,7 @@ describe("规则依据（不允许没有出处的规则）", () => {
   );
 
   it("每一条实际会报出来的规则都登记了依据", () => {
-    expect(CODES.size).toBeGreaterThanOrEqual(12);
+    expect(CODES.size).toBeGreaterThanOrEqual(15);
     for (const code of CODES) {
       const basis = RULE_BASIS[code];
       expect(basis, `规则 ${code} 没有登记依据`).toBeTruthy();
@@ -71,6 +74,41 @@ describe("规则依据（不允许没有出处的规则）", () => {
   it("每条 issue 上都带着它的依据（界面上要能直接显示）", () => {
     for (const issue of lintProse("他迫不急待地说--完了。   ")) {
       expect(issue.basis, issue.code).toBe(RULE_BASIS[issue.code]);
+    }
+  });
+});
+
+describe("数字用法与中英间距（GB/T 15835 / CY/T 154）", () => {
+  it("汉字年份报，阿拉伯年份与「三年/那一年」不报", () => {
+    expect(lintProse("二〇一九年的秋天").some((i) => i.code === "cjk_year_digits")).toBe(true);
+    expect(lintProse("2019 年的秋天").some((i) => i.code === "cjk_year_digits")).toBe(false);
+    expect(lintProse("三年后，那一年他十九岁。").some((i) => i.code === "cjk_year_digits")).toBe(
+      false
+    );
+  });
+
+  it("「10几个」报，「十几个」「10多个人」不报", () => {
+    expect(lintProse("大约10几个人").some((i) => i.code === "arabic_with_ji")).toBe(true);
+    expect(lintProse("大约十几个人").some((i) => i.code === "arabic_with_ji")).toBe(false);
+    expect(lintProse("大约10多个人").some((i) => i.code === "arabic_with_ji")).toBe(false);
+  });
+
+  it("「3、4年前」报，「第3、4章」不报", () => {
+    expect(lintProse("那是3、4年前的事").some((i) => i.code === "arabic_dunhao_range")).toBe(true);
+    expect(lintProse("请翻到第3、4章").some((i) => i.code === "arabic_dunhao_range")).toBe(false);
+    expect(lintProse("那是三四年前的事").some((i) => i.code === "arabic_dunhao_range")).toBe(false);
+  });
+
+  it("数字区间用半角连字符报，英文连字符不报", () => {
+    expect(lintProse("2019-2020 年间").some((i) => i.code === "dash_ascii_range")).toBe(true);
+    expect(lintProse("well-known 的 SARS-CoV-2").some((i) => i.code === "dash_ascii_range")).toBe(
+      false
+    );
+  });
+
+  it("新规则都带依据（不是只有后端才有出处）", () => {
+    for (const issue of lintProse("二〇一九年，大约10几个人，那是3、4年前。")) {
+      expect(issue.basis, issue.code).toContain("GB/T 15835-2011");
     }
   });
 });
