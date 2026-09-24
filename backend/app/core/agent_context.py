@@ -149,6 +149,7 @@ _SECTION_ORDER: Tuple[str, ...] = (
     "relations",
     "locations",
     "bible",
+    "timeline",
     "lore",
     "loreLinks",
     "longMemory",
@@ -607,6 +608,72 @@ def _chapter_head_tail(plain: str, max_len: int) -> str:
     return f"{plain[:head]}\n…(中间省略)…\n{plain[len(plain) - tail:]}"
 
 
+def _timeline_lines(project: VnProject, focus_chapter: Any) -> Tuple[List[str], str]:
+    """作者登记的时间线（`project.timeline`）→ 上下文里的几行 + 一条如实说明。
+
+    为什么需要它：时间线一直被当成"准绳"用在别处（一致性审计拿它读完全部章节、
+    事实扫描用它判定时间线错序），**但从没进过写作时的上下文**——于是模型一边被要求
+    别写乱时间，一边看不到那份时间线。这是 LongMemEval 那套记忆维度里"时间推理"
+    暴露出来的缺口（见 docs/references.md）。
+
+    取舍（都写在这里，免得以后被"顺手放开"）：
+    - 只带**焦点章之前（含本章）已经发生**的事件：未来的事件不该影响这一章怎么写；
+      解析不出章号的事件（作者没填 chapterRef）当背景带上，标注「章号未填」。
+    - **跳过 stale 事件**（证据已失效）并说明跳了几条：喂"可能已经不对"的事实比不喂更糟
+      （与账本里那条"假钩子会被当成事实喂给写作模型"是同一类风险的两种形态）。
+    - 按 `order` 升序（书内先后），条数与每条长度都设上限，超出如实说明。
+    """
+    events = [e for e in (getattr(project, "timeline", None) or []) if e is not None]
+    if not events:
+        return [], ""
+
+    order_of: dict = {}
+    for idx, ch in enumerate(list(getattr(project, "chapters", None) or []), start=1):
+        cid = str(getattr(ch, "id", "") or "")
+        title = str(getattr(ch, "title", "") or "")
+        if cid:
+            order_of[cid] = idx
+        if title:
+            order_of.setdefault(title, idx)
+    focus_ordinal = order_of.get(str(getattr(focus_chapter, "id", "") or ""), None)
+
+    kept: List[Tuple[float, str]] = []
+    skipped_stale = 0
+    skipped_future = 0
+    for event in events:
+        if bool(getattr(event, "stale", None)):
+            skipped_stale += 1
+            continue
+        ref = str(getattr(event, "chapterRef", None) or "").strip()
+        ref_ordinal = order_of.get(ref)
+        label = str(getattr(event, "when", None) or "").strip() or (
+            f"第 {ref_ordinal} 章" if ref_ordinal else "章号未填"
+        )
+        if focus_ordinal is not None and ref_ordinal is not None and ref_ordinal > focus_ordinal:
+            skipped_future += 1
+            continue
+        title = str(getattr(event, "title", "") or "").strip() or "（无标题事件）"
+        summary = _clip(str(getattr(event, "summary", None) or "").strip(), 120)
+        kept.append(
+            (
+                float(getattr(event, "order", 0.0) or 0.0),
+                f"- [{label}] {title}" + (f"：{summary}" if summary else ""),
+            )
+        )
+
+    kept.sort(key=lambda pair: pair[0])
+    cap = 20
+    shown = kept[-cap:] if len(kept) > cap else kept
+    notes: List[str] = []
+    if len(kept) > cap:
+        notes.append(f"共 {len(kept)} 条，这里列出最近 {cap} 条")
+    if skipped_future:
+        notes.append(f"省略了 {skipped_future} 条焦点章之后的事件")
+    if skipped_stale:
+        notes.append(f"跳过 {skipped_stale} 条可能已失效（stale）的事件")
+    return [text for _order, text in shown], "；".join(notes)
+
+
 def build_agent_context(
     project: VnProject,
     chapterId: Optional[str] = None,
@@ -638,11 +705,22 @@ def build_agent_context(
     plain_cache: Dict[str, str] = {}
 
     def plain_of(ch: Optional[SceneChapter]) -> str:
+        """一章的纯文本：**正文优先**，正文为空才回落到脚本块。
+
+        这里曾经只读 `blocks`——对本作品的主写作面（`prose`）等于瞎：纯正文工程里
+        「当前章节」只剩一个标题（模型被要求"紧接正文末尾续写"，却看不到那段正文），
+        章摘要也全成了「（空章）」。口径与 `consistency_scan._chapter_source_text`、
+        `writing_stats.count_chapter_words` 一致：**正文优先，正文为空才数块**。
+
+        这是记忆探针（`core/memory_probe.py` 的 `focus-body` 探针）抓到的：
+        "证据根本没进上下文"的表现与"模型记不住"一模一样，但修法完全不同。
+        """
         if ch is None:
             return ""
         cached = plain_cache.get(ch.id)
         if cached is None:
-            cached = _blocks_to_plain(ch.blocks, project.characters)
+            prose = str(getattr(ch, "prose", None) or "").strip()
+            cached = prose or _blocks_to_plain(ch.blocks, project.characters)
             plain_cache[ch.id] = cached
         return cached
 
@@ -801,6 +879,8 @@ def build_agent_context(
         + f" exprs=[{', '.join(e.tag for e in s.expressions)}]"
         for s in (project.sprites or [])
     ]
+
+    timeline_lines, timeline_note = _timeline_lines(project, focus_chapter)
 
     # ── 设定条目：按触发词/标题/正文检索，只有命中的进上下文 ──────────────
     # 这是"设定很大也用得动"的关键：条目可以无上限地堆，而每次调用只带相关的几条。
@@ -1107,6 +1187,18 @@ def build_agent_context(
             else "",
         ),
         ("bible", f"\n## Story Bible（内部参考，禁止整段搬进正文）\n{bible_block}" if bible_block else ""),
+        (
+            # 时间线放进**头部**：它是"什么已经发生了"的地基（LongMemEval 的"时间推理"
+            # 维度），而且按 Lost in the Middle 的结论，头部是最不易被忽略的位置。
+            "timeline",
+            (
+                "\n## 时间线（作者登记的事件，按书内先后；内部参考）\n"
+                + "\n".join(timeline_lines)
+                + (f"\n（{timeline_note}）" if timeline_note else "")
+                if timeline_lines
+                else ""
+            ),
+        ),
         (
             "lore",
             (

@@ -63,6 +63,27 @@ text[-keep_tail:]` 拼回去）。两件事叠加之后，位置就不只是"读
 完全一致（漏登记会被静默排到最后）、硬规则在最前且末尾重复、地基块在中段块之前、
 当前章正文落在尾部窗口、**参考文档很大时角色/关系/设定必须仍在**（回归守卫）。
 
+### 记忆探针：一次真实的发现（LongMemEval 那套维度的价值）
+
+`core/memory_probe.py` 按 LongMemEval 的维度造探针，**只组装上下文、不调模型**，
+回答的是"该有的证据有没有进上下文"。它第一次运行就有三个维度是红的，
+顺着查下去发现了**同一类缺陷的三处**——全都源于"只看脚本块、不看正文"：
+
+1. **`agent_context.plain_of` 只读 blocks**：纯正文工程里「当前章节」只剩一个标题，
+   模型被要求"紧接正文末尾续写"却看不到那段正文（正文写作是本作品的主写作面！）。
+2. **`chapter_digest._collect_lines` 只遍历 blocks**：正文写作的章节收集到 0 行 →
+   摘要变成「（空章）」、openHook/closeHook 全空 → 账本里既没有章末钩子也没有出场角色
+   （"保存即攒记忆"对小说作者整条失效；轻小说模板当初不得不预置伏笔，根因就在这）。
+3. **`chapter_content_hash` 不含 prose**：改了正文指纹不变，于是摘要/账本被判定为
+   "没变"而**永不刷新**——前两条即使修好，也不会在保存时生效。
+
+三处都已改为**正文优先**，与本作品其它流水线（`consistency_scan`、`writing_stats`、
+`novel_craft`、导出链路）统一口径。这类问题的表现与"模型记不住"**一模一样**，
+但修法完全不同——这正是把记忆拆成可分别测量的维度的意义。
+
+探针的五维映射与限制写在 `core/memory_probe.py` 的模块说明里，其中"知识更新"一栏
+**如实留空**：账本与长程记忆是 HTTP 层拼好传进上下文构建器的字符串，探针看不到它们的构造过程。
+
 ### 目标设定理论落到哪（Locke & Latham）
 理论的关键词是：**具体**、**有难度但可达**、**反馈及时**、**承诺度**。逐条对照现状：
 
@@ -103,8 +124,8 @@ text[-keep_tail:]` 拼回去）。两件事叠加之后，位置就不只是"读
 |---|---|---|
 | [Lost in the Middle](https://arxiv.org/abs/2307.03172) | 模型对上下文中段的利用最差 | **已落进代码**：`agent_context._SECTION_ORDER`（见下方专节） |
 | [Distance between Relevant Information Pieces Causes Bias](https://aclanthology.org/2025.findings-acl.28/) | 证据片段之间的**距离**本身造成偏差 | **已落进代码**：`core/scan_exposure.py` 把"跨章矛盾能否同窗"变成可测量的覆盖率，并据此把分片默认值从 6/2 改成 12/4（数字与推导见 `longrange-consistency-and-eval.md` §三.1） |
-| [LongMemEval](https://arxiv.org/abs/2410.10813) | 长期记忆该按"问答式"维度评测 | 用来自测章节摘要 + 账本 + 滚动记忆"到底记不记得住"（**待办**） |
-| [MemGPT](https://raw.githubusercontent.com/lhl/agentic-memory/32e2bec4f65aa1286c81b6866fe815d7a61b71c2/references/packer-memgpt.md) / 图谱化检索（[Clue-RAG 为例](https://arxiv.org/abs/2507.08445)） | 分页换出 / 分层图谱检索 | 「快照 / 章节记忆」路线；`loreEntries.links` + 时间线本质是图，"检索顺带走一步"已对了一半 |
+| [LongMemEval](https://arxiv.org/abs/2410.10813) | 长期记忆该按"问答式"维度评测（信息抽取 / 多会话推理 / 时间推理 / 知识更新 / 拒答） | **已落进代码**：`core/memory_probe.py`（零模型调用的检索层探针），并因此抓到三个真缺陷（见下方专节） |
+| [MemGPT](https://raw.githubusercontent.com/lhl/agentic-memory/32e2bec4f65aa1286c81b6866fe815d7a61b71c2/references/packer-memgpt.md) / 图谱化检索（[Clue-RAG 为例](https://arxiv.org/abs/2507.08445)） | 分页换出 / 分层图谱检索 | 「快照 / 章节记忆」路线；`loreEntries.links` + 时间线本质是图——**`graph_hop` 探针**把"沿 links 走一步能不能走到关联实体"变成可测项 |
 
 ### 长文生成与规划
 | 文献 | 结论 | 我们的落点 |
@@ -178,8 +199,19 @@ text[-keep_tail:]` 拼回去）。两件事叠加之后，位置就不只是"读
 - [x] Distance…：`core/scan_exposure.py`（章覆盖 / 按距离分桶的对暴露率 / 预算下的书覆盖）
       + 12 项测试；**实测推出"同窗上限 = overlap"并把默认值从 6/2 改成 12/4**
       （16 窗覆盖 66→132 章，距离上限 2→4）；前端加了读后端源码的防漂移守卫
-- [ ] LongMemEval 式的记忆自测脚本
-- [ ] Choice Poetics / Dunyazad：选项分类进 `branchAdvice`
-- [ ] Dror：A/B 报告给区间
-- [ ] Best-of-N：多变体按自洽度选
-- [ ] Tail at Scale：慢思考档的 hedged request
+- [x] LongMemEval：`core/memory_probe.py`（五维探针，零模型调用）+ 11 项测试；
+      **探针抓到三个真缺陷**（上下文/摘要/指纹都只看脚本块、不看正文），已全部修复
+- [x] MemGPT / GraphRAG：`graph_hop` 探针把"沿条目 links 走一步"变成可测项；
+      分页/分层本身仍是「快照 / 章节记忆」路线，未另做
+- [x] 时间线进上下文：`agent_context._timeline_lines`（焦点章之前的事件；跳过 stale 并说明）
+      ——这是"时间推理"维度第一次运行就红掉的那个缺口
+- [ ] Choice Poetics + Dunyazad：把选项分类（relaxed / obvious / dilemma）落进 `branchAdvice`
+      ——现在只有统计驱动（"没人选"），缺"这个选项属于哪一类、缺哪一类"
+- [ ] Riedl&Young：plot / character 权衡落进情绪弧与伏笔回收率的解读框架
+- [ ] Plan-and-Write / Re3 / LongWriter / CALYPSO：以「已实现 ↔ 依据」对照落档
+      （节拍表 / 续写+润色两段 / 长输出失效机制 / 分层生成），预计无代码改动
+- [ ] Art or Artifice? / Silent Judge / Merging Facts / Self-Refine：评估侧对照落档
+      （结构量+盲测而非模型打分 / judge 偏差控制 / 跨窗聚合矛盾的固有局限 / 先体检再改写）
+- [ ] Dror：A/B 报告给区间（现在只给单点差值）
+- [ ] Best-of-N：多变体按自洽度选（现在靠挑）
+- [ ] Tail at Scale：慢思考档的 hedged request（要先算清 2× token 成本这笔账）

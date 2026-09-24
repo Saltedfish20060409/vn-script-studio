@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from app.domain.types import Character, SceneChapter, ScriptBlock, VnProject
 
 _BASE36 = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+#: 本作品约定的对白写法：「角色名：台词」。只用来**认行首**，名字还要能在角色卡里对上。
+_PROSE_SPEAKER_RE = re.compile(r"^([^\s：:，。！？、]{1,12})[：:]")
 
 
 def _to_base36(n: int) -> str:
@@ -86,6 +90,32 @@ def _collect_lines(chapter: SceneChapter, characters: List[Character]):
     lines: List[str] = []
     speakers: List[str] = []
     seen_speakers: set = set()
+
+    # 正文优先：本作品的主写作面是 `prose`。过去这里只遍历 blocks，于是纯正文写作的章节
+    # 收集到 0 行 → 摘要变成「（空章）」、openHook/closeHook 全空 → 账本里既没有章末钩子
+    # 也没有出场角色（"保存即攒记忆"对小说作者整条失效）。与 `agent_context.plain_of`、
+    # `consistency_scan._chapter_source_text`、`writing_stats.count_chapter_words` 同一口径。
+    prose = str(getattr(chapter, "prose", None) or "").strip()
+    if prose:
+        lines = [p.strip() for p in prose.split("\n") if p.strip()]
+        # 出场角色：按本作品约定的对白写法「角色名：台词」从行首认名字（只在名字确实
+        # 属于角色卡时才记，避免把"注意："这类普通行首当成人名）。
+        names = {}
+        for c in characters:
+            for key in (c.displayName, getattr(c, "defineName", None), *(c.aliases or [])):
+                key = str(key or "").strip()
+                if key:
+                    names.setdefault(key, c.displayName or key)
+        for line in lines:
+            head = _PROSE_SPEAKER_RE.match(line)
+            if not head:
+                continue
+            name = names.get(head.group(1).strip())
+            if name and name not in seen_speakers:
+                seen_speakers.add(name)
+                speakers.append(name)
+        return lines, speakers
+
     for b in chapter.blocks:
         if b.get("type") == "dialogue":
             ch = char_map.get(b.get("characterId"))
@@ -116,6 +146,10 @@ def chapter_content_hash(chapter: SceneChapter) -> str:
     ——实测：新建时 stamp 的账本指纹与之后每次保存重算的指纹全部不同，
     导致每一章都被判定为"内容变了"（见 core/pipeline/ledger.py 的增量入库）。
     core/snapshots.py::content_hash_for_payload 用的是同一套写法。
+
+    **prose 必须进指纹**（这是修过的一个真问题）：本作品的主写作面是正文，而过去这里
+    只哈希 blocks + 摘要 + 标题——于是纯正文工程里改了正文，指纹不变，
+    章摘要/账本被判定为"没变"而永不刷新（"保存即攒记忆"对小说作者整条失效）。
     """
     n = len(chapter.blocks)
     tail = "|".join(
@@ -123,7 +157,11 @@ def chapter_content_hash(chapter: SceneChapter) -> str:
         for b in chapter.blocks[-3:]
     )
     syn = chapter.synopsis or ""
-    return f"{chapter.id}:{n}:{len(syn)}:{_hash_str(tail + syn + chapter.title)}"
+    prose = str(getattr(chapter, "prose", None) or "")
+    # 正文只取长度 + 首尾片段：指纹只需要"变了没变"，不必把全文塞进哈希输入
+    # （全文哈希会让长章节每次保存都做一遍 O(n) 的字符串拼接）。
+    prose_sig = f"{len(prose)}:{prose[:80]}:{prose[-80:]}"
+    return f"{chapter.id}:{n}:{len(syn)}:{_hash_str(tail + syn + chapter.title + prose_sig)}"
 
 
 def _clip(s: str, n: int) -> str:

@@ -130,12 +130,22 @@ def test_stakes_first_bulk_in_middle_query_last():
 
 
 def test_current_chapter_body_sits_in_the_recency_window():
-    """当前章正文必须落在尾部窗口里——模型要"紧接着末尾续写"。"""
+    """当前章正文必须落在尾部窗口里——模型要"紧接着末尾续写"。
+
+    判的是**正文内容的结束位置**，不是标题的位置：这一段的正文本身可能很长
+    （修复"纯正文工程的当前章是空的"之后，它动辄上千字），只测标题会误判。
+    """
     ctx = _context(_project(focus_chars=2000))
     body = ctx.text
     at = body.rfind("## 当前章节")
     assert at > 0
-    assert at > len(body) - 2000, "当前章正文被挤出了尾部窗口"
+    # 正文最后一小段（tail 截取会保留末尾）必须落在最后 1500 字里
+    snippet = "雨停了。" * 2
+    end = body.rfind(snippet)
+    assert end > len(body) - 1500, f"当前章正文被挤出了尾部窗口（end={end}, len={len(body)}）"
+    # 标题位置不用比例阈值卡（那是我随手定的），它的相对次序由
+    # test_stakes_first_bulk_in_middle_query_last 断言（在参考文档等中段块之后）
+    assert at > body.index(_REF_DOC_MARK) if _REF_DOC_MARK in body else True
 
 
 # ---- 与裁剪的交互：这才是位置策略真正的后果 ------------------------------------
