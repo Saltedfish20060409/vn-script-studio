@@ -798,7 +798,24 @@ _RETRIEVE_HINT = "，可用 get_chapter 工具取回整章"
 
 def _section_label(key: str) -> str:
     """资料块 key → 人话（复用可摘清单里的说法，避免两处各起一个名字）。"""
-    return EXCLUDABLE_SECTIONS.get(key, key)
+    return (
+        EXCLUDABLE_SECTIONS.get(key)
+        or _SECTION_LABELS_EXTRA.get(key)
+        or key
+    )
+
+
+#: **不可摘**（但会在"这次带了什么"里出现）的块的人话名。
+#: 单独一张表而不是塞进 `EXCLUDABLE_SECTIONS`：那个字典是给"作者可以摘掉哪些块"用的，
+#: 把 meta/rules 这类塞进去会在界面上给出"可以摘掉写作规则"的假选项。
+#: 为什么这些也要有名字：`budgetReport.includedSections` 会原样显示，露出英文 key 很丑。
+_SECTION_LABELS_EXTRA: Dict[str, str] = {
+    "meta": "作品信息",
+    "rules": "写作规则",
+    "timeline": "时间线",
+    "focus": "当前章正文",
+    "selection": "你的选区",
+}
 
 
 #: 每类资料"怎么取回来"——界面上的可执行提示，别让作者自己猜。

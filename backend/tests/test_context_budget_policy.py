@@ -282,6 +282,9 @@ def test_budget_report_lists_included_sections_in_plain_words():
     assert "characters" in keys and "lore" in keys and "focus" in keys
     labels = {row["label"] for row in report["includedSections"]}
     assert "角色卡" in labels, "界面要显示人话，不是英文 key"
+    # 一个都不能漏：界面直接显示 label，露出英文 key 很丑（meta/rules/focus 这类不可摘的块也要有名字）
+    for row in report["includedSections"]:
+        assert row["label"] != row["key"], f"{row['key']} 没有中文名"
     # 末尾的"编排说明/硬规则/契约"不是资料块，不该混进来
     assert "__tail__" not in keys
     assert report["truncated"] is False
