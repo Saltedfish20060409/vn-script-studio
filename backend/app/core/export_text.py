@@ -67,24 +67,30 @@ def _walk_blocks(
 
 
 def project_to_markdown(project: VnProject) -> str:
-    """Render the whole project as Markdown (title + chapters)."""
+    """Render the whole project as Markdown (title + chapters).
+
+    注音按 **W3C Ruby** 的规范形态渲染成 `<ruby>…<rt>…</rt></ruby>`（含 `<rp>` 回退）：
+    Markdown 里嵌 HTML 是通行做法，而不转换的话读者会看到 `｜汉字《注音》` 这种源标记。
+    """
+    from app.core.ruby_render import to_html
+
     chars = _char_map(list(project.characters or []))
     md: List[str] = []
-    md.append(f"# {project.title or '未命名剧本'}")
+    md.append(f"# {to_html(project.title or '未命名剧本')}")
     if project.logline:
         md.append("")
-        md.append(f"> {project.logline}")
+        md.append(f"> {to_html(project.logline)}")
     md.append("")
     for idx, ch in enumerate(project.chapters or [], start=1):
         md.append("")
-        md.append(f"## {ch.title or f'第{idx}章'}")
+        md.append(f"## {to_html(ch.title or f'第{idx}章')}")
         md.append("")
         if ch.synopsis:
-            md.append(f"*{ch.synopsis}*")
+            md.append(f"*{to_html(ch.synopsis)}*")
             md.append("")
         prose = (getattr(ch, "prose", None) or "").strip()
         if prose:
-            md.append(prose)
+            md.append(to_html(prose))
             md.append("")
         else:
             _walk_blocks(list(ch.blocks or []), chars, md, 0)
@@ -92,16 +98,24 @@ def project_to_markdown(project: VnProject) -> str:
 
 
 def project_to_docx(project: VnProject) -> bytes:
-    """Render the project as a .docx file (returns file bytes)."""
+    """Render the project as a .docx file (returns file bytes).
+
+    注音在 Word 里按 **`<rp>` 回退**的纯文本形态渲染（`漢字（かんじ）`）：
+    Word 的原生注音是 `w:ruby` 那一套 XML，python-docx 不支持、我们也没法在这里验证
+    生成的文件 Word 能否正常打开——所以宁可给出"不丢信息的回退形态"，
+    也不生成一个可能打不开或用不了的投稿稿。见 docs/references.md 的待办。
+    """
     from docx import Document
+
+    from app.core.ruby_render import to_rp_text
 
     chars = _char_map(list(project.characters or []))
     doc = Document()
 
-    title = project.title or "未命名剧本"
+    title = to_rp_text(project.title or "未命名剧本")
     doc.add_heading(title, level=0)
     if project.logline:
-        doc.add_paragraph(project.logline).italic = True
+        doc.add_paragraph(to_rp_text(project.logline)).italic = True
 
     # 分卷时：卷标题做一级标题、章节降为二级，导出稿自带层级；未分卷时与原来完全一致。
     volume_titles = {
@@ -111,16 +125,18 @@ def project_to_docx(project: VnProject) -> bytes:
     for idx, ch in enumerate(project.chapters or [], start=1):
         volume_title = volume_titles.get(str(getattr(ch, "volumeId", None) or ""))
         if volume_title and volume_title != current_volume:
-            doc.add_heading(volume_title, level=1)
+            doc.add_heading(to_rp_text(volume_title), level=1)
             current_volume = volume_title
-        doc.add_heading(ch.title or f"第{idx}章", level=2 if current_volume else 1)
+        doc.add_heading(
+            to_rp_text(ch.title or f"第{idx}章"), level=2 if current_volume else 1
+        )
         if ch.synopsis:
-            p = doc.add_paragraph(ch.synopsis)
+            p = doc.add_paragraph(to_rp_text(ch.synopsis))
             p.italic = True
         prose = (getattr(ch, "prose", None) or "").strip()
         if prose:
             for para in prose.split("\n"):
-                doc.add_paragraph(para)
+                doc.add_paragraph(to_rp_text(para))
         else:
             _blocks_to_docx(list(ch.blocks or []), chars, doc)
     import io
@@ -137,6 +153,8 @@ def _blocks_to_docx(
 ) -> None:
     from docx.shared import Pt
 
+    from app.core.ruby_render import to_rp_text
+
     for b in blocks:
         btype = b.get("type")
         if btype == "scene":
@@ -150,7 +168,7 @@ def _blocks_to_docx(
         elif btype == "narration":
             text = str(b.get("text") or "").strip()
             if text:
-                p = doc.add_paragraph(text)
+                p = doc.add_paragraph(to_rp_text(text))
                 p.paragraph_format.left_indent = Pt(24)
         elif btype == "dialogue":
             text = str(b.get("text") or "").strip()
@@ -159,17 +177,17 @@ def _blocks_to_docx(
                 p = doc.add_paragraph()
                 run = p.add_run(f"{who}：")
                 run.bold = True
-                p.add_run(text)
+                p.add_run(to_rp_text(text))
         elif btype == "menu":
             prompt = str(b.get("prompt") or "").strip()
             if prompt:
-                doc.add_paragraph(f"【选项】{prompt}")
+                doc.add_paragraph(f"【选项】{to_rp_text(prompt)}")
             for choice in b.get("choices") or []:
                 if not isinstance(choice, dict):
                     continue
                 ct = str(choice.get("text") or "").strip()
                 if ct:
-                    doc.add_paragraph(f"・{ct}", style="List Bullet")
+                    doc.add_paragraph(f"・{to_rp_text(ct)}", style="List Bullet")
                 for child in choice.get("blocks") or []:
                     _blocks_to_docx([child], chars, doc)
 

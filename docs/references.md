@@ -20,7 +20,7 @@
 | **GB/T 15835-2011《出版物上数字用法》** | 数字的写法与宽度；数值范围的写法（起止数字之间用一字线/浪纹线） | `digit_width_mixed`、`dash_ascii_range` |
 | **CY/T 154-2017《中文出版物夹用英文的编辑规范》**<br>（[标准平台](https://std.samr.gov.cn/hb/search/stdHBDetailed?id=8B1827F23645BB19E05397BE0A0AB44A)、[全文](https://www.spc.org.cn/online/8ae3828864f5e2f8c43455ed49bd4b88.html)） | 中文里夹用英文的间距、大小写与标点 | `punct_halfwidth_near_cjk`、`letter_width_mixed`、`space_between_cjk`；**中英间距只判"内部是否一致"**（见下方说明） |
 | **W3C《中文排版需求》(clreq)**（[W3C TR](https://www.w3.org/TR/2023/DNOTE-clreq-20230301/)） | 标点的比例与位置、行首行尾禁则、书名号、注音（旁注）等中文排版的行业需求 | 标点类规则的并列依据；注音导出（待办：见第四节） |
-| **W3C HTML Ruby Markup Extensions / Ruby Annotation**（[W3C TR](https://www.w3.org/TR/html-ruby-extensions/)） | 注音标记的规范形态（`<ruby>` / `<rt>`） | `novel_craft` 的注音校验（**待办**：把自定的 `｜汉字《注音》`、`{汉字\|注音}` 与 W3C 形态对齐） |
+| **W3C HTML Ruby Markup Extensions / Ruby Annotation**（[W3C TR](https://www.w3.org/TR/html-ruby-extensions/)） | 注音标记的规范形态（`<ruby>` / `<rt>`，以及不支持的场合用 `<rp>` 回退） | `app/core/ruby_render.py`：源写法 `｜汉字《注音》` / `{汉字\|注音}` → **Markdown 出 W3C `<ruby>/<rt>`（带 `<rp>` 回退）**，Word 稿与 .rpy 出 `<rp>` 回退的纯文本形态 |
 | **JTF 日本語標準スタイルガイド**（[PDF](https://www.jtf.jp/pdf/jtf_style_guide.pdf)） | 日文的注音（ルビ）、送假名、记号规则 | 轻小说/日文路径（**待办**：目前只做中文注音） |
 | **Locke & Latham 目标设定理论**（[APA](https://psycnet.apa.org/record/2002-15790-003)，35 年综述） | 目标要具体、可测、有即时反馈才有效 | 写作目标与连载工作台（`writingGoals`、连续更新天数）的设计依据 |
 | 各出版社/平台的投稿规定（非论文） | 投稿排版（首行缩进、一章一文件、字数表） | `export_submission` 的默认值（**待办**：对照真实投稿规定核对一遍） |
@@ -108,7 +108,12 @@
       「几」表约数用汉字（`arabic_with_ji`）、概数不用顿号（`arabic_dunhao_range`）
 - [x] CY/T 154-2017：中英间距**内部一致性**（`cjk_latin_spacing_mixed`）+ 为什么只判一致性
 - [ ] GB/T 15835 剩余：百分号与计量单位的写法（中文正文里 `%`/`％`、`km`/`公里` 的统一）
-- [ ] W3C Ruby：把自定的注音写法与 `<ruby>/<rt>` 对齐，并让导出真能产出 ruby
+- [x] W3C Ruby：新增 `core/ruby_render.py`（源写法 → W3C `<ruby>/<rt>` / `<rp>` 回退），
+      接进 Markdown、docx（含投稿稿）、.rpy 三条导出链路；
+      **顺带修掉一个真实缺陷**：Ren'Py 字符串过去只转义 `\` 与 `"`，正文里的 `{` `}`
+      （包括注音花括号写法）会让导出的脚本报"未知文本标签"
+- [ ] W3C Ruby 剩余：Word 原生注音（`w:ruby`）；Ren'Py 内联注音标签（未能确证语法，
+      不往用户脚本里写未经验证的标签）
 - [ ] JTF 样式指南：日文注音/送假名（日文稿子真正落地时）
 - [ ] 目标设定理论：核对现在的目标/连续天数设计（具体、可测、即时反馈、难度适中）
 - [ ] 投稿规定：对照真实投稿要求核对 `export_submission` 的默认值

@@ -16,7 +16,25 @@ from app.domain.types import Character, ScriptBlock, VnProject
 
 
 def _escape_renpy_string(text: str) -> str:
-    return text.replace("\\", "\\\\").replace('"', '\\"')
+    """Ren'Py 字符串字面量的转义。
+
+    ``\\`` 与 ``"`` 是字面量层面的（Python 字符串），``{`` ``}`` 是**文本标签层面**的：
+    Ren'Py 把 `{...}` 当标签，正文里写了 `{汉字|注音}` 或任何花括号都会变成
+    "未知文本标签"（脚本能导出但运行时报错）。所以：
+    1. 先把注音标记渲染成 rp 形态（`漢字（かんじ）`），别让它的花括号进到脚本里；
+    2. 再把剩余的花括号按 Ren'Py 的写法转义成 `{{` `}}`。
+
+    依据：W3C Ruby（注音形态）+ Ren'Py 文本标签的转义规则；见 `app/core/ruby_render.py`。
+    """
+    from app.core.ruby_render import to_rp_text
+
+    text = to_rp_text(text or "")
+    return (
+        text.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("{", "{{")
+        .replace("}", "}}")
+    )
 
 
 # SECURITY (M-7): Ren'Py is Python-based — `$` lines and structured identifiers

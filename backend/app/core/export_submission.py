@@ -63,7 +63,10 @@ def _setup_document():
 def _add_body_paragraph(doc, text: str, *, indent: bool):
     from docx.shared import Pt
 
-    p = doc.add_paragraph(text)
+    from app.core.ruby_render import to_rp_text
+
+    # 注音按 <rp> 回退形态渲染：投稿稿里绝不能留下 `｜汉字《注音》` 这种源标记
+    p = doc.add_paragraph(to_rp_text(text))
     p.paragraph_format.line_spacing = LINE_SPACING
     if indent:
         p.paragraph_format.first_line_indent = Pt(FIRST_LINE_INDENT_PT)
@@ -84,10 +87,12 @@ def _add_cover(doc, project: VnProject, opts: SubmissionOptions, *, scope_note: 
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Pt
 
-    title = doc.add_heading(project.title or "未命名作品", level=0)
+    from app.core.ruby_render import to_rp_text
+
+    title = doc.add_heading(to_rp_text(project.title or "未命名作品"), level=0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     if project.logline:
-        p = doc.add_paragraph(project.logline)
+        p = doc.add_paragraph(to_rp_text(project.logline))
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.runs[0].italic = True
     chapters = list(project.chapters or [])
