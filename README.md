@@ -255,6 +255,9 @@ python -m app eval --longrange --longrange-chapters 60
 慢思考档（`*-think`）由后端自动加时，读超时**不重试**，流式路径不设总超时（靠 20s 心跳判活）。
 背景、失配表与残余风险见 [docs/llm-timeout-budget.md](docs/llm-timeout-budget.md)；
 上下文预算与预填充加时的成对关系见 [docs/long-context-policy.md](docs/long-context-policy.md)。
+**耗时分布**（The Tail at Scale 的"先量后决"）在 `GET /admin/llm-latency`：按
+模型 × 思考档 × 能力给出 p50/p95/p99、超时率与流式首字耗时；**hedged request 判定为不做**
+（单一上游没有独立副本，第二路只多花一份 token），量化理由见 timeout 文档第十节。
 
 ### 写作界面（编辑手感 / 离线体检 / 轻小说路径）
 

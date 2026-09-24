@@ -31,6 +31,8 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "base_url": "https://api.deepseek.com",
         "model": DEFAULT_LLM_MODEL,
         "json_mode": True,
+        # logprobs 只在**确认支持**的档位上打开（见 supports_logprobs 的非对称理由）
+        "logprobs": True,
         "context_k": 1000,
         "note": "官方正式名 deepseek-flash，服务端即 DeepSeek-V4.1-Flash（2026-09-10 发布，新架构、原生多模态）。默认非思考。",
     },
@@ -41,6 +43,8 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "base_url": "https://api.deepseek.com",
         "model": "deepseek-flash-think",
         "json_mode": False,
+        # 思考档 + logprobs 的组合未经验证：宁可"未测量"，也不拿主功能去试
+        "logprobs": False,
         "context_k": 1000,
         "note": "思考模式（等价旧 deepseek-reasoner）。请求改写为官方 Flash + thinking；不支持 JSON 模式。",
     },
@@ -51,6 +55,7 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "base_url": "https://api.deepseek.com",
         "model": "deepseek-v4-pro",
         "json_mode": True,
+        "logprobs": True,
         "context_k": 1000,
         "note": "上代旗舰，仍可用；官方公告：2026-09-14 12:00 起至 V4.1 Pro 发布前，其请求会路由到 V4.1 Flash 并按 V4.1 计费。",
     },
@@ -61,6 +66,7 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "base_url": "https://api.deepseek.com",
         "model": "deepseek-v4-flash",
         "json_mode": True,
+        "logprobs": True,
         "context_k": 1000,
         "note": "旧模型名。V4 Flash 已退役，官方保留此名做兼容：请求实际由 V4.1 Flash 承接。建议直接用上面的 deepseek-flash。",
     },
@@ -265,6 +271,33 @@ def find_preset(preset_id: str) -> Dict[str, object] | None:
         if p["id"] == preset_id:
             return dict(p)
     return None
+
+
+def supports_logprobs(model: str) -> bool:
+    """该模型名是否接受 `logprobs` / `top_logprobs` 参数。
+
+    **默认与 `supports_json_mode` 相反：认不出来一律返回 False。**
+    理由是两种参数发错时的代价不对称：
+    - `response_format` 不被支持时只是少一条服务端约束（提示词里本来就写着"只输出
+      JSON"），所以未知模型保留原行为更安全；
+    - `logprobs` 不被支持时，未知**参数**会把整个请求打成 400——那是"为了一个可选
+      信号把主功能弄挂"，绝不可以。
+
+    所以这里只对**确认支持**的档位置 True（DeepSeek 官方 API 支持；思考档
+    `*-think` 与 logprobs 的组合未经验证，因此不标）。拿不到就是"未测量"，
+    取舍会退回到一致性 + 确定性检查（见 `core/variant_select.py`）。
+    """
+    name = (model or "").strip().lower()
+    if not name:
+        return False
+    for p in MODEL_PRESETS:
+        if str(p.get("model") or "").strip().lower() == name:
+            return bool(p.get("logprobs", False))
+    for p in MODEL_PRESETS:
+        preset_model = str(p.get("model") or "").strip().lower()
+        if preset_model and (name.startswith(preset_model) or preset_model.startswith(name)):
+            return bool(p.get("logprobs", False))
+    return False
 
 
 def context_window_k(model: str) -> int | None:

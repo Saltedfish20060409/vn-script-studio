@@ -205,7 +205,30 @@
 别字在后端**逐条单独成问题**，不走同 code 合并：合并后一条消息里只剩"共 N 处 + 几个样本"，
 而每个别字要给的恰恰是"它应该怎么写"。
 
-## 九、P0-4 分场导航：为什么没做侧栏大纲
+## 九、多变体改写（标记批改）：按证据选，不按"第一版"
+
+写作页的标记卡片可以一次要 2–3 版改写（`processMark(id, 3)`）。这一条的行为改过两次：
+
+- **改前**：一次调用要求模型输出 JSON 数组，取 `variants[0]` ——"模型先写的那一版"，
+  是**输出顺序**，与质量无关；而且只有一个响应，logprobs 覆盖整段 JSON，
+  **每版都没法单独算置信度**。
+- **改后**：N 次**独立并发采样**（温度阶梯铺开），每版各自过自检、各自算置信度，
+  再按证据排序（`core/variant_select.py`，依据见 [docs/references.md](references.md)
+  的 Best-of-N 一行）。卡片上：
+
+  - 版本按钮显示"**推荐 · 第 N 版**"（推荐版是排序第一，`replacement` 也是它）；
+  - 悬停显示证据：综合分 / 模型置信度 / 与其余候选的一致度 / 温度 / 字数 / 问题；
+  - 有一版没通过确定性检查（长度失控、丢专名）时按钮带 ⚠，并**排在通过检查的版本之后**
+    （一票否决，对齐 `pipeline/candidates` 的硬错误处理）；
+  - 对照区上方给一行后端写的取舍说明：**这次用了哪些信号、缺了哪些**
+    （没 logprobs 的档位会明说"未测量"——`lib/markVariants.ts` 守住了
+    "不把未测量显示成 0.00"，否则作者会以为"模型完全没把握"）。
+
+成本如实写在这里：N 版 = N 次调用（输出 token 与"一次要 N 版"同量级，输入重复 N 次，
+局部片段的输入很小）；温度步长 0.15，比候选流水线（0.35）保守——局部改写要求
+"不改变信息与情节"，跨度太大容易写出跑偏的版本。
+
+## 十、P0-4 分场导航：为什么没做侧栏大纲
 
 评判的结论是**保留横条并给它一个折叠开关，不改成侧栏**：
 
@@ -217,7 +240,7 @@
 - 但它确实占掉正文上方一条空间，所以加了**折叠开关**（状态记在本机 localStorage，
   不跟作品走）——"占地方"这个批评是成立的，回答是让它可以被收起来，而不是换个地方占。
 
-## 十、明确没做的
+## 十一、明确没做的
 
 - 场景导航只做"读 + 跳"，不做拖拽重排、不做场景级元数据（POV/时间/地点）挂载。
 - 字数目标只有三档（本章/本卷/今日），没有"连续打卡奖励""目标历史"。
@@ -226,20 +249,21 @@
 - 连载工作台不做"定时发布""多平台同步"——它只在本工具里记账。
 - 投稿包不做投稿信的模板生成，也不猜目标平台的字数限制。
 
-## 十一、验证
+## 十二、验证
 
 ```powershell
-# 前端纯函数层（55 + 14 + 25 + 14 项）+ 全量
+# 前端纯函数层（55 + 14 + 25 + 14 + 10 项）+ 全量
 cd frontend; npm test
 npm run typecheck           # tsc -b --noEmit
 npm run lint:strict         # eslint . --max-warnings 0
 npm run build               # 体积闸：dist/assets/*.js 单块 > 500KB 即失败
 
-# 后端（模块 + 路由 + 工具 + 模板）
+# 后端（模块 + 路由 + 工具 + 模板 + 多变体取舍）
 cd backend; $env:PYTHONPATH="."
 .\.venv\Scripts\python.exe -m pytest tests/test_novel_consistency.py tests/test_novel_craft.py `
   tests/test_ln_template.py tests/test_novel_audit_surface.py tests/test_agent_tool_polish.py `
-  tests/test_export_submission.py tests/test_export_submission_route.py tests/test_typo_words.py
+  tests/test_export_submission.py tests/test_export_submission_route.py tests/test_typo_words.py `
+  tests/test_mark_revise.py tests/test_variant_select.py tests/test_llm_logprobs.py
 ```
 
 `test_typo_words.py` 覆盖：解析前端 TS 词表逐条比对（含顺序）、词表自身的自洽性

@@ -196,12 +196,12 @@ Tail at Scale 的 hedging 决策。
 | [Dror et al., 显著性检验指南](https://aclanthology.org/P18-1128/) | 报差异就要报不确定度 | **离线 A/B 那一侧早就做了**（`core/eval_stats.py` 的配对 bootstrap 区间 / 符号检验 / McNemar）；本轮补的是**比例型读数**：试玩遥测的选项占比与结局到达率现在都带 **Wilson 区间**（`wilson_interval`），"读者证据"那条建议也会带上"样本还不足以说明共识"的提示 |
 | [Merging Facts, Crafting Fallacies](https://aclanthology.org/2024.findings-acl.160.pdf) | 原子事实法在"聚合后的矛盾"上失效 | `consistency_scan` 跨窗聚合的固有局限（已写进文档的残余风险） |
 | [Self-Refine](https://www.ijcai.org/proceedings/2024/0693.pdf) | 需要外部反馈才有增益，纯自我批评会退化 | `harness_editor_pass`：先跑确定性体检、体检全过就不调模型 |
-| [Best-of-N Selection via Self-Certainty](https://proceedings.neurips.cc/paper_files/paper/2025/hash/1c7eff166a8e345f664f0faa8f4e4d2e-Abstract-Conference.html) | 多变体应按自洽度/不确定性选，而不是抽签 | `processMark(..., 3)` 的多变体取舍（**待办**） |
+| [Best-of-N Selection via Self-Certainty](https://proceedings.neurips.cc/paper_files/paper/2025/hash/1c7eff166a8e345f664f0faa8f4e4d2e-Abstract-Conference.html) | 多变体应按自洽度/不确定性选，而不是抽签 | `core/variant_select.py`：N 次独立采样后按证据排序。三条信号——确定性检查（**一票否决**，对齐 `candidates.score_candidate` 的硬错误处理）/ 候选间一致度 / 模型自身置信度。**我们只能拿到 top-k**，所以字段叫 `peakedness` 且标 `kind="topk-proxy"`，不冒充论文的全词表 KL；缺的信号是 `None`（"未测量"），不是 0；分差 < `TIE_MARGIN` 就如实说"没有明显更好的一版" |
 
 ### 工程实务
 | 文献 | 结论 | 我们的落点 |
 |---|---|---|
-| Dean & Barroso, *The Tail at Scale*（CACM 56(2), 2013） | 长尾才是问题；对策之一是 hedged request（发两路取先返回） | `llm_budget.py` 现在是"给足预算"，慢思考档可加 hedging 削 P99（**待办**） |
+| Dean & Barroso, *The Tail at Scale*（CACM 56(2), 2013） | 长尾才是问题；对策之一是 hedged request（发两路取先返回） | **取"先量后决"**：新增 `core/latency_stats.py`（分位统计，按模型 × 思考档 × 能力分桶）+ `GET /admin/llm-latency`，让 p95/p99/超时率/首字耗时可测。**hedging 判定为不做**：我们的"副本"是同一个上游端点，第二路只会排在同一段容量后面，延迟收益≈0 而 token×2；量化与替代手段（流式首字可见、作业化、断开取消）写在 `docs/llm-timeout-budget.md` 第十节 |
 | 幂等性与重试 | 只有幂等请求才该重试 | 已实现：连接类错误才重试，读超时不重试 |
 
 ---
@@ -261,5 +261,16 @@ Tail at Scale 的 hedging 决策。
 - [x] Dror：比例型读数带 **Wilson 区间**（`eval_stats.wilson_interval`，含 `wide`/`thin`
       两个"样本够不够"的信号）→ 接进试玩遥测的选项占比与结局到达率；"读者证据"建议里
       如实提示"样本不足以说明共识"。离线 A/B 的 bootstrap/符号检验/McNemar 本来就有
-- [ ] Best-of-N：多变体按自洽度选（现在靠挑）
-- [ ] Tail at Scale：慢思考档的 hedged request（要先算清 2× token 成本这笔账）
+- [x] Best-of-N / self-certainty：`core/variant_select.py`（三条信号：确定性检查 → 一票否决、
+      候选间一致度、模型自身置信度的 **top-k 代理**）+ 17 项测试。**改掉了两个真实缺陷**：
+      ① 多变体过去取 `variants[0]`（= 模型的输出顺序，与质量无关）；
+      ② 每版都没有自己的采样分布，**没法单独算置信度**——于是改成 N 次**独立并发采样**
+      （温度铺开），每版各自过自检、各自算置信度，再按证据排序。前端按证据显示
+      "推荐 · 第 N 版" + 悬停看分数/置信度/一致度，并且**没测量的信号不显示成 0**
+      （`lib/markVariants.ts` + 10 项前端测试）。为拿置信度新增 `logprobs` 通道：
+      **未知模型默认不发**（与 `response_format` 相反——未知参数会 400，代价不对称）
+- [x] Tail at Scale：**先量后决**。新增 `core/latency_stats.py`（分位统计：最近秩 p50/p95/p99、
+      超时率、流式的**首字耗时**）+ `GET /admin/llm-latency`，把耗时按
+      「模型 × 思考档 × 能力」分桶；**hedged request 判定为不做**，量化理由见
+      `docs/llm-timeout-budget.md` 第十节（单一上游没有独立副本，第二路只多花一份 token、
+      拿不到延迟收益），并有源码级守卫测试钉住"一次调用只发一个请求"

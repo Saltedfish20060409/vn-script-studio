@@ -1,5 +1,6 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import { QUICK_FEEDBACK, shortQuote, type Mark } from "../lib/marks";
+import { hasProblems, selectionSummary, variantBadge, variantTitle } from "../lib/markVariants";
 import styles from "./MarkCard.module.css";
 
 type Props = {
@@ -127,6 +128,11 @@ export function MarkCard({
 
       {mark.replacement && mark.intent === "rewrite" ? (
         <div className={styles.diff}>
+          {selectionSummary(mark.selectionNote, mark.ranking) ? (
+            <p className={styles.note} data-testid="mark-card-selection-note">
+              {selectionSummary(mark.selectionNote, mark.ranking)}
+            </p>
+          ) : null}
           <div className={styles.diffSide}>
             <span className={styles.diffLabel}>原文</span>
             <p className={styles.diffOld}>{mark.quote}</p>
@@ -136,20 +142,23 @@ export function MarkCard({
               改后（可以直接改）
               {(mark.candidates?.length ?? 0) > 1 ? (
                 <span className={styles.variantRow} data-testid="mark-card-variants">
-                  {mark.candidates!.map((v, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      className={
-                        v === edit ? styles.variantOn : styles.variant
-                      }
-                      data-testid={`mark-card-variant-${i}`}
-                      onClick={() => setEdit(v)}
-                      title={v.slice(0, 60)}
-                    >
-                      第 {i + 1} 版
-                    </button>
-                  ))}
+                  {mark.candidates!.map((v, i) => {
+                    // ranking 与 candidates 同序：第 i 版对应第 i 行证据
+                    const row = mark.ranking?.[i];
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        className={v === edit ? styles.variantOn : styles.variant}
+                        data-testid={`mark-card-variant-${i}`}
+                        onClick={() => setEdit(v)}
+                        title={variantTitle(row) || v.slice(0, 60)}
+                      >
+                        {variantBadge(row, i + 1)}
+                        {hasProblems(row) ? " ⚠" : ""}
+                      </button>
+                    );
+                  })}
                 </span>
               ) : null}
             </span>

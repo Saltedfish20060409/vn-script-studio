@@ -163,7 +163,7 @@ const CONTRACTS: Contract[] = [
       { file: "core/mark_revise.py", constant: "CHAT" },
       { file: "core/mark_revise.py", constant: "CHAT" },
     ],
-    why: "revise_marked_text 首轮 + 校验不过时的一轮重写",
+    why: "revise_marked_text 首轮 + 校验不过时的一轮重写；多变体是 N 次**并发**独立采样，仍按一轮算",
   },
   {
     anchor: "/agent/chapter-revise`",

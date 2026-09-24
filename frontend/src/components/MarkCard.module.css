@@ -121,6 +121,17 @@
   margin-top: 0.4rem;
 }
 
+/* 多变体的取舍说明（后端给的理由：用了哪些信号、缺了哪些）
+   跨两列：它是整段对照的注释，不是某一侧的内容 */
+.note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--ink-soft, var(--ink));
+  opacity: 0.85;
+}
+
 @media (max-width: 900px) {
   .diff {
     grid-template-columns: 1fr;

@@ -303,6 +303,22 @@ async def list_users(
     )
 
 
+@router.get("/llm-latency")
+async def llm_latency(
+    _admin: User = Depends(get_admin_user),
+):
+    """LLM 调用耗时的分位统计（进程内最近样本，只读）。
+
+    为什么要有：`llm_budget` 里的预算是按**最坏情况**推的，docs 里的取舍也只能靠推理——
+    此前没有任何耗时分布数据。"要不要给这条链路加预算 / 要不要为尾部 hedge"
+    这类问题必须先看到 p95/p99 才能回答（The Tail at Scale 的操作结论）。
+    边界如实写在 `core/latency_stats.py`：进程内、有界窗口、重启清零、多 worker 不合并。
+    """
+    from app.core.latency_stats import snapshot
+
+    return snapshot()
+
+
 @router.get("/ai-usage")
 async def ai_usage(
     days: int = Query(30, ge=1, le=365),

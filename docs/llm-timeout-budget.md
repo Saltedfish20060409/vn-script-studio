@@ -210,6 +210,12 @@ cd backend && PYTHONPATH=. .venv/Scripts/python -m pytest tests/test_llm_timeout
 # 后端：上下文预算政策 + "上下文上限 ≤ 预填充加时上限"的跨模块不变量
 cd backend && PYTHONPATH=. .venv/Scripts/python -m pytest tests/test_context_budget_policy.py -q
 
+# 后端：耗时分位统计（The Tail at Scale 的"先量后决"）+ "不做 hedging"的源码级守卫
+cd backend && PYTHONPATH=. .venv/Scripts/python -m pytest tests/test_latency_stats.py -q
+
+# 后端：多变体按证据排序（Best-of-N）+ logprobs 通道的能力门控
+cd backend && PYTHONPATH=. .venv/Scripts/python -m pytest tests/test_variant_select.py tests/test_llm_logprobs.py -q
+
 # 后端：客户端断开 → 中止在飞调用；后台作业不受影响
 cd backend && PYTHONPATH=. .venv/Scripts/python -m pytest tests/test_disconnect_cancel.py -q
 
@@ -268,3 +274,52 @@ sed -n '1,80p' frontend/src/api/timeouts.ts
    `quick 240→300s`、`chat 300→360s`、`write 480→540s`、`long 600→660s`、
    `batch 900→1020s`、作业轮询 `15→20min`。唯一豁免的是设置页的连通性测试
    （提示词固定是 `"ping"`，且契约测试会钉住"该模块不得拼装 agent 上下文"）。
+
+## 十、The Tail at Scale：为什么不 hedge（先量后决）
+
+Dean & Barroso 的结论里，对我们最有用的不是那个对策，而是**那句操作方法**：
+"看均值没用，看 p99"。此前我们没有任何耗时分布数据——预算按最坏情况推、
+取舍靠推理，所以这一轮先补了量测。
+
+### 10.1 量测（新增）
+
+`core/latency_stats.py`：进程内**有界窗口**的分位统计（最近秩，可手算），
+
+- 按 **模型 × 是否思考档 × 能力 kind** 分桶（`deepseek-flash|think|write` 这种键）：
+  三者的耗时量级完全不同，混在一起算出的 p99 既不能用来调预算，也不能定位是哪条链路慢；
+- 指标：`p50/p95/p99/max/mean`、**超时率**、以及流式的**首字耗时**（`firstToken`）。
+  超时必须进样本：只统计成功的请求会把 p99 稀释掉——而尾部正是由超时构成的；
+- 边界如实写在模块文档里：**进程内、重启清零、多 worker 不合并、不落库**。
+  它的用途是运维判断（"这条链路离预算还有多远"），不是监控系统；要历史 p99 就该写进用量表。
+- 只记耗时，不记用户、不记 prompt/输出内容；入口是管理员接口 `GET /admin/llm-latency`。
+
+### 10.2 决定：**不做 hedged request**
+
+论文的 hedge 前提是"**有独立副本**"：同一份请求发给另一台机器，谁先返回用谁的，
+超时概率相乘、尾延迟显著下降。我们的处境是：
+
+| 维度 | hedged request 的假设 | 我们的实际 |
+|---|---|---|
+| 副本 | 多个独立副本（容量互相独立） | **一个上游端点**（DeepSeek/GLM/…，同一个 Key 的同一个池） |
+| 第二路的延迟 | 独立抽样，可能更快 | 排在同一段容量后面，**与第一路同分布**，甚至因为挤占而更慢 |
+| 收益 | p99 显著下降 | **≈ 0**（没有独立样本可用） |
+| 成本 | 被 hedge 的请求 token ×2 | 同样 token ×2，且思考档下输入也可能很大 |
+
+量化：设 hedge 触发比例 p（例如"超过 p95 才开始第二路"→ p≈5%），
+一次 hedge 的成本是**双份输入 + 双份输出**（思考档的 reasoning token 也算钱），
+所以总成本增加 `≈ p × 100%`；而在单上游下延迟收益 ≈ 0 ——
+**用确定的成本换一个不存在的收益**。
+
+### 10.3 我们实际用来治尾部的办法（都已实现）
+
+1. **让尾部可见**：流式首字可见 + 心跳判活（用户不会盯着空白猜）；
+2. **让尾部不致命**：多轮端点作业化（`/brainstorm`、章节回炉 → 作业通道，不受 HTTP 超时约束）；
+3. **让尾部不浪费**：客户端断开即取消在飞调用（`core/disconnect.py`）；
+4. **让预算与之匹配**：预算按最坏情况推、思考档加时、预填充加时（第八/九节）；
+5. **把"该并发的"和"不该并发的"分开**：不同 prompt 的独立工作可以并发
+   （多变体采样、多窗口扫描，都受 `_LLM_SEMAPHORE` 与各自上界约束），
+   而**同一个请求不发第二路**——这条由 `tests/test_latency_stats.py` 的源码级守卫钉住。
+
+将来若真的出现"多上游 Key / 多区域端点"（容量互相独立），hedge 就值得重新评估：
+那时**先看 `latency_stats` 的 p95/p99**，再决定触发点（论文建议 p95），
+而不是凭感觉打开。

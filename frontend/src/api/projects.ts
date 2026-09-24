@@ -178,11 +178,38 @@ export function getRecap(
   });
 }
 
+/** 多候选里每版的取舍依据（后端 `core/variant_select.py`；缺的字段=该信号未测量）。 */
+export type MarkVariantRow = {
+  /** 这版在**原始采样顺序**里的下标（排序后仍能映射回去） */
+  variantIndex: number;
+  rank: number;
+  score?: number;
+  temperature?: number | null;
+  chars?: number;
+  problems?: string[];
+  /** 模型自身置信度（top-k 代理）；null/缺省 = 这次拿不到 logprobs，不是 0 分 */
+  certainty?: {
+    meanLogprob?: number;
+    confidence?: number;
+    peakedness?: number;
+    composite?: number;
+    thin?: boolean;
+    kind?: string;
+  } | null;
+  /** 与其余候选的平均一致度；候选少于 3 份时为 null（没有多数可依） */
+  consensus?: number | null;
+  recommended?: boolean;
+};
+
 /** 写作页「标记批改」：让 AI 只改标出来的这一处（intent=advice 时只给建议，不动正文）。 */
 export type MarkReviseOut = {
   replacement: string;
-  /** 多候选：1–3 版改写（第一版即 replacement） */
+  /** 多候选：1–3 版改写（**已按证据排序**，第一版即 replacement） */
   candidates?: string[];
+  /** 每版的分数/置信度/一致度/问题（与 candidates 同序） */
+  ranking?: MarkVariantRow[];
+  /** 这次用了哪些信号、缺了哪些（"未测量"≠"0 分"） */
+  selectionNote?: string;
   advice: string;
   changed: boolean;
   model: string;

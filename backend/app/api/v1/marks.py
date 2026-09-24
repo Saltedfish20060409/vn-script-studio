@@ -98,8 +98,12 @@ async def revise_mark(
     changed = bool(result.replacement) and result.replacement.strip() != body.quote.strip()
     return {
         "replacement": result.replacement,
-        # 多候选：作者在卡片上挑一版（第一版即 replacement，兼容旧前端）
+        # 多候选：作者在卡片上挑一版（**已按证据排序**，第一版即 replacement，兼容旧前端）
         "candidates": result.candidates or ([result.replacement] if result.replacement else []),
+        # 每版的取舍依据：分数、罚分、置信度、一致性、建议温度（见 core/variant_select.py）
+        "ranking": result.ranking,
+        # 这次用了哪些信号、缺了哪些（"未测量"≠"0 分"）
+        "selectionNote": result.selectionNote,
         "advice": result.advice,
         "changed": changed,
         "model": result.model,

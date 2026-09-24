@@ -8,6 +8,8 @@
  * 绝不"按旧偏移硬改"——那会把改动落在别的地方。
  */
 
+import type { MarkVariantRow } from "../api/projects";
+
 export type MarkIntent = "rewrite" | "advice";
 
 /** pending=待处理 / suggested=已有结果待决定 / accepted=已写入正文 / rejected=不要 / stale=定位失效 */
@@ -29,8 +31,13 @@ export type Mark = {
   replacement?: string;
   /** 建议（intent=advice） */
   advice?: string;
-  /** 多候选改写：一次给出 1–3 版，作者挑一版（挑中的那版写进 replacement） */
+  /** 多候选改写：一次给出 1–3 版，作者挑一版（挑中的那版写进 replacement）
+   *  ——后端已按证据排序（core/variant_select.py），第一版即推荐版 */
   candidates?: string[];
+  /** 每版的取舍依据（分数/置信度/一致度/问题），与 candidates 同序 */
+  ranking?: MarkVariantRow[];
+  /** 这次用了哪些信号、缺了哪些（"未测量"≠"0 分"） */
+  selectionNote?: string;
   /** 生成后自检发现、但没自动修好的问题（如实显示，不静默放过） */
   warnings?: string[];
   /** 处理失败的原因 */

@@ -4,15 +4,20 @@ from __future__ import annotations
 import asyncio
 import json
 import random
+import time
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 import httpx
 
-from app.core import llm_budget
+from app.core import latency_stats, llm_budget
 from app.core.ai import DeepSeekConfig
 from app.core.disconnect import model_call_watch
-from app.core.model_presets import supports_json_mode
+from app.core.model_presets import supports_json_mode, supports_logprobs
 from app.llm_models import DEFAULT_LLM_MODEL, resolve_chat_model
+
+#: 默认取前几个候选分布（`top_logprobs`）。5 是"够算峰度、响应体不至于膨胀"的折中：
+#: 每个 token 多 5 条记录，一次局部改写（几百 token）大约多几十 KB。
+DEFAULT_TOP_LOGPROBS = 5
 
 # Retry these transient upstream statuses
 _RETRY_STATUSES = {408, 429, 500, 502, 503, 504}
@@ -129,10 +134,16 @@ async def chat_completions(
     timeout: float = 120.0,
     max_retries: int = 3,
     stream: bool = False,
+    logprobs: bool = False,
+    top_logprobs: int = DEFAULT_TOP_LOGPROBS,
 ) -> httpx.Response:
     """
     POST /v1/chat/completions with exponential backoff on 429/5xx.
     Returns the successful Response (caller parses JSON).
+
+    `logprobs=True` 时请求逐 token 的对数概率（供多变体取舍用，见
+    `core/variant_select.py`）；只在模型被确认支持时才会真的写进请求体，
+    所以调用方不必自己判断能力（见 `model_presets.supports_logprobs`）。
     """
     if not config.apiKey or "your-key" in config.apiKey:
         raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
@@ -144,6 +155,8 @@ async def chat_completions(
         response_format=response_format,
         max_tokens=max_tokens,
         stream=stream,
+        logprobs=logprobs,
+        top_logprobs=top_logprobs,
     )
     headers = {
         "Content-Type": "application/json",
@@ -155,6 +168,7 @@ async def chat_completions(
     thinking = _is_thinking_body(body)
     prompt_chars = _prompt_chars(messages)
     budget = llm_budget.effective_timeout(timeout, thinking=thinking, prompt_chars=prompt_chars)
+    started = time.monotonic()
 
     last_exc: Optional[Exception] = None
     async with _LLM_SEMAPHORE:
@@ -173,6 +187,15 @@ async def chat_completions(
                     raise
                 except (httpx.ReadTimeout, httpx.WriteTimeout) as exc:
                     # 不重试：同一请求同一预算必然再超时，重试只会多烧一次 token。
+                    # 超时是**尾部事件**，如实记一笔（见 core/latency_stats.py）：
+                    # 没有这条，p99 会被"成功的那些请求"稀释掉。
+                    latency_stats.record_latency(
+                        time.monotonic() - started,
+                        model=model,
+                        thinking=thinking,
+                        kind=latency_stats_kind(),
+                        timed_out=True,
+                    )
                     raise _timeout_error(
                         model=model,
                         base=timeout,
@@ -208,6 +231,14 @@ async def chat_completions(
                             )
                     except Exception:  # noqa: BLE001 - accounting never breaks calls
                         pass
+                    # 成功的调用也要记耗时：p50/p95/p99 是"要不要 hedge / 要不要加预算"
+                    # 的唯一依据（The Tail at Scale 的操作结论，见 core/latency_stats.py）
+                    latency_stats.record_latency(
+                        time.monotonic() - started,
+                        model=model,
+                        thinking=thinking,
+                        kind=latency_stats_kind(),
+                    )
                     return res
 
                 if res.status_code in _RETRY_STATUSES and attempt + 1 < max_retries:
@@ -238,6 +269,8 @@ def _chat_body(
     response_format: Optional[Dict[str, Any]],
     max_tokens: Optional[int],
     stream: bool,
+    logprobs: bool = False,
+    top_logprobs: int = DEFAULT_TOP_LOGPROBS,
 ) -> tuple[str, Dict[str, Any]]:
     raw_model = (config.model or "").strip()
     model, thinking = resolve_chat_model(config.model or DEFAULT_LLM_MODEL)
@@ -262,6 +295,12 @@ def _chat_body(
         and supports_json_mode(raw_model)
     ):
         body["response_format"] = response_format
+    # logprobs 的开关方向与 response_format **相反**：未知模型默认不发。
+    # 理由：response_format 不被支持时只是少一条服务端约束（提示词里已经写明要 JSON），
+    # 而未知参数会把整个请求打成 400——那等于"为了一个可选信号把主功能弄挂"。
+    if logprobs and supports_logprobs(model) and supports_logprobs(raw_model) and not stream:
+        body["logprobs"] = True
+        body["top_logprobs"] = max(2, min(20, int(top_logprobs)))
     if max_tokens:
         body["max_tokens"] = max_tokens
     return model, body
@@ -285,6 +324,20 @@ def _is_thinking_body(body: Dict[str, Any]) -> bool:
     """出站 body 是否带着 `thinking: enabled`（思考模式档）。"""
     t = body.get("thinking")
     return isinstance(t, dict) and t.get("type") == "enabled"
+
+
+def latency_stats_kind() -> str:
+    """当前请求属于哪种 AI 能力（耗时统计按它分桶；拿不到就用 "llm"）。
+
+    单独包一层是因为 `core/usage` 是可选的上下文（单测里没有中间件时不存在），
+    统计不该因此失败。
+    """
+    try:
+        from app.core.usage import current_usage_kind
+
+        return current_usage_kind()
+    except Exception:  # noqa: BLE001
+        return "llm"
 
 
 def _prompt_chars(messages: List[Dict[str, str]]) -> int:
@@ -362,9 +415,13 @@ async def stream_chat_completions(
     budget = llm_budget.effective_timeout(
         timeout, thinking=thinking, prompt_chars=_prompt_chars(messages)
     )
+    # 流式最该被量的是**第一个字节**（= 预填充 + 排队），它决定了用户盯着空白等多久；
+    # 总时长反而被"一直在出字"掩盖着（见 core/latency_stats.py）。
+    started = time.monotonic()
+    first_token_at: Optional[float] = None
 
     async def _stream_once() -> AsyncIterator[str]:
-        nonlocal received_any
+        nonlocal received_any, first_token_at
         async with _LLM_SEMAPHORE:
             async with httpx.AsyncClient(timeout=_client_timeout(budget)) as client:
                 # 整个流式请求都在"客户端还在吗"的窗口内：断开就把当前任务取消掉，
@@ -391,6 +448,8 @@ async def stream_chat_completions(
                                 continue
                             delta = ((choices[0] or {}).get("delta") or {}).get("content")
                             if delta:
+                                if first_token_at is None:
+                                    first_token_at = time.monotonic() - started
                                 received_any = True
                                 yield str(delta)
 
@@ -401,9 +460,25 @@ async def stream_chat_completions(
         try:
             async for delta in _stream_once():
                 yield delta
+            latency_stats.record_latency(
+                time.monotonic() - started,
+                model=model,
+                thinking=thinking,
+                kind=latency_stats_kind(),
+                first_token=first_token_at,
+            )
             return
         except (httpx.ReadTimeout, httpx.WriteTimeout) as exc:
             # 流式中途空闲超时：不再重连（已产出的内容无法回滚），如实报"模型卡住"。
+            # 这也是尾部事件，照记一笔（含"有没有等到第一个字"）。
+            latency_stats.record_latency(
+                time.monotonic() - started,
+                model=model,
+                thinking=thinking,
+                kind=latency_stats_kind(),
+                first_token=first_token_at,
+                timed_out=True,
+            )
             raise _timeout_error(
                 model=model,
                 base=timeout,
@@ -437,6 +512,22 @@ def content_from_response(res: httpx.Response) -> tuple[str, str]:
         content = content.strip()
     model = data.get("model") or ""
     return content, model
+
+
+def response_logprobs(res: httpx.Response) -> Any:
+    """取出 `choices[0].logprobs`（没有就返回 None，由调用方显示"未测量"）。
+
+    单独一个函数是为了把"读响应字段"这件事收在一处：调用方（多变体取舍）只需要
+    `certainty_from_logprobs(response_logprobs(res))`。
+    """
+    try:
+        data = res.json()
+    except Exception:  # noqa: BLE001 - 响应体不是 JSON 时不能因此炸掉
+        return None
+    choices = data.get("choices") or []
+    if not choices:
+        return None
+    return (choices[0] or {}).get("logprobs")
 
 
 def usage_from_response(res: httpx.Response) -> Dict[str, int]:

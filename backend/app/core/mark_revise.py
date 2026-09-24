@@ -13,15 +13,22 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.core import llm_budget
 from app.core.ai import DeepSeekConfig
-from app.core.llm_http import chat_completions, content_from_response
+from app.core.llm_http import chat_completions, content_from_response, response_logprobs
 from app.core.llm_params import MARK_ADVICE_TEMPERATURE, MARK_REVISE_TEMPERATURE
+from app.core.model_presets import supports_logprobs
+from app.core.variant_select import (
+    certainty_from_logprobs,
+    reason_for_winner,
+    select_best_variant,
+)
 
 # 上下文与正文长度上限：控制成本，也避免"要改的这段"被稀释
 _QUOTE_CAP = 1500
@@ -52,12 +59,15 @@ _ADVICE_SYSTEM = """你是中文文学编辑。作者标出了一处**他觉得�
 
 只输出建议本身。"""
 
-_MULTI_SUFFIX = """
+_MULTI_TEMPERATURE_NOTE = """
+每版都要满足上面的所有铁律；不同版本在句法节奏或处理角度上要有可见差别。"""
 
-作者想从**几个不同的方向**里挑一版，所以请一次给出 {n} 个**彼此明显不同**的改写（不是同义替换的微调）。
-输出 JSON（不要解释、不要代码围栏）：
-{{"variants": ["第一版改写", "第二版改写"]}}
-每版都要满足上面的所有铁律；两版的句法节奏或处理角度要有可见差别。"""
+#: 多变体采样用的温度阶梯步长。
+#: 复用 `pipeline.candidates.temperature_ladder` 的同款思路（那里是 0.35 档距），
+#: 这里更保守——局部改写要求"不改变信息与情节"，跨度太大容易写出跑偏的版本；
+#: 差异由**采样**产生（同一提示词采 N 次），提示词本身不变——这是 self-consistency
+#: 的标准做法，也让"哪一版更好"这个比较是公平的（各版条件相同）。
+_MULTI_TEMPERATURE_STEP = 0.15
 
 
 def _variant_count(candidates: int) -> int:
@@ -74,10 +84,14 @@ class MarkReviseResult:
     advice: str = ""
     error: Optional[str] = None
     model: str = ""
-    # 多候选：给作者挑一版（一次调用里要 2–3 版，比让用户反复点"重来"更省）
+    # 多候选：给作者挑一版（**按证据排过序**，第一版即 replacement）
     candidates: List[str] = field(default_factory=list)
     # 自检发现但没能自动修好的问题（如实告诉作者，不静默放过）
     warnings: List[str] = field(default_factory=list)
+    # 每版的取舍依据（见 core/variant_select.py）：分数、罚分、置信度、一致性
+    ranking: List[Dict[str, Any]] = field(default_factory=list)
+    # 这次用了哪些信号、缺了哪些（读者一眼能看出"没测"而不是"0 分"）
+    selectionNote: str = ""
 
 
 def _clip(text: str, cap: int) -> str:
@@ -183,36 +197,117 @@ def build_retry_messages(
     ]
 
 
-def parse_variants(raw: str, want: int = 1) -> List[str]:
-    """从模型输出里取出 1–3 版改写。
+def _from_json_payload(raw: str) -> Tuple[bool, str]:
+    """模型自作主张返回 JSON 时，把正文取出来。
 
-    多候选时要求 JSON，但模型经常不听话：所以先试 JSON，失败就退化成一版
-    （宁可只给一版，也不要因为格式问题让作者什么都拿不到）。
+    返回 `(是不是 JSON 载荷, 正文)`：`{"variants": []}` 算"是载荷但没有内容"
+    （返回 `(True, "")`），这样调用方不会把一整段 JSON 当成正文交给作者。
     """
-    text = (raw or "").strip()
-    if want <= 1:
-        single = clean_model_text(text)
-        return [single] if single else []
-
-    fenced = _FENCE_RE.sub("", text).strip()
-    for blob in (fenced, text):
-        start = blob.find("{")
-        end = blob.rfind("}")
+    blob = _FENCE_RE.sub("", raw or "").strip()
+    for candidate in (blob, raw or ""):
+        start = candidate.find("{")
+        end = candidate.rfind("}")
         if start < 0 or end <= start:
             continue
         try:
-            data = json.loads(blob[start : end + 1])
+            data = json.loads(candidate[start : end + 1])
         except json.JSONDecodeError:
             continue
-        # 明确给了 variants 就按它来（哪怕是空的也不要退化，否则会把 JSON 当正文返回）
-        if isinstance(data, dict) and "variants" in data:
-            items = data.get("variants")
-            if not isinstance(items, list):
-                return []
-            out = [clean_model_text(str(v)) for v in items]
-            return [v for v in out if v][:3]
-    single = clean_model_text(text)
+        if not isinstance(data, dict):
+            continue
+        for key in ("variants", "text", "replacement", "content"):
+            if key not in data:
+                continue
+            value = data[key]
+            if key == "variants":
+                if not isinstance(value, list):
+                    return True, ""
+                for item in value:
+                    cleaned = clean_model_text(str(item))
+                    if cleaned:
+                        return True, cleaned
+                return True, ""
+            return True, clean_model_text(str(value))
+    return False, ""
+
+
+def parse_variants(raw: str) -> List[str]:
+    """从模型输出里取出改写正文（0 或 1 段）。
+
+    多变体**不再**走"一次调用要一个 JSON 数组"那条路：那条路下每版都没有自己的采样
+    分布，取舍只能靠输出顺序（`core/variant_select.py` 的模块文档写了原因）。
+    这里仍保留 JSON 容错，是因为模型有时会自作主张返回 JSON（提示词里出现过
+    variants/JSON 字样时尤其如此）：能识别就取出来，识别不出就当正文清洗——
+    宁可清理得糙一点，也不要让作者拿到一整段 JSON。
+    """
+    matched, text = _from_json_payload(raw)
+    if matched:
+        return [text] if text else []
+    single = clean_model_text(raw)
     return [single] if single else []
+
+
+async def _sample_one_variant(
+    config: DeepSeekConfig,
+    messages: List[Dict[str, str]],
+    *,
+    temperature: float,
+    limit: int,
+) -> Dict[str, Any]:
+    """独立采一版改写（多变体路径的一次调用）。
+
+    为什么**不用**"一次调用要 2–3 版"（原实现）：那样只有一个响应，
+    logprobs 覆盖的是整段 JSON（各版混在一起），**没法给每版单独算置信度**，
+    而"先写哪一版"纯属输出顺序——取舍就成了抽签（清单里那条待办的原话是"现在靠挑"）。
+    独立采样让每版都有自己的采样分布，也让每版都能单独过自检。
+    成本：N 次调用（与"一次要 N 版"的输出 token 同量级，输入重复 N 次——本地片段很短）。
+    """
+    res = await chat_completions(
+        config,
+        messages=messages,
+        temperature=temperature,
+        timeout=llm_budget.CHAT,
+        logprobs=supports_logprobs(config.model or ""),
+    )
+    content, _model = content_from_response(res)
+    texts = parse_variants(content)
+    return {
+        "temperature": round(float(temperature), 3),
+        "text": (texts[0][:limit] if texts else ""),
+        "certainty": certainty_from_logprobs(response_logprobs(res)),
+        "error": None if texts else "模型没有返回内容",
+    }
+
+
+async def _sample_variants(
+    config: DeepSeekConfig,
+    messages: List[Dict[str, str]],
+    *,
+    want: int,
+    limit: int,
+    base_temperature: float,
+) -> List[Dict[str, Any]]:
+    """并发采 N 版（温度阶梯铺开）；单版失败不影响其它版，失败项如实标 error。"""
+    tasks = []
+    for i in range(want):
+        # 以基准温度为中心上下铺开，避免全部落在同一个温度上（那样 N 版会很像）
+        offset = (i - (want - 1) / 2) * _MULTI_TEMPERATURE_STEP
+        tasks.append(
+            _sample_one_variant(
+                config,
+                messages,
+                temperature=max(0.1, min(1.3, base_temperature + offset)),
+                limit=limit,
+            )
+        )
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    out: List[Dict[str, Any]] = []
+    for i, item in enumerate(results):
+        if isinstance(item, BaseException):
+            out.append({"temperature": None, "text": "", "certainty": None, "error": str(item)})
+        else:
+            out.append(item)
+    return out
 
 
 async def revise_marked_text(
@@ -242,37 +337,92 @@ async def revise_marked_text(
             intent=intent,
             style_guide=style_guide,
         )
+        limit = int(len(quote) * _REPLACEMENT_RATIO) + _REPLACEMENT_MIN_SLACK
+
+        if intent == "advice":
+            res = await chat_completions(
+                config,
+                messages=messages,
+                # 采样参数按任务分档（core/llm_params）：建议类比改写更保守
+                temperature=MARK_ADVICE_TEMPERATURE,
+                timeout=llm_budget.CHAT,
+            )
+            content, used_model = content_from_response(res)
+            advice = clean_model_text(content)
+            if not advice:
+                return MarkReviseResult(error="模型没有返回内容，请重试或换一个模型")
+            return MarkReviseResult(advice=advice[:2000], model=used_model or (config.model or ""))
+
         if want > 1:
-            messages = [
-                messages[0],
-                {
-                    "role": "user",
-                    "content": messages[1]["content"] + _MULTI_SUFFIX.format(n=want),
-                },
-            ]
+            # 多变体：并发独立采样 → 每版各自过自检 → 按证据排序（见 core/variant_select.py）。
+            # 注意这里**不再**"一次调用要 N 版 JSON"：那条路每版都没有自己的采样分布，
+            # 取舍只能靠输出顺序（清单里的原话是"现在靠挑"）。
+            sampled = await _sample_variants(
+                config,
+                messages,
+                want=want,
+                limit=limit,
+                base_temperature=MARK_REVISE_TEMPERATURE,
+            )
+            rows = []
+            for item in sampled:
+                text = str(item.get("text") or "")
+                if item.get("error") or not text:
+                    continue
+                rows.append(
+                    {
+                        "text": text,
+                        "temperature": item.get("temperature"),
+                        "certainty": item.get("certainty"),
+                        "problems": check_replacement(quote, text, names),
+                    }
+                )
+            if not rows:
+                return MarkReviseResult(error="模型没有返回内容，请重试或换一个模型")
+            selection = select_best_variant(rows)
+            winner = selection.get("winner") or {}
+            ranking = selection.get("ranking") or []
+            note = str(selection.get("note") or "")
+            reason = reason_for_winner(selection)
+            return MarkReviseResult(
+                replacement=str(winner.get("text") or ""),
+                # 候选按**证据排序**返回，第一版即 winner（前端不用自己猜哪版好）
+                candidates=[str(r.get("text") or "") for r in ranking],
+                model=config.model or "",
+                warnings=list(winner.get("problems") or []),
+                ranking=[
+                    {
+                        "variantIndex": int(r.get("variantIndex") or 0),
+                        "rank": int(r.get("rank") or 0),
+                        "score": r.get("score"),
+                        "temperature": r.get("temperature"),
+                        "chars": len(str(r.get("text") or "")),
+                        "problems": list(r.get("problems") or []),
+                        "certainty": r.get("certainty"),
+                        "consensus": r.get("consensus"),
+                        "weights": r.get("weights"),
+                        "recommended": int(r.get("rank") or 0) == 1,
+                    }
+                    for r in ranking
+                ],
+                selectionNote=f"{reason} {note}".strip(),
+            )
+
         res = await chat_completions(
             config,
             messages=messages,
-            # 采样参数按任务分档（core/llm_params）：局部改写中等，建议类更保守
-            temperature=MARK_ADVICE_TEMPERATURE if intent == "advice" else MARK_REVISE_TEMPERATURE,
+            temperature=MARK_REVISE_TEMPERATURE,
             timeout=llm_budget.CHAT,
         )
         content, used_model = content_from_response(res)
         model = used_model or (config.model or "")
-        if intent == "advice":
-            advice = clean_model_text(content)
-            if not advice:
-                return MarkReviseResult(error="模型没有返回内容，请重试或换一个模型")
-            return MarkReviseResult(advice=advice[:2000], model=model)
-
-        limit = int(len(quote) * _REPLACEMENT_RATIO) + _REPLACEMENT_MIN_SLACK
-        variants = [v[:limit] for v in parse_variants(content, want)]
+        variants = [v[:limit] for v in parse_variants(content)]
         if not variants:
             return MarkReviseResult(error="模型没有返回内容，请重试或换一个模型")
 
         # 生成后自检（默认开）：能确定判断的问题就自动再改一次，别把问题丢给作者
         warnings = check_replacement(quote, variants[0], names)
-        if warnings and want == 1:
+        if warnings:
             try:
                 retry = await chat_completions(
                     config,
@@ -281,7 +431,7 @@ async def revise_marked_text(
                     timeout=llm_budget.CHAT,
                 )
                 retry_text, retry_model = content_from_response(retry)
-                retried = parse_variants(retry_text, 1)
+                retried = parse_variants(retry_text)
                 if retried and not check_replacement(quote, retried[0], names):
                     return MarkReviseResult(
                         replacement=retried[0][:limit],
