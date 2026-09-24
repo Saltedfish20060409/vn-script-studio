@@ -761,6 +761,11 @@ class AgentContextMeta(BaseModel):
 
     task: str
     charsUsed: int
+    # 本次上下文预算（字符）：作者据此看到"用满了没有"，而不是只看到一个绝对数字
+    budgetChars: Optional[int] = None
+    # 这次是否**被裁过**（正文截断 / 整块让位 / 中段压缩任一发生）。
+    # 与 `included` 里的中文标记是同一件事，但结构化的布尔量才能让界面稳定地提示。
+    truncated: Optional[bool] = None
     included: List[str] = Field(default_factory=list)
     # 「证明它记得」：这次实际依据的资料与摘录（前端可展开看原文）
     includedDetails: Optional[List[Dict[str, Any]]] = None

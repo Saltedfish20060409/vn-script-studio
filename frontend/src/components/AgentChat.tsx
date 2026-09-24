@@ -78,6 +78,7 @@ import {
   normalizeMessages,
 } from "../lib/agentFormat";
 import { copyForProject } from "../lib/genreCopy";
+import { contextUsage, type ContextUsage } from "../lib/contextUsage";
 import { AgentMessagesList } from "./AgentMessagesList";
 import { AgentPersonaOverlay } from "./AgentPersonaOverlay";
 import { ChapterReviseModePicker } from "./ChapterReviseModePicker";
@@ -276,6 +277,13 @@ export function AgentChat({
   const [sectionsOpen, setSectionsOpen] = useState(false);
   /** 「证明它记得」：本次实际依据的资料与摘录 */
   const [evidence, setEvidence] = useState<Array<{ label: string; preview: string }>>([]);
+  /** 本次上下文用量（读了多少 / 上限 / 有没有被裁）——见 lib/contextUsage.ts */
+  const [contextInfo, setContextInfo] = useState<ContextUsage>({
+    text: "",
+    truncated: false,
+    nearLimit: false,
+    hint: "",
+  });
   /** 本次用的是谁的钱：own / shared（免费档） */
   const [credentialsMode, setCredentialsMode] = useState("");
 
@@ -931,6 +939,8 @@ export function AgentChat({
               .map((d) => ({ label: String(d.label ?? ""), preview: String(d.preview ?? "") }))
           : []
       );
+      // 这次它读了多少、够不够、有没有被裁（作者据此判断"是不是它没看到前情"）
+      setContextInfo(contextUsage(meta));
 
       const warnings = res.warnings ?? [];
       const noteUndo = applied
@@ -2081,6 +2091,19 @@ export function AgentChat({
           ) : null}
 
           {/* 「证明它记得」：本次依据了什么，可展开看摘录——聊天永远给不了这个 */}
+          {/* 上面那行「用量」先说清"读了多少、够不够、有没有被裁"：
+              AI 没读到整章时会写出前后矛盾的东西，作者只会以为"它怎么忘了" */}
+          {contextInfo.text ? (
+            <p
+              className={contextInfo.truncated ? styles.contextWarn : styles.contextLine}
+              data-testid="agent-context-usage"
+              title={contextInfo.hint || undefined}
+            >
+              {contextInfo.text}
+              {contextInfo.truncated ? " · 有资料没装下" : ""}
+              {contextInfo.hint ? <span className={styles.contextHint}>{contextInfo.hint}</span> : null}
+            </p>
+          ) : null}
           {evidence.length > 0 ? (
             <details className={styles.evidence} data-testid="agent-evidence">
               <summary>

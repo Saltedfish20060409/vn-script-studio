@@ -22,6 +22,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.core import llm_budget
 from app.core.agent_context import (
     _BUDGET_DROP_ORDER,
@@ -105,10 +107,58 @@ def test_configured_budget_is_clamped_to_supported_range(monkeypatch):
 
 
 def test_small_window_model_clamps_the_budget_but_unknown_model_does_not():
-    """32k 窗口的本地模型不能被 48k 字符的预算撑爆；未知模型保持原行为。"""
+    """32k 窗口的本地模型不能被 48k 字符的预算撑爆；未知模型按保守窗口夹。"""
     assert context_budget_for_model("qwen3:8b") < DEFAULT_CONTEXT_MAX_CHARS
     assert context_budget_for_model("deepseek-flash") == DEFAULT_CONTEXT_MAX_CHARS
+    # 未知模型：默认预算（48000）本来就低于保守窗口（~76.8k），所以看不出差别——
+    # 差别只在"把预算调大"时才出现，见下一条测试。
     assert context_budget_for_model("some-custom-model") == DEFAULT_CONTEXT_MAX_CHARS
+
+
+def test_unknown_model_gets_a_conservative_window_instead_of_nothing(monkeypatch):
+    """回归：此前"认不出来的模型不夹"，等于假设窗口无限——小窗口自部署模型会被上游直接拒答。
+
+    现在按 `UNKNOWN_MODEL_WINDOW_K`（128k token ≈ 76.8k 字符）保守估计，
+    作者可以用 `AGENT_UNKNOWN_MODEL_WINDOW_K` 声明真实窗口（0 = 不夹）。
+    """
+    import app.config as config
+    from app.core.agent_context import UNKNOWN_MODEL_WINDOW_K
+
+    class _S:
+        agent_context_max_chars = 96_000
+        agent_unknown_model_window_k = UNKNOWN_MODEL_WINDOW_K
+
+    monkeypatch.setattr(config, "get_settings", lambda: _S())
+    room = int(UNKNOWN_MODEL_WINDOW_K * 1000 * 1.2 * 0.5)
+    assert context_budget_for_model("my-own-model") == room
+    assert room < 96_000
+    # 已知模型仍按预设表
+    assert context_budget_for_model("deepseek-flash") == 96_000
+    assert context_budget_for_model("qwen3:8b") == 19_200
+
+
+@pytest.mark.parametrize("declared", [0, -1])
+def test_author_can_declare_no_clamp_for_unknown_models(monkeypatch, declared):
+    import app.config as config
+
+    class _S:
+        agent_context_max_chars = 96_000
+        agent_unknown_model_window_k = declared
+
+    monkeypatch.setattr(config, "get_settings", lambda: _S())
+    assert context_budget_for_model("my-own-model") == 96_000
+
+
+def test_author_can_declare_a_small_window(monkeypatch):
+    import app.config as config
+
+    class _S:
+        agent_context_max_chars = 96_000
+        agent_unknown_model_window_k = 32  # 自部署的 32k 模型
+
+    monkeypatch.setattr(config, "get_settings", lambda: _S())
+    assert context_budget_for_model("my-own-model") == 19_200
+
 
 
 def test_focus_chapter_is_no_longer_clipped_to_five_thousand():

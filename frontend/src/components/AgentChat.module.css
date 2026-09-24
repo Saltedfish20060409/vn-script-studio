@@ -533,6 +533,27 @@ html[data-panel-glass="ink"] .stageOverlay {
   color: var(--ink);
 }
 
+/* 「这次它读了多少」：用量 / 上限 / 有没有被裁。
+   被裁过时换成告警色——AI 没读到整章很容易写成前后矛盾，作者得先知道这一点。 */
+.contextLine,
+.contextWarn {
+  flex-shrink: 0;
+  margin: 0 0 0.25rem;
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+
+.contextWarn {
+  color: var(--accent-hot);
+}
+
+.contextHint {
+  display: block;
+  margin-top: 0.15rem;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
 /* 「证明它记得」：依据清单（默认收起，点开看摘录） */
 .evidence {
   flex-shrink: 0;

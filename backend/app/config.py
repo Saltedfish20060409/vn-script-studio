@@ -38,9 +38,16 @@ class Settings(BaseSettings):
     #   1. 所选模型的窗口（预设 context_k，见 model_presets.context_window_k）；
     #   2. 我们自己的超时预算——预填充耗时随提示词线性增长，而 read timeout 覆盖
     #      "预填充 + 生成"（见 app/core/llm_budget.py 的 PREFILL_*）。
-    # 环境变量 AGENT_CONTEXT_MAX_CHARS 可调，但会被夹在 3000–96000 之间；
+    # 环境变量 AGENT_CONTEXT_MAX_CHARS 可调，但会被夹在 3000–96000 之间（**流式端点**
+    # 到 240000，见 docs/long-context-policy.md 第七节）；
     # 想再放宽就得同时放宽 PREFILL_MAX_BONUS（有跨模块不变量测试钉着）。
     agent_context_max_chars: int = 48000
+
+    # **未知模型**的上下文窗口保守假设（千 token）。预设表收不全，而"撑爆窗口"
+    # 对用户是完全没结果的硬失败（上游直接拒答），所以认不出的模型按 128k 估计：
+    # 128k × 1.2 × 0.5 ≈ 76.8k 字符。自部署/自建端点若是更大的窗口，
+    # 在这里声明真实值（**0 或负数 = 不夹**）。
+    agent_unknown_model_window_k: int = 128
 
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"

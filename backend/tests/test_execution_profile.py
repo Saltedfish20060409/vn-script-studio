@@ -220,3 +220,29 @@ def test_prompt_size_is_part_of_the_latency_summary():
     assert stats["promptChars"]["max"] == 48000
     assert stats["timeoutRate"] == 0.0
     assert stats["truncationRate"] == 0.0
+
+
+def test_context_meta_carries_budget_and_truncation_for_the_ui():
+    """界面要能说"它这次读了多少、够不够、有没有被裁"——这三个量必须在 contextMeta 里。
+
+    没有它们，作者只能看到 AI 写出前后矛盾的东西，然后以为"它怎么忘了"。
+    """
+    from app.domain.types import AgentContextMeta
+
+    meta = AgentContextMeta(
+        task="continue",
+        charsUsed=47000,
+        budgetChars=48000,
+        truncated=True,
+        included=["当前章截断:24000/60000字"],
+    )
+    dumped = meta.model_dump(mode="json")
+    assert dumped["charsUsed"] == 47000
+    assert dumped["budgetChars"] == 48000
+    assert dumped["truncated"] is True
+
+    # 旧字段不变（前端老版本仍能读）
+    legacy = AgentContextMeta(task="chat", charsUsed=100)
+    assert legacy.budgetChars is None
+    assert legacy.truncated is None
+

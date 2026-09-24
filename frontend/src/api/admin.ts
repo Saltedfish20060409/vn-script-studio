@@ -105,6 +105,48 @@ export function fetchAiUsage(days = 30): Promise<AiUsageOut> {
   return apiFetch<AiUsageOut>(`/admin/ai-usage?days=${days}`);
 }
 
+/** 某个字段的分位统计（`count` 是样本数；没有样本时后端会给 `note`）。 */
+export interface LatencyQuantiles {
+  count: number;
+  p50?: number;
+  p95?: number;
+  p99?: number;
+  max?: number;
+  mean?: number;
+  note?: string;
+}
+
+/** 一个统计口径（`模型|档位|能力` 或 `context|任务`）的汇总。 */
+export interface LatencySeries {
+  count: number;
+  note?: string;
+  total?: LatencyQuantiles;
+  firstToken?: LatencyQuantiles;
+  /** 本次出站提示词多大——**上下文预算有没有被用满** */
+  promptChars?: LatencyQuantiles;
+  timeouts?: number;
+  timeoutRate?: number;
+  truncated?: number;
+  truncationRate?: number;
+}
+
+export interface LlmLatencyOut {
+  windowSize: number;
+  series: Record<string, LatencySeries>;
+  /** 后端如实说明的统计边界（进程内、重启清零、多 worker 不合并） */
+  scope: string;
+}
+
+/**
+ * LLM 耗时/上下文体积的分位统计（管理员只读）。
+ *
+ * 用途：判断"要不要加预算 / 要不要 hedge / 要不要为更大上下文换架构"——
+ * 这些都该看实测分布，而不是拍脑袋（见 docs/llm-timeout-budget.md 第十节）。
+ */
+export function fetchLlmLatency(): Promise<LlmLatencyOut> {
+  return apiFetch<LlmLatencyOut>("/admin/llm-latency");
+}
+
 export function fetchEmailDiag(q: string): Promise<EmailDiagOut> {
   return apiFetch<EmailDiagOut>(`/admin/email-diag?q=${encodeURIComponent(q)}`);
 }

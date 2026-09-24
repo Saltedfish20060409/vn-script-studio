@@ -419,6 +419,9 @@ async def run_agent_loop(
         raise RuntimeError("请先配置 DEEPSEEK_API_KEY")
     model = config.model or DEFAULT_LLM_MODEL
     provider = provider_from_config(config)
+    # 本次上下文预算（字符）：按模型窗口与执行档夹过，后面两个分支共用，
+    # 也会随 contextMeta 返回给界面（"这次它读了多少、够不够"）。
+    ctx_budget = context_budget_for_model(model)
 
     async def emit(evt: Dict[str, Any]) -> None:
         """Fire a stream event; a failing sink must never break the loop."""
@@ -463,7 +466,7 @@ async def run_agent_loop(
             selection=request.selection,
             userMessage=last_user,
             task=task,
-            maxChars=context_budget_for_model(model),
+            maxChars=ctx_budget,
             chatMemory=request.chatMemory,
             longChapterMemory=request.longChapterMemory,
             globalMemory=request.globalMemory,
@@ -491,7 +494,7 @@ async def run_agent_loop(
             selection=request.selection,
             userMessage=last_user,
             task=task,
-            maxChars=context_budget_for_model(model),
+            maxChars=ctx_budget,
             chatMemory=request.chatMemory,
             longChapterMemory=request.longChapterMemory,
             globalMemory=request.globalMemory,
@@ -670,6 +673,10 @@ async def run_agent_loop(
         contextMeta=AgentContextMeta(
             task=task,
             charsUsed=ctx.charsUsed,
+            # 界面上要能回答"这次它读了多少、够不够、有没有被截"——
+            # 这是"失忆"最容易被作者发现的一处（AI 没读到整章时会写出前后矛盾的东西）
+            budgetChars=ctx_budget,
+            truncated=ctx.truncated,
             included=ctx.included,
             # 「证明它记得」：实际依据的资料与摘录（前端默认摆出来，可展开看）
             includedDetails=ctx.includedDetails,

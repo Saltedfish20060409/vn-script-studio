@@ -307,8 +307,10 @@ def context_window_k(model: str) -> int | None:
     预设里既有 1000k 的 DeepSeek，也有 32k 的本地 Ollama，按同一个字符数硬塞
     会把小窗口模型直接撑爆（上游报 context length exceeded，比截断更难善后）。
 
-    认不出来就返回 None（**保持原行为**，不擅自缩小）：预设只是帮忙填端点，
-    用户完全可能手填一个我们没收录的模型名，见 `supports_json_mode` 的同款取舍。
+    认不出来就返回 None：**调用方按"未知模型的保守假设"处理**
+    （`agent_context.UNKNOWN_MODEL_WINDOW_K`），不再当成无限窗口——
+    手填模型名的人越来越多，而"撑爆窗口"对用户来说是完全没有结果的硬失败。
+    想声明自己模型的真实窗口，用环境变量 `AGENT_UNKNOWN_MODEL_WINDOW_K` 覆盖。
     """
     name = (model or "").strip().lower()
     if not name:

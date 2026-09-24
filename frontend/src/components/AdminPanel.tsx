@@ -5,6 +5,7 @@ import {
   fetchAdminOverview,
   fetchAiUsage,
   fetchEmailDiag,
+  fetchLlmLatency,
   grantAdmin,
   revokeAdmin,
   unbanUser,
@@ -13,8 +14,10 @@ import {
   type AdminUserOut,
   type AiUsageOut,
   type EmailDiagOut,
+  type LlmLatencyOut,
 } from "../api/admin";
 import { ApiError } from "../api/http";
+import { buildRows } from "../lib/latencyReport";
 import styles from "./AdminPanel.module.css";
 
 type Props = {
@@ -30,6 +33,7 @@ export function AdminPanel({ open, onClose }: Props) {
   const [acting, setActing] = useState<string | null>(null);
   const [funnel, setFunnel] = useState<AdminFunnelOut | null>(null);
   const [aiUsage, setAiUsage] = useState<AiUsageOut | null>(null);
+  const [latency, setLatency] = useState<LlmLatencyOut | null>(null);
   const [diagQ, setDiagQ] = useState("");
   const [diag, setDiag] = useState<EmailDiagOut | null>(null);
   const [diagBusy, setDiagBusy] = useState(false);
@@ -68,6 +72,12 @@ export function AdminPanel({ open, onClose }: Props) {
         setAiUsage(await fetchAiUsage(30));
       } catch {
         setAiUsage(null);
+      }
+      // 耗时/上下文分位（进程内最近样本）：和用量一样失败不影响其它卡片
+      try {
+        setLatency(await fetchLlmLatency());
+      } catch {
+        setLatency(null);
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "加载失败");
@@ -255,6 +265,38 @@ export function AdminPanel({ open, onClose }: Props) {
             <p className={styles.funnelNote}>
               用途：判断"该把力气投到哪个能力上"。此前 kind 被写死成同一个标签，
               只能看到总量、看不到结构。
+            </p>
+          </div>
+        ) : null}
+
+        {latency ? (
+          <div className={styles.funnelBox} data-testid="admin-llm-latency">
+            <p className={styles.funnelTitle}>
+              LLM 耗时 / 上下文（最近 {latency.windowSize} 次一档）
+            </p>
+            {buildRows(latency.series).length === 0 ? (
+              <p className={styles.funnelNote}>
+                还没有样本：本次发布后还没有模型调用（统计是进程内的，重启即清零）。
+              </p>
+            ) : (
+              <ul className={styles.funnelList}>
+                {buildRows(latency.series).map((row) => (
+                  <li key={row.key}>
+                    <span className={styles.funnelLabel}>{row.label}</span>
+                    <span className={styles.funnelNum}>
+                      {row.latency}
+                      {row.prompt ? ` · ${row.prompt}` : ""}
+                      {row.firstToken ? ` · ${row.firstToken}` : ""}
+                      {row.tail ? ` · ${row.tail}` : ""}
+                      {row.truncation ? ` · ${row.truncation}` : ""}（{row.count} 次采样）
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className={styles.funnelNote}>
+              {latency.scope}。用途：判断「要不要加预算 / 要不要为长尾做对冲 / 要不要为更大上下文
+              放开上限」——这些看实测分布，不看感觉（判据见 docs/long-context-policy.md 第七节）。
             </p>
           </div>
         ) : null}

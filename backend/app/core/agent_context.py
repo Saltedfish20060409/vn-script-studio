@@ -81,6 +81,16 @@ _CHARS_PER_TOKEN = 1.2
 _WINDOW_INPUT_SHARE = 0.5
 """输入最多占窗口的比例：另一半留给输出、思考过程、多轮工具结果。"""
 
+UNKNOWN_MODEL_WINDOW_K = 128
+"""**未知模型**的窗口保守假设（千 token）。
+
+为什么要有这一条：预设表不可能收全（用户会手填自建端点、自部署模型、厂商新名字）。
+此前"认不出来就不夹"，等于假设它的窗口无限大——对 32k 窗口的自部署模型来说，
+一次 48k 字符的拼装会被上游直接拒答：**用户什么都拿不到**（比截断严重得多）。
+所以改成按 128k token 保守估计（128k × 1.2 × 0.5 ≈ 76.8k 字符），
+并在文档里说明：模型确实更大时用 `AGENT_UNKNOWN_MODEL_WINDOW_K` 声明真实窗口
+（0 = 明确表示"不用夹"，负值同样视为不夹）。
+"""
 # 各资料块的**单块上限**。全部提到模块级，是为了让"预算够不够装下它们"这件事
 # 可被测试断言（见 tests/test_context_budget_policy.py），而不是散在拼装代码里。
 #
@@ -139,16 +149,37 @@ def context_budget_for_model(
         streamed = is_streamed()
     ceiling = MAX_CONTEXT_MAX_CHARS_STREAMED if streamed else MAX_CONTEXT_MAX_CHARS
     resolved = int(budget) if budget else _default_context_max_chars(ceiling=ceiling)
-    try:
-        from app.core.model_presets import context_window_k
-
-        window_k = context_window_k(model or "")
-    except Exception:  # noqa: BLE001 - 预设表不可用时不缩小（保持原行为）
-        window_k = None
+    window_k = _effective_window_k(model)
     if window_k:
         room = int(window_k * 1000 * _CHARS_PER_TOKEN * _WINDOW_INPUT_SHARE)
         resolved = min(resolved, room)
     return max(MIN_CONTEXT_MAX_CHARS, min(resolved, ceiling))
+
+
+def _effective_window_k(model: Optional[str]) -> Optional[int]:
+    """生效的模型窗口（千 token）：能查到就用它，查不到用保守假设。
+
+    优先级：预设表（`model_presets.context_window_k`）→ `AGENT_UNKNOWN_MODEL_WINDOW_K`
+    （作者声明自己模型的窗口）→ `UNKNOWN_MODEL_WINDOW_K`（保守默认）。
+    显式声明为 0 或负数表示"不用夹"（自建大窗口模型的作者自己负责）。
+    """
+    try:
+        from app.core.model_presets import context_window_k
+
+        known = context_window_k(model or "")
+    except Exception:  # noqa: BLE001 - 预设表不可用时不缩小（保持原行为）
+        return None
+    if known:
+        return known
+    try:
+        from app.config import get_settings
+
+        raw = int(getattr(get_settings(), "agent_unknown_model_window_k", UNKNOWN_MODEL_WINDOW_K))
+    except Exception:  # noqa: BLE001 - 配置不可用时用保守默认
+        raw = UNKNOWN_MODEL_WINDOW_K
+    if raw <= 0:
+        return None  # 明确声明"不用夹"
+    return raw
 
 
 @dataclass

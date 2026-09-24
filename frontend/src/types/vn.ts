@@ -657,6 +657,10 @@ export type AgentTaskKind =
 export interface AgentContextMeta {
   task: AgentTaskKind;
   charsUsed: number;
+  /** 本次上下文预算（字符）：跟 charsUsed 一起才能说清"用满了没有" */
+  budgetChars?: number;
+  /** 这次是否被裁过（正文截断 / 整块让位 / 中段压缩任一发生） */
+  truncated?: boolean;
   included: string[];
   /** 「证明它记得」：这次实际依据的资料与摘录（可展开看原文） */
   includedDetails?: Array<{ label?: string; preview?: string }>;
