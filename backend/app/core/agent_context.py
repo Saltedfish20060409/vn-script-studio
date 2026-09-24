@@ -835,6 +835,18 @@ _RETRIEVE_BY_SECTION: Dict[str, str] = {
     "longMemory": "长程记忆会随章节推进自动重建（MEMORY_AUTO_ARCHIVE）",
 }
 
+#: 「一键取回」按钮要发出去的那句话（**第一人称、可直接发送**）。
+#:
+#: 为什么由后端给：工具名只有一处真源（`agent_tools.TOOL_SPECS` 那一侧），
+#: 前端自己拼模板就会在某个时刻编出一个不存在的工具名。**没有工具能取回的块不给这句话**
+#: （界面据此不显示按钮）——"取不回来就别给按钮"比给一个点了没用的按钮诚实。
+_RETRIEVE_INSTRUCTION_BY_SECTION: Dict[str, str] = {
+    "otherChapters": "先用 search_script 搜一遍全书，必要时用 get_chapter 读整章，把和这次要求相关的章节内容补齐，然后再继续。",
+    "index": "先用 get_chapter 读一下这次要写的那一章，再继续。",
+    "lore": "先用 search_lore 把相关的设定条目取回来，然后再继续。",
+    "loreLinks": "先用 search_lore 把相关的设定条目取回来，然后再继续。",
+}
+
 
 def _budget_report(
     *,
@@ -856,14 +868,17 @@ def _budget_report(
          不是"没装下"，不能拿来吓作者；
        - 因为篇幅没装下（`budget_dropped` / `budget_compressed` / 正文截断）——**这才是要处理的**。
     """
-    dropped_rows = [
-        {
+    dropped_rows = []
+    for key in budget_dropped:
+        row: Dict[str, Any] = {
             "key": key,
             "label": _section_label(key),
             "retrieve": _RETRIEVE_BY_SECTION.get(key, "需要时让它用工具取，或把它换进「资料」"),
         }
-        for key in budget_dropped
-    ]
+        instruction = _RETRIEVE_INSTRUCTION_BY_SECTION.get(key)
+        if instruction:
+            row["instruction"] = instruction
+        dropped_rows.append(row)
     trimmed_rows: List[Dict[str, Any]] = []
     if focus_cut:
         trimmed_rows.append(dict(focus_cut))
@@ -875,6 +890,7 @@ def _budget_report(
                     "label": "其他章节的正文摘录",
                     "detail": "已压成标题 + 一句话摘要",
                     "retrieve": _RETRIEVE_BY_SECTION["otherChapters"],
+                    "instruction": _RETRIEVE_INSTRUCTION_BY_SECTION["otherChapters"],
                 }
             )
         elif key == "中段":
@@ -884,6 +900,7 @@ def _budget_report(
                     "label": "上下文中段",
                     "detail": "首尾保留、中段压缩（仍然超预算时的最后手段）",
                     "retrieve": "缩小范围（少带几块资料）后再试，或让它用工具单独取那一段",
+                    "instruction": "这次上下文中段被压缩了。请先说明你还需要哪一块信息，我用工具单独取给你。",
                 }
             )
     return {
@@ -1491,6 +1508,11 @@ def build_agent_context(
                 "keptChars": focus_budget,
                 "totalChars": len(plain),
                 "retrieve": f"让它用 get_chapter 读「{focus_chapter.title or '当前章'}」的完整正文",
+                # 一键取回按钮要发的原话（第一人称、可直接发送；工具名只有后端一处真源）
+                "instruction": (
+                    f"先用 get_chapter 读「{focus_chapter.title or '当前章'}」的完整正文"
+                    "（这次只带了末尾部分），读完用一句话确认你读到的位置，然后再继续。"
+                ),
             }
 
     if picked_chars:

@@ -19,6 +19,13 @@ export type BudgetRow = {
   detail: string;
   /** 照着做的话，例如「让它用 get_chapter 读「第一章」的完整正文」 */
   action: string;
+  /**
+   * 一键取回要发出去的原话（后端给的第一人称指令）。
+   *
+   * **没有工具能取回时后端不给这个字段**（例如作者上传的参考资料）——界面据此不显示按钮，
+   * 而不是给一个点了没用的按钮。前端也不自己拼这句话：工具名只有后端一处真源。
+   */
+  instruction?: string;
 };
 
 export type BudgetNotice = {
@@ -28,16 +35,22 @@ export type BudgetNotice = {
   byDesign: BudgetRow[];
   /** 有没有"没装下"这件事 */
   hasMissing: boolean;
+  /** 有没有任何一项能一键取回 */
+  hasRetrievable: boolean;
 };
 
 function fmt(n: number | undefined): string {
   return typeof n === "number" && Number.isFinite(n) ? Math.round(n).toLocaleString("en-US") : "";
 }
 
+function clean(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 /** 把报告翻成两组可显示的清单；报告缺失时返回空（界面就不显示这一段）。 */
 export function budgetNotice(report?: AgentBudgetReport | null): BudgetNotice {
   if (!report) {
-    return { missing: [], byDesign: [], hasMissing: false };
+    return { missing: [], byDesign: [], hasMissing: false, hasRetrievable: false };
   }
 
   const missing: BudgetRow[] = [];
@@ -45,19 +58,27 @@ export function budgetNotice(report?: AgentBudgetReport | null): BudgetNotice {
   for (const part of report.trimmedParts ?? []) {
     if (!part || !part.label) continue;
     const detail =
-      part.detail ||
+      clean(part.detail) ||
       (typeof part.keptChars === "number" && typeof part.totalChars === "number"
         ? `只带了 ${fmt(part.keptChars)} / ${fmt(part.totalChars)} 字`
         : "");
-    missing.push({ label: part.label, detail, action: part.retrieve || "" });
+    const instruction = clean(part.instruction);
+    missing.push({
+      label: part.label,
+      detail,
+      action: clean(part.retrieve),
+      ...(instruction ? { instruction } : {}),
+    });
   }
 
   for (const section of report.droppedSections ?? []) {
     if (!section || !section.label) continue;
+    const instruction = clean(section.instruction);
     missing.push({
       label: section.label,
       detail: "因为篇幅被整块省去了",
-      action: section.retrieve || "",
+      action: clean(section.retrieve),
+      ...(instruction ? { instruction } : {}),
     });
   }
 
@@ -69,7 +90,30 @@ export function budgetNotice(report?: AgentBudgetReport | null): BudgetNotice {
       action: "",
     }));
 
-  return { missing, byDesign, hasMissing: missing.length > 0 };
+  return {
+    missing,
+    byDesign,
+    hasMissing: missing.length > 0,
+    hasRetrievable: missing.some((row) => Boolean(row.instruction)),
+  };
+}
+
+/**
+ * 「一次把没装下的都取回来」要发出去的那句话（可直接发送）。
+ *
+ * 只把**能取回的**那些拼进去（后端给了 `instruction` 的），并在结尾要求它确认读到了哪一段——
+ * 否则作者无法判断"它到底补上了没有"。一项都取不回来时返回空串（界面不显示这个按钮）。
+ */
+export function retrieveAllMessage(notice: BudgetNotice): string {
+  const steps = notice.missing
+    .map((row) => row.instruction)
+    .filter((text): text is string => Boolean(text));
+  if (steps.length === 0) return "";
+  return [
+    "这次上下文里没装下下面这些内容，请先补齐再继续：",
+    ...steps.map((text) => `- ${text}`),
+    "补齐后先告诉我你读到了哪一段，再按我上一条要求继续。",
+  ].join("\n");
 }
 
 /**

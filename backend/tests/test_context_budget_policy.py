@@ -314,6 +314,26 @@ def test_budget_report_describes_the_focus_chapter_cut():
     assert focus["totalChars"] > focus["keptChars"]
     assert "字" in focus["detail"]
     assert "get_chapter" in focus["retrieve"], "作者要知道怎么把那一段取回来"
+    # 「一键取回」发出去的那句话：必须点名工具与章节，且是**第一人称可直接发送**
+    instruction = focus["instruction"]
+    assert "get_chapter" in instruction
+    assert "第一章" in instruction
+    assert not instruction.startswith("让它"), "那是给作者看的第三人称说明，不是能直接发的话"
+
+
+def test_only_retrievable_blocks_carry_an_instruction():
+    """没有工具能取回的块**不给** instruction——界面据此不显示按钮（点了没用的按钮更糟）。"""
+    ctx = _context(_project(), referenceDocs="囧" * 40000, maxChars=6000)
+    rows = ctx.budgetReport["droppedSections"]
+    by_key = {row["key"]: row for row in rows}
+    assert "referenceDocs" in by_key
+    assert "instruction" not in by_key["referenceDocs"]
+    assert by_key["referenceDocs"]["retrieve"].strip(), "但要如实告诉作者怎么办"
+
+    lore = _context(_project(), referenceDocs="囧" * 40000, maxChars=1200)
+    for row in lore.budgetReport["droppedSections"]:
+        if row["key"] in ("lore", "loreLinks", "otherChapters", "index"):
+            assert "search_lore" in row["instruction"] or "search_script" in row["instruction"] or "get_chapter" in row["instruction"]
 
 
 def test_budget_report_marks_compressed_other_chapters():

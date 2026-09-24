@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentBudgetReport } from "../types/vn";
-import { budgetNotice, includedSummary } from "./contextBudget";
+import { budgetNotice, includedSummary, retrieveAllMessage } from "./contextBudget";
 
 function report(over: Partial<AgentBudgetReport> = {}): AgentBudgetReport {
   return {
@@ -101,6 +101,68 @@ describe("budgetNotice", () => {
     expect(out.missing).toHaveLength(1);
     expect(out.missing[0].detail).toContain("100");
     expect(out.missing[0].detail).toContain("900");
+  });
+});
+
+describe("一键取回", () => {
+  const withSteps = report({
+    truncated: true,
+    trimmedParts: [
+      {
+        kind: "focus",
+        label: "当前章正文（第一章）",
+        detail: "只带了末尾 24,000 / 60,000 字",
+        retrieve: "让它用 get_chapter 读「第一章」的完整正文",
+        instruction: "先用 get_chapter 读「第一章」的完整正文，然后再继续。",
+      },
+    ],
+    droppedSections: [
+      {
+        key: "lore",
+        label: "设定条目",
+        retrieve: "让它用 search_lore 取回具体条目",
+        instruction: "先用 search_lore 把相关的设定条目取回来，然后再继续。",
+      },
+      // 没有工具能取回的（作者上传的参考资料）：后端不给 instruction
+      { key: "referenceDocs", label: "上传的参考资料", retrieve: "重新上传这份资料" },
+    ],
+  });
+
+  it("只给能取回的项显示按钮（取不回来的不给按钮）", () => {
+    const notice = budgetNotice(withSteps);
+    expect(notice.missing).toHaveLength(3);
+    expect(notice.hasRetrievable).toBe(true);
+    expect(notice.missing[0].instruction).toContain("get_chapter");
+    expect(notice.missing[1].instruction).toContain("search_lore");
+    expect(notice.missing[2].instruction).toBeUndefined();
+    expect(notice.missing[2].action).toContain("重新上传");
+  });
+
+  it("全部取回的那句话只含能取回的项，并要求确认读到哪一段", () => {
+    const message = retrieveAllMessage(budgetNotice(withSteps));
+    expect(message).toContain("没装下");
+    expect(message).toContain("get_chapter 读「第一章」");
+    expect(message).toContain("search_lore");
+    expect(message).not.toContain("重新上传");
+    expect(message).toContain("你读到了哪一段");
+  });
+
+  it("一项都取不回来时不给整句（界面就不显示这个按钮）", () => {
+    const notice = budgetNotice(
+      report({
+        truncated: true,
+        droppedSections: [
+          { key: "referenceDocs", label: "上传的参考资料", retrieve: "重新上传这份资料" },
+        ],
+      })
+    );
+    expect(notice.hasMissing).toBe(true);
+    expect(notice.hasRetrievable).toBe(false);
+    expect(retrieveAllMessage(notice)).toBe("");
+  });
+
+  it("空报告不炸", () => {
+    expect(retrieveAllMessage(budgetNotice(undefined))).toBe("");
   });
 });
 

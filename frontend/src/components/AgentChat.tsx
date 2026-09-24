@@ -79,7 +79,12 @@ import {
 } from "../lib/agentFormat";
 import { copyForProject } from "../lib/genreCopy";
 import { contextUsage, type ContextUsage } from "../lib/contextUsage";
-import { budgetNotice, includedSummary, type BudgetNotice } from "../lib/contextBudget";
+import {
+  budgetNotice,
+  includedSummary,
+  retrieveAllMessage,
+  type BudgetNotice,
+} from "../lib/contextBudget";
 import { AgentMessagesList } from "./AgentMessagesList";
 import { AgentPersonaOverlay } from "./AgentPersonaOverlay";
 import { ChapterReviseModePicker } from "./ChapterReviseModePicker";
@@ -2109,7 +2114,7 @@ export function AgentChat({
               {contextInfo.hint ? <span className={styles.contextHint}>{contextInfo.hint}</span> : null}
             </p>
           ) : null}
-          {/* 「这次没装下什么、怎么取回来」：每一行都能照着做（动作来自后端，前端不编工具名） */}
+          {/* 「这次没装下什么、怎么取回来」：每一行都能照着做，能取回的还给一个按钮 */}
           {budgetInfo.hasMissing ? (
             <details className={styles.missing} data-testid="agent-context-missing">
               <summary>没装下的 {budgetInfo.missing.length} 项（点开看怎么取回）</summary>
@@ -2119,9 +2124,33 @@ export function AgentChat({
                     <strong>{row.label}</strong>
                     {row.detail ? <em>{row.detail}</em> : null}
                     {row.action ? <span>{row.action}</span> : null}
+                    {/* 一键取回：发出去的就是后端给的那句话（工具名只有后端一处真源） */}
+                    {row.instruction ? (
+                      <button
+                        type="button"
+                        className={styles.missingAction}
+                        data-testid={`agent-context-retrieve-${i}`}
+                        disabled={busy || !conversationId}
+                        title={row.instruction}
+                        onClick={() => void sendText(row.instruction!)}
+                      >
+                        让它取回这一块
+                      </button>
+                    ) : null}
                   </li>
                 ))}
               </ul>
+              {budgetInfo.hasRetrievable ? (
+                <button
+                  type="button"
+                  className={styles.missingAction}
+                  data-testid="agent-context-retrieve-all"
+                  disabled={busy || !conversationId}
+                  onClick={() => void sendText(retrieveAllMessage(budgetInfo))}
+                >
+                  一次让它把没装下的都取回来
+                </button>
+              ) : null}
               {budgetInfo.byDesign.length > 0 ? (
                 <p className={styles.missingNote}>
                   另有 {budgetInfo.byDesign.length} 项是**按任务省去**的（

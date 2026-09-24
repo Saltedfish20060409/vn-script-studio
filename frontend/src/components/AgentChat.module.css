@@ -604,6 +604,23 @@ html[data-panel-glass="ink"] .stageOverlay {
   opacity: 0.75;
 }
 
+/* 一键取回：把"提示"变成"动作"（发的就是后端给的那句话，前端不拼工具名） */
+.missingAction {
+  margin-top: 0.2rem;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 0.35rem;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--ink);
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+.missingAction:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* 「证明它记得」：依据清单（默认收起，点开看摘录） */
 .evidence {
   flex-shrink: 0;

@@ -663,6 +663,8 @@ export interface AgentSectionRef {
 /** 因为篇幅被整块省去的一块资料：怎么取回来说在 `retrieve` 里（可执行）。 */
 export interface AgentDroppedSection extends AgentSectionRef {
   retrieve: string;
+  /** 「一键取回」要发出去的那句话（后端给，第一人称可直接发送）；没有工具能取回时缺省 */
+  instruction?: string;
 }
 
 /** 被截断/压缩的一块内容（正文、其他章摘录、中段）。 */
@@ -671,6 +673,8 @@ export interface AgentTrimmedPart {
   label: string;
   detail: string;
   retrieve: string;
+  /** 同上：有工具能取回时给一句可直接发送的话 */
+  instruction?: string;
   keptChars?: number;
   totalChars?: number;
 }
