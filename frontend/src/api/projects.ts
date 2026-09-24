@@ -820,13 +820,28 @@ export type ConsistencyScanOpts = {
  * 与旧的 `consistencyAudit` 的区别：按重叠窗口扫完所有有正文的章节，并如实报回
  * 覆盖率（`coverage` / `ceilingNote`），修掉了旧实现"只扫前 14 章且不告知"的静默截断。
  */
+/** 分片扫描的默认窗口参数（必须与后端路由默认值一致，见下方守卫测试）。 */
+export const CONSISTENCY_SCAN_DEFAULTS = { size: 12, overlap: 4 } as const;
+
+/**
+ * 全书一致性分片扫描。
+ *
+ * **默认 12/4 是测出来的**（依据 Distance between Relevant Information Pieces,
+ * ACL 2025 Findings；测量代码 `backend/app/core/scan_exposure.py`）：
+ * 同窗距离上限恒等于 overlap，overlap=2 时"隔 3 章的线索"约 24% 的章对永远不可能同窗；
+ * 而窗口预算（16）在长书上必被用满，所以窗口大小才是"能扫多少章"的杠杆
+ * （6/2 → 66 章；12/4 → 132 章，且距离上限从 2 提到 4）。
+ *
+ * 与旧的 `consistencyAudit` 的区别：按重叠窗口扫完所有有正文的章节，并如实报回
+ * 覆盖率（`coverage` / `ceilingNote`），修掉了旧实现"只扫前 14 章且不告知"的静默截断。
+ */
 export function consistencyScan(
   id: string,
   opts: ConsistencyScanOpts = {}
 ): Promise<ConsistencyScanOut> {
   const params = new URLSearchParams();
-  params.set("size", String(opts.size ?? 6));
-  params.set("overlap", String(opts.overlap ?? 2));
+  params.set("size", String(opts.size ?? CONSISTENCY_SCAN_DEFAULTS.size));
+  params.set("overlap", String(opts.overlap ?? CONSISTENCY_SCAN_DEFAULTS.overlap));
   if (opts.focus && opts.focus.trim()) params.set("focus", opts.focus.trim());
   if (opts.maxWindows != null) params.set("max_windows", String(opts.maxWindows));
   return apiFetch<ConsistencyScanOut>(

@@ -179,8 +179,32 @@ def _plan_windows(
     return windows
 
 
-def plan_windows(project: VnProject, *, size: int = 6, overlap: int = 2) -> List[Dict[str, Any]]:
+#: 分片窗口的**唯一真源**。
+#:
+#: 为什么单独抽成常量：默认值一度散在三处（这里、HTTP 路由签名、评测基准
+#: `eval_longrange`），把默认值从 6/2 调到 12/4 时基准没跟上，"基准必须测线上真正跑的
+#: 那套切窗逻辑"那条测试立刻红了——那正是分叉的代价。现在：
+#: - 生产实现、HTTP 路由、评测基准都取这里；
+#: - 前端 `src/api/projects.ts` 的 `CONSISTENCY_SCAN_DEFAULTS` 由
+#:   `src/api/scanDefaults.test.ts` 读本文件比对，不会各自漂移。
+#:
+#: 数值本身是**测出来的**（`app/core/scan_exposure.py`，依据 ACL 2025 Findings 那篇
+#: "相关片段之间的距离造成偏差"）：同窗距离上限恒等于 overlap，窗口预算（16）在长书上
+#: 必被用满，所以窗口大小才是"能扫多少章"的杠杆（6/2 → 66 章；12/4 → 132 章，
+#: 距离上限 2 → 4）。每窗文本更长是它的代价，所以取 12 而不是更大。
+DEFAULT_WINDOW_SIZE = 12
+DEFAULT_WINDOW_OVERLAP = 4
+
+
+def plan_windows(
+    project: VnProject,
+    *,
+    size: int = DEFAULT_WINDOW_SIZE,
+    overlap: int = DEFAULT_WINDOW_OVERLAP,
+) -> List[Dict[str, Any]]:
     """按章序把有正文的章节切成重叠窗口。
+
+    默认值见 `DEFAULT_WINDOW_SIZE` / `DEFAULT_WINDOW_OVERLAP` 上方的说明。
 
     返回每窗的 `{"index", "chapterIds", "chapterTitles", "chars"}`；`chars` 是该窗
     章节的原文总字数（未计每章截断）。总章数 <= size 时只有一窗，此时行为与旧的
@@ -477,8 +501,8 @@ async def run_consistency_scan(
     config: Optional[DeepSeekConfig],
     project: VnProject,
     *,
-    size: int = 6,
-    overlap: int = 2,
+    size: int = DEFAULT_WINDOW_SIZE,
+    overlap: int = DEFAULT_WINDOW_OVERLAP,
     focus: str = "",
     max_windows: Optional[int] = None,
     chapter_texts: Optional[Dict[str, str]] = None,

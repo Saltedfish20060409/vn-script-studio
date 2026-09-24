@@ -102,7 +102,7 @@ text[-keep_tail:]` 拼回去）。两件事叠加之后，位置就不只是"读
 | 文献 | 结论 | 我们的落点 |
 |---|---|---|
 | [Lost in the Middle](https://arxiv.org/abs/2307.03172) | 模型对上下文中段的利用最差 | **已落进代码**：`agent_context._SECTION_ORDER`（见下方专节） |
-| [Distance between Relevant Information Pieces Causes Bias](https://aclanthology.org/2025.findings-acl.28/) | 证据片段之间的**距离**本身造成偏差 | `consistency_scan` 的分片窗口大小/重叠（**待办**：做一个窗口参数 → 实测暴露率的对照） |
+| [Distance between Relevant Information Pieces Causes Bias](https://aclanthology.org/2025.findings-acl.28/) | 证据片段之间的**距离**本身造成偏差 | **已落进代码**：`core/scan_exposure.py` 把"跨章矛盾能否同窗"变成可测量的覆盖率，并据此把分片默认值从 6/2 改成 12/4（数字与推导见 `longrange-consistency-and-eval.md` §三.1） |
 | [LongMemEval](https://arxiv.org/abs/2410.10813) | 长期记忆该按"问答式"维度评测 | 用来自测章节摘要 + 账本 + 滚动记忆"到底记不记得住"（**待办**） |
 | [MemGPT](https://raw.githubusercontent.com/lhl/agentic-memory/32e2bec4f65aa1286c81b6866fe815d7a61b71c2/references/packer-memgpt.md) / 图谱化检索（[Clue-RAG 为例](https://arxiv.org/abs/2507.08445)） | 分页换出 / 分层图谱检索 | 「快照 / 章节记忆」路线；`loreEntries.links` + 时间线本质是图，"检索顺带走一步"已对了一半 |
 
@@ -175,7 +175,9 @@ text[-keep_tail:]` 拼回去）。两件事叠加之后，位置就不只是"读
       不做平台对齐（没有可核对的权威规范，理由写在正文）
 - [x] Lost in the Middle：新增 `agent_context._SECTION_ORDER`（三段位置策略 + 与裁剪的交互）
       + `tests/test_context_ordering.py`（7 项）；修掉"参考文档占住头部、把角色/关系挤进中段"
-- [ ] Distance…：分片窗口参数 → 暴露率对照实验（用 planning 层算，不烧模型调用）
+- [x] Distance…：`core/scan_exposure.py`（章覆盖 / 按距离分桶的对暴露率 / 预算下的书覆盖）
+      + 12 项测试；**实测推出"同窗上限 = overlap"并把默认值从 6/2 改成 12/4**
+      （16 窗覆盖 66→132 章，距离上限 2→4）；前端加了读后端源码的防漂移守卫
 - [ ] LongMemEval 式的记忆自测脚本
 - [ ] Choice Poetics / Dunyazad：选项分类进 `branchAdvice`
 - [ ] Dror：A/B 报告给区间

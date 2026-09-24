@@ -48,9 +48,14 @@ from app.domain.types import VnProject
 LEGACY_MAX_CHAPTERS = 14
 LEGACY_CHAPTER_TEXT_CAP = 1600
 
-#: 分片方案默认参数（与 core/consistency_scan.plan_windows 保持一致）
-DEFAULT_WINDOW_SIZE = 6
-DEFAULT_WINDOW_OVERLAP = 2
+#: 分片方案默认参数：**直接取生产实现的常量**，不再抄一份数值。
+#:
+#: 抄一份的代价实测过：把生产默认值从 6/2 调到 12/4 时，基准还在按 6/2 切窗，
+#: 于是"基准必须测线上真正跑的那套切窗逻辑"那条测试立刻红了——基准测的就不再是线上行为。
+from app.core.consistency_scan import (  # noqa: E402  (放在常量区，见上方说明)
+    DEFAULT_WINDOW_OVERLAP,
+    DEFAULT_WINDOW_SIZE,
+)
 
 #: 章距分桶：用来展示"越远越查不出"的衰减曲线。
 DISTANCE_BUCKETS: List[Tuple[str, int, int]] = [

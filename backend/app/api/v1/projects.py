@@ -33,6 +33,10 @@ from app.core import (
     uid,
 )
 from app.core.ai import DeepSeekConfig
+from app.core.consistency_scan import (
+    DEFAULT_WINDOW_OVERLAP,
+    DEFAULT_WINDOW_SIZE,
+)
 from app.core.rate_limit import check_rate
 from app.core.snapshots import decode_snapshot_payload
 from app.core.voice_reports import persist_voice_report
@@ -1247,11 +1251,13 @@ async def analysis_story_metrics(
     return analyze_story_metrics(vn, beat_sheets=sheets)
 
 
+# 默认窗口取 `consistency_scan.DEFAULT_WINDOW_SIZE/OVERLAP`（唯一真源，见那边的说明）；
+# 前端 src/api/projects.ts 由 scanDefaults.test.ts 读同一个常量做守卫。
 @router.post("/{project_id}/analysis/consistency-scan")
 async def analysis_consistency_scan(
     project_id: str,
-    size: int = 6,
-    overlap: int = 2,
+    size: int = DEFAULT_WINDOW_SIZE,
+    overlap: int = DEFAULT_WINDOW_OVERLAP,
     focus: str = "",
     max_windows: int | None = None,
     user: User = Depends(get_current_user),

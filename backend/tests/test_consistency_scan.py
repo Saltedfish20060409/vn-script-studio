@@ -26,6 +26,12 @@ def _cfg(**kw) -> DeepSeekConfig:
     return DeepSeekConfig(apiKey="sk-test-not-real", model="mock", **kw)
 
 
+#: 这些用例测的是**分片机制**（窗口切分、跨窗合并、预算、单窗失败），
+#: 不是默认参数，所以显式固定一组窗口参数：默认值以后按测量调整（见
+#: tests/test_scan_exposure.py 与路由上方的注释）时，这些断言不该跟着变。
+WINDOW_ARGS = {"size": 6, "overlap": 2}
+
+
 def _project(chapter_count: int, *, empty: set | None = None, unit: int = 1) -> VnProject:
     """chapter_count 章，其中 empty 里的章没有任何正文。"""
     skip = empty or set()
@@ -157,7 +163,7 @@ def test_multi_window_scan_merges_and_promotes_repeated_issue():
             )
         return _reply({"summary": "第二段仍有同一处角色冲突。", "issues": [repeated_high, only_second]})
 
-    result = asyncio.run(run_consistency_scan(_cfg(), p, completer=fake))
+    result = asyncio.run(run_consistency_scan(_cfg(), p, **WINDOW_ARGS, completer=fake))
 
     assert result["error"] is None
     assert len(calls) == 2
@@ -207,7 +213,7 @@ def test_run_passes_window_scope_and_reports_summaries():
         seen.append(_chapter_ids(messages))
         return _reply({"summary": "这一段没问题。", "issues": []})
 
-    result = asyncio.run(run_consistency_scan(_cfg(), p, completer=fake))
+    result = asyncio.run(run_consistency_scan(_cfg(), p, **WINDOW_ARGS, completer=fake))
     assert seen == [["c1", "c2", "c3", "c4", "c5", "c6"], ["c5", "c6", "c7"]]
     assert result["issues"] == []
     assert result["summary"] == "这一段没问题。"
@@ -229,7 +235,7 @@ def test_one_window_failure_does_not_sink_the_scan():
             raise RuntimeError("上游超时")
         return _reply({"summary": "第二段扫到了问题。", "issues": [good]})
 
-    result = asyncio.run(run_consistency_scan(_cfg(), p, completer=fake))
+    result = asyncio.run(run_consistency_scan(_cfg(), p, **WINDOW_ARGS, completer=fake))
 
     assert result["error"] is None, "只有部分窗口失败时不该报整体错误"
     assert len(result["issues"]) == 1
@@ -252,7 +258,7 @@ def test_all_windows_failed_surfaces_an_error():
     async def fake(messages: list[dict]) -> str:
         raise RuntimeError("模型服务 500")
 
-    result = asyncio.run(run_consistency_scan(_cfg(), p, completer=fake))
+    result = asyncio.run(run_consistency_scan(_cfg(), p, **WINDOW_ARGS, completer=fake))
     assert result["error"] and "全部 2 个窗口都失败" in result["error"]
     assert result["issues"] == []
     assert result["coverage"]["windowsFailed"] == 2
@@ -267,7 +273,7 @@ def test_malformed_window_output_only_fails_that_window():
             return "模型今天不说 JSON"
         return _reply({"issues": "not-a-list"})
 
-    result = asyncio.run(run_consistency_scan(_cfg(), p, completer=fake))
+    result = asyncio.run(run_consistency_scan(_cfg(), p, **WINDOW_ARGS, completer=fake))
     assert result["issues"] == []
     assert result["coverage"]["windowsFailed"] == 2  # 坏 JSON 也算这一窗没结论
     assert result["error"]
@@ -284,7 +290,9 @@ def test_max_windows_budget_is_reported_not_silent():
         seen.append(len(_chapter_ids(messages)))
         return _reply({"summary": "只扫了第一段。", "issues": []})
 
-    result = asyncio.run(run_consistency_scan(_cfg(), p, max_windows=1, completer=fake))
+    result = asyncio.run(
+        run_consistency_scan(_cfg(), p, max_windows=1, **WINDOW_ARGS, completer=fake)
+    )
     cov = result["coverage"]
     assert seen == [6], "超出预算的窗口不该被发出去"
     assert cov["windowsPlanned"] == 2
@@ -319,6 +327,7 @@ def test_http_default_window_cap_exists_and_is_reported_not_silent():
             _cfg(),
             _project(200),
             max_windows=HTTP_DEFAULT_MAX_WINDOWS,
+            **WINDOW_ARGS,
             completer=fake,
         )
     )
@@ -378,7 +387,7 @@ def test_missing_api_key_skips_without_calling_llm():
         return _reply({"issues": []})
 
     result = asyncio.run(
-        run_consistency_scan(DeepSeekConfig(apiKey=""), p, completer=fake)
+        run_consistency_scan(DeepSeekConfig(apiKey=""), p, **WINDOW_ARGS, completer=fake)
     )
     assert calls == [], "没配 key 时一次模型都不该调"
     assert result["error"] and "DEEPSEEK_API_KEY" in result["error"]
@@ -430,7 +439,7 @@ def test_per_chapter_cap_and_trimming_are_reported():
         captured.append(_user_payload(messages))
         return _reply({"summary": "ok", "issues": []})
 
-    result = asyncio.run(run_consistency_scan(_cfg(), p, completer=fake))
+    result = asyncio.run(run_consistency_scan(_cfg(), p, **WINDOW_ARGS, completer=fake))
     sent = captured[0]["chapters"][0]["text"]
     assert len(sent) == 1600
     cov = result["coverage"]
@@ -449,7 +458,7 @@ def test_per_window_issue_cap_drops_are_counted():
     async def fake(messages: list[dict]) -> str:
         return _reply({"summary": "问题很多。", "issues": many})
 
-    result = asyncio.run(run_consistency_scan(_cfg(), p, completer=fake))
+    result = asyncio.run(run_consistency_scan(_cfg(), p, **WINDOW_ARGS, completer=fake))
     assert result["issuesDroppedByWindowCap"] == 5
     assert result["windows"][0]["rawIssueCount"] == 35
     assert result["windows"][0]["issueCount"] == 30
