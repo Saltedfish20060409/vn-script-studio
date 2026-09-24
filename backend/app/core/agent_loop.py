@@ -677,6 +677,8 @@ async def run_agent_loop(
             # 这是"失忆"最容易被作者发现的一处（AI 没读到整章时会写出前后矛盾的东西）
             budgetChars=ctx_budget,
             truncated=ctx.truncated,
+            # 「没装下的是什么、怎么取回来」：界面上列清单用，不必解析中文标记
+            budgetReport=ctx.budgetReport or None,
             included=ctx.included,
             # 「证明它记得」：实际依据的资料与摘录（前端默认摆出来，可展开看）
             includedDetails=ctx.includedDetails,

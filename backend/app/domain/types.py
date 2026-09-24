@@ -766,6 +766,9 @@ class AgentContextMeta(BaseModel):
     # 这次是否**被裁过**（正文截断 / 整块让位 / 中段压缩任一发生）。
     # 与 `included` 里的中文标记是同一件事，但结构化的布尔量才能让界面稳定地提示。
     truncated: Optional[bool] = None
+    # 「没装下的是什么、怎么取回来」的结构化报告（见 agent_context._budget_report）：
+    # 界面上可以直接列清单，不必解析中文标记
+    budgetReport: Optional[Dict[str, Any]] = None
     included: List[str] = Field(default_factory=list)
     # 「证明它记得」：这次实际依据的资料与摘录（前端可展开看原文）
     includedDetails: Optional[List[Dict[str, Any]]] = None

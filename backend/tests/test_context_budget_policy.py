@@ -272,6 +272,54 @@ def test_truncated_flag_is_true_when_sections_are_dropped_by_budget():
     assert any("篇幅省去" in item for item in ctx.included)
 
 
+# ---- 结构化报告：界面要能列出"没装下的是什么、怎么取回来" --------------------
+
+
+def test_budget_report_lists_included_sections_in_plain_words():
+    ctx = _context(_project())
+    report = ctx.budgetReport
+    keys = {row["key"] for row in report["includedSections"]}
+    assert "characters" in keys and "lore" in keys and "focus" in keys
+    labels = {row["label"] for row in report["includedSections"]}
+    assert "角色卡" in labels, "界面要显示人话，不是英文 key"
+    # 末尾的"编排说明/硬规则/契约"不是资料块，不该混进来
+    assert "__tail__" not in keys
+    assert report["truncated"] is False
+    assert report["droppedSections"] == [] and report["trimmedParts"] == []
+
+
+def test_budget_report_separates_task_exclusions_from_budget_drops():
+    """按任务省去（立绘/变量这类机制资料）是**设计**，不是"没装下"，不能混为一谈。"""
+    ctx = _context(_project(), referenceDocs="囧" * 40000, maxChars=6000)
+    report = ctx.budgetReport
+    dropped_keys = {row["key"] for row in report["droppedSections"]}
+    assert "referenceDocs" in dropped_keys
+    # 每一行都要有"怎么取回来"的可执行提示
+    assert all(row["retrieve"].strip() for row in report["droppedSections"])
+    assert report["truncated"] is True
+    assert report["usedChars"] <= report["budgetChars"]
+    assert 0 < report["usageRatio"] <= 1
+    # 按任务省去的是另一列，且两类原因不能混在一列里
+    task_keys = {row["key"] for row in report["excludedByTask"]}
+    assert task_keys.isdisjoint(dropped_keys), "两类原因不能混在一列里"
+
+
+def test_budget_report_describes_the_focus_chapter_cut():
+    ctx = _context(_project(focus_chars=120000))
+    trims = ctx.budgetReport["trimmedParts"]
+    focus = next(row for row in trims if row["kind"] == "focus")
+    assert focus["totalChars"] > focus["keptChars"]
+    assert "字" in focus["detail"]
+    assert "get_chapter" in focus["retrieve"], "作者要知道怎么把那一段取回来"
+
+
+def test_budget_report_marks_compressed_other_chapters():
+    project = _project(focus_chars=2000, extra_chapters=8)
+    ctx = _context(project, referenceDocs="囧" * 40000, maxChars=6000)
+    kinds = {row["kind"] for row in ctx.budgetReport["trimmedParts"]}
+    assert "otherChapters" in kinds
+
+
 # ---- 3. 跨模块不变量：预算与超时必须成对 ------------------------------------
 
 

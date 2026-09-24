@@ -654,6 +654,41 @@ export type AgentTaskKind =
   | "consistency"
   | "scene";
 
+/** 资料块的人话名（后端给 `label`，前端不在本地维护一份对照表）。 */
+export interface AgentSectionRef {
+  key: string;
+  label: string;
+}
+
+/** 因为篇幅被整块省去的一块资料：怎么取回来说在 `retrieve` 里（可执行）。 */
+export interface AgentDroppedSection extends AgentSectionRef {
+  retrieve: string;
+}
+
+/** 被截断/压缩的一块内容（正文、其他章摘录、中段）。 */
+export interface AgentTrimmedPart {
+  kind: "focus" | "otherChapters" | "middle" | string;
+  label: string;
+  detail: string;
+  retrieve: string;
+  keptChars?: number;
+  totalChars?: number;
+}
+
+export interface AgentBudgetReport {
+  usedChars: number;
+  budgetChars: number;
+  usageRatio: number;
+  /** 因为篇幅没装下（要处理） */
+  droppedSections: AgentDroppedSection[];
+  trimmedParts: AgentTrimmedPart[];
+  /** 按任务省去（属于设计，不是"没装下"） */
+  excludedByTask: AgentSectionRef[];
+  /** 这次真的带上的资料块 */
+  includedSections: AgentSectionRef[];
+  truncated: boolean;
+}
+
 export interface AgentContextMeta {
   task: AgentTaskKind;
   charsUsed: number;
@@ -661,6 +696,14 @@ export interface AgentContextMeta {
   budgetChars?: number;
   /** 这次是否被裁过（正文截断 / 整块让位 / 中段压缩任一发生） */
   truncated?: boolean;
+  /**
+   * 「这次怎么拼的、有没有没装下的」的结构化报告。
+   *
+   * 有一条重要的区分（后端保证的）：`droppedSections`/`trimmedParts` 是**因为篇幅没装下**
+   * （要处理），`excludedByTask` 是**按任务省去**（立绘/变量这类机制资料对写散文没用，
+   * 属于设计，不该拿来吓作者）。
+   */
+  budgetReport?: AgentBudgetReport;
   included: string[];
   /** 「证明它记得」：这次实际依据的资料与摘录（可展开看原文） */
   includedDetails?: Array<{ label?: string; preview?: string }>;

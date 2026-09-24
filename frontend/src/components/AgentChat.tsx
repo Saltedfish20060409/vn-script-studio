@@ -79,6 +79,7 @@ import {
 } from "../lib/agentFormat";
 import { copyForProject } from "../lib/genreCopy";
 import { contextUsage, type ContextUsage } from "../lib/contextUsage";
+import { budgetNotice, includedSummary, type BudgetNotice } from "../lib/contextBudget";
 import { AgentMessagesList } from "./AgentMessagesList";
 import { AgentPersonaOverlay } from "./AgentPersonaOverlay";
 import { ChapterReviseModePicker } from "./ChapterReviseModePicker";
@@ -283,6 +284,12 @@ export function AgentChat({
     truncated: false,
     nearLimit: false,
     hint: "",
+  });
+  /** 「这次没装下什么、怎么取回来」——见 lib/contextBudget.ts */
+  const [budgetInfo, setBudgetInfo] = useState<BudgetNotice>({
+    missing: [],
+    byDesign: [],
+    hasMissing: false,
   });
   /** 本次用的是谁的钱：own / shared（免费档） */
   const [credentialsMode, setCredentialsMode] = useState("");
@@ -917,13 +924,10 @@ export function AgentChat({
         Array.isArray(meta?.lensIds) && meta.lensIds.length
           ? `视角×${meta.lensIds.length}`
           : "";
-      // 透明性：本次注入了哪些上下文（设定卡/设定bible/角色等）
-      const refs = Array.isArray(meta?.included)
-        ? meta.included.filter((x) =>
-            /工艺卡|bible|角色|地点|摘录|长程|对话记忆|上传|文风/.test(x)
-          )
-        : [];
-      const refShort = refs.length ? `参考 ${refs.join("·")}` : "";
+      // 透明性：本次注入了哪些上下文。
+      // 用后端给的结构化清单（`budgetReport.includedSections`），不再用正则去猜
+      // `included` 里的中文串——那种写法每加一个资料块都得同步改正则，漏了就不显示。
+      const refShort = includedSummary(meta?.budgetReport);
       setLastContext(
         [taskName, resultBit, craftShort, reviewShort, lensShort, refShort]
           .filter(Boolean)
@@ -941,6 +945,7 @@ export function AgentChat({
       );
       // 这次它读了多少、够不够、有没有被裁（作者据此判断"是不是它没看到前情"）
       setContextInfo(contextUsage(meta));
+      setBudgetInfo(budgetNotice(meta?.budgetReport));
 
       const warnings = res.warnings ?? [];
       const noteUndo = applied
@@ -2103,6 +2108,28 @@ export function AgentChat({
               {contextInfo.truncated ? " · 有资料没装下" : ""}
               {contextInfo.hint ? <span className={styles.contextHint}>{contextInfo.hint}</span> : null}
             </p>
+          ) : null}
+          {/* 「这次没装下什么、怎么取回来」：每一行都能照着做（动作来自后端，前端不编工具名） */}
+          {budgetInfo.hasMissing ? (
+            <details className={styles.missing} data-testid="agent-context-missing">
+              <summary>没装下的 {budgetInfo.missing.length} 项（点开看怎么取回）</summary>
+              <ul>
+                {budgetInfo.missing.map((row, i) => (
+                  <li key={`${row.label}-${i}`}>
+                    <strong>{row.label}</strong>
+                    {row.detail ? <em>{row.detail}</em> : null}
+                    {row.action ? <span>{row.action}</span> : null}
+                  </li>
+                ))}
+              </ul>
+              {budgetInfo.byDesign.length > 0 ? (
+                <p className={styles.missingNote}>
+                  另有 {budgetInfo.byDesign.length} 项是**按任务省去**的（
+                  {budgetInfo.byDesign.map((r) => r.label).join("、")}），这类资料对写正文没有
+                  信息量，不是"没装下"。
+                </p>
+              ) : null}
+            </details>
           ) : null}
           {evidence.length > 0 ? (
             <details className={styles.evidence} data-testid="agent-evidence">

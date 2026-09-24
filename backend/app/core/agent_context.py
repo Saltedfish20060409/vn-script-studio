@@ -216,6 +216,9 @@ class AgentContextResult:
     # 单列一个布尔量是为了让调用方不必去解析 `included` 里的中文串就能统计截断率
     # （`GET /admin/llm-latency` 的 context 系列就用它）。
     truncated: bool = False
+    # 「这次怎么拼的、有没有没装下的」的结构化报告（见 `_budget_report`）：
+    # 界面上要稳定地列出"没装下的是什么、怎么取回来"，而不是解析中文标记。
+    budgetReport: Dict[str, Any] = field(default_factory=dict)
 
 
 # 可以被作者按需摘掉的资料块：key → 人话（前端「资料」面板直接用它渲染）
@@ -798,6 +801,96 @@ def _section_label(key: str) -> str:
     return EXCLUDABLE_SECTIONS.get(key, key)
 
 
+#: 每类资料"怎么取回来"——界面上的可执行提示，别让作者自己猜。
+#: 没有工具能取回的（例如作者上传的参考资料）**如实说"要重新上传/换进来"**，
+#: 不编一个不存在的工具名。
+_RETRIEVE_BY_SECTION: Dict[str, str] = {
+    "referenceDocs": "重新上传这份资料，或在「资料」里换成更相关的一段",
+    "craft": "工艺卡是按任务自动挑的，不必手动取回",
+    "otherChapters": "让它用 search_script 搜关键词，或 get_chapter 读某一章",
+    "sprites": "立绘是演出资源，对写正文没有信息量（想看完整结构去「导出 → 工程包」）",
+    "variables": "变量/状态机在「项目 → 结构分析」里能看到",
+    "index": "章节目录在「项目」页能看到；也可以让它 get_chapter 读某一章",
+    "loreLinks": "让它用 search_lore 按关键词搜设定",
+    "lore": "让它用 search_lore / get_lore_entry 取回具体条目",
+    "chatMemory": "更早的对话轮次没有工具可取回，可把关键结论写进要求里",
+    "globalMemory": "全局记忆会随章节推进自动重建（MEMORY_AUTO_ARCHIVE）",
+    "longMemory": "长程记忆会随章节推进自动重建（MEMORY_AUTO_ARCHIVE）",
+}
+
+
+def _budget_report(
+    *,
+    result_chars: int,
+    budget_chars: int,
+    task_excluded: Sequence[str],
+    budget_dropped: Sequence[str],
+    budget_compressed: Sequence[str],
+    focus_cut: Optional[Dict[str, Any]],
+    kept_keys: Sequence[str],
+) -> Dict[str, Any]:
+    """把"这次上下文怎么拼的、有没有没装下的"整理成**结构化**的一份报告。
+
+    为什么要结构化（而不是只有 `included` 里的中文串）：
+    1. 界面上要稳定地列出"没装下的是什么、怎么取回来"，靠正则去解析中文标记太脆
+       （前端此前就是这么干的：`/工艺卡|bible|角色|…/` 过滤 `included`）；
+    2. 必须区分**两件性质完全不同的事**：
+       - 按任务省去（`task_excluded`：立绘、变量这类机制资料对写散文没用）——**这是设计**，
+         不是"没装下"，不能拿来吓作者；
+       - 因为篇幅没装下（`budget_dropped` / `budget_compressed` / 正文截断）——**这才是要处理的**。
+    """
+    dropped_rows = [
+        {
+            "key": key,
+            "label": _section_label(key),
+            "retrieve": _RETRIEVE_BY_SECTION.get(key, "需要时让它用工具取，或把它换进「资料」"),
+        }
+        for key in budget_dropped
+    ]
+    trimmed_rows: List[Dict[str, Any]] = []
+    if focus_cut:
+        trimmed_rows.append(dict(focus_cut))
+    for key in budget_compressed:
+        if key == "otherChapters":
+            trimmed_rows.append(
+                {
+                    "kind": "otherChapters",
+                    "label": "其他章节的正文摘录",
+                    "detail": "已压成标题 + 一句话摘要",
+                    "retrieve": _RETRIEVE_BY_SECTION["otherChapters"],
+                }
+            )
+        elif key == "中段":
+            trimmed_rows.append(
+                {
+                    "kind": "middle",
+                    "label": "上下文中段",
+                    "detail": "首尾保留、中段压缩（仍然超预算时的最后手段）",
+                    "retrieve": "缩小范围（少带几块资料）后再试，或让它用工具单独取那一段",
+                }
+            )
+    return {
+        "usedChars": int(result_chars),
+        "budgetChars": int(budget_chars),
+        # 只用掉多少 / 上限多少：作者据此判断"是不是预算卡住了写作"
+        "usageRatio": round(int(result_chars) / max(1, int(budget_chars)), 3),
+        # 因为篇幅没装下（可处理）
+        "droppedSections": dropped_rows,
+        "trimmedParts": trimmed_rows,
+        # 按任务省去（设计如此，不是问题）
+        "excludedByTask": [
+            {"key": key, "label": _section_label(key)} for key in task_excluded
+        ],
+        # 这次真的带上的资料块（界面"依据"用，不必再解析中文串）
+        "includedSections": [
+            {"key": key, "label": _section_label(key)}
+            for key in kept_keys
+            if key and key != _TAIL_KEY
+        ],
+        "truncated": bool(dropped_rows or trimmed_rows),
+    }
+
+
 def _light_other_chapters(project: VnProject, focus_chapter: Any) -> str:
     """「其他章节」的降级版：只剩标题 + 一句话摘要（正文摘录全部让位）。
 
@@ -1349,6 +1442,7 @@ def build_agent_context(
     # Focus chapter — prefer tail for continue/polish/branch/scene
     focus_body = ""
     focus_truncated = False
+    focus_cut: Optional[Dict[str, Any]] = None
     focus_digest = next((d for d in digests if focus_chapter and d.chapterId == focus_chapter.id), None)
     if focus_chapter:
         plain = plain_of(focus_chapter)
@@ -1373,6 +1467,14 @@ def build_agent_context(
             # 透明化：作者要能一眼看出"当前章被截了"，而不是以为模型读了全文
             included.append(f"当前章截断:{focus_budget}/{len(plain)}字")
             focus_truncated = True
+            focus_cut = {
+                "kind": "focus",
+                "label": f"当前章正文（{focus_chapter.title or '未命名'}）",
+                "detail": f"只带了末尾 {focus_budget} / {len(plain)} 字",
+                "keptChars": focus_budget,
+                "totalChars": len(plain),
+                "retrieve": f"让它用 get_chapter 读「{focus_chapter.title or '当前章'}」的完整正文",
+            }
 
     if picked_chars:
         included.append(f"角色×{len(picked_chars)}")
@@ -1743,4 +1845,13 @@ def build_agent_context(
         excluded=sorted(dropped),
         includedDetails=details,
         truncated=bool(focus_truncated or budget_dropped or budget_compressed),
+        budgetReport=_budget_report(
+            result_chars=len(text),
+            budget_chars=max_chars,
+            task_excluded=sorted(dropped),
+            budget_dropped=budget_dropped,
+            budget_compressed=budget_compressed,
+            focus_cut=focus_cut,
+            kept_keys=[k for k, t in kept_keyed if t],
+        ),
     )
