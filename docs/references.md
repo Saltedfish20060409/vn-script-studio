@@ -19,9 +19,9 @@
 | **GB/T 15834-2011《标点符号用法》**<br>（推荐性国标；[全文转载](https://cbimg.cnki.net/Editor/2016/1222/misy/10004b10-38f3-47ad-a43f-356437b3b0a3.docx)） | 标点符号的写法与用法：引号/括号成对、引号内再引号降一级、书名号内再书名号用〈〉、破折号（——）、省略号（……）、连接号 | `novel_consistency` 与 `editorAssist.lintProse` 的 `quote_unbalanced` / `quote_nested_level` / `title_mark_nested` / `dash_ascii_double` / `dash_single_em` / `ellipsis_ascii_dots` / `ellipsis_fullwidth_period` |
 | **GB/T 15835-2011《出版物上数字用法》** | 数字的写法与宽度；数值范围的写法（起止数字之间用一字线/浪纹线） | `digit_width_mixed`、`dash_ascii_range` |
 | **CY/T 154-2017《中文出版物夹用英文的编辑规范》**<br>（[标准平台](https://std.samr.gov.cn/hb/search/stdHBDetailed?id=8B1827F23645BB19E05397BE0A0AB44A)、[全文](https://www.spc.org.cn/online/8ae3828864f5e2f8c43455ed49bd4b88.html)） | 中文里夹用英文的间距、大小写与标点 | `punct_halfwidth_near_cjk`、`letter_width_mixed`、`space_between_cjk`；**中英间距只判"内部是否一致"**（见下方说明） |
-| **W3C《中文排版需求》(clreq)**（[W3C TR](https://www.w3.org/TR/2023/DNOTE-clreq-20230301/)） | 标点的比例与位置、行首行尾禁则、书名号、注音（旁注）等中文排版的行业需求 | 标点类规则的并列依据；注音导出（待办：见第四节） |
-| **W3C HTML Ruby Markup Extensions / Ruby Annotation**（[W3C TR](https://www.w3.org/TR/html-ruby-extensions/)） | 注音标记的规范形态（`<ruby>` / `<rt>`，以及不支持的场合用 `<rp>` 回退） | `app/core/ruby_render.py`：源写法 `｜汉字《注音》` / `{汉字\|注音}` → **Markdown 出 W3C `<ruby>/<rt>`（带 `<rp>` 回退）**，Word 稿与 .rpy 出 `<rp>` 回退的纯文本形态 |
-| **JTF 日本語標準スタイルガイド**（[PDF](https://www.jtf.jp/pdf/jtf_style_guide.pdf)） | 日文的注音（ルビ）、送假名、记号规则 | 轻小说/日文路径（**待办**：目前只做中文注音） |
+| **W3C《中文排版需求》(clreq)**（[W3C TR](https://www.w3.org/TR/2023/DNOTE-clreq-20230301/)） | 标点的比例与位置、行首行尾禁则、书名号、注音（旁注）等中文排版的行业需求 | 标点类规则的并列依据；注音的三条导出链路见下一行（Markdown / 投稿 Word 原生注音 / Ren'Py 的 rp 回退） |
+| **W3C HTML Ruby Markup Extensions / Ruby Annotation**（[W3C TR](https://www.w3.org/TR/html-ruby-extensions/)） | 注音标记的规范形态（`<ruby>` / `<rt>`，以及不支持的场合用 `<rp>` 回退） | `app/core/ruby_render.py`：源写法 `｜汉字《注音》` / `{汉字\|注音}` → **Markdown 出 W3C `<ruby>/<rt>`（带 `<rp>` 回退）**；**投稿 Word 出原生注音 `w:ruby`**（`core/docx_ruby.py`，按 ECMA-376 的 `CT_Ruby`）；阅读用 Word 导出与 .rpy 出 `<rp>` 回退的纯文本形态 |
+| **JTF 日本語標準スタイルガイド**（[PDF](https://www.jtf.jp/pdf/jtf_style_guide.pdf)） | 日文的注音（ルビ）、送假名、记号规则 | **未做（有意）**：产品里没有日文写作面（"轻小说"路径是中文稿子），现在做等于凭空造一条用不上的路径；日文稿子真正落地时再按它校准注音与送假名 |
 | **Locke & Latham 目标设定理论**（[APA](https://psycnet.apa.org/record/2002-15790-003)，35 年综述） | 目标要具体、可测、有难度但可达，且**反馈必须及时**；否则承诺度会掉 | 见下方"目标设定理论落到哪"一节 |
 | 各出版社/平台的投稿规定（非论文） | 投稿排版（首行缩进、一章一文件、字数表） | `export_submission` 的默认值；**没有按某个平台的规范硬编码**，理由见下方"投稿规定：为什么不做平台对齐" |
 
@@ -127,8 +127,9 @@ text[-keep_tail:]` 拼回去）。两件事叠加之后，位置就不只是"读
 | [Self-Refine](https://www.ijcai.org/proceedings/2024/0693.pdf) | "必须有外部反馈"我们已经落在 `harness_editor_pass`：先跑确定性体检，体检全过就不调模型。照它说的做了 |
 | [MemGPT](https://raw.githubusercontent.com/lhl/agentic-memory/32e2bec4f65aa1286c81b6866fe815d7a61b71c2/references/packer-memgpt.md) | 分页换出对应我们的「快照 / 章节记忆」；它是**编排框架**，我们的编排已经存在，换框架的收益不足以抵掉风险 |
 
-真正需要改代码的只剩三条（都列在下面的待办里）：Dror 的区间报告、Best-of-N 的自洽度选择、
-Tail at Scale 的 hedging 决策。
+论文里**需要改代码的三条已经全部落地**（Dror 的区间报告 → `eval_stats.wilson_interval` 接进
+试玩遥测；Best-of-N → `core/variant_select.py`；Tail at Scale → `core/latency_stats.py` 的
+"先量后决"，hedging 判定不做）。其余条目按上方各节的判定"只作参考、不改代码"，理由逐条写在表里。
 
 ### 目标设定理论落到哪（Locke & Latham）
 理论的关键词是：**具体**、**有难度但可达**、**反馈及时**、**承诺度**。逐条对照现状：
@@ -184,8 +185,8 @@ Tail at Scale 的 hedging 决策。
 ### 分支叙事与选择设计
 | 文献 | 结论 | 我们的落点 |
 |---|---|---|
-| [Towards a Theory of Choice Poetics](https://cs.wellesley.edu/~pmwh/research/papers/towards-choice-poetics-fdg-2014.pdf) | 选择的意义来自玩家放弃了什么 | `branchAdvice` 的判定语言（**待办**：现在只有统计驱动） |
-| [Intentionally Generating Choices](https://computationalcreativity.net/iccc2015/proceedings/13_4Mateas.pdf) / [Dunyazad 的三分类](https://ojs.aaai.org/index.php/AIIDE/article/view/12791) | relaxed / obvious / dilemma 三种选择类型 | 选项分类词典（**待办**） |
+| [Towards a Theory of Choice Poetics](https://cs.wellesley.edu/~pmwh/research/papers/towards-choice-poetics-fdg-2014.pdf) | 选择的意义来自玩家放弃了什么 | `core/choice_poetics.py`：把"放弃了什么"落成**结构量**（同后果 = relaxed），接进 `branch_recommendations` 的 `choiceVariety` 与两条 info 建议；判定语言明说这是结构代理，不是文学评价 |
+| [Intentionally Generating Choices](https://computationalcreativity.net/iccc2015/proceedings/13_4Mateas.pdf) / [Dunyazad 的三分类](https://ojs.aaai.org/index.php/AIIDE/article/view/12791) | relaxed / obvious / dilemma 三种选择类型 | 同上：三分类各自的结构判据（同后果 / 无共享状态位 / 同一变量取互斥值）+ 前端「分析 → 改进建议」的类别分布 |
 | [Riedl & Young, Narrative Planning](https://dl.acm.org/doi/10.5555/1946417.1946422) | plot 与 character 的权衡 | 情绪弧与伏笔回收率的解读框架 |
 
 ### 评估
@@ -221,7 +222,7 @@ Tail at Scale 的 hedging 决策。
 
 ---
 
-## 四、待办（按本文从上到下推进，做完划掉）
+## 四、清单（按本文从上到下推进，做完划掉；剩下未勾的两条已写明"为什么现在不做"）
 
 - [x] 规则依据层：`_RULE_BASIS` / `RULE_BASIS` + 界面上显示依据 + 防分叉守卫
 - [x] GB/T 15834 新增三条：书名号嵌套、引号嵌套层次、连接号（数字区间用半角连字符）
