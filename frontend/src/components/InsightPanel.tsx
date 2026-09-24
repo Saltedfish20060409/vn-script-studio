@@ -28,6 +28,7 @@ import {
   adviceStale,
   adviceSummary,
   basisView,
+  choiceVarietyView,
   DEFAULT_MIN_RUNS,
   emptyAdvice,
   isKnownSeverity,
@@ -1179,6 +1180,7 @@ export function InsightPanel({ projectId, chapters }: Props) {
     const minRuns = minRunsView(result.minRuns);
     const stale = adviceStale(result, { minRuns: minRunsValue, includeReaders });
     const empty = emptyAdvice(result);
+    const variety = choiceVarietyView(result.choiceVariety);
 
     return (
       <>
@@ -1189,6 +1191,27 @@ export function InsightPanel({ projectId, chapters }: Props) {
           <p className={styles.note}>{basis.sampleNote}</p>
           {basis.caveat ? <p className={styles.note}>{basis.caveat}</p> : null}
         </div>
+
+        {/* 选项分类（Dunyazad 三分法的结构代理）：只看结构，不判断玩家心理 */}
+        {variety ? (
+          <div className={styles.block} data-testid="choice-variety">
+            <p className={styles.summary}>{variety.headline}</p>
+            <p className={styles.note}>
+              {variety.parts.map((part) => `${part.label} ${part.count}`).join(" · ")}
+            </p>
+            {variety.relaxedMenus.length > 0 ? (
+              <p className={styles.note}>
+                怎么选都一样的选择点：{variety.relaxedMenus.slice(0, 6).join("、")}
+                {variety.relaxedMenus.length > 6 ? ` 等 ${variety.relaxedMenus.length} 处` : ""}
+              </p>
+            ) : null}
+            {variety.notes.map((note) => (
+              <p key={note} className={styles.note}>
+                {note}
+              </p>
+            ))}
+          </div>
+        ) : null}
 
         {stale.stale ? <p className={styles.note}>{stale.reason}</p> : null}
 

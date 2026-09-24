@@ -84,6 +84,52 @@ text[-keep_tail:]` 拼回去）。两件事叠加之后，位置就不只是"读
 探针的五维映射与限制写在 `core/memory_probe.py` 的模块说明里，其中"知识更新"一栏
 **如实留空**：账本与长程记忆是 HTTP 层拼好传进上下文构建器的字符串，探针看不到它们的构造过程。
 
+### 选项分类（Choice Poetics / Dunyazad）：只判结构，不判心理
+
+三篇讲的是"玩家的体验"：选择的意义来自**玩家放弃了什么**（[Choice Poetics](https://cs.wellesley.edu/~pmwh/research/papers/towards-choice-poetics-fdg-2014.pdf)），
+作者应当**有意识地混用** relaxed / obvious / dilemma 三类（[Intentionally Generating Choices](https://computationalcreativity.net/iccc2015/proceedings/13_4Mateas.pdf)、
+[Dunyazad](https://ojs.aaai.org/index.php/AIIDE/article/view/12791)）。体验需要真人，
+而剧本里**客观可判**的只有结构。所以 `core/choice_poetics.py` 把三类落成结构判据：
+
+| 类 | 我们的结构判据 |
+|---|---|
+| `relaxed`（怎么选都一样） | 与同菜单另一个选项的后果完全相同（同目标、同变量改动） |
+| `obvious`（意图明确） | 后果与其它选项不同，但不与任何选项争同一个状态位 |
+| `dilemma`（两难） | 与同菜单另一个选项在**同一个变量上取不同的值** → 选了 A 就拿不到 B |
+
+判"两难"用"同一状态位取互斥值"而不是"分支不再汇合"：后者要看跨 label 可达性，
+在真实剧本里容易把"分开很久又合流"误判成永久分叉；而"玩家真的拿不到两样东西"是结构上
+能确定的事实。
+
+**我们不做**：不判"选项文案写得好不好""玩家会不会犹豫"——那需要真人，模型打分也不可靠
+（见 Art or Artifice?）。也**不把"没有两难"当错误**：日常系作品的轻松选择是有意为之，
+所以这类提示一律只报 info，并给出"缺哪一类、有几个菜单"的量。
+
+接进现有链路：`recommend_branch_improvements` 会多出 `choiceVariety` 段与两条 info 建议
+（`menu_all_relaxed` / `no_dilemma_choice`，都带**具体改法**），前端在「分析 → 改进建议」
+里显示类别分布与"怎么选都一样"的选择点。
+
+### 只作参考、不改代码的那几篇（附理由）
+
+清单里剩下的论文不是"没读"，而是读了之后判断**不需要为此改代码**。理由逐条写明，
+免得以后有人以为漏了：
+
+| 文献 | 为什么不动代码 |
+|---|---|
+| [Plan-and-Write](https://arxiv.org/abs/1811.05701) | "先大纲后成文"我们已经这么做（`beatSheet` + `harnessRuns` + 大纲任务档）。它的贡献是"阶段划分方式影响连贯"，我们已经在节拍表里体现；没有新的可执行结论 |
+| [Re3](https://arxiv.org/abs/2210.06774) | 递归重提示 + 修订 = 我们的"续写 + 责编润色"两段式（含"体检全过就不调模型"）。它在 2022 年要解决的问题，现在由长上下文模型 + 我们的检索层分担 |
+| [LongWriter](https://proceedings.iclr.cc/paper_files/paper/2025/hash/59f278de1619bdb6b53fd04e8e0976e0-Abstract-Conference.html) | 它的解法在**训练侧**（长输出数据合成 / 后训练），我们是调用方，动不了模型权重。可借鉴的"长输出后半段会崩"这一点，已经体现在"章节目标字数 + 分段续写"的产品选择里 |
+| [CALYPSO](https://arxiv.org/abs/2308.07540) | 跑团助手的分层生成思路与我们的 pipeline 一致（先定场景/角色，再生成），但没有可搬的具体机制 |
+| [Riedl & Young, Narrative Planning](https://dl.acm.org/doi/10.5555/1946417.1946422) | plot / character 的权衡是**解读框架**，不是算法。它已经体现在情绪弧与伏笔回收率的解读措辞里；做成规则会变成"叙事应该怎样"的教条 |
+| [Art or Artifice?](https://dl.acm.org/doi/fullHtml/10.1145/3613904.3642731) | 它的结论是**不要**用模型打文学分。我们已经是"结构量 + 人工盲测"，属于"照它说的做了"，无需再改 |
+| [The Silent Judge](https://arxiv.org/abs/2509.26072) | 提醒 judge 的位置/长度偏好。我们目前**没有**任何"模型当裁判"的自动评分环节（多变体是给人挑的），所以它是一条"将来若引入 judge 必须遵守"的约束，记在这里即可 |
+| [Merging Facts, Crafting Fallacies](https://aclanthology.org/2024.findings-acl.160.pdf) | 它指出原子事实法在"聚合后的矛盾"上失效——这正是我们分片扫描的固有局限，已经写在 `docs/longrange-consistency-and-eval.md` 的残余风险里 |
+| [Self-Refine](https://www.ijcai.org/proceedings/2024/0693.pdf) | "必须有外部反馈"我们已经落在 `harness_editor_pass`：先跑确定性体检，体检全过就不调模型。照它说的做了 |
+| [MemGPT](https://raw.githubusercontent.com/lhl/agentic-memory/32e2bec4f65aa1286c81b6866fe815d7a61b71c2/references/packer-memgpt.md) | 分页换出对应我们的「快照 / 章节记忆」；它是**编排框架**，我们的编排已经存在，换框架的收益不足以抵掉风险 |
+
+真正需要改代码的只剩三条（都列在下面的待办里）：Dror 的区间报告、Best-of-N 的自洽度选择、
+Tail at Scale 的 hedging 决策。
+
 ### 目标设定理论落到哪（Locke & Latham）
 理论的关键词是：**具体**、**有难度但可达**、**反馈及时**、**承诺度**。逐条对照现状：
 
@@ -205,13 +251,13 @@ text[-keep_tail:]` 拼回去）。两件事叠加之后，位置就不只是"读
       分页/分层本身仍是「快照 / 章节记忆」路线，未另做
 - [x] 时间线进上下文：`agent_context._timeline_lines`（焦点章之前的事件；跳过 stale 并说明）
       ——这是"时间推理"维度第一次运行就红掉的那个缺口
-- [ ] Choice Poetics + Dunyazad：把选项分类（relaxed / obvious / dilemma）落进 `branchAdvice`
-      ——现在只有统计驱动（"没人选"），缺"这个选项属于哪一类、缺哪一类"
-- [ ] Riedl&Young：plot / character 权衡落进情绪弧与伏笔回收率的解读框架
-- [ ] Plan-and-Write / Re3 / LongWriter / CALYPSO：以「已实现 ↔ 依据」对照落档
-      （节拍表 / 续写+润色两段 / 长输出失效机制 / 分层生成），预计无代码改动
-- [ ] Art or Artifice? / Silent Judge / Merging Facts / Self-Refine：评估侧对照落档
-      （结构量+盲测而非模型打分 / judge 偏差控制 / 跨窗聚合矛盾的固有局限 / 先体检再改写）
+- [x] Choice Poetics + Dunyazad：`core/choice_poetics.py`（relaxed / obvious / dilemma 的
+      **结构代理**：同后果 / 不同结果 / 同一状态位取互斥值）+ 13 项后端测试；
+      接进 `branch_recommendations`（新增 `choiceVariety` 段与两条 info 建议），
+      前端在「分析 → 改进建议」显示类别分布与"怎么选都一样"的选择点（7 项测试）
+- [x] Riedl&Young / Plan-and-Write / Re3 / LongWriter / CALYPSO /
+      Art or Artifice? / Silent Judge / Merging Facts / Self-Refine / MemGPT：
+      **判定为"参考不改代码"并逐条写明理由**（见上方专节）——不是漏做
 - [ ] Dror：A/B 报告给区间（现在只给单点差值）
 - [ ] Best-of-N：多变体按自洽度选（现在靠挑）
 - [ ] Tail at Scale：慢思考档的 hedged request（要先算清 2× token 成本这笔账）

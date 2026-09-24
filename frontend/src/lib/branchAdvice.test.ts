@@ -10,6 +10,7 @@ import {
   adviceStale,
   adviceSummary,
   basisView,
+  choiceVarietyView,
   confidenceView,
   DEFAULT_MIN_RUNS,
   emptyAdvice,
@@ -80,6 +81,69 @@ describe("建议等级与置信度", () => {
     expect(adviceCodeLabel("no_effect_menu")).toBe("选哪个都一样");
     expect(adviceCodeLabel("brand_new_code")).toBe("brand_new_code");
     expect(adviceCodeLabel("")).toBe("未标注类别的问题");
+  });
+});
+
+describe("choiceVarietyView（选项分类的展示层）", () => {
+  const variety = (counts: Record<string, number>, relaxed: string[] = []) => ({
+    menus: [],
+    counts,
+    classLabels: {
+      relaxed: "怎么选都一样",
+      obvious: "意图明确（后果可预期，但没有代价）",
+      dilemma: "两难（两边都要付出代价）",
+    },
+    allRelaxedMenus: relaxed,
+    notes: ["分类是**结构启发式**……", "没有两难选择不是错误：……"],
+  });
+
+  it("没有数据时返回 null（界面不渲染空块）", () => {
+    expect(choiceVarietyView(null)).toBeNull();
+    expect(choiceVarietyView(undefined)).toBeNull();
+    expect(choiceVarietyView(variety({ menus: 0 }))).toBeNull();
+  });
+
+  it("有两难选项时报出条数，并把它说成「真正的取舍」", () => {
+    const view = choiceVarietyView(variety({ menus: 3, relaxed: 1, obvious: 4, dilemma: 2 }));
+    expect(view?.headline).toContain("3 个选择点");
+    expect(view?.headline).toContain("2 个选项构成真正的取舍");
+  });
+
+  it("没有两难时明说「不是错误」，免得像在挑错（两种分支都要说）", () => {
+    const onlyObvious = choiceVarietyView(variety({ menus: 2, obvious: 4 }));
+    expect(onlyObvious?.headline).toContain("不是错误");
+
+    const withRelaxed = choiceVarietyView(variety({ menus: 2, obvious: 1, relaxed: 3 }));
+    expect(withRelaxed?.headline).toContain("还没有出现");
+    expect(withRelaxed?.headline).toContain("不是错误");
+  });
+
+  it("只列出有条数的类别（0 条不该显示成缺功能）", () => {
+    const view = choiceVarietyView(variety({ menus: 2, obvious: 4, relaxed: 0, dilemma: 0 }));
+    expect(view?.parts.map((p) => p.key)).toEqual(["obvious"]);
+    expect(view?.parts[0].label).toContain("意图明确");
+  });
+
+  it("把「怎么选都一样」的选择点列出来（作者要能直接找过去改）", () => {
+    const view = choiceVarietyView(variety({ menus: 3, relaxed: 3 }, ["ch1/m1", "ch2/m4"]));
+    expect(view?.relaxedMenus).toEqual(["ch1/m1", "ch2/m4"]);
+  });
+
+  it("后端的口径说明原样带出（不在前端改写边界说明）", () => {
+    const view = choiceVarietyView(variety({ menus: 1, obvious: 1 }));
+    expect(view?.notes.join()).toContain("结构启发式");
+    expect(view?.notes.join()).toContain("不是错误");
+  });
+
+  it("缺 classLabels 时退回英文键而不是崩（老后端兼容）", () => {
+    const view = choiceVarietyView({
+      menus: [],
+      counts: { menus: 1, dilemma: 1 },
+      classLabels: {},
+      allRelaxedMenus: [],
+      notes: [],
+    });
+    expect(view?.parts[0].label).toBe("dilemma");
   });
 });
 

@@ -1812,6 +1812,41 @@ export interface BranchRecommendationsOut {
   coverage: BranchCoverage;
   /** 后端的中文口径说明（含「没有建议 ≠ 剧本没问题」那句） */
   notes: string[];
+  /**
+   * 选项分类（Dunyazad 三分法的**结构代理**）：每个选项算"怎么选都一样 / 意图明确 / 两难"。
+   * 判据见 `backend/app/core/choice_poetics.py`——只看选项把玩家送去哪、改了哪些状态，
+   * 不判断玩家心理。缺某一类只报 info（日常系作品的轻松选择是有意为之）。
+   */
+  choiceVariety?: ChoiceVariety;
+}
+
+/** 一个菜单的选项分类结果 */
+export interface ChoiceVarietyMenu {
+  /** `章节id/menuId` */
+  where: string;
+  prompt: string;
+  /** `all_relaxed`（怎么选都一样）| `has_dilemma`（有取舍）| `no_dilemma` | `empty` */
+  verdict: string;
+  counts: Record<string, number>;
+  choices: Array<{
+    index: number;
+    text: string;
+    klass: string;
+    reason: string;
+    target: string | null;
+    varsModified: string[];
+  }>;
+}
+
+export interface ChoiceVariety {
+  menus: ChoiceVarietyMenu[];
+  /** relaxed / obvious / dilemma 的条数，外加 `menus` 总数 */
+  counts: Record<string, number>;
+  /** 类名 → 给作者看的中文解释 */
+  classLabels: Record<string, string>;
+  /** 「怎么选都一样」的菜单（`章节id/menuId`） */
+  allRelaxedMenus: string[];
+  notes: string[];
 }
 
 export type BranchRecommendationsOpts = {

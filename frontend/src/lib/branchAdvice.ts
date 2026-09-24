@@ -19,6 +19,7 @@
  */
 
 import { codeLabel, normalizeSeverity, type FindingSeverity } from "./analysisReport";
+import type { ChoiceVariety } from "../api/projects";
 
 /* ------------------------------------------------------------------ 常量 */
 
@@ -351,6 +352,51 @@ export type AdviceSummary = {
  * 计数一律**自己从列表重算**，后端 `counts` 只用来核对：两处不一致时按列表实际内容显示，
  * 并把分歧写出来（后端按 severity 原样累加，将来加等级时两边口径可能不同）。
  */
+/**
+ * 选项分类（Dunyazad 三分法的结构代理）→ 给作者看的一行 + 明细。
+ *
+ * 为什么单独做一层：分类结果在数据里是 relaxed/obvious/dilemma 三个英文键，
+ * 直接显示只会让人猜。这里翻成"怎么选都一样 / 意图明确 / 两难"，并**只列有数的类**
+ * （0 条的不显示，免得看起来像"缺了功能"），同时把"怎么选都一样"的菜单点出来。
+ *
+ * 后端已经把"这是结构启发式、不判断玩家心理"写在 `notes` 里，这里照搬，不自己改写口径。
+ */
+export function choiceVarietyView(
+  variety?: ChoiceVariety | null
+): {
+  headline: string;
+  parts: Array<{ key: string; label: string; count: number }>;
+  relaxedMenus: string[];
+  notes: string[];
+} | null {
+  const counts = variety?.counts;
+  const menus = Number(counts?.menus ?? 0);
+  if (!variety || menus <= 0 || !counts) return null;
+
+  const labels = variety.classLabels ?? {};
+  const parts = ["relaxed", "obvious", "dilemma"]
+    .map((key) => ({ key, label: labels[key] ?? key, count: Number(counts[key] ?? 0) }))
+    .filter((part) => part.count > 0);
+
+  const dilemma = Number(counts.dilemma ?? 0);
+  const relaxed = Number(counts.relaxed ?? 0);
+  // 三种情况都要把"没有两难不是错误"讲清楚：缺一类是编辑判断，不是缺陷
+  // （Choice Poetics 讲的是"选择要有取舍"，但日常系作品的轻松选择是有意为之）。
+  const headline =
+    dilemma > 0
+      ? `全书 ${menus} 个选择点：其中 ${dilemma} 个选项构成真正的取舍。`
+      : relaxed > 0
+        ? `全书 ${menus} 个选择点：还没有出现「选了 A 就拿不到 B」的取舍（这不是错误，只是少了一类）。`
+        : `全书 ${menus} 个选择点的选项都是意图明确的类型，没有取舍（这不是错误，只是少了一类）。`;
+
+  return {
+    headline,
+    parts,
+    relaxedMenus: [...(variety.allRelaxedMenus ?? [])],
+    notes: [...(variety.notes ?? [])],
+  };
+}
+
 export function adviceSummary(input?: AdviceInput | null): AdviceSummary {
   const rows = adviceRows(input);
   const counts = { error: 0, warn: 0, info: 0, other: 0, total: rows.length };

@@ -379,6 +379,13 @@ def recommend_branch_improvements(
         branch = analyze_branches(project)
 
     rows = _static_recommendations(branch)
+    # 选项分类（Dunyazad 三分法的结构代理，见 core/choice_poetics.py）：报"缺哪一类"，
+    # 只出 info——没有两难选择不是错误，日常系作品的轻松选择是有意为之。
+    from app.core.choice_poetics import analyze_choice_variety, variety_recommendations
+
+    variety = analyze_choice_variety(project, branch=branch)
+    for item in variety_recommendations(variety):
+        rows.append(_rec(**item))
     basis = "script-only"
     sample_note = (
         "只有静态分析：读者数据要么没开、要么样本还不够（"
@@ -417,8 +424,11 @@ def recommend_branch_improvements(
             "topCode": (rows[0]["code"] if rows else None),
         },
         "coverage": (branch.get("coverage") or {}),
+        "choiceVariety": variety,
         "notes": [
             "每条建议都带 why（依据）与 action（具体改法），不做「建议优化剧情」这种空话。",
             "没有任何建议不等于剧本没问题：语义层面的问题（动机、反转、潜台词）不在这里的射程内。",
+            "选项分类（怎么选都一样 / 意图明确 / 两难）是**结构启发式**：看选项把玩家送去哪、"
+            "改了哪些状态，不判断玩家心理，也不给「这个选项写得好不好」打分。",
         ],
     }
