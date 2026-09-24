@@ -22,13 +22,17 @@
 | 形态 | 长什么样 | 用在哪 |
 |---|---|---|
 | `html` | `<ruby>漢字<rp>(</rp><rt>かんじ</rt><rp>)</rp></ruby>` | Markdown / HTML 导出 |
-| `rp` | `漢字（かんじ）` | docx 投稿稿、无法渲染 ruby 的场合（等价于 `<rp>` 回退） |
+| `rp` | `漢字（かんじ）` | 阅读用 docx、无法渲染 ruby 的场合（等价于 `<rp>` 回退） |
 | `strip` | `漢字` | 字数统计、纯文本比对（注音不该影响字数） |
+| `segments` | `[("ruby", "漢字", "かんじ")]` | 能表达结构注音的格式（Word 原生注音 `w:ruby`，见 `core/docx_ruby.py`） |
 
 **为什么不给 Ren'Py 输出 `{rb}`/`{rt}`**：没能确证 Ren'Py 是否支持内联注音标签
 （检索到的只有角色名侧的 `who_ruby`/`what_ruby`）。往用户的脚本里写未经验证的标签，
 代价是脚本报错——所以 RPY 走 `rp` 形态，并把这件事写进 docs/references.md 的待办，
 等确证后再补。
+
+**Word 原生注音**（`w:ruby`）走 `segments()` 这条支路：它需要把基准词与注音分别放进
+`<w:rubyBase>` 与 `<w:rt>`，而不是拼成一句话。取舍与可验证范围见 `core/docx_ruby.py`。
 
 ## 顺带修掉的一个真实缺陷
 
@@ -41,7 +45,7 @@ Ren'Py 的文本里 `{` `}` 是标签语法。导出器过去只转义了 `\\` �
 from __future__ import annotations
 
 import re
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 #: `｜汉字《注音》`：全角竖线或 ASCII 竖线开头，基准词 1..MAX_BASE 个"非标点"字符，后接《注音》。
 #: 与 `novel_craft` 的解析保持一致（口径必须一样，否则"体检说没问题、导出却没渲染"）。
@@ -108,6 +112,41 @@ def to_rp_text(text: str) -> str:
 def to_plain(text: str) -> str:
     """只要汉字（字数统计、纯文本比对）。"""
     return render_ruby(text, "strip")
+
+
+#: 两类标记的**合并**模式：按出现位置切段（bar 与 brace 各扫一遍会打乱顺序）。
+#: 命名组只是为了让下面的取用读起来清楚。
+_RUBY_ANY_RE = re.compile(
+    r"[｜|](?P<bar_base>[^｜|《》\s]{1,24})《(?P<bar_reading>[^《》]*)》"
+    r"|(?P<brace>\{(?P<brace_base>[^{}|]{1,24})\|(?P<brace_reading>[^{}|]*)\})"
+)
+
+
+def segments(text: str) -> List[Tuple[str, str, str]]:
+    """把一段文本切成 `("plain", 文本, "")` / `("ruby", 基准词, 注音)` 序列。
+
+    给"能表达结构性注音的输出格式"用（目前是 Word 的原生注音 `w:ruby`：
+    它需要把基准词与注音分别放进不同元素，而不像 rp/html 那样拼成一句话）。
+
+    不完整的标记（基准或注音为空）按**普通文本**返回——与 `render_ruby` 同口径：
+    该由体检报出来的东西，渲染层不吞。
+    """
+    out: List[Tuple[str, str, str]] = []
+    if not text:
+        return out
+    cursor = 0
+    for m in _RUBY_ANY_RE.finditer(text):
+        base = m.group("bar_base") or m.group("brace_base") or ""
+        reading = m.group("bar_reading") or m.group("brace_reading") or ""
+        if not _is_renderable(base, reading):
+            continue  # 当作普通文本，交给下面的尾巴一起带上
+        if m.start() > cursor:
+            out.append(("plain", text[cursor : m.start()], ""))
+        out.append(("ruby", base.strip(), reading.strip()))
+        cursor = m.end()
+    if cursor < len(text):
+        out.append(("plain", text[cursor:], ""))
+    return out
 
 
 def to_renpy_text(text: str) -> str:

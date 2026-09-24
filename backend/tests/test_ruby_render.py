@@ -156,16 +156,23 @@ def test_docx_export_renders_ruby_as_rp_fallback():
 
 
 def test_submission_docx_renders_ruby_too():
-    import io
+    """投稿稿走的是 **Word 原生注音**（更详细的结构验证见 `test_docx_ruby.py`）。
 
-    from docx import Document
+    这里只钉两件事：注音真的进了文件，源标记没有泄漏。
+    （`paragraph.text` 看不到原生注音——基准词在 `w:rubyBase` 里——所以断言看 XML。）
+    """
+    import io
+    import zipfile
 
     from app.core.export_submission import submission_docx
 
-    doc = Document(io.BytesIO(submission_docx(_ruby_project())))
-    text = "\n".join(p.text for p in doc.paragraphs)
-    assert "鐘（かね）" in text
-    assert "｜鐘《かね》" not in text
+    data = submission_docx(_ruby_project())
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        xml = zf.read("word/document.xml").decode("utf-8")
+    assert "<w:ruby>" in xml
+    assert "鐘" in xml and "かね" in xml
+    assert "｜鐘《かね》" not in xml
+    assert "{笑顔|えがお}" not in xml
 
 
 def test_rpy_export_has_no_ruby_markers_left():

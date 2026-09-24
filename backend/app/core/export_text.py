@@ -100,10 +100,13 @@ def project_to_markdown(project: VnProject) -> str:
 def project_to_docx(project: VnProject) -> bytes:
     """Render the project as a .docx file (returns file bytes).
 
-    注音在 Word 里按 **`<rp>` 回退**的纯文本形态渲染（`漢字（かんじ）`）：
-    Word 的原生注音是 `w:ruby` 那一套 XML，python-docx 不支持、我们也没法在这里验证
-    生成的文件 Word 能否正常打开——所以宁可给出"不丢信息的回退形态"，
-    也不生成一个可能打不开或用不了的投稿稿。见 docs/references.md 的待办。
+    注音在**这一条导出**里走 **`<rp>` 回退**的纯文本形态（`漢字（かんじ）`），
+    而不是 Word 原生注音（`w:ruby`）：原生注音的基准词只存在于 `<w:rubyBase>` 里，
+    **简单取文本的工具会漏掉它**，而这条导出的用途恰恰是"把作品读出来 / 再导回工作台"
+    （导入侧认得 `w:ruby`，见 `core/file_text.py`，但别的工具不一定），保文本完整性更重要。
+
+    投稿稿（`export_submission`）默认写原生注音——编辑用 Word 打开时是真的注音，
+    而不是括号文本。两者的取舍与"能验证到什么程度"写在 `core/docx_ruby.py` 的模块文档里。
     """
     from docx import Document
 

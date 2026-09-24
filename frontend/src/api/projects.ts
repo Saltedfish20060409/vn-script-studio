@@ -297,6 +297,13 @@ export type SubmissionOptions = {
   counts?: boolean;
   /** 是否带上章节梗概。默认 false：那是写给自己看的备注，会被编辑当正文 */
   synopsis?: boolean;
+  /**
+   * 注音是否写成 **Word 原生注音**（`w:ruby`）。默认 true。
+   *
+   * 关掉会回退成 `漢字（かんじ）` 这样的括号文本——原生注音的基准词只存在于
+   * `w:rubyBase` 里，简单取文本的工具会漏掉（我们自己的导入侧认得，见 `core/file_text.py`）。
+   */
+  nativeRuby?: boolean;
   author?: string;
   contact?: string;
 };
@@ -317,6 +324,7 @@ export async function exportSubmission(
   if (opts.pageBreak === false) params.set("page_break", "0");
   if (opts.counts === false) params.set("counts", "0");
   if (opts.synopsis) params.set("synopsis", "1");
+  if (opts.nativeRuby === false) params.set("ruby", "0");
   if (opts.author?.trim()) params.set("author", opts.author.trim());
   if (opts.contact?.trim()) params.set("contact", opts.contact.trim());
   const qs = params.toString();

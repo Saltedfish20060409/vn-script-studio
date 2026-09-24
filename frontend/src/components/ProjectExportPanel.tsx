@@ -166,6 +166,17 @@ export function ProjectExportPanel({
           </label>
           <label
             className={styles.inlineLabel}
+            title="注音写成 Word 的原生注音（编辑用 Word 打开时是真的注音，而不是「漢字（かんじ）」这样的括号文本）"
+          >
+            <input
+              type="checkbox"
+              checked={sub.nativeRuby !== false}
+              onChange={(e) => setSub((s) => ({ ...s, nativeRuby: e.target.checked }))}
+            />
+            原生注音
+          </label>
+          <label
+            className={styles.inlineLabel}
             title="章节梗概是写给你自己的备注，投稿稿里默认不带"
           >
             <input

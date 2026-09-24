@@ -13,6 +13,42 @@ MAX_TEXT_CHARS = 48_000
 
 _ALLOWED_EXT = (".txt", ".md", ".markdown", ".json", ".csv", ".docx", ".rpy")
 
+_W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_W_RUBY = f"{_W_NS}ruby"
+_W_R = f"{_W_NS}r"
+_W_T = f"{_W_NS}t"
+#: run 的常见容器（超链接、修订、智能标记）：里面的文字同样要取出来
+_W_RUN_CONTAINERS = (f"{_W_NS}hyperlink", f"{_W_NS}ins", f"{_W_NS}smartTag")
+
+
+def _element_text(el) -> str:  # noqa: ANN001
+    if el is None:
+        return ""
+    return "".join(t.text or "" for t in el.iter(_W_T))
+
+
+def paragraph_text(paragraph) -> str:  # noqa: ANN001
+    """段落文本，**认得 Word 的原生注音**（`w:ruby`）。
+
+    为什么不能直接用 `paragraph.text`：它只拼段落下的**直接 run**，而原生注音把
+    基准词放在 `<w:ruby><w:rubyBase>` 里、注音放在 `<w:rt>` 里——于是带注音的
+    docx（例如本工具导出的投稿稿，或作者从出版社拿回来的返修稿）导进来会**整片丢字**。
+    这里按文档顺序走一遍：普通 run 取文本，`w:ruby` 取成 `基准词（注音）`
+    （与我们自己的 rp 形态同形，导回工作台后还能被体检认出来）。
+    """
+    chunks: list[str] = []
+    for child in paragraph._p:  # noqa: SLF001 - python-docx 的公开属性就是 _p
+        if child.tag == _W_RUBY:
+            base = _element_text(child.find(f"{_W_NS}rubyBase"))
+            reading = _element_text(child.find(f"{_W_NS}rt"))
+            chunks.append(f"{base}（{reading}）" if reading else base)
+        elif child.tag == _W_R:
+            chunks.append(_element_text(child))
+        elif child.tag in _W_RUN_CONTAINERS:
+            for run in child.findall(_W_R):
+                chunks.append(_element_text(run))
+    return "".join(chunks).strip()
+
 
 def allowed_filename(name: str) -> bool:
     lower = (name or "").lower()
@@ -45,10 +81,22 @@ def extract_text_from_bytes(
             )
         try:
             doc = Document(io.BytesIO(data))
-            parts = [p.text for p in doc.paragraphs if p.text and p.text.strip()]
+            parts = [
+                text
+                for text in (paragraph_text(p) for p in doc.paragraphs)
+                if text.strip()
+            ]
             for table in doc.tables:
                 for row in table.rows:
-                    cells = [c.text.strip() for c in row.cells if c.text.strip()]
+                    cells = [
+                        text
+                        for text in (
+                            paragraph_text(p)
+                            for cell in row.cells
+                            for p in cell.paragraphs
+                        )
+                        if text.strip()
+                    ]
                     if cells:
                         parts.append(" | ".join(cells))
             text = "\n".join(parts)

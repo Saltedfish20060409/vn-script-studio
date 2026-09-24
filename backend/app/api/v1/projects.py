@@ -615,6 +615,7 @@ async def export_submission(
     synopsis: bool = False,
     page_break: bool = True,
     counts: bool = True,
+    ruby: bool = True,
     author: str = "",
     contact: str = "",
     user: User = Depends(get_current_user),
@@ -627,6 +628,10 @@ async def export_submission(
     文末标字数、投稿信息页，并且可以**一章一个文件**打包（很多渠道就是这么收稿的）。
 
     `synopsis` 默认关：章节梗概是写给作者自己的备注，混在投稿稿里会被当成正文。
+
+    `ruby` 默认开：注音写成 **Word 原生注音**（`w:ruby`），编辑用 Word 打开时注音是真的
+    注音而不是「漢字（かんじ）」这样的括号文本；关掉则回退成括号形态（取舍见
+    `core/docx_ruby.py`——原生注音的基准词只存在于 `w:rubyBase` 里，简单取文本的工具会漏掉）。
     """
     from app.core.export_submission import (
         SubmissionOptions,
@@ -642,6 +647,8 @@ async def export_submission(
         include_synopsis=bool(synopsis),
         page_break_per_chapter=bool(page_break),
         word_count_footer=bool(counts),
+        # 注音默认用 Word 原生注音（w:ruby）；关掉回退成「漢字（かんじ）」纯文本
+        native_ruby=bool(ruby),
         author=author,
         contact=contact,
     )

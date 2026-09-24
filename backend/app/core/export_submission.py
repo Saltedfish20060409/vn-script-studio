@@ -43,6 +43,10 @@ class SubmissionOptions:
     word_count_footer: bool = True
     #: 是否带上卷标题（分卷作品才有）
     include_volume_headings: bool = True
+    #: 注音用 **Word 原生注音**（`w:ruby`，编辑用 Word 打开时注音是真的注音）。
+    #: 关掉则回退成 `漢字（かんじ）` 这样的纯文本形态（见 core/docx_ruby.py 的取舍说明：
+    #: 原生注音的基准词只存在于 `w:rubyBase` 里，简单取文本的工具会漏掉它）。
+    native_ruby: bool = True
     #: 投稿信息页上的作者名 / 联系方式（留空就不写这一行）
     author: str = ""
     contact: str = ""
@@ -60,13 +64,23 @@ def _setup_document():
     return doc
 
 
-def _add_body_paragraph(doc, text: str, *, indent: bool):
+def _add_body_paragraph(doc, text: str, *, indent: bool, native_ruby: bool = True):
     from docx.shared import Pt
 
-    from app.core.ruby_render import to_rp_text
+    from app.core.docx_ruby import add_text
 
-    # 注音按 <rp> 回退形态渲染：投稿稿里绝不能留下 `｜汉字《注音》` 这种源标记
-    p = doc.add_paragraph(to_rp_text(text))
+    # 注音**不能**以 `｜汉字《注音》` 的源标记进投稿稿：
+    # 默认写 Word 原生注音（`w:ruby`），关掉时回退成 `漢字（かんじ）`（见 core/docx_ruby.py）。
+    p = doc.add_paragraph()
+    add_text(
+        p,
+        text,
+        native=native_ruby,
+        # 正文小四（12pt）→ 基准 24 半磅、注音 12 半磅、抬升 22
+        base_hps=BODY_FONT_PT * 2,
+        ruby_hps=BODY_FONT_PT,
+        raise_hps=BODY_FONT_PT * 2 - 2,
+    )
     p.paragraph_format.line_spacing = LINE_SPACING
     if indent:
         p.paragraph_format.first_line_indent = Pt(FIRST_LINE_INDENT_PT)
@@ -130,7 +144,9 @@ def _add_chapter(doc, project: VnProject, chapter, opts: SubmissionOptions, *, h
         for para in prose.split("\n"):
             text = para.strip()
             if text:
-                _add_body_paragraph(doc, text, indent=opts.indent_first_line)
+                _add_body_paragraph(
+                    doc, text, indent=opts.indent_first_line, native_ruby=opts.native_ruby
+                )
     else:
         _blocks_to_submission_docx(list(chapter.blocks or []), doc, opts)
 
@@ -154,7 +170,9 @@ def _blocks_to_submission_docx(blocks, doc, opts: SubmissionOptions):
     for line in plain.split("\n"):
         text = line.strip()
         if text:
-            _add_body_paragraph(doc, text, indent=opts.indent_first_line)
+            _add_body_paragraph(
+                doc, text, indent=opts.indent_first_line, native_ruby=opts.native_ruby
+            )
 
 
 def submission_docx(project: VnProject, opts: SubmissionOptions | None = None) -> bytes:
