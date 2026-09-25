@@ -163,6 +163,23 @@ def eval(
     longrange_chapters: int = typer.Option(
         60, "--longrange-chapters", help="基准作品的章节数"
     ),
+    context_ab: bool = typer.Option(
+        False,
+        "--context-ab",
+        help="上下文政策对照：同一合成长篇上跑「改动后 vs 改动前」两臂，量埋点事实命中与焦点章可见性（不需要 API key）",
+    ),
+    context_ab_chapters: int = typer.Option(
+        40, "--context-ab-chapters", help="对照用合成长篇的章节数"
+    ),
+    context_ab_focus: str = typer.Option(
+        "", "--context-ab-focus", help="焦点章章号（逗号分隔，默认取末章）"
+    ),
+    context_ab_shared: int = typer.Option(
+        48000, "--context-ab-shared", help="同预算组两臂共用的 maxChars（只比政策本身）"
+    ),
+    context_ab_tight: int = typer.Option(
+        14000, "--context-ab-tight", help="同紧预算组两臂共用的 maxChars（对照整块让位 vs 中段切一刀）"
+    ),
     seed: int = typer.Option(20260409, "--seed", help="盲评标签随机种子（同种子可复现）"),
 ):
     """生成质量评测：对写作任务跑目标模型，用确定性 lint 自动评分。
@@ -174,7 +191,28 @@ def eval(
       python -m app eval --ab --cases 13 -o ab.json  # 对照盲评：工具流程 vs 裸聊
       python -m app eval --ab --repeats 3 --judge-model gpt-4o   # 重复采样 + 独立裁判
       python -m app eval --longrange               # 长程一致性基准（无需 key）
+      python -m app eval --context-ab              # 上下文政策 A/B（无需 key）
     """
+    if context_ab:
+        # 同 `--longrange`：这条路径也不需要模型。它量的是**结构量**——
+        # 埋点事实有没有进上下文、焦点章首/中/尾是否可见、超预算时整块让位还是中段切一刀。
+        from app.core.context_policy_ab import format_report as format_ctx_report
+        from app.core.context_policy_ab import run_context_policy_ab
+
+        focus = [int(x) for x in context_ab_focus.replace("，", ",").split(",") if x.strip()]
+        ctx_ab = run_context_policy_ab(
+            chapters=max(20, min(int(context_ab_chapters), 200)),
+            focus_chapters=focus or None,
+            shared_max_chars=max(1000, int(context_ab_shared)),
+            tight_max_chars=max(1000, int(context_ab_tight)),
+        )
+        typer.echo(format_ctx_report(ctx_ab))
+        if out:
+            out.write_text(
+                json.dumps(ctx_ab, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            typer.echo(f"对照报告已写入 {out}")
+        return
     if longrange:
         # 这条路径**不需要模型**：暴露率是"矛盾所在的章有没有被送进检测器视野"，
         # 纯结构量；检测器用现成的确定性检查。所以它能在 CI 里当回归量具。

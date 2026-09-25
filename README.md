@@ -215,6 +215,9 @@ python -m app eval -m qwen2.5:7b --base-url http://localhost:11434 --api-key oll
 python -m app eval --ab --repeats 3 --judge-model <独立模型> -o ab.json
 # 长程一致性基准：造带标准答案的合成长篇，量「章距 vs 暴露率/检出率」。**不需要 API key**
 python -m app eval --longrange --longrange-chapters 60
+# 上下文政策 A/B：量「该进上下文的材料有没有真的进来」（埋点事实命中、焦点章覆盖率、
+#   整块让位 vs 中段切一刀）。**不需要 API key**，两臂跑的是同一份真实代码
+python -m app eval --context-ab --context-ab-chapters 40
 ```
 
 对照盲评（`--ab`）用来回答「这软件是不是还不如直接跟聊天框说一句」这类质疑：
@@ -245,6 +248,17 @@ python -m app eval --longrange --longrange-chapters 60
 实测结论：旧实现（只扫前 14 章）在 16 章以外的暴露率是 **0**——那些章的召回在构造上就不可能为 1；
 分片方案把暴露率做到 1.00。完整口径、数字与**仍未解决的部分**见
 [docs/longrange-consistency-and-eval.md](docs/longrange-consistency-and-eval.md)。
+
+上下文政策 A/B（`--context-ab`）回答第三类问题：**这一轮长上下文改动，材料有没有真的进来？**
+它同一部合成长篇上跑「改动前 vs 改动后」两臂（`policy="legacy"` / 默认），三组对照
+（同预算 / 同紧预算 / 各自默认），给配对 bootstrap 区间与 McNemar 精确检验：
+
+- 每章埋一条不重复的事实句、焦点章切成 10 段哨兵 → 「记忆层命中几条」「焦点章进了几段」是可逐字核对的**结构量**；
+- 一次真实读数是焦点章覆盖率 10/10 vs 4/10、旧式「中段切一刀」0% vs 100%（p=0.0078）；
+- 它**不**回答「写得更好」——那是人工盲测（`--ab` + `docs/blind-ab.md`）的事；
+  报告里会**连反向读数一起打印**（紧预算下记忆层命中反而落后 21 条，成因与取舍见文档）。
+- 完整三张量具的分工、这张量具自己的边界，见
+  [docs/long-context-policy.md](docs/long-context-policy.md) 第十节。
 
 ### 超时预算（前端与后端必须对齐）
 

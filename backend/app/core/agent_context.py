@@ -775,12 +775,30 @@ def _focus_budget(max_chars: int, task: str) -> int:
     写死 5000 的直接后果：一章三千字的稿子没问题，**一章两万字的稿子续写时模型只
     看得到最后一小截**，于是"失忆"发生在作者最需要连贯的地方。所以这里改成按预算
     比例给，续写类给到一半——"接着写"本来就该以本章正文为主体。
+
+    试过、**已撤回**的一版（记在这里免得以后有人再试一遍）：给下面两条底线加一个
+    "焦点章最多占总预算 70%"的上限，动机是 `--context-ab` 里看到的断崖——总预算 14000
+    时焦点章拿 12000，`_BUDGET_DROP_ORDER_LAST` 里"最不该丢"的记忆层整块让位（命中 0 条）。
+    但上限**没有换回任何记忆**：记忆块本身就有 8000 + 6000 字符，30% 的位置（约 4200 字符）
+    装不下它，于是记忆照样整块让位，只是焦点章覆盖率从 6/10 掉到 5/10 —— 在同一张量具上
+    是**纯退步**，所以没有采纳。那条断崖的真实成因是"预算太小装不下记忆块"，正确的解法是
+    把 `AGENT_CONTEXT_MAX_CHARS` 调大（生产 48000 下不会发生），而不是改这里的比例；
+    要不要在半句话与什么都没有之间取舍，则属于需要人工盲测的问题（见 docs/references.md）。
     """
     if task == "outline":
         return max(1800, int(max_chars * 0.06))  # 大纲任务不需要正文，只要摘要
     if task in ("continue", "branch", "scene"):
         return max(12000, int(max_chars * 0.5))
     return max(6000, int(max_chars * 0.35))
+
+
+def _legacy_focus_budget(task: str) -> int:
+    """对照臂用的旧焦点章上限（写死 1800 / 5000 / 4200，见 `LEGACY_FOCUS_BUDGETS`）。"""
+    if task == "outline":
+        return LEGACY_FOCUS_BUDGETS["outline"]
+    if task in ("continue", "branch", "scene"):
+        return LEGACY_FOCUS_BUDGETS["continue"]
+    return LEGACY_FOCUS_BUDGETS["other"]
 
 
 def _chapter_tail(plain: str, max_len: int, *, hint: str = "") -> str:
@@ -1019,6 +1037,38 @@ _NOTICE_RESERVE = 420
 _LONG_CONTEXT_NOTICE_CHARS = 20000
 
 
+# --- 对照臂：**只用于度量**的旧政策（见 core/context_policy_ab.py） ------------
+#
+# 为什么生产代码里留一个"旧政策"分支：要回答"这些改动到底有没有实际差距"，
+# 唯一诚实的办法是让**两臂都跑真实代码路径**（而不是用一套解析模型去模拟旧行为——
+# 那种做法想显示什么就能显示什么，不可证伪）。
+#
+# 常量抄自改动前的版本（`git show 4daa44a^:backend/app/core/agent_context.py` 与同期的
+# `config.py`），只增不改；`policy="current"` 是默认值，生产路径永远走它，
+# 只有度量 CLI（`python -m app eval --context-ab`）与对应测试会传 "legacy"。
+LEGACY_POLICY = "legacy"
+CURRENT_POLICY = "current"
+
+LEGACY_DEFAULT_CONTEXT_MAX_CHARS = 12000
+"""旧默认预算（改动前 `config.agent_context_max_chars` 的默认值）。"""
+
+LEGACY_FOCUS_BUDGETS: Dict[str, int] = {
+    "outline": 1800,
+    "continue": 5000,
+    "branch": 5000,
+    "scene": 5000,
+    "other": 4200,
+}
+"""旧焦点章上限：写死的三档（大纲 1800 / 续写系 5000 / 其它 4200）。"""
+
+LEGACY_CLIP_LONG_MEMORY = 3200
+LEGACY_CLIP_GLOBAL_MEMORY = 2400
+"""旧记忆层单块上限（长程 3200 / 全局 2400）。"""
+
+LEGACY_MID_CUT_MARKER = "…(上下文中段压缩)…"
+"""旧超预算处理：压缩其他章摘要之后，**从中间切一刀**（块边界被切碎、也没有说明）。"""
+
+
 def _timeline_lines(project: VnProject, focus_chapter: Any) -> Tuple[List[str], str]:
     """作者登记的时间线（`project.timeline`）→ 上下文里的几行 + 一条如实说明。
 
@@ -1098,12 +1148,29 @@ def build_agent_context(
     loreCraft: Optional[str] = None,
     referenceDocs: Optional[str] = None,
     exclude: Optional[Iterable[str]] = None,
+    policy: str = CURRENT_POLICY,
 ) -> AgentContextResult:
     """Build a retrieval-biased project context for long-form Agent use.
 
     Prefer: meta + bible digest + chapter index + focus chapter + scored slices.
+
+    ``policy`` 只用于**度量**：``"legacy"`` 复现改动前的拼装行为
+    （旧默认预算 12000、写死的焦点章上限、旧记忆层上限、不重排顺序、超预算从中段切一刀），
+    供 `core/context_policy_ab.py` 做两臂对照。生产路径永远走默认的 ``"current"``。
     """
-    max_chars = maxChars if maxChars is not None else _default_context_max_chars()
+    legacy = policy == LEGACY_POLICY
+    # 对照臂用旧默认预算；当前政策走配置/执行档（见 `context_budget_for_model`）。
+    max_chars = (
+        maxChars
+        if maxChars is not None
+        else (
+            LEGACY_DEFAULT_CONTEXT_MAX_CHARS
+            if legacy
+            else _default_context_max_chars()
+        )
+    )
+    clip_long_memory = LEGACY_CLIP_LONG_MEMORY if legacy else _CLIP_LONG_MEMORY
+    clip_global_memory = LEGACY_CLIP_GLOBAL_MEMORY if legacy else _CLIP_GLOBAL_MEMORY
     resolved_task = task or (infer_agent_task(userMessage) if userMessage else "chat")
     included: List[str] = [f"模式:{resolved_task}"]
 
@@ -1492,8 +1559,13 @@ def build_agent_context(
     focus_digest = next((d for d in digests if focus_chapter and d.chapterId == focus_chapter.id), None)
     if focus_chapter:
         plain = plain_of(focus_chapter)
-        # 预算随总预算走（旧值 1800/5000/4200 是"省 token"年代的产物）。
-        focus_budget = _focus_budget(max_chars, resolved_task)
+        # 预算随总预算走（旧值 1800/5000/4200 是"省 token"年代的产物）；
+        # 对照臂按旧值跑，用来量"焦点章能带多少进上下文"这件事。
+        focus_budget = (
+            _legacy_focus_budget(resolved_task)
+            if legacy
+            else _focus_budget(max_chars, resolved_task)
+        )
         use_tail = resolved_task in ("continue", "polish", "branch", "scene")
         focus_body = "\n".join(
             p
@@ -1643,7 +1715,7 @@ def build_agent_context(
         (
             "longMemory",
             (
-                f"\n{_clip(longChapterMemory.strip(), _CLIP_LONG_MEMORY)}"
+                f"\n{_clip(longChapterMemory.strip(), clip_long_memory)}"
                 if longChapterMemory and longChapterMemory.strip()
                 else ""
             ),
@@ -1653,7 +1725,7 @@ def build_agent_context(
             # 再给"整本书到目前为止"（影响主线判断）。两块都会在超预算时被压。
             "globalMemory",
             (
-                f"\n{_clip(globalMemory.strip(), _CLIP_GLOBAL_MEMORY)}"
+                f"\n{_clip(globalMemory.strip(), clip_global_memory)}"
                 if globalMemory and globalMemory.strip()
                 else ""
             ),
@@ -1736,8 +1808,10 @@ def build_agent_context(
 
     dropped = sections_to_drop(resolved_task, exclude)
     # 顺序由 _SECTION_ORDER 决定（下面这行排序），这里的书写顺序不影响输出。
+    # 对照臂不重排：改动前就是"按拼装顺序"上的，参考文档因此会占住靠前的位置。
     order_index = {key: i for i, key in enumerate(_SECTION_ORDER)}
-    keyed_sections.sort(key=lambda kv: order_index.get(kv[0], len(_SECTION_ORDER)))
+    if not legacy:
+        keyed_sections.sort(key=lambda kv: order_index.get(kv[0], len(_SECTION_ORDER)))
     # 保留 key（不只是文本）：超预算时要按 key 决定"丢哪一块"，而不是从中间砍一刀。
     kept_keyed: List[Tuple[str, str]] = [
         (key, text) for key, text in keyed_sections if text and key not in dropped
@@ -1748,7 +1822,7 @@ def build_agent_context(
     # 长上下文里模型会"读到但没用上"（Lost in the Middle）：明确告诉它**以哪两处为准**，
     # 以及"缺的东西可以取回来"。只在真的长时才写，短上下文里这句话本身就是噪音。
     long_note = ""
-    if sum(len(t) for _, t in kept_keyed) >= _LONG_CONTEXT_NOTICE_CHARS:
+    if not legacy and sum(len(t) for _, t in kept_keyed) >= _LONG_CONTEXT_NOTICE_CHARS:
         long_note = (
             "\n\n## 长上下文提醒\n"
             "本次上下文较长：请以**开头的角色/设定与末尾的硬规则、「当前章节」正文**为准；"
@@ -1855,31 +1929,46 @@ def build_agent_context(
                 ]
                 budget_compressed.append("otherChapters")
                 included.append("已压缩其他章摘录")
-        for key in _BUDGET_DROP_ORDER + _BUDGET_DROP_ORDER_LAST:
-            if len(_join_sections()) <= budget:
-                break
-            if key in {k for k, _ in kept_keyed} and key not in budget_dropped:
-                budget_dropped.append(key)
-                included.append(f"篇幅省去:{key}")
-        text = _join_sections()
-        if len(text) > budget:
-            keep_tail = min(
-                int(budget * 0.55), len(focus_body) + len(selection or "") + 400
-            )
-            keep_head = max(0, budget - keep_tail - 40)
-            removed = max(0, len(text) - keep_head - keep_tail)
-            text = (
-                f"{text[:keep_head]}\n\n"
-                f"…(上下文中段压缩：省去约 {removed} 字，用工具取回需要的那一块)…\n\n"
-                f"{text[len(text) - keep_tail:]}"
-            )
-            budget_compressed.append("中段")
-            included.append("中段压缩")
+        if legacy:
+            # 对照臂＝改动前的行为：压缩完其他章摘要之后**从中段切一刀**，
+            # 不做整块让位、不写「篇幅说明」、也不说明省了多少字。
+            text = _join_sections()
+            if len(text) > budget:
+                keep_tail = min(
+                    int(budget * 0.55), len(focus_body) + len(selection or "") + 400
+                )
+                keep_head = max(0, budget - keep_tail - 30)
+                text = (
+                    f"{text[:keep_head]}\n\n{LEGACY_MID_CUT_MARKER}\n\n"
+                    f"{text[len(text) - keep_tail:]}"
+                )
+                included.append("中段压缩")
+        else:
+            for key in _BUDGET_DROP_ORDER + _BUDGET_DROP_ORDER_LAST:
+                if len(_join_sections()) <= budget:
+                    break
+                if key in {k for k, _ in kept_keyed} and key not in budget_dropped:
+                    budget_dropped.append(key)
+                    included.append(f"篇幅省去:{key}")
+            text = _join_sections()
+            if len(text) > budget:
+                keep_tail = min(
+                    int(budget * 0.55), len(focus_body) + len(selection or "") + 400
+                )
+                keep_head = max(0, budget - keep_tail - 40)
+                removed = max(0, len(text) - keep_head - keep_tail)
+                text = (
+                    f"{text[:keep_head]}\n\n"
+                    f"…(上下文中段压缩：省去约 {removed} 字，用工具取回需要的那一块)…\n\n"
+                    f"{text[len(text) - keep_tail:]}"
+                )
+                budget_compressed.append("中段")
+                included.append("中段压缩")
     else:
         text = _join_sections()
 
     notice = ""
-    if budget_dropped or budget_compressed:
+    if not legacy and (budget_dropped or budget_compressed):
         notice = "\n\n" + _budget_notice(budget_dropped, budget_compressed)
         if len(text) + len(notice) > max_chars:
             # 装不下说明本身时，宁可不要说明（作者仍能在界面上看到 included），
