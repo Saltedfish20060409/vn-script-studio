@@ -1,12 +1,56 @@
+.ribbonWrap {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel-bg) 72%, transparent);
+}
+
 .ribbon {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.55rem 0.85rem;
   padding: 0.45rem 0.85rem;
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--panel-bg) 72%, transparent);
   min-height: 48px;
+  border-bottom: none;
+  background: transparent;
+}
+
+.viewQuick {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+  padding: 0.25rem 0.85rem 0.4rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.viewQuickBtn,
+.viewQuickOn {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0.2rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--field-bg);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.viewQuickBtn:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--field-bg));
+}
+
+.viewQuickOn {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--field-bg));
+  color: var(--ink);
 }
 
 .brandBlock {

@@ -2957,12 +2957,14 @@ export function StudioApp() {
             setStatus("已放弃这次改稿的对照预览。正文保持原样，没有做任何改动。");
           }}
           onInsertScene={() => insertAtCaret(`\n${SCENE_SEPARATOR}\n`)}
+          activeViewPanel={overlay?.type === "view" ? overlay.panel : null}
         />
 
         <div className={styles.layout}>
           <main className={styles.main}>
             <div className={styles.docLayout}>
               <ChapterOutline
+                genre={copy.genre}
                 chapterId={chapterId}
                 chapters={project.chapters}
                 volumes={project.volumes ?? []}
@@ -3021,6 +3023,31 @@ export function StudioApp() {
                 ) : null}
                 <section className={styles.panel}>
                     <WriteToolbar
+                      copy={copy}
+                      writeMode={writeMode}
+                      rpyStale={rpyIsStale({
+                        prose: writeMode === "prose" ? editor : chapter?.prose,
+                        rpyFromProseHash: chapter?.rpyFromProseHash,
+                      })}
+                      generating={generatingRpy}
+                      showReviseActions={Boolean(reviseDraft)}
+                      onWriteModeChange={switchWriteMode}
+                      onGenerateRpy={() => void generateRpyFromManuscript()}
+                      onFind={openFind}
+                      onOpenRevise={() => {
+                        if (focusMode) {
+                          setStatus("请先退出专注模式，再打开改稿对照");
+                          return;
+                        }
+                        requestOpenReviseReview(project.id, chapterId);
+                      }}
+                      onDiscardRevise={() => {
+                        clearChapterReviseDraft(project.id, chapterId);
+                        setReviseDraft(null);
+                        setStatus(
+                          "已放弃这次改稿的对照预览。正文保持原样，没有做任何改动。"
+                        );
+                      }}
                       onDictateInsert={(text) => {
                         insertAtCaret(text);
                         setStatus("已插入语音转写");

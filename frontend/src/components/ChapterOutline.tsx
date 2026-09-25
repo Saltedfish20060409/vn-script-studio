@@ -8,6 +8,8 @@ const COLLAPSED_KEY = "vnss-chapter-outline-collapsed";
 const NARROW_MQ = "(max-width: 720px)";
 
 type Props = {
+  /** vn：默认收起；novel：默认展开。用户手动折叠后仍以 localStorage 为准。 */
+  genre?: "vn" | "novel";
   chapterId: string;
   chapters: SceneChapter[];
   volumes: Volume[];
@@ -34,10 +36,13 @@ export function ChapterOutline(props: Props) {
   );
   const [collapsed, setCollapsed] = useState(() => {
     try {
-      return localStorage.getItem(COLLAPSED_KEY) === "1";
+      const stored = localStorage.getItem(COLLAPSED_KEY);
+      if (stored === "1") return true;
+      if (stored === "0") return false;
     } catch {
-      return false;
+      /* ignore */
     }
+    return props.genre === "vn";
   });
 
   useEffect(() => {
