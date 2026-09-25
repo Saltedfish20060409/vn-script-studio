@@ -139,13 +139,25 @@ def test_write_aids_are_not_rendered_in_focus_mode():
     """专注模式**不渲染**写作辅助条（不是靠 CSS 藏）。
 
     用"不渲染"而不是 `display:none`：那样它的 30 秒统计轮询还会继续跑。
+
+    **守卫要守语义，不要守某一种写法。** 第一版把条件写死成 `focusMode ? null`，
+    后来一次 UI 重构把它改成 `!focusMode && (…) ?`（语义完全一样：专注时不渲染），
+    守卫就红了——红的原因不是行为回归，而是"写法变了"。这类假红最消耗信任：
+    下次真回归时，人会先怀疑是守卫过时。所以这里只要求
+    **包住 `<WriteAids>` 的那个条件里出现 focusMode 的否定**，
+    `focusMode ? null` 与 `!focusMode && …` 都算通过。
     """
     text = APP_TSX.read_text(encoding="utf-8")
     at = text.index("<WriteAids")
-    head = text[max(0, at - 600) : at]
-    assert "focusMode ? null" in head, (
-        "`<WriteAids>` 前面没有 `focusMode ? null` 条件——专注模式里它又会出现"
+    # 往前找最近的 `{`：那应当就是包住这个元素的 JSX 表达式容器起点
+    brace = text.rfind("{", 0, at)
+    assert brace != -1, "找不到包住 <WriteAids> 的条件表达式"
+    guard = text[brace:at]
+    assert "focusMode" in guard, (
+        "`<WriteAids>` 没有被 focusMode 条件包住——专注模式里它又会出现"
     )
-    # 而且必须真的包住：条件与 JSX 之间不能先闭合（`)}` 或 `/>`）
-    between = head[head.index("focusMode ? null") :]
-    assert ")}" not in between, "条件表达式在 WriteAids 之前就闭合了，实际没包住"
+    assert re.search(r"!\s*focusMode|focusMode\s*\?\s*null", guard), (
+        f"包住 <WriteAids> 的条件不是 focusMode 的否定：{guard[-160:]!r}"
+    )
+    # 条件必须真的包住它：中间不能先闭合
+    assert ")}" not in guard, "条件表达式在 WriteAids 之前就闭合了，实际没包住"

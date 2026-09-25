@@ -311,7 +311,7 @@ const FILE_PAGE_ENTRIES = [
   readonly [WorkspaceSnapshot["projectSub"], string]
 >;
 
-export const FILE_PAGE_LABELS = Object.fromEntries(FILE_PAGE_ENTRIES) as Record<
+const FILE_PAGE_LABELS = Object.fromEntries(FILE_PAGE_ENTRIES) as Record<
   WorkspaceSnapshot["projectSub"],
   string
 >;
@@ -452,8 +452,6 @@ export function StudioApp() {
   const [saveBadge, setSaveBadge] = useState<"idle" | "saving" | "error">("idle");
   // 顶栏"审稿"按钮的展开信号：每次 +1 让 AgentFloat 把面板拉出来
   const [agentOpenTick, setAgentOpenTick] = useState(0);
-  // 桌面视角下没有浮窗：这个计数改成打开桌面上的「AI 责编」窗口
-  const [desktopAppTick, setDesktopAppTick] = useState(0);
   const [focusSetupOpen, setFocusSetupOpen] = useState(false);
   const [focusPrefs, setFocusPrefs] = useState<FocusTimerPrefs | null>(null);
   // 之前每次渲染都调 loadFocusTimerPrefs()（localStorage.getItem + JSON.parse），
@@ -2817,7 +2815,6 @@ export function StudioApp() {
           onOpenScriptTab={(id) => {
             enterStudio(overlayFromScriptTabId(id));
           }}
-          openAppRequest={{ id: "agent", nonce: desktopAppTick }}
           resume={
             project
               ? {
