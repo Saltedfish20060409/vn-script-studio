@@ -1231,11 +1231,69 @@
   min-height: 40px;
   padding: 0.25rem 0.75rem;
   border-bottom-width: 1px;
+  /* 纸面顶栏：不再用 `--panel-bg` 半透明混合（那在纸上会把正文透上来） */
+  background: var(--paper-deep);
+  border-bottom-color: var(--line);
 }
 
 .focusMode .topActions .primary,
 .focusMode .topActions .ghost {
   display: none;
+}
+
+/* ---- 专注模式：与主题无关的暖白纸面 -----------------------------------------
+   为什么要在专注模式里**重设整套纸面 token**，而不是只把编辑器底色刷白：
+
+   1. `.focusMode .editor { background: var(--paper) }` 在夜间主题下就是 `#0a0507`
+      纯黑——全屏一大片黑既刺眼（长段写作时明暗对比过强）也不像"稿纸"，
+      而专注模式的全部意义就是让写作者面对的是一张纸。
+   2. 只改底色会更糟：夜间主题的 `--ink` 是 `#ffe8ec`（浅粉），刷到米白底上直接看不见。
+      纸面与字色必须成对出现，所以这里覆盖的是一整组 token。
+   3. 覆盖挂在 `.focusMode`（就是 shell 那一层）上：所有后代元素——顶栏、编辑器、
+      专注计时条、状态提示——都通过 var() 取色，于是自动跟着换，不需要逐条规则去改。
+      这也是 `.focusMode` 只在「写作页 · 剧本」且专注中才加到 shell 上的原因：
+      不专注时这套 token 完全不存在，其它页面（含夜间主题）一点都不受影响。
+
+   配色取向：暖白纸（#f6f1e6）+ 暖近黑字（#2a2622，对比度约 13:1），
+   强调色沿用品牌绯红但压深一档以保证在浅底上的对比度（约 6:1）。
+   `--danger/--ok/--ai` 也一并换成深色版：夜间那套浅色语义色是给黑底用的，
+   放在米白上会糊成一片。
+   这些**对比度本身有测试**（backend/tests/test_focus_paper.py 直接解析这里的取值算
+   WCAG 对比度）：纸面与字色必须成对出现，且正文字对比 ≥ 7:1——只把底色刷白、
+   忘了改字色，正是这次要防的那类改法。 */
+.focusMode {
+  --paper: #f6f1e6;
+  --paper-deep: #ebe2cf;
+  --ink: #2a2622;
+  --ink-soft: #6d6455;
+  --line: #c2b49a;
+  --accent: #b2183c;
+  --accent-hot: #c2410c;
+  --ai: #9a6700;
+  --ok: #15803d;
+  --danger: #b91c1c;
+  --ring: #b2183c;
+  --on-accent: #fff8f4;
+  --panel-bg: color-mix(in srgb, #fffaf0 88%, #b2183c);
+  --field-bg: color-mix(in srgb, #fffdf7 74%, transparent);
+  --input-bg: color-mix(in srgb, #fffdf7 82%, transparent);
+  --rail-fill: var(--paper-deep);
+  --rail-fill-soft: color-mix(in srgb, var(--paper-deep) 70%, transparent);
+  --rail-fill-strong: var(--paper-deep);
+  --rail-border: var(--line);
+  --rail-border-soft: color-mix(in srgb, var(--line) 60%, transparent);
+  --rail-blur: none;
+  --grad-accent: linear-gradient(135deg, #8f1230 0%, #b2183c 55%, #d62b50 100%);
+  --grad-title: linear-gradient(120deg, #2a2622 0%, #b2183c 55%, #c2410c 100%);
+  --grad-sheen: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.5) 50%, transparent 80%);
+  /* 阴影换暖中性：夜间那套是黑底上的绯红投影，落在米白纸上会发脏 */
+  --shadow-sm: 0 1px 2px rgba(42, 38, 34, 0.06), 0 2px 6px rgba(42, 38, 34, 0.05);
+  --shadow: 0 6px 18px -6px rgba(42, 38, 34, 0.14), 0 2px 6px rgba(42, 38, 34, 0.07);
+  --shadow-lg: 0 18px 40px -12px rgba(42, 38, 34, 0.18), 0 8px 16px -8px rgba(42, 38, 34, 0.1);
+  --shadow-hard: 4px 4px 0 rgba(42, 38, 34, 0.12);
+  /* shell 自己也要铺满纸色：否则露出来的是 body 的 `--page-bg`
+     （夜间那条近黑渐变），全屏时更会被浏览器默认的黑色 backdrop 顶上来。 */
+  background: var(--paper);
 }
 
 .focusMode .editor,
@@ -1247,6 +1305,18 @@
   background: var(--paper) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+
+/* 全屏时浏览器给全屏元素铺的是**黑色 backdrop**。正常情况下 shell 已经铺满纸色、
+   backdrop 看不见；但窗口比例极端或安全区留白时，边上会露一圈黑——那正是
+   "专注模式还是黑的"这种观感的来源之一，所以直接把 backdrop 也刷成纸色。
+
+   这里写的是**字面量**而不是 `var(--paper)`：`::backdrop` 不保证继承来源元素的
+   自定义属性（各家实现不一致），取不到就退回默认黑。为了两处不偷偷分叉，
+   `backend/tests/test_focus_paper.py` 会比对这两个值是否一致。 */
+.focusMode:fullscreen::backdrop,
+.focusMode:-webkit-full-screen::backdrop {
+  background: #f6f1e6;
 }
 
 .focusMode .panel {

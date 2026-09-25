@@ -251,7 +251,35 @@ Word 客户端的观感（所以字号是参数）。阅读导出 `/export/docx`
 - 但它确实占掉正文上方一条空间，所以加了**折叠开关**（状态记在本机 localStorage，
   不跟作品走）——"占地方"这个批评是成立的，回答是让它可以被收起来，而不是换个地方占。
 
-## 十一、明确没做的
+## 十一、专注模式：纸面与主题解耦（以及它收起的那条辅助）
+
+**改了两件事**：专注模式的纸面不再跟随日间 / 夜间主题，固定为暖白纸（`#f6f1e6`）
+配暖近黑字（`#2a2622`）；写作辅助条在专注模式里**整条不渲染**。
+
+- **为什么解耦**：夜间主题的 `--paper` 是 `#0a0507`。全屏独占一屏的纯黑，长段写作时
+  明暗对比过强，也不像稿纸——而专注模式的全部意义就是让作者面对的是一张纸。
+  所以这里不复用主题纸色，而是自定一套纸面 token。
+- **为什么覆盖"一整组 token"而不是"把编辑器底色刷白"**：夜间主题的 `--ink` 是
+  `#ffe8ec`（浅粉），只刷底色会让字直接看不见；纸色与字色必须成对。
+  覆盖挂在 `.focusMode`（shell 那一层）上，顶栏 / 编辑器 / 专注计时条 / 状态提示都是
+  通过 `var()` 取色，于是自动跟着换。`.focusMode` 只在「写作页 · 剧本」且专注中才加上，
+  所以不专注时这套 token 根本不存在，其它页面（含夜间主题）一点没变。
+- **顺带刷了全屏 backdrop**：浏览器给全屏元素铺的是黑色 backdrop，正常看不见，
+  但窗口比例极端或有安全区留白时边上会露一圈黑——那正是"专注模式还是黑的"的来源之一。
+  `::backdrop` 不保证继承元素的自定义属性，所以那里写**字面量**，并有测试比对它与
+  `--paper` 一致（两处分叉会露出异色边，很难查）。
+- **为什么收起写作辅助（而不是用 CSS 藏）**：那条是"边写边看读数"的东西，与专注的意图
+  相反；而本场写了多少字已经由专注计时条的「+N 字」显示，不重复。用"不渲染"还能顺带
+  停掉它每 30 秒一次的统计轮询——专注时不该有后台请求在跑。
+
+验证放在 `backend/tests/test_focus_paper.py`（7 项，纯解析 CSS / TSX，不需要数据库）：
+直接读 CSS 里的取值算 **WCAG 对比度**——正文 ≥ 7:1（实测 13.3:1）、次要文字 ≥ 4.5:1、
+强调色与"按钮字/按钮底"≥ 4.5:1；纸色不得等于夜间纯黑；shell 自己要铺纸色
+（透明就会露出 body 的近黑 `--page-bg`）；编辑器与顶栏必须走 token；backdrop 与 `--paper`
+一致；`<WriteAids>` 必须被 `focusMode ? null` 包住。这类"取色合同"用数字钉住比
+"看起来还行"可靠——**只刷底色、忘了改字色**正是这类改动最容易做一半的地方。
+
+## 十二、明确没做的
 
 - 场景导航只做"读 + 跳"，不做拖拽重排、不做场景级元数据（POV/时间/地点）挂载。
 - 字数目标只有三档（本章/本卷/今日），没有"连续打卡奖励""目标历史"。
@@ -259,8 +287,11 @@ Word 客户端的观感（所以字号是参数）。阅读导出 `/export/docx`
 - 稿件体检面板不做筛选/排序（线索多了只列前 80 条并写明还有多少条）。
 - 连载工作台不做"定时发布""多平台同步"——它只在本工具里记账。
 - 投稿包不做投稿信的模板生成，也不猜目标平台的字数限制。
+- **专注模式的纸色不做成可调**：只给了这一档暖白纸。做成"纸面 / 暗色"开关、或者允许
+  自选色，都要多一组状态与一套对比度校验，而现在并没有"有人真的想在专注里看黑底"的证据；
+  真需要时再加，那时把校验一起扩上去即可。
 
-## 十二、验证
+## 十三、验证
 
 ```powershell
 # 前端纯函数层（55 + 14 + 25 + 14 + 10 项）+ 全量
@@ -274,7 +305,8 @@ cd backend; $env:PYTHONPATH="."
 .\.venv\Scripts\python.exe -m pytest tests/test_novel_consistency.py tests/test_novel_craft.py `
   tests/test_ln_template.py tests/test_novel_audit_surface.py tests/test_agent_tool_polish.py `
   tests/test_export_submission.py tests/test_export_submission_route.py tests/test_typo_words.py `
-  tests/test_mark_revise.py tests/test_variant_select.py tests/test_llm_logprobs.py
+  tests/test_mark_revise.py tests/test_variant_select.py tests/test_llm_logprobs.py `
+  tests/test_focus_paper.py
 ```
 
 `test_typo_words.py` 覆盖：解析前端 TS 词表逐条比对（含顺序）、词表自身的自洽性
@@ -285,4 +317,8 @@ cd backend; $env:PYTHONPATH="."
 `test_export_submission_route.py` 覆盖：路由返回 docx 与 zip 的两种内容类型、排版开关真的
 传到排版层（缩进/梗概/字数）、以及 `writingGenre` / `writingGoals` / `publishedAt` 存取往返
 （这条专门守"漏白名单就静默丢数据"那个坑）。
+
+`test_focus_paper.py` 覆盖专注模式的取色合同与"收起的辅助条"（见第十一节）：对比度用
+CSS 里的实际取值算，纸色/字色必须成对，backdrop 与 `--paper` 必须一致，
+`<WriteAids>` 必须被 `focusMode ? null` 包住。
 

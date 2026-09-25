@@ -3160,32 +3160,38 @@ export function StudioApp() {
                       onFind={openFind}
                     />
                     {/* 写作手感条：字数目标 / 分场导航 / 笔误体检。
-                        放在错误边界之外——它坏了不该连带把正文编辑器一起顶掉。 */}
-                    <WriteAids
-                      projectId={project.id}
-                      chapterId={chapterId}
-                      volumeId={chapter?.volumeId}
-                      text={editor}
-                      caret={selectionRange?.from ?? 0}
-                      // 只有正文模式做中文标点体检：RPY 是代码，同一套规则会满屏误报
-                      lint={writeMode === "prose"}
-                      writingGoals={project.writingGoals}
-                      onSaveGoals={(goals) => {
-                        updateActive((p) => ({ ...p, writingGoals: goals }));
-                        const parts = [
-                          goals.chapter ? `本章 ${goals.chapter} 字` : "",
-                          goals.volume ? `本卷 ${goals.volume} 字` : "",
-                          goals.daily ? `今日 ${goals.daily} 字` : "",
-                        ].filter(Boolean);
-                        setStatus(
-                          parts.length
-                            ? `目标已保存：${parts.join("、")}（跟着作品走，换设备也在）`
-                            : "已清空字数目标"
-                        );
-                      }}
-                      onJump={(from, length) => focusEditorRange(from, from + length)}
-                      onInsert={insertAtCaret}
-                    />
+                        放在错误边界之外——它坏了不该连带把正文编辑器一起顶掉。
+                        **专注模式整条不渲染**：那条是"边写边看读数"的东西，而专注要的是
+                        只留稿子；本场写了多少字已经由专注计时条上的「+N 字」在显示，
+                        不重复。这里用"不渲染"而不是 CSS 藏起来，还能顺带停掉它每 30 秒
+                        一次的统计轮询（专注时不该有后台请求在跑）。 */}
+                    {focusMode ? null : (
+                      <WriteAids
+                        projectId={project.id}
+                        chapterId={chapterId}
+                        volumeId={chapter?.volumeId}
+                        text={editor}
+                        caret={selectionRange?.from ?? 0}
+                        // 只有正文模式做中文标点体检：RPY 是代码，同一套规则会满屏误报
+                        lint={writeMode === "prose"}
+                        writingGoals={project.writingGoals}
+                        onSaveGoals={(goals) => {
+                          updateActive((p) => ({ ...p, writingGoals: goals }));
+                          const parts = [
+                            goals.chapter ? `本章 ${goals.chapter} 字` : "",
+                            goals.volume ? `本卷 ${goals.volume} 字` : "",
+                            goals.daily ? `今日 ${goals.daily} 字` : "",
+                          ].filter(Boolean);
+                          setStatus(
+                            parts.length
+                              ? `目标已保存：${parts.join("、")}（跟着作品走，换设备也在）`
+                              : "已清空字数目标"
+                          );
+                        }}
+                        onJump={(from, length) => focusEditorRange(from, from + length)}
+                        onInsert={insertAtCaret}
+                      />
+                    )}
                     {findOpen ? (
                       <FindReplaceBar
                         // 每次打开都用新的查找词重新挂载（否则预填值不会更新）
