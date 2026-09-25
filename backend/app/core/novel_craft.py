@@ -1058,16 +1058,18 @@ def style_readings(
         return readings
 
     d_ratios = [r["ratio"]["dialogue"] for r in rows if r["ratio"]["dialogue"] is not None]
-    if d_ratios:
-        median = round(statistics.median(d_ratios), 3)
+    share = summary.get("dialogueShare")
+    if share is None and d_ratios:
+        share = round(statistics.median(d_ratios), 3)
+    if share is not None:
         driver = (
-            "对白驱动" if median >= 0.55 else ("叙述驱动" if median <= 0.30 else "对白与叙述接近")
+            "对白驱动" if share >= 0.55 else ("叙述驱动" if share <= 0.30 else "对白与叙述接近")
         )
         readings.append(
             {
                 "kind": "reading",
                 "label": "对白 / 叙述",
-                "value": f"全书中位对白占比 {round(median * 100)}%（{driver}）",
+                "value": f"全书对白占 {round(share * 100)}%（{driver}）",
                 "basis": STYLE_BASIS["dialogue"],
             }
         )
@@ -1321,15 +1323,23 @@ def _summary(
 
 
 def _style_summary(rows: List[Dict[str, Any]], words: int) -> Dict[str, Any]:
-    """文体剖面给 `style_readings()` 用的几个中位数（全书的，不是逐章）。"""
+    """文体剖面给 `style_readings()` 用的几个数（**全书的**，不是逐章中位数）。
+
+    对白占比用**全书合计**（总对白字数 / 总叙述+对白字数），而不是"逐章占比的中位数"：
+    中位数在两章的书里会退化成平均值，"全书占 X%"才是作者一眼能懂的口径。
+    """
     hooks = [r["hook"]["score"] for r in rows if r["hook"]["level"] != "empty"]
     ono = sum(int(r["onomatopoeia"]["count"]) for r in rows)
     ruby = sum(int(r["ruby"]["count"]) for r in rows)
+    d_words = sum(int(r["words"]["dialogue"]) for r in rows)
+    n_words = sum(int(r["words"]["narration"]) for r in rows)
+    prose = d_words + n_words
     return {
         "avgChapterWords": (round(words / len(rows)) if rows and words else None),
         "hookMedian": (round(statistics.median(hooks), 2) if hooks else None),
         "onomatopoeiaPer1000": (round(ono / words * 1000, 2) if words else None),
         "rubyPer1000": (round(ruby / words * 1000, 2) if words else None),
+        "dialogueShare": (round(d_words / prose, 3) if prose else None),
     }
 
 
