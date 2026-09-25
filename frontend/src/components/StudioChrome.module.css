@@ -1,7 +1,10 @@
 .backstage {
   position: absolute;
   inset: 0;
-  z-index: 40;
+  /* 覆盖在稿纸之上的整页面板：必须高于稿纸工具条（.toolbar 是 z-index:70、且整宽），
+     否则工具条会横着压在它上部——用户实测报过（"展开的页面被工具条挡住"）。
+     层级关系：稿纸内容 < 工具条 70 < 文件二级页/视图抽屉 80 < 顶栏 90。 */
+  z-index: 80;
   display: flex;
   flex-direction: column;
   background: var(--paper, var(--page-bg));
@@ -55,13 +58,22 @@
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: 45;
+  /* 同上：必须高于整宽的工具条（70），否则抽屉上部会被那条横带压住。
+     45 是重构前的值——那时工具条还没有为了压住 Agent 浮窗而被提到 70，
+     所以"抽屉在工具条下面"当时看不出来。 */
+  z-index: 80;
   display: flex;
   flex-direction: column;
   width: min(52vw, 560px);
   max-width: 100%;
   border-left: 2px solid var(--line);
-  background: var(--panel-bg);
+  /* 抽屉是**压在稿纸之上**的面板，底色必须不透明：
+     直接用它 --panel-bg 在自定义壁纸下是半透明的（52% / rgba .55），
+     稿纸上的字会透上来（用户报过"透出后面的字"）。
+     做法：不透明的 --paper 打底，再把 --panel-bg 当作一层渐变叠上去——
+     既保留主题色，又保证不透。 */
+  background-color: var(--paper);
+  background-image: linear-gradient(var(--panel-bg), var(--panel-bg));
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08);
 }
 

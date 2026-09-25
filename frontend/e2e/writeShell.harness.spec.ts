@@ -84,3 +84,106 @@ test.describe("写作页顶栏菜单", () => {
     await expect(page.getByTestId("harness-log")).toContainText("find");
   });
 });
+
+/**
+ * 抽屉（设定 / 角色工坊 / 地图 / 剧情状态 / 结构分析）被**整宽的工具条**横着压住。
+ *
+ * 这是用户实测报的问题，成因是 z-index 排错了：抽屉 45 / 文件二级页 40，
+ * 而稿纸工具条是 70，且工具条整宽——于是它横着盖在右侧抽屉的上部，
+ * 半透明底又把抽屉里的字透出来。这组守卫钉住两件事：
+ * ① 抽屉最上面那一块必须由抽屉自己接管（命中测试）；
+ * ② 抽屉与菜单下拉的底色必须**不透明**（`--panel-bg` 在自定义壁纸下是半透明的，
+ *    直接拿它当背景就会透出后面的字——用户也报了这一点）。
+ */
+const ALPHA_OF = (raw: string): number => {
+  if (!raw || raw === "transparent") return 0;
+  // color-mix() 的 computed 值在 Chrome 里是 color(srgb r g b / a)（分量 0~1）
+  const srgb = raw.match(/color\(srgb\s+[\d.]+\s+[\d.]+\s+[\d.]+\s*(?:\/\s*([\d.]+))?\)/);
+  if (srgb) return srgb[1] === undefined ? 1 : parseFloat(srgb[1]);
+  const m = raw.match(/rgba?\(([^)]+)\)/);
+  if (!m) return -1; // 未知格式：让断言直接失败，别假装通过
+  const parts = m[1].split(",").map((v) => parseFloat(v.trim()));
+  return parts.length > 3 ? parts[3] : 1;
+};
+
+test.describe("视图抽屉的层叠与不透明", () => {
+  /**
+   * 打开"自定义壁纸"模式。
+   *
+   * 为什么必须**在壁纸模式下**验不透明：日间/夜间主题的 `--panel-bg` 本来就是不透明的
+   * （92% / 90% 实色混合），所以不挂壁纸时这两条断言会"通过得毫无意义"。
+   * 半透明只出现在 `html[data-custom-bg="1"]` 下——`--panel-bg` 变成 52% 透明
+   * 或 `rgba(18,8,12,.55)`，那正是用户报"透出后面的字"的场景。
+   */
+  async function useWallpaper(page: Page) {
+    await page.evaluate(() => {
+      document.documentElement.dataset.customBg = "1";
+      document.documentElement.dataset.panelGlass = "mist";
+    });
+  }
+
+  test("抽屉上部没有被工具条压住（点得到、看得见）", async ({ page }) => {
+    await page.goto("/e2e/writeShell.html?genre=vn&drawer=1");
+    await expect(page.getByTestId("view-drawer")).toBeVisible();
+
+    const probe = await page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>('[data-testid="view-drawer"]')!;
+      const b = el.getBoundingClientRect();
+      // 标题栏以内：这一带正落在整宽工具条的横带上
+      const x = b.left + b.width / 2;
+      const y = b.top + 12;
+      const hit = document.elementFromPoint(x, y);
+      return {
+        y: Math.round(y),
+        inside: Boolean(hit && (hit === el || el.contains(hit))),
+        by: hit
+          ? `${hit.tagName}.${String((hit as HTMLElement).className).slice(0, 34)}`
+          : "(none)",
+      };
+    });
+    expect(probe.inside, `抽屉在 y=${probe.y} 被 ${probe.by} 盖住了`).toBe(true);
+  });
+
+  test("抽屉正文顶部也没有被盖住", async ({ page }) => {
+    await page.goto("/e2e/writeShell.html?genre=vn&drawer=1");
+    const probe = await page.evaluate(() => {
+      const drawer = document.querySelector<HTMLElement>('[data-testid="view-drawer"]')!;
+      const content = document.querySelector<HTMLElement>('[data-testid="drawer-content"]')!;
+      const cb = content.getBoundingClientRect();
+      const hit = document.elementFromPoint(cb.left + 8, cb.top + 8);
+      return {
+        inside: Boolean(hit && drawer.contains(hit)),
+        by: hit
+          ? `${hit.tagName}.${String((hit as HTMLElement).className).slice(0, 34)}`
+          : "(none)",
+      };
+    });
+    expect(probe.inside, `抽屉正文被 ${probe.by} 盖住了`).toBe(true);
+  });
+
+  test("抽屉底色不透明（含自定义壁纸模式）", async ({ page }) => {
+    await page.goto("/e2e/writeShell.html?genre=vn&drawer=1");
+    await useWallpaper(page);
+    const raw = await page
+      .getByTestId("view-drawer")
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(ALPHA_OF(raw), `壁纸模式下抽屉底色 alpha=${raw}`).toBe(1);
+    // 顺带确认真的进了壁纸模式（否则上面那条等于没测）
+    expect(await page.evaluate(() => document.documentElement.dataset.customBg)).toBe("1");
+  });
+
+  test("菜单下拉底色不透明（含自定义壁纸模式）", async ({ page }) => {
+    await page.goto("/e2e/writeShell.html?genre=vn");
+    await useWallpaper(page);
+    for (const menu of MENUS) {
+      const summary = page.locator("summary", { hasText: menu }).first();
+      await summary.click();
+      const panel = page.locator('details[open] [role="menu"]');
+      await expect(panel).toBeVisible();
+      const raw = await panel.evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(ALPHA_OF(raw), `「${menu}」下拉底色 alpha=${raw}`).toBe(1);
+      await page.keyboard.press("Escape");
+      await summary.click();
+    }
+  });
+});

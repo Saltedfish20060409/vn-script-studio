@@ -4,6 +4,7 @@
 import { StrictMode, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { StudioRibbon } from "../src/components/StudioRibbon";
+import { StudioViewDrawer } from "../src/components/StudioChrome";
 import { WriteToolbar } from "../src/components/WriteToolbar";
 import { copyFor } from "../src/lib/genreCopy";
 import shellStyles from "../src/components/StudioApp.module.css";
@@ -22,7 +23,15 @@ import "../src/styles/globals.css";
 
 type Log = (line: string) => void;
 
-function WriteShell({ genre, log }: { genre: "vn" | "novel"; log: Log }) {
+function WriteShell({
+  genre,
+  log,
+  drawer = false,
+}: {
+  genre: "vn" | "novel";
+  log: Log;
+  drawer?: boolean;
+}) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [writeMode, setWriteMode] = useState<"prose" | "rpy">("prose");
   const copy = copyFor(genre);
@@ -82,6 +91,23 @@ function WriteShell({ genre, log }: { genre: "vn" | "novel"; log: Log }) {
                   雨停的时候，站台的灯还亮着。
                 </div>
               </section>
+
+              {/* 视图抽屉：与真实写作页同构地放在 docMain 里（稿纸之上、工具条之下那一段），
+                  用来复现"抽屉被整宽的工具条横着压住"这个层叠问题。 */}
+              {drawer ? (
+                <StudioViewDrawer
+                  title="设定"
+                  size="wide"
+                  onToggleSize={() => log("toggleSize")}
+                  onClose={() => log("closeDrawer")}
+                >
+                  <div data-testid="drawer-content">
+                    <p>角色：雨宫澪 / 佐仓铃</p>
+                    <p>这一行是抽屉里的正文，必须完整可读——不能被上面的工具条压住。</p>
+                    <p style={{ height: 800 }}>（占位，撑出滚动高度）</p>
+                  </div>
+                </StudioViewDrawer>
+              ) : null}
             </div>
           </div>
         </main>
@@ -95,10 +121,11 @@ function App() {
   const log: Log = (line) => setLines((cur) => [...cur, line]);
   const params = new URLSearchParams(window.location.search);
   const genre = params.get("genre") === "novel" ? "novel" : "vn";
+  const drawer = params.get("drawer") === "1";
 
   return (
     <StrictMode>
-      <WriteShell genre={genre} log={log} />
+      <WriteShell genre={genre} log={log} drawer={drawer} />
       <pre data-testid="harness-log" style={{ display: "none" }}>
         {lines.join("\n")}
       </pre>
