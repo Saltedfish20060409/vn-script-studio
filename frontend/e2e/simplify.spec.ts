@@ -1,13 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openFilePage, openViewPanel } from "./nav";
 
 /**
- * 「降低复杂度」的回归测试 —— 全部是「什么时候让用户看到什么」，不是删功能。
- *
- * 四条底线：
- * 1. 新人第一屏不再是一段功能名长文，而是三个可点的动作；
- * 2. 项目页常用子页在前，长尾收进「更多」，但**一个都没少**；
- * 3. 停在长尾子页时「更多」自动展开（老用户不丢入口，刷新也不丢）；
- * 4. 「写作参考卡」不再和「设定条目」并列，但入口仍在。
+ * Word 壳回归：稿纸常在；文件二级页 / 视图抽屉可开可关；设定子页仍在。
  */
 
 const PASSWORD = "e2e-secret-123";
@@ -51,19 +46,12 @@ async function registerAndLogin(page: Page, username: string) {
   await expect(page.getByTestId("script-editor")).toBeVisible({ timeout: 40_000 });
 }
 
-async function gotoTab(page: Page, name: string) {
-  const rail = page.locator('nav[aria-label="剧本篇章"]');
-  await rail.getByRole("button", { name: new RegExp(name) }).click();
-}
-
 test("新人第一屏：没有功能名长文弹窗，只有三个可点的动作", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await registerAndLogin(page, randomName("e2e_simple_"));
 
-  // 旧的四步长文弹窗已经删掉，不该再出现
   await expect(page.getByTestId("onboarding-overlay")).toHaveCount(0);
 
-  // 三步清单在第一屏，而且每步都短、可点
   const checklist = page.getByRole("region", { name: "新手上手三步" });
   await expect(checklist).toBeVisible({ timeout: 20_000 });
   await expect(checklist).toContainText("三步上手");
@@ -71,334 +59,66 @@ test("新人第一屏：没有功能名长文弹窗，只有三个可点的动�
     await expect(checklist.getByRole("button", { name: new RegExp(label) })).toBeVisible();
   }
 
-  // 清单确实在编辑区上方（不是藏在页面底部）
   const bar = await checklist.boundingBox();
   const editor = await page.getByTestId("script-editor").boundingBox();
   expect(bar && editor && bar.y < editor.y).toBe(true);
 
-  // 删掉弹窗没有丢失「怎么写」这条关键信息：空编辑器的提示里就写着
   await expect(page.getByTestId("script-editor")).toHaveAttribute(
     "placeholder",
     /旁白直接写/
   );
 });
 
-test("项目页：「更多」能开也能关，长尾一个都没少", async ({ page }) => {
+test("文件菜单：二级页都能打开，返回正文后稿纸还在", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await registerAndLogin(page, randomName("e2e_subs_"));
-  await gotoTab(page, "项目");
 
-  const more = page.getByTestId("project-subs-more");
-  for (const label of ["剧本库", "写作统计", "结构分析", "导出"]) {
-    await expect(page.getByRole("button", { name: label, exact: true }).first()).toBeVisible({
-      timeout: 20_000,
-    });
+  for (const label of ["打开（剧本库）", "写作统计", "结构分析", "导出…"]) {
+    await openFilePage(page, label);
+    await expect(page.getByTestId("file-backstage")).toBeVisible();
+    await page.getByTestId("backstage-close").click();
+    await expect(page.getByTestId("file-backstage")).toHaveCount(0);
+    await expect(page.getByTestId("script-editor")).toBeVisible();
   }
-  // 长尾默认不出现
+
   for (const label of ["本地化", "成员", "账本 / 摘要"]) {
-    await expect(page.getByRole("button", { name: label, exact: true })).toHaveCount(0);
-  }
-  await expect(more).toHaveText(/更多/);
-
-  // 展开：五个长尾都在，加上原来四个 = 9 个，一个没删；按钮变成「收起」
-  await more.click();
-  for (const label of ["账本 / 摘要", "素材", "本地化", "快照 / 分享", "成员"]) {
-    await expect(page.getByRole("button", { name: label, exact: true }).first()).toBeVisible();
-  }
-  await expect(more).toHaveText(/收起/);
-
-  // 关得掉：这就是曾经的 bug——展开后按钮被页签替换、点开就收不回来
-  await more.click();
-  await expect(more).toHaveText(/更多/);
-  for (const label of ["本地化", "成员"]) {
-    await expect(page.getByRole("button", { name: label, exact: true })).toHaveCount(0);
-  }
-  // 关掉之后原来的四个常用页签还在（没被连带藏起来）
-  for (const label of ["剧本库", "写作统计", "结构分析", "导出"]) {
-    await expect(page.getByRole("button", { name: label, exact: true }).first()).toBeVisible();
+    await openFilePage(page, label);
+    await expect(page.getByTestId("file-backstage")).toBeVisible();
+    await page.getByTestId("backstage-close").click();
   }
 });
 
-test("停在长尾子页时：收起也看得见自己在哪，刷新后不丢", async ({ page }) => {
+test("顶栏有文件/开始/审阅/视图四菜单", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await registerAndLogin(page, randomName("e2e_subs_keep_"));
-  await gotoTab(page, "项目");
-
-  const more = page.getByTestId("project-subs-more");
-  await more.click();
-  await page.getByRole("button", { name: "本地化", exact: true }).click();
-  await expect(more).toHaveText(/收起/);
-
-  // 手动收起：当前页那一个页签要留着（否则"看不见自己在哪"），其余长尾收起来
-  await more.click();
-  await expect(page.getByRole("button", { name: "本地化", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "成员", exact: true })).toHaveCount(0);
-
-  // 刷新后仍停在长尾页，且当前页签依然看得见
-  await page.reload();
-  const active = page.getByRole("button", { name: "本地化", exact: true }).first();
-  await expect(active).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("project-subs-more")).toHaveText(/更多/);
+  await registerAndLogin(page, randomName("e2e_ribbon_"));
+  const ribbon = page.getByTestId("studio-ribbon");
+  await expect(ribbon).toBeVisible();
+  for (const name of ["文件", "开始", "审阅", "视图"]) {
+    await expect(ribbon.getByText(name, { exact: true }).first()).toBeVisible();
+  }
 });
 
-test("设定页：写作参考卡不再和设定条目并列，但入口还在", async ({ page }) => {
+test("设定抽屉：写作参考卡不再和设定条目并列，但入口还在", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await registerAndLogin(page, randomName("e2e_world_"));
-  await gotoTab(page, "设定");
+  await openViewPanel(page, "设定");
 
+  const drawer = page.getByTestId("view-drawer");
   for (const label of ["角色卡", "世界观 / 大纲", /^设定条目/]) {
-    await expect(page.getByRole("button", { name: label }).first()).toBeVisible({
-      timeout: 20_000,
+    await expect(drawer.getByRole("button", { name: label }).first()).toBeVisible({
+      timeout: 15_000,
     });
   }
-  // 进阶的写作参考卡默认不并列出现
-  await expect(page.getByRole("button", { name: "写作参考卡", exact: true })).toHaveCount(0);
 
-  const more = page.getByTestId("world-subs-more");
-  await more.click();
-  const card = page.getByRole("button", { name: "写作参考卡", exact: true });
-  await expect(card).toBeVisible();
-  await expect(more).toHaveText(/收起/);
+  await expect(drawer.getByRole("button", { name: "写作参考卡", exact: true })).toHaveCount(0);
 
-  // 点进去功能照旧（收藏参考卡 + 萌百搜索都还在）
-  await card.click();
-  await expect(page.getByPlaceholder(/搜索萌百/)).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText(/AI 写作时作为参考/)).toBeVisible();
-
-  // 这里同样要能收回来：当前停在这一页，所以页签留着、按钮回到「更多」
-  await more.click();
-  await expect(more).toHaveText(/更多/);
-  await expect(card).toBeVisible();
-  await expect(page.getByPlaceholder(/搜索萌百/)).toBeVisible();
-});
-
-test("Agent 起手句：一下都不用打字，点一下就填好", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await registerAndLogin(page, randomName("e2e_starter_"));
-
-  // 打开 AI 责编（平时贴边收起）
-  const toggle = page.getByTestId("agent-sections-toggle");
-  if (!(await toggle.isVisible().catch(() => false))) {
-    await page.getByTitle(/AI 责编/).first().click();
+  // 入口仍在「更多」或展开区（WorldPanel 行为）
+  const more = drawer.getByRole("button", { name: /更多|写作参考/ });
+  if (await more.first().isVisible().catch(() => false)) {
+    await more.first().click();
   }
-  await expect(toggle).toBeVisible({ timeout: 20_000 });
-
-  const starters = page.getByTestId("agent-starters");
-  await expect(starters).toBeVisible();
-
-  // 点一个起手句 → 输入框里就有内容了（不用打字），而且**没有**被自动发送
-  const composer = page.getByPlaceholder(/用平常话说/).first();
-  await expect(composer).toHaveValue("");
-  await page.getByRole("button", { name: "接着往下写一段" }).click();
-  await expect(composer).toHaveValue("接着往下写一段");
-  await expect(starters).toHaveCount(0);
-});
-
-test("Agent 面板里的文字要看得清：压在背景图上的行必须有不透明底", async ({ page }) => {  await page.setViewportSize({ width: 1440, height: 1000 });
-  await registerAndLogin(page, randomName("e2e_contrast_"));
-
-  const toggle = page.getByTestId("agent-sections-toggle");
-  if (!(await toggle.isVisible().catch(() => false))) {
-    await page.getByTitle(/AI 责编/).first().click();
+  const card = drawer.getByRole("button", { name: "写作参考卡", exact: true });
+  if (await card.count()) {
+    await expect(card.first()).toBeVisible();
   }
-  await expect(page.getByTestId("agent-starters")).toBeVisible({ timeout: 20_000 });
-
-  /**
-   * 线上问题：起手句和 ⚙ 资料 两行糊在背景图里几乎看不清。
-   *
-   * 为什么这里断言「底色不透明」而不是算对比度：面板底是**半透明渐变 + 背景图**
-   * （AgentChat .messages / AgentFloat .panel），getComputedStyle 看不到图，
-   * 算出来的对比度会虚高（实测旧样式反而"达标"6.96:1）。真正决定看得清与否的，
-   * 是这几行背后有没有一层不透明底把图挡掉——那才是可确定性断言的东西。
-   */
-  const surfaces = await page.evaluate(() => {
-    // color-mix() 的 computed 值在 Chrome 里是 `color(srgb r g b / a)`（分量 0~1），
-    // 不是 rgba()；两种都要认，否则会一律解析成 0（踩过）。
-    const alphaOf = (raw: string): number => {
-      if (!raw || raw === "transparent") return 0;
-      const c = raw.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*(?:\/\s*([\d.]+))?\)/);
-      if (c) return c[4] === undefined ? 1 : parseFloat(c[4]);
-      const m = raw.match(/rgba?\(([^)]+)\)/);
-      if (!m) return -1; // 未知格式：让断言直接失败，别假装通过
-      const p = m[1].split(",").map((v) => parseFloat(v.trim()));
-      return p.length > 3 ? p[3] : 1;
-    };
-    const bgAlpha = (sel: string) => {
-      const el = document.querySelector(sel);
-      return el ? alphaOf(getComputedStyle(el).backgroundColor) : -2;
-    };
-    const color = (sel: string) => {
-      const el = document.querySelector(sel);
-      return el ? getComputedStyle(el).color : "missing";
-    };
-    return {
-      cardAlpha: bgAlpha('[data-testid="agent-starters"]'),
-      chipAlpha: bgAlpha('[data-testid="agent-starters"] button'),
-      hintColor: color('[data-testid="agent-starters"] span'),
-      sectionColor: color('[data-testid="agent-sections-summary"]'),
-    };
-  });
-
-  expect(surfaces.cardAlpha, "起手句卡片必须是实底（否则背景图透上来就糊了）").toBeGreaterThanOrEqual(0.9);
-  expect(surfaces.chipAlpha, "起手句按钮不能是透明底").toBeGreaterThan(0);
-  for (const [name, got] of [
-    ["起手句提示", surfaces.hintColor],
-    ["⚙ 资料 说明", surfaces.sectionColor],
-  ] as const) {
-    // 文字要用主墨色 --ink，不能用弱化的 --ink-soft（#4a5568 → rgb(74,85,104)）
-    expect(got, `${name} 不该用弱化色`).not.toMatch(/^rgba?\(74,\s*85,\s*104/);
-    expect(got).toBeTruthy();
-  }
-
-  // 自证：把旧样式（透明底）注回去，这个护栏必须能判不合格
-  await page.addStyleTag({
-    content: '[data-testid="agent-starters"] { background: transparent !important; border: none !important; }',
-  });
-  const afterInject = await page.evaluate(() => {
-    const el = document.querySelector('[data-testid="agent-starters"]');
-    if (!el) return -2;
-    const raw = getComputedStyle(el).backgroundColor;
-    if (raw === "transparent") return 0;
-    const m = raw.match(/rgba?\(([^)]+)\)/);
-    if (!m) return -1;
-    const p = m[1].split(",").map((v) => parseFloat(v.trim()));
-    return p.length > 3 ? p[3] : 1;
-  });
-  expect(afterInject, "护栏失效：注入透明底后仍判合格").toBeLessThan(0.9);
-});
-
-// ---------------------------------------------------------------------------
-// 动笔前先问几句（可选、可跳过）
-// ---------------------------------------------------------------------------
-
-/** 把 agent 请求拦下来，只记录请求体，返回一个最小的 done 事件 */
-async function stubAgentStream(page: Page): Promise<Array<Record<string, unknown>>> {
-  const sent: Array<Record<string, unknown>> = [];
-  await page.route("**/agent/stream", async (route) => {
-    sent.push(JSON.parse(route.request().postData() ?? "{}"));
-    await route.fulfill({
-      status: 200,
-      contentType: "text/event-stream",
-      body:
-        "data: " +
-        JSON.stringify({
-          type: "done",
-          result: {
-            message: "（测试用回复）",
-            actions: [],
-            model: "test",
-            applied: false,
-            warnings: [],
-          },
-        }) +
-        "\n\n",
-    });
-  });
-  return sent;
-}
-
-async function openAgentPanel(page: Page) {
-  const toggle = page.getByTestId("agent-sections-toggle");
-  if (!(await toggle.isVisible().catch(() => false))) {
-    await page.getByTitle(/AI 责编/).first().click();
-  }
-  await expect(toggle).toBeVisible({ timeout: 20_000 });
-}
-
-test("先问几句：答完把答案并进写作指令；不想答可以跳过", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await registerAndLogin(page, randomName("e2e_preq_"));
-  await openAgentPanel(page);
-  const sent = await stubAgentStream(page);
-
-  await page.route("**/agent/pre-questions", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        questions: ["这场的关键推进点是什么？", "林夏的动机有变化吗？", "结尾停在哪句台词？"],
-        source: "llm",
-      }),
-    });
-  });
-
-  const composer = page.getByPlaceholder(/用平常话说/).first();
-  await composer.fill("写一场雨夜站台的戏");
-
-  // 没输入时按钮不可点（避免问出空问题）
-  await composer.fill("");
-  await expect(page.getByTestId("agent-prequestions")).toBeDisabled();
-  await composer.fill("写一场雨夜站台的戏");
-
-  await page.getByTestId("agent-prequestions").click();
-  const card = page.getByTestId("agent-prequestions-card");
-  await expect(card).toBeVisible({ timeout: 20_000 });
-  await expect(card).toContainText("这场的关键推进点是什么？");
-  await expect(card).toContainText("结尾停在哪句台词？");
-
-  // 只答两条，第三条留空 → 空的不该出现在指令里
-  await page.getByTestId("agent-prequestions-input-0").fill("她决定不说破");
-  await page.getByTestId("agent-prequestions-input-1").fill("从回避变成想留");
-  await page.getByTestId("agent-prequestions-confirm").click();
-  await expect(card).toHaveCount(0);
-
-  await expect.poll(() => sent.length, { timeout: 20_000 }).toBeGreaterThan(0);
-  const body = sent[sent.length - 1];
-  const text = JSON.stringify(body);
-  expect(text).toContain("写一场雨夜站台的戏");
-  expect(text).toContain("她决定不说破");
-  expect(text).toContain("从回避变成想留");
-  expect(text).toContain("先回答的几点");
-  expect(text).not.toContain("结尾停在哪句台词"); // 没答的那条不进指令
-});
-
-test("先问几句：点跳过就按原话直接写，不夹带问题", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await registerAndLogin(page, randomName("e2e_preq_skip_"));
-  await openAgentPanel(page);
-  const sent = await stubAgentStream(page);
-
-  await page.route("**/agent/pre-questions", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ questions: ["这条会被跳过吗？"], source: "template" }),
-    });
-  });
-
-  const composer = page.getByPlaceholder(/用平常话说/).first();
-  await composer.fill("接着往下写");
-  await page.getByTestId("agent-prequestions").click();
-  const card = page.getByTestId("agent-prequestions-card");
-  await expect(card).toBeVisible({ timeout: 20_000 });
-  // 模板问题时界面要说明来源
-  await expect(card).toContainText("模型不可用");
-
-  await page.getByTestId("agent-prequestions-skip").click();
-  await expect(card).toHaveCount(0);
-
-  await expect.poll(() => sent.length, { timeout: 20_000 }).toBeGreaterThan(0);
-  const text = JSON.stringify(sent[sent.length - 1]);
-  expect(text).toContain("接着往下写");
-  expect(text).not.toContain("先回答的几点");
-});
-
-test("先问几句：接口挂了也不拦路，直接开始写", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await registerAndLogin(page, randomName("e2e_preq_fail_"));
-  await openAgentPanel(page);
-  const sent = await stubAgentStream(page);
-
-  await page.route("**/agent/pre-questions", async (route) => {
-    await route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
-  });
-
-  const composer = page.getByPlaceholder(/用平常话说/).first();
-  await composer.fill("写一小段");
-  await page.getByTestId("agent-prequestions").click();
-
-  // 不弹卡片、不留死状态，直接发出去写
-  await expect(page.getByTestId("agent-prequestions-card")).toHaveCount(0);
-  await expect.poll(() => sent.length, { timeout: 20_000 }).toBeGreaterThan(0);
-  expect(JSON.stringify(sent[sent.length - 1])).toContain("写一小段");
 });

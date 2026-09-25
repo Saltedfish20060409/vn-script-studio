@@ -1630,7 +1630,7 @@ export function AgentChat({
           : "未写入工程",
         (res.skipped || []).length ? `未执行：${res.skipped.join("；")}` : "",
         res.wrote
-          ? `可用「撤回编辑」回滚（当前对话内 ${undoStack.current.length} 步）· 请打开「设定」页查看`
+          ? `可用「撤回编辑」回滚（当前对话内 ${undoStack.current.length} 步）· 请打开「视图 → 设定」查看`
           : "",
       ]
         .filter(Boolean)

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openViewPanel } from "./nav";
 
 /**
  * 「让工具不输给裸聊」这一批的回归（真实前后端）。
@@ -101,10 +102,11 @@ test("约束体检：设定里写了互相冲突的要求就会被指出来", as
   await page.setViewportSize({ width: 1440, height: 1000 });
   await registerAndLogin(page, randomName("e2e_audit_"));
 
-  // 去设定页 → 世界观/大纲 子页，往「世界观」里写互相打架的要求
-  await page.getByRole("button", { name: "设定", exact: true }).first().click();
-  await page.getByRole("button", { name: /世界观/ }).first().click();
-  const world = page.getByLabel(/世界观/);
+  // 视图 → 设定 → 世界观/大纲 子页，往「世界观」里写互相打架的要求
+  await openViewPanel(page, "设定");
+  const drawer = page.getByTestId("view-drawer");
+  await drawer.getByRole("button", { name: /世界观/ }).first().click();
+  const world = drawer.getByLabel(/世界观/);
   await expect(world).toBeVisible({ timeout: 20_000 });
   await world.fill("必须用第一人称叙述\n全知视角交代所有人的想法\n尽量短句");
 

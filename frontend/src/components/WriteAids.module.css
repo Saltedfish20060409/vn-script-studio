@@ -9,6 +9,17 @@
   font-size: 0.82rem;
 }
 
+/* 默认折叠：只留一行读数，少占正文上方 */
+.wrap[data-collapsed="1"] {
+  padding: 0.28rem 0.55rem;
+  gap: 0;
+}
+
+.wrap[data-collapsed="1"] .head {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
 /* 这块东西必须"一眼看得出存在"：它没有按钮，只有三行读数；
    不写标题的话作者会以为这里是装饰条。 */
 .head {

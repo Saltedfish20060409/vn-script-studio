@@ -141,8 +141,9 @@ describe("workspaceDefaults：默认值", () => {
   it("返回默认快照字段", () => {
     expect(workspaceDefaults()).toEqual({
       tab: "write",
-      // 默认仍是三栏工作台：桌面视图是"供选择"的第二形态，不替老用户改习惯
+      // 默认仍是稿纸工作台：桌面视图是启动器，不替老用户改习惯
       view: "studio",
+      overlay: null,
       writeSub: "script",
       worldSub: "characters",
       systemSub: "variables",
@@ -157,6 +158,39 @@ describe("workspaceDefaults：默认值", () => {
     expect(loadWorkspace().view).toBe("desktop");
     saveWorkspace({ view: "studio" });
     expect(loadWorkspace().view).toBe("studio");
+  });
+
+  it("旧 tab=map 读入时映射为视图抽屉 overlay", () => {
+    const storage = localStorage as unknown as ReturnType<typeof createMockStorage>;
+    storage.setItem(
+      KEY,
+      JSON.stringify({
+        projectId: "p1",
+        chapterId: "c1",
+        tab: "map",
+        writeSub: "script",
+        worldSub: "characters",
+        systemSub: "variables",
+        projectSub: "library",
+        sideOpen: true,
+        agentSize: "normal",
+        updatedAt: 1,
+      })
+    );
+    const loaded = loadWorkspace();
+    expect(loaded.overlay).toEqual({ type: "view", panel: "map" });
+    expect(loaded.tab).toBe("map");
+  });
+
+  it("保存 overlay 文件页时同步 tab=project", () => {
+    saveWorkspace({
+      projectId: "p1",
+      overlay: { type: "file", page: "export" },
+    });
+    const loaded = loadWorkspace();
+    expect(loaded.overlay).toEqual({ type: "file", page: "export" });
+    expect(loaded.tab).toBe("project");
+    expect(loaded.projectSub).toBe("export");
   });
 
   it("每次调用返回新对象引用（防外部篡改）", () => {

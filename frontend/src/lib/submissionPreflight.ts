@@ -100,7 +100,7 @@ export function submissionPreflight(input: PreflightInput): PreflightReport {
       level: "warn",
       title: "作品还没有标题",
       detail: "投稿信息页与文件名都会写成「未命名作品」",
-      fix: "在「设定」页填上作品名",
+      fix: "在「视图 → 设定」填上作品名",
     });
   }
 
@@ -114,7 +114,7 @@ export function submissionPreflight(input: PreflightInput): PreflightReport {
       level: "info",
       title: `投稿信息页会缺：${missing.join("、")}`,
       detail: "编辑拿到稿子第一眼就是这两项；不填也能导出，只是信息页上写着「未填」",
-      fix: "在「设定」页补齐",
+      fix: "在「视图 → 设定」补齐",
     });
   }
 

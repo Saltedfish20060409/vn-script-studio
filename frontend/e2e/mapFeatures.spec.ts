@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openViewPanel } from "./nav";
 
 /**
  * 地图「按需功能开关」回归（真实前后端）。
@@ -57,11 +58,12 @@ async function registerAndLogin(page: Page, username: string) {
 
 /** 进地图页，并确保有地点与通路（没有就智能提取一次） */
 async function openMapWithLinks(page: Page) {
-  await page.getByRole("button", { name: "地图", exact: true }).first().click();
-  await expect(page.getByTestId("map-features-toggle")).toBeVisible({ timeout: 20_000 });
-  const pins = page.locator("[data-pin]");
+  await openViewPanel(page, "地图");
+  const drawer = page.getByTestId("view-drawer");
+  await expect(drawer.getByTestId("map-features-toggle")).toBeVisible({ timeout: 20_000 });
+  const pins = drawer.locator("[data-pin]");
   if ((await pins.count()) < 2) {
-    const extract = page.getByRole("button", { name: "智能提取地图" });
+    const extract = drawer.getByRole("button", { name: "智能提取地图" });
     if (await extract.count()) {
       await extract.first().click();
       await page.waitForTimeout(1500);

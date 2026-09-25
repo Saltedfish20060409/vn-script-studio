@@ -1,0 +1,237 @@
+.ribbon {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.85rem;
+  padding: 0.45rem 0.85rem;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel-bg) 72%, transparent);
+  min-height: 48px;
+}
+
+.brandBlock {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.brandMark {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--line);
+  background: var(--grad-accent, var(--accent));
+  color: var(--on-accent, #fff);
+  font-family: var(--font-display);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.05;
+  text-align: center;
+}
+
+.brandMark em {
+  display: block;
+  font-style: normal;
+  font-size: 0.72rem;
+}
+
+.titleInput {
+  min-width: 0;
+  flex: 1 1 8rem;
+  max-width: 18rem;
+  border: none;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0.2rem 0.15rem;
+}
+
+.titleInput:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+.saveBadge {
+  flex: 0 0 auto;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: var(--radius-sm, 4px);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
+
+.saveBadgeError {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.menus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.15rem;
+}
+
+.menu {
+  position: relative;
+}
+
+.menu summary {
+  list-style: none;
+  cursor: pointer;
+  min-height: 34px;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 4px);
+  font-family: var(--font-display);
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  user-select: none;
+}
+
+.menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.menu summary:hover,
+.menu[open] summary {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--accent) 8%, var(--field-bg));
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 80;
+  min-width: 11.5rem;
+  max-height: min(70vh, 28rem);
+  overflow: auto;
+  padding: 0.35rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--panel-bg);
+  box-shadow: var(--shadow, 0 8px 24px rgba(0, 0, 0, 0.12));
+}
+
+.panel button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0.65rem;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+.panel button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.panel button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sep {
+  margin: 0.3rem 0.4rem;
+  border: none;
+  border-top: 1px solid var(--line);
+}
+
+.hint {
+  margin: 0.25rem 0.55rem 0.45rem;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+.focusBtn,
+.ghost,
+.primary {
+  min-height: 34px;
+  padding: 0.3rem 0.7rem;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm, 4px);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.focusBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--field-bg));
+  color: var(--ink);
+}
+
+.kbd {
+  display: inline-block;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, var(--accent));
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink-soft);
+}
+
+.ghost {
+  background: var(--field-bg);
+  color: var(--ink);
+}
+
+.primary {
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+  border-color: var(--line);
+}
+
+.userChip {
+  max-width: 6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+@media (max-width: 560px) {
+  .kbd {
+    display: none;
+  }
+
+  .titleInput {
+    max-width: 40vw;
+  }
+}

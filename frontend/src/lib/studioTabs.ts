@@ -1,11 +1,8 @@
 import type { StudioTab } from "./workspacePersist";
 
 /**
- * 三栏工作台的六个篇章：`[id, 序号, 完整名, 窄屏短名]`。
- *
- * 单独放这里（而不是放在 StudioTabs.tsx 里）的原因有两个：
- * 1. 桌面视图的开始菜单要拿它做"跳到这个剧本的某一页"，组件文件只该导出组件；
- * 2. 顺序同时决定标签栏的展示顺序与切换动画方向（见 StudioApp 的 tabIndex）。
+ * Word 壳六个直达入口（桌面开始菜单仍用）：`[id, 序号, 完整名, 窄屏短名]`。
+ * 顶栏已改为文件/开始/审阅/视图；此处供桌面启动器「打开稿纸并打开对应面板」。
  */
 export const STUDIO_TABS: ReadonlyArray<readonly [StudioTab, string, string, string]> = [
   ["write", "01", "写作", "写作"],

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openFilePage, openViewPanel } from "./nav";
 
 /**
  * 设定条目的两条新链路（对应宣传视频评论里的痛点）：
@@ -55,9 +56,10 @@ async function registerAndLogin(page: Page, username: string) {
 }
 
 async function openEntriesSub(page: Page) {
-  await page.getByRole("button", { name: "设定", exact: true }).first().click();
-  await page.getByRole("button", { name: /^设定条目/ }).first().click();
-  await expect(page.getByRole("button", { name: "批量导入" })).toBeVisible({ timeout: 20_000 });
+  await openViewPanel(page, "设定");
+  const drawer = page.getByTestId("view-drawer");
+  await drawer.getByRole("button", { name: /^设定条目/ }).first().click();
+  await expect(drawer.getByRole("button", { name: "批量导入" })).toBeVisible({ timeout: 20_000 });
 }
 
 /** 一份贴过来就会切错的"设定文档"：小标题 + 空行段落，一条写关键词一条不写。 */
@@ -170,10 +172,10 @@ test("待审列表：AI 提议的设定条目要作者点了接受才进设定�
     });
   });
 
-  // 项目 → 结构分析（待审列表就在这里；AI 回复里也这么指路）
-  await page.getByRole("button", { name: "项目", exact: true }).first().click();
-  await page.getByRole("button", { name: "结构分析", exact: true }).first().click();
-  const openBtn = page.getByRole("button", { name: /待审列表/ }).first();
+  // 文件 → 结构分析（待审列表就在这里；AI 回复里也这么指路）
+  await openFilePage(page, "结构分析");
+  const backstage = page.getByTestId("file-backstage");
+  const openBtn = backstage.getByRole("button", { name: /待审列表/ }).first();
   await expect(openBtn).toBeEnabled({ timeout: 20_000 });
   await openBtn.click();
 

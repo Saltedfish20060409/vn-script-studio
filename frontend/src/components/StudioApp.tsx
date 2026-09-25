@@ -85,10 +85,16 @@ import { ProjectHistoryPanel } from "./ProjectHistoryPanel";
 import { ProjectLedgerPanel } from "./ProjectLedgerPanel";
 import { WritingStatsPanel } from "./WritingStatsPanel";
 import { StudioBootScreen } from "./StudioBootScreen";
-import { StudioChapterBar } from "./StudioChapterBar";
 import { STUDIO_TABS } from "../lib/studioTabs";
-import { StudioTabs } from "./StudioTabs";
-import { StudioTopBar } from "./StudioTopBar";
+import {
+  isDocumentQuiet,
+  type StudioOverlay,
+  type ViewPanel,
+} from "../lib/studioOverlay";
+import { StudioRibbon } from "./StudioRibbon";
+import { FileBackstage, StudioViewDrawer } from "./StudioChrome";
+import { ChapterOutline } from "./ChapterOutline";
+import { SCENE_SEPARATOR } from "../lib/editorAssist";
 import { TemplatePicker } from "./TemplatePicker";
 
 import { QPet } from "./QPet";
@@ -158,7 +164,6 @@ import {
   loadWorkspace,
   saveWorkspace,
   workspaceDefaults,
-  type StudioTab,
   type WorkspaceSnapshot,
 } from "../lib/workspacePersist";
 import {
@@ -289,47 +294,43 @@ function DesktopView(props: ComponentProps<typeof DesktopViewImpl>) {
   );
 }
 
-/** 顶栏只保留 5 组，细项用二级切换 */
-type Tab = StudioTab;
-
-/** tab 序号（与 StudioTabs 顺序一致）：用于切换滑动方向 */
-const TAB_ORDER: StudioTab[] = [
-  "write",
-  "world",
-  "voice",
-  "map",
-  "system",
-  "project",
-];
-
-function tabIndex(tab: StudioTab): number {
-  const i = TAB_ORDER.indexOf(tab);
-  return i < 0 ? 0 : i;
-}
-
-/**
- * 项目页的子页签分两组。
- *
- * 为什么分：原来九个子页签一次全排出来，新人第一眼就要在「账本 / 素材 / 本地化 /
- * 快照分享 / 成员」里做选择——这些是长尾功能，用不到的人只会觉得"好复杂"。
- * 常用的四个常驻，其余收进「更多」；**当前正停在长尾页时自动展开**，老用户不丢入口。
- */
-const PROJECT_SUBS_PRIMARY = [
+/** 文件 backstage 页标题（原项目页子页签文案） */
+const FILE_PAGE_ENTRIES = [
   ["library", "剧本库"],
   ["stats", "写作统计"],
   ["serial", "连载 / 发布"],
   ["audit", "稿件体检"],
   ["analysis", "结构分析"],
   ["export", "导出"],
-] as const;
-
-const PROJECT_SUBS_MORE = [
   ["ledger", "账本 / 摘要"],
   ["assets", "素材"],
   ["localization", "本地化"],
   ["history", "快照 / 分享"],
   ["members", "成员"],
-] as const;
+] as const satisfies ReadonlyArray<
+  readonly [WorkspaceSnapshot["projectSub"], string]
+>;
+
+export const FILE_PAGE_LABELS = Object.fromEntries(FILE_PAGE_ENTRIES) as Record<
+  WorkspaceSnapshot["projectSub"],
+  string
+>;
+
+function overlayFromScriptTabId(id: string): StudioOverlay {
+  if (id === "write") return null;
+  if (id === "project") return { type: "file", page: "library" };
+  if (id === "world" || id === "voice" || id === "map" || id === "system") {
+    return { type: "view", panel: id };
+  }
+  return null;
+}
+
+const VIEW_PANEL_TITLES: Record<ViewPanel, string> = {
+  world: "设定",
+  voice: "角色工坊",
+  map: "地图",
+  system: "剧情状态",
+};
 
 function downloadText(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime });
@@ -371,20 +372,13 @@ export function StudioApp() {
   const [collabNote, setCollabNote] = useState("");
   const myUserId = user?.id ?? "";
 
-  const [tab, setTab] = useState<Tab>((cachedWs.tab as Tab) || wsDefaults.tab);
-  /** 视图：三栏工作台 / 桌面。默认 studio（老用户习惯不变），可在系统设置里切换。 */
+  const initialOverlay: StudioOverlay =
+    cachedWs.overlay !== undefined ? cachedWs.overlay : null;
+  const [overlay, setOverlay] = useState<StudioOverlay>(initialOverlay);
+  /** 视图：稿纸工作台 / 桌面启动器。默认 studio（老用户习惯不变），可在系统设置里切换。 */
   const [view, setView] = useState<"studio" | "desktop">(cachedWs.view || wsDefaults.view);
-  /**
-   * 桌面视图里"当前打开的剧本窗口"是否开着。
-   * 一个剧本一个窗口：这个窗口里的工作台（写作页/设定/角色工坊/地图/剧情状态）和 AI 责编
-   * 都只属于 `project`，切换剧本时整块内容（含对话）跟着换，不存在"共用一套界面"的情况。
-   */
-  const [desktopScriptOpen, setDesktopScriptOpen] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === "undefined" ? 1280 : window.innerWidth
-  );
-  const [writeSub, setWriteSub] = useState<"script" | "analysis">(
-    cachedWs.writeSub || wsDefaults.writeSub
   );
   const [worldSub, setWorldSub] = useState<"characters" | "bible" | "lore" | "entries">(
     cachedWs.worldSub || wsDefaults.worldSub
@@ -392,12 +386,7 @@ export function StudioApp() {
   const [systemSub, setSystemSub] = useState<"variables" | "sprites">(
     cachedWs.systemSub || wsDefaults.systemSub
   );
-  // 子页类型直接取自持久化快照，新增子页时不会再出现"改了类型忘了改这里"
-  const [projectSub, setProjectSub] = useState<WorkspaceSnapshot["projectSub"]>(
-    cachedWs.projectSub || wsDefaults.projectSub
-  );
   const [playOpen, setPlayOpen] = useState(false);
-  const [projectMoreOpen, setProjectMoreOpen] = useState(false);
   const [petCheer, setPetCheer] = useState(0);
   const [chapterId, setChapterId] = useState(cachedWs.chapterId || "");
   const otherLock = activeLocks.find(
@@ -459,6 +448,8 @@ export function StudioApp() {
   /** 投稿包导出（单篇 / 分章包）进行中 */
   const [submissionBusy, setSubmissionBusy] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  /** 顶栏稀疏保存提示：idle 不显示；只在保存请求进行中 / 失败时出现 */
+  const [saveBadge, setSaveBadge] = useState<"idle" | "saving" | "error">("idle");
   // 顶栏"审稿"按钮的展开信号：每次 +1 让 AgentFloat 把面板拉出来
   const [agentOpenTick, setAgentOpenTick] = useState(0);
   // 桌面视角下没有浮窗：这个计数改成打开桌面上的「AI 责编」窗口
@@ -476,8 +467,6 @@ export function StudioApp() {
     return loadFocusTimerPrefs();
   }, [focusSetupOpen, focusPrefs]);
   const shellRef = useRef<HTMLDivElement>(null);
-  /** 页面切换滑动方向：记录上一个 tab 序号，新 tab 靠右→从右滑入，靠左→从左滑入 */
-  const prevTabIndexRef = useRef(0);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -702,19 +691,17 @@ export function StudioApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist UI navigation state (tab / chapter / side panel)
+  // Persist UI navigation state (overlay / chapter / side panel)
   useEffect(() => {
     if (!project?.id) return;
     saveWorkspace({
       projectId: project.id,
       chapterId,
-      tab,
-      writeSub,
+      overlay,
       worldSub,
       systemSub,
-      projectSub,
     });
-  }, [project?.id, chapterId, tab, writeSub, worldSub, systemSub, projectSub]);
+  }, [project?.id, chapterId, overlay, worldSub, systemSub]);
 
   // Sync editor text whenever project or chapter switches (not on every save).
   // 顺便清掉"选中文本"：剧本/章节换了之后，上一段选中的文字已经不属于当前文本，
@@ -1094,7 +1081,7 @@ export function StudioApp() {
     const pending = pendingEditorFocus.current;
     if (!pending || !project) return;
     if (pending.chapterId !== chapterId) return;
-    if (tab !== "write" || writeSub !== "script") return;
+    if (!isDocumentQuiet(overlay)) return;
     const ch = project.chapters.find((c) => c.id === chapterId);
     if (!ch) return;
     const range = blockTextRange(ch.blocks, project.characters, pending.blockIndex);
@@ -1118,7 +1105,7 @@ export function StudioApp() {
       ta.scrollTop = Math.max(0, (line - 3) * lineHeight - pad);
     });
     return () => window.cancelAnimationFrame(id);
-  }, [project, chapterId, editor, tab, writeSub, editorFocusNonce]);
+  }, [project, chapterId, editor, overlay, editorFocusNonce]);
 
   // Flush draft when tab is hidden / page is closing so exit doesn't lose work
   // （顺便把"停笔位置"记下来：这两个时机过后就再也读不到光标了）
@@ -1140,7 +1127,7 @@ export function StudioApp() {
       window.removeEventListener("pagehide", onUnload);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, chapterId, tab, writeSub, worldSub, systemSub, projectSub]);
+  }, [project, chapterId, overlay, worldSub, systemSub]);
 
   useEffect(() => {
     setRpyPreview(null);
@@ -1228,7 +1215,6 @@ export function StudioApp() {
     // 那就**不能用响应覆盖界面状态**（否则旧响应会把新改动盖掉，随后又被自动保存写回服务器）。
     const revAtRequest = projectRevRef.current;
     try {
-      if (!silent) setStatus("保存中…");
       // Collaboration stage B: compute which chapters / sections this save
       // actually changed. The server merges only those, so concurrent edits
       // to other chapters survive. Full-save (no base or force) stays as-is.
@@ -1239,12 +1225,16 @@ export function StudioApp() {
           // 没有任何实际内容变化：不发保存请求。
           // 服务器 updatedAt 可能已被其他会话/自动保存推进，无变化也 PUT
           // 会触发 409 冲突弹窗（"没改也提示"）。跳过既省请求也消除误报。
+          setSaveBadge("idle");
           return true;
         }
         if (diff.chapterIds.length > 0 || diff.sections.length > 0) {
           scoped = { chapterIds: diff.chapterIds, sections: diff.sections };
         }
       }
+      // 有真实写入才亮「保存中」——无变化早退不闪一下
+      setSaveBadge("saving");
+      if (!silent) setStatus("保存中…");
       const saved = await putProject(p.id, p, p.updatedAt, {
         force: opts?.force,
         ...scoped,
@@ -1271,9 +1261,11 @@ export function StudioApp() {
             : s
         )
       );
+      setSaveBadge("idle");
       if (!silent) setStatus("工程已同步到服务器");
       return true;
     } catch (e) {
+      setSaveBadge("error");
       if (e instanceof ApiError && e.status === 423) {
         // Chapter locked by another member — scoped save rejected.
         const detail = e.detail as
@@ -1353,11 +1345,9 @@ export function StudioApp() {
     saveWorkspace({
       projectId: latest.id,
       chapterId,
-      tab,
-      writeSub,
+      overlay,
       worldSub,
       systemSub,
-      projectSub,
     });
     await persistProject(latest);
   }
@@ -1490,6 +1480,11 @@ export function StudioApp() {
     const text = editorRef.current;
     const chId = chapter.id;
     updateActive((p) => flushChapter(p, chId, text, mode));
+  }
+
+  function applyOverlay(next: StudioOverlay) {
+    if (!isDocumentQuiet(overlay) || !isDocumentQuiet(next)) commitEditor();
+    setOverlay(next);
   }
 
   function scheduleEditorCommit() {
@@ -1634,8 +1629,7 @@ export function StudioApp() {
   async function switchProject(id: string) {
     if (id === project?.id) return;
     commitEditor();
-    setTab("write");
-    setWriteSub("script");
+    applyOverlay(null);
     try {
       await loadProjectInto(id);
       const found = projectsList.find((p) => p.id === id);
@@ -1661,11 +1655,9 @@ export function StudioApp() {
       saveWorkspace({
         projectId: created.id,
         chapterId: created.chapters[0]?.id ?? "",
-        tab: "write",
-        writeSub: "script",
+        overlay: null,
       });
-      setTab("write");
-      setWriteSub("script");
+      applyOverlay(null);
       setStatus("已创建空白剧本");
     } catch (e) {
       setError(e instanceof Error ? e.message : "创建失败");
@@ -1682,11 +1674,9 @@ export function StudioApp() {
       saveWorkspace({
         projectId: created.id,
         chapterId: created.chapters[0]?.id ?? "",
-        tab: "write",
-        writeSub: "script",
+        overlay: null,
       });
-      setTab("write");
-      setWriteSub("script");
+      applyOverlay(null);
       setStatus("已加入示例剧本");
     } catch (e) {
       setError(e instanceof Error ? e.message : "创建失败");
@@ -1703,11 +1693,9 @@ export function StudioApp() {
       saveWorkspace({
         projectId: created.id,
         chapterId: created.chapters[0]?.id ?? "",
-        tab: "write",
-        writeSub: "script",
+        overlay: null,
       });
-      setTab("write");
-      setWriteSub("script");
+      applyOverlay(null);
       setStatus(`已从模板创建「${created.title}」`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "创建失败");
@@ -1800,11 +1788,9 @@ export function StudioApp() {
       saveWorkspace({
         projectId: imported.id,
         chapterId: imported.chapters[0]?.id ?? "",
-        tab: "write",
-        writeSub: "script",
+        overlay: null,
       });
-      setTab("write");
-      setWriteSub("script");
+      applyOverlay(null);
       setStatus(`已导入「${imported.title}」`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "导入失败");
@@ -2052,7 +2038,7 @@ export function StudioApp() {
         setStatus(
           `没有从正文里识别出新的地点。想让地图更完整，可以在场景开头写清地点（例如「scene bg 车站」），或让对白/设定明确提到具体场所，然后再试一次。${warn}`
         );
-        setTab("map");
+        applyOverlay({ type: "view", panel: "map" });
         return;
       }
       setMapExtractReview({
@@ -2064,7 +2050,7 @@ export function StudioApp() {
             : "按场景标签",
       });
       setStatus(`找到候选：地点 ${newPlaces}、通路 ${newLinks}，请勾选后写入${warn}`);
-      setTab("map");
+      applyOverlay({ type: "view", panel: "map" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "提取失败");
     }
@@ -2088,7 +2074,7 @@ export function StudioApp() {
       setProject(result.project);
       setMapExtractReview(null);
       setStatus(`已写入地图：新增地点 ${result.addedCount}，通路 ${result.linkCount}`);
-      setTab("map");
+      applyOverlay({ type: "view", panel: "map" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "写入地图失败");
     } finally {
@@ -2261,9 +2247,8 @@ export function StudioApp() {
   function downloadRpy() {
     if (!project) return;
     if (!rpyPreview || rpyStale) {
-      setError("请先在「项目 → 导出」点击「生成 .rpy」");
-      setTab("project");
-      setProjectSub("export");
+      setError("请先在「文件 → 导出」点击「生成 .rpy」");
+      applyOverlay({ type: "file", page: "export" });
       return;
     }
     downloadText(
@@ -2391,8 +2376,7 @@ export function StudioApp() {
     setFocusSetupOpen(false);
     setFocusMode(true);
     saveFocusMode(true);
-    setTab("write");
-    setWriteSub("script");
+    applyOverlay(null);
     try {
       await enterFullscreen(shellRef.current ?? document.documentElement);
     } catch {
@@ -2405,10 +2389,8 @@ export function StudioApp() {
       void exitFocusSession();
       return;
     }
-    if (tab !== "write" || writeSub !== "script") {
-      commitEditor();
-      setTab("write");
-      setWriteSub("script");
+    if (!isDocumentQuiet(overlay)) {
+      applyOverlay(null);
     }
     setFocusSetupOpen(true);
   }
@@ -2435,14 +2417,14 @@ export function StudioApp() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (!(e.ctrlKey || e.metaKey) || e.key !== "\\") return;
-      if (tab !== "write" || writeSub !== "script") return;
+      if (!isDocumentQuiet(overlay)) return;
       e.preventDefault();
       requestFocusSession();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusMode, tab, writeSub]);
+  }, [focusMode, overlay]);
 
   const dismissToast = useCallback(() => {
     setStatus("");
@@ -2496,9 +2478,155 @@ export function StudioApp() {
   const links = project.locationLinks ?? [];
   const bible = project.bible ?? {};
   const toast = classifyStatusToast(status, error);
-  const writeQuiet = tab === "write" && writeSub === "script";
+  const writeQuiet = isDocumentQuiet(overlay);
+  const menuStage =
+    overlay?.type === "file" || overlay?.type === "view";
   /** 桌面视图：只在用户选了它、且屏幕够宽时显示（窄屏自动回工作台）。 */
   const showDesktop = shouldShowDesktop({ view, width: viewportWidth });
+
+  /** 从桌面进入稿纸工作台（可选打开某个 overlay）。 */
+  function enterStudio(next: StudioOverlay = null) {
+    setView("studio");
+    applyOverlay(next);
+    saveWorkspace({ view: "studio", overlay: next });
+  }
+
+  function openChapterInDocument(id: string) {
+    setChapterId(id);
+    applyOverlay(null);
+  }
+
+  function renderProjectPage(sub: WorkspaceSnapshot["projectSub"]) {
+    return (
+      <>
+        {sub === "library" && project && (
+          <ProjectLibraryPanel
+            copy={copy}
+            projectsList={projectsList}
+            activeId={project.id}
+            renamingId={renamingId}
+            renameDraft={renameDraft}
+            renameInputRef={renameInputRef}
+            onRenameDraftChange={setRenameDraft}
+            onStartRename={startRename}
+            onCommitRename={() => void commitRename()}
+            onCancelRename={cancelRename}
+            onOpen={(id) => void switchProject(id)}
+            onCreateBlank={() => void createBlank()}
+            onCreateDemo={() => void createDemo()}
+            onPickTemplate={(tid) => void createFromTemplate(tid)}
+            onImportClick={() => fileRef.current?.click()}
+            onDuplicate={(id) => void duplicateProjectById(id)}
+            onDelete={(id) => void deleteProjectById(id)}
+          />
+        )}
+
+        {sub === "ledger" && project && (
+          <ProjectLedgerPanel project={project} onOpenChapter={openChapterInDocument} />
+        )}
+
+        {sub === "stats" && project && <WritingStatsPanel projectId={project.id} />}
+
+        {sub === "audit" && project && (
+          <NovelAuditPanel projectId={project.id} onOpenChapter={openChapterInDocument} />
+        )}
+
+        {sub === "serial" && project && (
+          <SerialPanel
+            project={project}
+            onOpenChapter={openChapterInDocument}
+            onTogglePublish={(id, publish) => {
+              updateActive((p) => ({
+                ...p,
+                chapters: p.chapters.map((c) =>
+                  c.id === id
+                    ? {
+                        ...c,
+                        publishedAt: publish ? new Date().toISOString() : undefined,
+                      }
+                    : c
+                ),
+              }));
+              setStatus(
+                publish
+                  ? "已标记为已发布（只在本工具里记账，正文与导出不受影响）"
+                  : "已撤回发布标记"
+              );
+            }}
+          />
+        )}
+
+        {sub === "analysis" && project && (
+          <AnalysisPanels
+            project={project}
+            chapterId={chapterId}
+            draft={editor}
+            onChange={updateActive}
+            onRemoteProject={applyRemoteProject}
+          />
+        )}
+
+        {sub === "assets" && project && (
+          <AssetAuditPanel projectId={project.id} onOpenChapter={openChapterInDocument} />
+        )}
+
+        {sub === "localization" && project && (
+          <LocalizationPanel
+            projectId={project.id}
+            chapters={project.chapters ?? []}
+          />
+        )}
+
+        {sub === "export" && project && (
+          <ProjectExportPanel
+            project={project}
+            rpyPreview={rpyPreview}
+            rpyStale={rpyStale}
+            onGenerateRpy={() => void generateRpy()}
+            onDownloadRpy={downloadRpy}
+            onDownloadJson={() => void downloadJson()}
+            onDownloadMarkdown={() => void downloadMarkdown()}
+            onDownloadDocx={() => void downloadDocxFile()}
+            onDownloadBundle={() => void downloadRenpyBundle()}
+            bundleBusy={bundleBusy}
+            onDownloadSubmission={(opts) => void downloadSubmission(opts)}
+            submissionBusy={submissionBusy}
+          />
+        )}
+
+        {sub === "history" && project && (
+          <ProjectHistoryPanel
+            memoryArchives={memoryArchives}
+            memoryDetailBusy={memoryDetailBusy}
+            memoryDetail={memoryDetail}
+            snapLabel={snapLabel}
+            snapshots={snapshots}
+            compareBusy={compareBusy}
+            compareResult={compareResult}
+            compareAgainstId={compareAgainstId}
+            shareUrl={shareUrl}
+            hasShare={Boolean(project.shareId)}
+            onArchiveMemory={() => void archiveLongMemory()}
+            onOpenMemoryArchive={(id) => void openMemoryArchive(id)}
+            onCloseMemoryDetail={() => setMemoryDetail(null)}
+            onSnapLabelChange={setSnapLabel}
+            onTakeSnapshot={() => void takeSnapshot()}
+            onRestoreSnapshot={(id) => void restoreSnapshotById(id)}
+            onDeleteSnapshot={(id) => void deleteSnapshotById(id)}
+            onCompareSnapshot={(id) => void compareSnapshotById(id)}
+            onCloseCompare={() => {
+              setCompareResult(null);
+              setCompareAgainstId(null);
+            }}
+            onCreateShare={() => void createShareLink()}
+            onRevokeShare={() => void revokeShareLink()}
+          />
+        )}
+
+        {sub === "members" && project && <CollabPanel projectId={project.id} />}
+      </>
+    );
+  }
 
   /**
    * 桌面上的"应用"：每个都是**自己的窗口形态**，不是跳回原界面。
@@ -2525,12 +2653,12 @@ export function StudioApp() {
           onCommitRename={() => void commitRename()}
           onCancelRename={cancelRename}
           onOpen={(id) => {
-            setDesktopScriptOpen(true);
+            enterStudio(null);
             if (id !== project?.id) void switchProject(id);
           }}
           onCreateBlank={() => {
             void createBlank();
-            setDesktopScriptOpen(true);
+            enterStudio(null);
           }}
           onCreateDemo={() => void createDemo()}
           onPickTemplate={(tid) => void createFromTemplate(tid)}
@@ -2571,9 +2699,7 @@ export function StudioApp() {
                   }
                 }}
                 onChapterFocus={(id) => {
-                  setChapterId(id);
-                  setTab("write");
-                  setWriteSub("script");
+                  openChapterInDocument(id);
                 }}
               />
             </div>
@@ -2646,18 +2772,10 @@ export function StudioApp() {
     },
   ];
 
-  /** 从桌面进入某个工作台页签（只有"切换为工作台视图"用得上）。 */
-  function exitDesktopTo(nextTab?: Tab, sub?: WorkspaceSnapshot["projectSub"]) {
-    setView("studio");
-    saveWorkspace({ view: "studio" });
-    if (nextTab) setTab(nextTab);
-    if (sub) setProjectSub(sub);
-  }
-
   return (
     <>
       <PwaInstallPrompt />
-      {/* 桌面视图：图标是"快捷方式"，双击剧本 = 打开**这个剧本自己的窗口**（不是跳走） */}
+      {/* 桌面视图：纯启动器。双击剧本 / 继续写作 → 切到稿纸工作台（不再套一层窗口）。 */}
       {showDesktop ? (
         <DesktopView
           username={user?.username}
@@ -2669,23 +2787,19 @@ export function StudioApp() {
           }))}
           activeProjectId={project?.id}
           activeProjectTitle={project?.title}
-          scriptOpen={desktopScriptOpen}
-          onCloseScript={() => setDesktopScriptOpen(false)}
-          onScriptMinimize={() => setDesktopScriptOpen(false)}
-          onSwitchToStudioView={() => exitDesktopTo()}
+          onSwitchToStudioView={() => enterStudio(null)}
           onLogout={() => {
             // 注销回登录页，并重新武装开机画面（"重启"的感觉）
             rearmBoot();
             handleLogout();
           }}
           onOpenProject={(id: string) => {
-            // 双击剧本 = 在桌面上打开这个剧本的工作台窗口（写作页/设定/角色/地图/剧情状态）
-            setDesktopScriptOpen(true);
+            enterStudio(null);
             if (id !== project?.id) void switchProject(id);
           }}
           onNewProject={() => {
             void createBlank();
-            setDesktopScriptOpen(true);
+            enterStudio(null);
           }}
           onRenameProject={(id) => {
             const target = projectsList.find((p) => p.id === id);
@@ -2701,10 +2815,7 @@ export function StudioApp() {
           onDeleteProject={(id) => void deleteProjectById(id)}
           scriptTabs={STUDIO_TABS.map(([id, , label]) => ({ id, label }))}
           onOpenScriptTab={(id) => {
-            // 从桌面直接进这个剧本的某一页（设定 / 角色工坊 / 地图 / 剧情状态…）
-            if (id !== "write" || writeSub !== "script") commitEditor();
-            setTab(id as Tab);
-            setDesktopScriptOpen(true);
+            enterStudio(overlayFromScriptTabId(id));
           }}
           openAppRequest={{ id: "agent", nonce: desktopAppTick }}
           resume={
@@ -2720,14 +2831,17 @@ export function StudioApp() {
                 }
               : undefined
           }
-          onResume={() => setDesktopScriptOpen(true)}
+          onResume={() => enterStudio(null)}
           apps={desktopApps}
         />
       ) : null}
-      <QPet editorRef={editorTaRef} cheerSignal={petCheer} />
+      {!focusMode ? <QPet editorRef={editorTaRef} cheerSignal={petCheer} /> : null}
       <ClickFx />
-      {/* 全局底部音乐条：工作台里常驻；桌面视图里音乐是"应用窗口"，就不再叠一条 */}
-      {!showDesktop ? <MusicPlayerBar contextLabel={chapter?.title ?? ""} /> : null}
+      {/* 全局底部音乐条：工作台里常驻；桌面视图里音乐是"应用窗口"，就不再叠一条。
+          专注模式也不叠——全屏被拒时它仍会露在稿纸底下，打断"只留稿子"。 */}
+      {!showDesktop && !focusMode ? (
+        <MusicPlayerBar contextLabel={chapter?.title ?? ""} />
+      ) : null}
       {playOpen && project && chapter && (
         <ScriptPlayer
           chapter={chapter}
@@ -2753,23 +2867,21 @@ export function StudioApp() {
           <div className="vnss-grain" aria-hidden />
         </>
       ) : null}
+      {!showDesktop ? (
       <div
         ref={shellRef}
         className={`vnss-app ${styles.shell} ${
-          tab === "write" && writeSub === "script" ? styles.writeQuiet : ""
-        } ${
-          tab === "write" && writeSub === "script" && focusMode ? styles.focusMode : ""
-        } ${tab !== "write" ? styles.menuStage : ""} ${
-          showDesktop && !desktopScriptOpen ? styles.shellHidden : ""
-        } ${showDesktop && desktopScriptOpen ? styles.shellUnderDesktop : ""}`}
-        aria-hidden={showDesktop && !desktopScriptOpen ? true : undefined}
+          writeQuiet ? styles.writeQuiet : ""
+        } ${writeQuiet && focusMode ? styles.focusMode : ""} ${
+          menuStage ? styles.menuStage : ""
+        }`}
       >
         <FocusChrome
           setupOpen={focusSetupOpen}
           initialPrefs={focusInitialPrefs}
           onSetupCancel={() => setFocusSetupOpen(false)}
           onSetupConfirm={(prefs) => void startFocusSession(prefs)}
-          active={Boolean(focusMode && tab === "write" && writeSub === "script")}
+          active={Boolean(focusMode && writeQuiet)}
           prefs={focusPrefs}
           draft={editor}
           onExit={() => void exitFocusSession()}
@@ -2782,17 +2894,21 @@ export function StudioApp() {
             onDismiss={dismissToast}
           />
         ) : null}
-        <StudioTopBar
+        <StudioRibbon
           copy={copy}
           title={project.title}
           username={user?.username}
-          showFocusToggle={tab === "write" && writeSub === "script" && !focusMode}
-          showAgent={!focusMode}
-          onOpenAgent={() => {
-            // 桌面视角没有浮窗：顶栏「审稿」改成打开桌面上的「AI 责编」窗口
-            if (showDesktop) setDesktopAppTick((t) => t + 1);
-            else setAgentOpenTick((t) => t + 1);
-          }}
+          showFocusToggle={writeQuiet && !focusMode}
+          writeMode={writeMode}
+          rpyStale={rpyIsStale({
+            prose: writeMode === "prose" ? editor : chapter?.prose,
+            rpyFromProseHash: chapter?.rpyFromProseHash,
+          })}
+          generating={generatingRpy}
+          showReviseActions={Boolean(reviseDraft)}
+          showAdmin={Boolean(user?.is_admin || adminCapable)}
+          adminAlert={adminAlert}
+          canReturnDesktop={!showDesktop}
           fileInputRef={fileRef}
           onTitleChange={(value) => updateActive((p) => ({ ...p, title: value }))}
           onFocusToggle={requestFocusSession}
@@ -2808,243 +2924,66 @@ export function StudioApp() {
           exportLabel={writeMode === "rpy" ? "导出 .rpy" : "导出 .docx"}
           onOpenHelp={() => setHelpOpen(true)}
           onOpenAdmin={() => setAdminOpen(true)}
-          showAdmin={Boolean(user?.is_admin || adminCapable)}
-          adminAlert={adminAlert}
-          onOpenCollab={() => {
-            setTab("project");
-            setProjectSub("members");
+          onOpenSettings={() => setSettingsOpen(true)}
+          onReturnDesktop={() => {
+            setView("desktop");
+            saveWorkspace({ view: "desktop" });
           }}
           onLogout={handleLogout}
+          saveBadge={saveBadge === "idle" ? null : saveBadge}
+          onOpenFilePage={(page) => applyOverlay({ type: "file", page })}
+          onOpenViewPanel={(panel) => applyOverlay({ type: "view", panel })}
+          onOpenAnalysis={() => {
+            void (async () => {
+              commitEditor();
+              await flushPendingSave();
+              applyOverlay({ type: "analysis" });
+            })();
+          }}
+          onOpenAgent={() => setAgentOpenTick((t) => t + 1)}
+          onWriteModeChange={switchWriteMode}
+          onGenerateRpy={() => void generateRpyFromManuscript()}
+          onFind={openFind}
+          onOpenRevise={() => {
+            if (focusMode) {
+              setStatus("请先退出专注模式，再打开改稿对照");
+              return;
+            }
+            requestOpenReviseReview(project.id, chapterId);
+          }}
+          onDiscardRevise={() => {
+            clearChapterReviseDraft(project.id, chapterId);
+            setReviseDraft(null);
+            setStatus("已放弃这次改稿的对照预览。正文保持原样，没有做任何改动。");
+          }}
+          onInsertScene={() => insertAtCaret(`\n${SCENE_SEPARATOR}\n`)}
         />
 
         <div className={styles.layout}>
-          <main
-            className={`${styles.main} ${
-              tabIndex(tab) > prevTabIndexRef.current
-                ? styles.tabSlideR
-                : styles.tabSlideL
-            }`}
-            key={tab}
-          >
-            <StudioTabs
-              tab={tab}
-              onSelect={(id) => {
-                if (id !== "write" || writeSub !== "script") commitEditor();
-                prevTabIndexRef.current = tabIndex(tab);
-                setTab(id);
-              }}
-            />
-
-            {tab === "project" && (
-              <section className={styles.panel}>
-                <div className={styles.subNav}>
-                  {PROJECT_SUBS_PRIMARY
-                    // 桌面视图里这个窗口只属于当前剧本，"剧本库"（列出全部剧本、切来切去）
-                    // 不该出现在这里：桌面上双击哪个就是哪个，右键能重命名/复制/删除。
-                    .filter(([id]) => !(showDesktop && id === "library"))
-                    .map(([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        className={projectSub === id ? styles.subActive : styles.subTab}
-                        onClick={() => setProjectSub(id)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  {/* 长尾子页收进「更多」。两条规矩：
-                      ① 「更多」按钮**始终在**，能开就能关（展开后变成「收起」）——
-                         上一版把它换成一堆页签、自己消失了，点开就收不回来；
-                      ② 当前页若是长尾页，即使收起也留着它那一个页签，
-                         否则会出现"页面在长尾页、却看不见自己在哪"。 */}
-                  {PROJECT_SUBS_MORE.filter(
-                    ([id]) => projectMoreOpen || id === projectSub
-                  ).map(([id, label]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      className={projectSub === id ? styles.subActive : styles.subTab}
-                      onClick={() => setProjectSub(id)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    className={styles.subTab}
-                    data-testid="project-subs-more"
-                    aria-expanded={projectMoreOpen}
-                    onClick={() => setProjectMoreOpen((v) => !v)}
-                  >
-                    {projectMoreOpen ? "收起 ‹" : "更多 ›"}
-                  </button>
-                </div>
-
-                {projectSub === "library" && showDesktop && (
-                  <p className={styles.panelNote}>
-                    桌面视图里不再重复"剧本库"这一页 —— 剧本就在桌面上：双击打开，
-                    右键可以重命名 / 复制 / 删除。要导入、用模板或管理全部剧本，
-                    从开始菜单打开「剧本库」窗口。
-                  </p>
-                )}
-
-                {projectSub === "library" && !showDesktop && project && (
-                  <ProjectLibraryPanel
-                    copy={copy}
-                    projectsList={projectsList}
-                    activeId={project.id}
-                    renamingId={renamingId}
-                    renameDraft={renameDraft}
-                    renameInputRef={renameInputRef}
-                    onRenameDraftChange={setRenameDraft}
-                    onStartRename={startRename}
-                    onCommitRename={() => void commitRename()}
-                    onCancelRename={cancelRename}
-                    onOpen={(id) => void switchProject(id)}
-                    onCreateBlank={() => void createBlank()}
-                    onCreateDemo={() => void createDemo()}
-                    onPickTemplate={(tid) => void createFromTemplate(tid)}
-                    onImportClick={() => fileRef.current?.click()}
-                    onDuplicate={(id) => void duplicateProjectById(id)}
-                    onDelete={(id) => void deleteProjectById(id)}
-                  />
-                )}
-
-                {projectSub === "ledger" && project && (
-                  <ProjectLedgerPanel
-                    project={project}
-                    onOpenChapter={(id) => {
-                      setChapterId(id);
-                      setTab("write");
-                    }}
-                  />
-                )}
-
-                {projectSub === "stats" && project && (
-                  <WritingStatsPanel projectId={project.id} />
-                )}
-
-                {projectSub === "audit" && project && (
-                  <NovelAuditPanel
-                    projectId={project.id}
-                    onOpenChapter={(id) => {
-                      setChapterId(id);
-                      setTab("write");
-                    }}
-                  />
-                )}
-
-                {projectSub === "serial" && project && (
-                  <SerialPanel
-                    project={project}
-                    onOpenChapter={(id) => {
-                      setChapterId(id);
-                      setTab("write");
-                    }}
-                    onTogglePublish={(id, publish) => {
-                      updateActive((p) => ({
-                        ...p,
-                        chapters: p.chapters.map((c) =>
-                          c.id === id
-                            ? {
-                                ...c,
-                                // 撤回时把字段删掉（而不是置空串）：老工程里这个键本来就
-                                // 不存在，留个空串会让"未发布"有两种表示
-                                publishedAt: publish ? new Date().toISOString() : undefined,
-                              }
-                            : c
-                        ),
-                      }));
-                      setStatus(
-                        publish
-                          ? "已标记为已发布（只在本工具里记账，正文与导出不受影响）"
-                          : "已撤回发布标记"
-                      );
-                    }}
-                  />
-                )}
-
-                {projectSub === "analysis" && project && (
-                  <AnalysisPanels
-                    project={project}
-                    chapterId={chapterId}
-                    draft={editor}
-                    onChange={updateActive}
-                    onRemoteProject={applyRemoteProject}
-                  />
-                )}
-
-                {projectSub === "assets" && project && (
-                  <AssetAuditPanel
-                    projectId={project.id}
-                    onOpenChapter={(id) => {
-                      setChapterId(id);
-                      setTab("write");
-                    }}
-                  />
-                )}
-
-                {projectSub === "localization" && project && (
-                  <LocalizationPanel
-                    projectId={project.id}
-                    chapters={project.chapters ?? []}
-                  />
-                )}
-
-                {projectSub === "export" && (
-                  <ProjectExportPanel
-                    project={project}
-                    rpyPreview={rpyPreview}
-                    rpyStale={rpyStale}
-                    onGenerateRpy={() => void generateRpy()}
-                    onDownloadRpy={downloadRpy}
-                    onDownloadJson={() => void downloadJson()}
-                    onDownloadMarkdown={() => void downloadMarkdown()}
-                    onDownloadDocx={() => void downloadDocxFile()}
-                    onDownloadBundle={() => void downloadRenpyBundle()}
-                    bundleBusy={bundleBusy}
-                    onDownloadSubmission={(opts) => void downloadSubmission(opts)}
-                    submissionBusy={submissionBusy}
-                  />
-                )}
-
-                {projectSub === "history" && (
-                  <ProjectHistoryPanel
-                    memoryArchives={memoryArchives}
-                    memoryDetailBusy={memoryDetailBusy}
-                    memoryDetail={memoryDetail}
-                    snapLabel={snapLabel}
-                    snapshots={snapshots}
-                    compareBusy={compareBusy}
-                    compareResult={compareResult}
-                    compareAgainstId={compareAgainstId}
-                    shareUrl={shareUrl}
-                    hasShare={Boolean(project.shareId)}
-                    onArchiveMemory={() => void archiveLongMemory()}
-                    onOpenMemoryArchive={(id) => void openMemoryArchive(id)}
-                    onCloseMemoryDetail={() => setMemoryDetail(null)}
-                    onSnapLabelChange={setSnapLabel}
-                    onTakeSnapshot={() => void takeSnapshot()}
-                    onRestoreSnapshot={(id) => void restoreSnapshotById(id)}
-                    onDeleteSnapshot={(id) => void deleteSnapshotById(id)}
-                    onCompareSnapshot={(id) => void compareSnapshotById(id)}
-                    onCloseCompare={() => {
-                      setCompareResult(null);
-                      setCompareAgainstId(null);
-                    }}
-                    onCreateShare={() => void createShareLink()}
-                    onRevokeShare={() => void revokeShareLink()}
-                  />
-                )}
-
-                {projectSub === "members" && project && (
-                  <CollabPanel projectId={project.id} />
-                )}
-              </section>
-            )}
-
-            {tab === "write" && (
-              <>
+          <main className={styles.main}>
+            <div className={styles.docLayout}>
+              <ChapterOutline
+                chapterId={chapterId}
+                chapters={project.chapters}
+                volumes={project.volumes ?? []}
+                activeVolumeId={activeVolumeId}
+                onSelectVolume={setActiveVolumeId}
+                onAddVolume={() => void addVolumeFlow()}
+                onRenameVolume={(id) => void renameVolumeFlow(id)}
+                onMoveVolume={moveVolumeFlow}
+                onDeleteVolume={(id) => void deleteVolumeFlow(id)}
+                onAssignChapter={assignChapterVolume}
+                onRecap={() => void generateRecap()}
+                onSelectChapter={(id) => {
+                  if (id === chapterId) return;
+                  rememberCaretNow();
+                  commitEditor();
+                  setChapterId(id);
+                }}
+                onAddChapter={() => void addChapter()}
+                onDeleteChapter={() => void deleteChapter(chapterId)}
+              />
+              <div className={styles.docMain}>
                 {otherLock || collabNote ? (
                   <div className={styles.collabNote} role="status">
                     {otherLock
@@ -3054,63 +2993,24 @@ export function StudioApp() {
                       : collabNote}
                   </div>
                 ) : null}
-                <StudioChapterBar
-                  copy={copy}
-                  writeSub={writeSub}
-                  chapterId={chapterId}
-                  chapters={project.chapters}
-                  volumes={project.volumes ?? []}
-                  activeVolumeId={activeVolumeId}
-                  onSelectVolume={setActiveVolumeId}
-                  onAddVolume={() => void addVolumeFlow()}
-                  onRenameVolume={(id) => void renameVolumeFlow(id)}
-                  onMoveVolume={moveVolumeFlow}
-                  onDeleteVolume={(id) => void deleteVolumeFlow(id)}
-                  onAssignChapter={assignChapterVolume}
-                  onRecap={() => void generateRecap()}
-                  onSelectScript={() => setWriteSub("script")}
-                  onSelectAnalysis={() => {
-                    void (async () => {
-                      commitEditor();
-                      await flushPendingSave();
-                      setWriteSub("analysis");
-                    })();
-                  }}
-                  onSelectChapter={(id) => {
-                    if (id === chapterId) return;
-                    // 切章前先记住这一章停在哪（切换后就读不到旧光标了）
-                    rememberCaretNow();
-                    commitEditor();
-                    setChapterId(id);
-                  }}
-                  onAddChapter={() => void addChapter()}
-                  onDeleteChapter={() => void deleteChapter(chapterId)}
-                />
-                {writeSub === "script" && memAuto ? (
+                {writeQuiet && memAuto ? (
                   <div className={styles.collabNote} role="status">
                     已自动记住前 {memAuto.rangeTo} 章要点（AI 续写时会参考；长篇前情不容易丢）。
                     <button
                       type="button"
                       className={styles.hintInline}
-                      onClick={() => {
-                        setTab("project");
-                        setProjectSub("history");
-                      }}
+                      onClick={() => applyOverlay({ type: "file", page: "history" })}
                     >
                       查看 / 修改记忆
                     </button>
                   </div>
                 ) : null}
-                {writeSub === "script" && (
+                {writeQuiet ? (
                   <FirstRunChecklist
                     hasContent={Boolean((chapter?.prose || editor || "").trim().length > 20)}
-                    onOpenAgent={() => {
-                      if (showDesktop) setDesktopAppTick((t) => t + 1);
-                      else setAgentOpenTick((t) => t + 1);
-                    }}
+                    onOpenAgent={() => setAgentOpenTick((t) => t + 1)}
                     onGenerateRpy={() => {
-                      setTab("project");
-                      setProjectSub("export");
+                      applyOverlay({ type: "file", page: "export" });
                       void generateRpyFromManuscript();
                     }}
                     onExport={() => void exportCurrentView()}
@@ -3118,46 +3018,13 @@ export function StudioApp() {
                       trackOncePerUser(`onboarding_${step}`, { step })
                     }
                   />
-                )}
-                {writeSub === "script" && (
-                  <section className={styles.panel}>
+                ) : null}
+                <section className={styles.panel}>
                     <WriteToolbar
-                      copy={copy}
-                      chapterTitle={chapter?.title ?? ""}
-                      writeMode={writeMode}
-                      rpyStale={rpyIsStale({
-                        prose: writeMode === "prose" ? editor : chapter?.prose,
-                        rpyFromProseHash: chapter?.rpyFromProseHash,
-                      })}
-                      generating={generatingRpy}
-                      showReviseActions={Boolean(reviseDraft)}
-                      onWriteModeChange={switchWriteMode}
-                      onGenerateRpy={() => void generateRpyFromManuscript()}
-                      onChapterTitleChange={(title) => {
-                        updateActive((p) => ({
-                          ...p,
-                          chapters: p.chapters.map((c) =>
-                            c.id === chapterId ? { ...c, title } : c
-                          ),
-                        }));
-                      }}
-                      onOpenRevise={() => {
-                        if (focusMode) {
-                          setStatus("请先退出专注模式，再打开改稿对照");
-                          return;
-                        }
-                        requestOpenReviseReview(project.id, chapterId);
-                      }}
-                      onDiscardRevise={() => {
-                        clearChapterReviseDraft(project.id, chapterId);
-                        setReviseDraft(null);
-                        setStatus("已放弃这次改稿的对照预览。正文保持原样，没有做任何改动。");
-                      }}
                       onDictateInsert={(text) => {
                         insertAtCaret(text);
                         setStatus("已插入语音转写");
                       }}
-                      onFind={openFind}
                     />
                     {/* 写作手感条：字数目标 / 分场导航 / 笔误体检。
                         放在错误边界之外——它坏了不该连带把正文编辑器一起顶掉。
@@ -3165,7 +3032,10 @@ export function StudioApp() {
                         只留稿子；本场写了多少字已经由专注计时条上的「+N 字」在显示，
                         不重复。这里用"不渲染"而不是 CSS 藏起来，还能顺带停掉它每 30 秒
                         一次的统计轮询（专注时不该有后台请求在跑）。 */}
-                    {focusMode ? null : (
+                    {!focusMode &&
+                    (writeQuiet ||
+                      overlay?.type === "view" ||
+                      overlay?.type === "analysis") ? (
                       <WriteAids
                         projectId={project.id}
                         chapterId={chapterId}
@@ -3191,7 +3061,7 @@ export function StudioApp() {
                         onJump={(from, length) => focusEditorRange(from, from + length)}
                         onInsert={insertAtCaret}
                       />
-                    )}
+                    ) : null}
                     {findOpen ? (
                       <FindReplaceBar
                         // 每次打开都用新的查找词重新挂载（否则预填值不会更新）
@@ -3242,9 +3112,27 @@ export function StudioApp() {
                           onInsert={insertRecap}
                         />
                       ) : null}
-                      <ScriptEditor
-                        textareaRef={editorTaRef}
-                        frameClassName={styles.scriptEditor}                        value={editor}
+                      <div className={styles.docSheet}>
+                        <input
+                          className={styles.docTitle}
+                          data-testid="chapter-doc-title"
+                          value={chapter?.title ?? ""}
+                          onChange={(e) => {
+                            const title = e.target.value;
+                            updateActive((p) => ({
+                              ...p,
+                              chapters: p.chapters.map((c) =>
+                                c.id === chapterId ? { ...c, title } : c
+                              ),
+                            }));
+                          }}
+                          aria-label="章节名"
+                          placeholder="章节名"
+                        />
+                        <ScriptEditor
+                          textareaRef={editorTaRef}
+                          frameClassName={styles.scriptEditor}
+                          value={editor}
                         locations={project.locations ?? []}
                         marks={markRanges}
                         anchorOffset={activeMarkOffset}
@@ -3296,7 +3184,7 @@ export function StudioApp() {
                         onPlaceClick={(locationId, label) => {
                           commitEditor();
                           setMapFocus({ id: locationId, tick: Date.now() });
-                          setTab("map");
+                          applyOverlay({ type: "view", panel: "map" });
                           setStatus(`已在地图定位「${label}」`);
                         }}
                         placeholder={
@@ -3345,6 +3233,7 @@ export function StudioApp() {
                           ) : null
                         }
                       />
+                      </div>
                       {writeMode === "rpy" ? (
                         <ScriptCommandBar
                           characters={project.characters ?? []}
@@ -3435,9 +3324,23 @@ export function StudioApp() {
                       </button>
                     </div>
                   </section>
-                )}
-                {writeSub === "analysis" && (
-                  <section className={styles.panel}>
+
+                {overlay?.type === "file" ? (
+                  <FileBackstage
+                    title={FILE_PAGE_LABELS[overlay.page]}
+                    onClose={() => applyOverlay(null)}
+                  >
+                    <section className={styles.panel}>
+                      {renderProjectPage(overlay.page)}
+                    </section>
+                  </FileBackstage>
+                ) : null}
+
+                {overlay?.type === "analysis" ? (
+                  <StudioViewDrawer
+                    title="写作分析"
+                    onClose={() => applyOverlay(null)}
+                  >
                     <AnalysisPanels
                       project={project}
                       chapterId={chapterId}
@@ -3445,12 +3348,16 @@ export function StudioApp() {
                       onChange={updateActive}
                       onRemoteProject={applyRemoteProject}
                     />
-                  </section>
-                )}
-              </>
-            )}
+                  </StudioViewDrawer>
+                ) : null}
 
-            {tab === "world" && (
+                {overlay?.type === "view" ? (
+                  <StudioViewDrawer
+                    title={VIEW_PANEL_TITLES[overlay.panel]}
+                    wide={overlay.panel === "map"}
+                    onClose={() => applyOverlay(null)}
+                  >
+                    {overlay.panel === "world" ? (
               <WorldPanel
                 worldSub={worldSub}
                 projectId={project.id}
@@ -3490,18 +3397,16 @@ export function StudioApp() {
                 }}
                 onBibleChange={updateBible}
               />
-            )}
-
-            {tab === "voice" && (
+                    ) : null}
+                    {overlay.panel === "voice" ? (
               <CharacterWorkshop
                 project={project}
                 onProjectChange={(next) => {
                   replaceActiveProject(normalizeProject(next));
                 }}
               />
-            )}
-
-            {tab === "map" && (
+                    ) : null}
+                    {overlay.panel === "map" ? (
               <section className={styles.panel}>
                 <MapStudio
                   locations={locations}
@@ -3546,26 +3451,27 @@ export function StudioApp() {
                     saveWorkspace({
                       projectId: project.id,
                       chapterId: id,
-                      tab: "write",
-                      writeSub: "script",
+                      overlay: null,
                     });
-                    setTab("write");
-                    setWriteSub("script");
+                    applyOverlay(null);
                   }}
                   onExtractFromScript={() => void extractLocs("smart")}
                   onExtractRulesOnly={() => void extractLocs("rules")}
                 />
               </section>
-            )}
-
-            {tab === "system" && (
+                    ) : null}
+                    {overlay.panel === "system" ? (
               <SystemPanel
                 project={project}
                 onChange={updateActive}
                 sub={systemSub}
                 onSub={setSystemSub}
               />
-            )}
+                    ) : null}
+                  </StudioViewDrawer>
+                ) : null}
+              </div>
+            </div>
           </main>
         </div>
 
@@ -3588,11 +3494,7 @@ export function StudioApp() {
                   loadEditorFromChapter(ch, p.characters, writeModeRef.current);
                 }
               }}
-              onChapterFocus={(id) => {
-                setChapterId(id);
-                setTab("write");
-                setWriteSub("script");
-              }}
+              onChapterFocus={(id) => openChapterInDocument(id)}
             />
           </StudioErrorBoundary>
         ) : null}
@@ -3637,10 +3539,11 @@ export function StudioApp() {
         ) : null}
         {/* 页脚（使用指南 / 备案号）：工作台视图里底部音乐条是 fixed 的，会盖住它，
             所以这里给它让出音乐条的高度；桌面视角没有音乐条，也就不要那段空白。 */}
-        <div className={!showDesktop && musicBarOn ? styles.footerLift : undefined}>
+        <div className={musicBarOn ? styles.footerLift : undefined}>
           <FilingFooter />
         </div>
       </div>
+      ) : null}
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openFilePage, openViewPanel } from "./nav";
 
 /**
  * 关系图体检（机器先查一遍）。
@@ -55,33 +56,33 @@ async function registerAndLogin(page: Page, username: string) {
 }
 
 async function openRelationsSub(page: Page) {
-  await page.getByRole("button", { name: "项目", exact: true }).first().click();
-  await page.getByRole("button", { name: "结构分析", exact: true }).first().click();
-  await page.getByRole("button", { name: "角色关系", exact: true }).first().click();
-  await expect(page.getByLabel("角色 A")).toBeVisible({ timeout: 20_000 });
+  await openFilePage(page, "结构分析");
+  const backstage = page.getByTestId("file-backstage");
+  await backstage.getByRole("button", { name: "角色关系", exact: true }).first().click();
+  await expect(backstage.getByLabel("角色 A")).toBeVisible({ timeout: 20_000 });
 }
 
 /** 新账号自带示例剧本（里面已经有一条词表外的关系 → 体检卡片本来就会出现），
  *  所以这里先建一个真正干净的空剧本，才能验「干净时不显示卡片」。 */
 async function createBlankProject(page: Page) {
-  const rail = page.locator('nav[aria-label="剧本篇章"]');
-  await rail.getByRole("button", { name: /项目/ }).click();
-  await page.getByRole("button", { name: "剧本库", exact: true }).first().click();
-  const blank = page.getByRole("button", { name: "空白剧本" });
+  await openFilePage(page, "打开（剧本库）");
+  const backstage = page.getByTestId("file-backstage");
+  const blank = backstage.getByRole("button", { name: "空白剧本" });
   await blank.waitFor({ state: "visible", timeout: 15_000 });
   await blank.click();
-  await page.getByRole("textbox", { name: "新剧本标题" }).fill("E2E 关系图体检");
-  await page.getByRole("button", { name: "创建" }).click();
+  await backstage.getByRole("textbox", { name: "新剧本标题" }).fill("E2E 关系图体检");
+  await backstage.getByRole("button", { name: "创建" }).click();
   await expect(page.getByLabel("作品标题")).toHaveValue("E2E 关系图体检", { timeout: 15_000 });
 }
 
 /** 加两个角色卡（默认名字是 角色1 / 角色2，所以下拉里不重名）。 */
 async function addTwoCharacters(page: Page) {
-  await page.getByRole("button", { name: "设定", exact: true }).first().click();
-  await page.getByRole("button", { name: "角色卡", exact: true }).first().click();
-  await page.getByRole("button", { name: "添加角色" }).click();
-  await page.getByRole("button", { name: "添加角色" }).click();
-  await expect(page.locator('input[value="角色2"]')).toBeVisible({ timeout: 20_000 });
+  await openViewPanel(page, "设定");
+  const drawer = page.getByTestId("view-drawer");
+  await drawer.getByRole("button", { name: "角色卡", exact: true }).first().click();
+  await drawer.getByRole("button", { name: "添加角色" }).click();
+  await drawer.getByRole("button", { name: "添加角色" }).click();
+  await expect(drawer.locator('input[value="角色2"]')).toBeVisible({ timeout: 20_000 });
 }
 
 /** 加一条 A —标签→ B 的关系。 */

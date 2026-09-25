@@ -10,7 +10,7 @@ export const HELP_QUICK: Array<{ title: string; body: string }> = [
   },
   {
     title: "导出跟当前视图",
-    body: "看剧本稿导出 Word（.docx），看 RPY 稿导出 .rpy；完整工程包和 Markdown 在「项目 → 导出」。",
+    body: "看剧本稿导出 Word（.docx），看 RPY 稿导出 .rpy；完整工程包和 Markdown 在「文件 → 导出」。",
   },
   {
     title: "AI 用什么模型",

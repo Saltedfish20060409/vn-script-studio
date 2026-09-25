@@ -92,9 +92,11 @@ describe("轻小说上手指引：每一步都指得到真实界面", () => {
       expect(surface.trim().length).toBeGreaterThan(2);
       expect(jargonHits(surface)).toHaveLength(0);
     }
-    // 「写作」页与「项目」页是轻小说作者最常待的两处，必须都在清单里
-    expect(LN_SURFACES.some((s) => s.includes("「写作」页"))).toBe(true);
-    expect(LN_SURFACES.some((s) => s.includes("「项目」页"))).toBe(true);
+    // 稿纸与文件菜单是轻小说作者最常待的两处，必须都在清单里
+    expect(LN_SURFACES.some((s) => s.includes("左侧大纲") || s.includes("「开始」"))).toBe(
+      true
+    );
+    expect(LN_SURFACES.some((s) => s.includes("「文件」"))).toBe(true);
   });
 
   it("每一步都说了点完会发生什么（不能只写去哪点）", () => {

@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 import {
   DESKTOP_TIPS,
   buildDesktopIcons,
@@ -50,23 +58,21 @@ type Props = {
   /** 剧本（桌面上的"文件夹"）：带章数与最后修改时间，图标上直接显示进度 */
   projects: Array<{ id: string; title: string; chapters?: number; updatedAt?: string }>;
   activeProjectId?: string;
-  /** 打开某个剧本：在桌面上打开**这个剧本自己的工作台窗口**（最大化），不是跳走 */
+  /**
+   * 打开某个剧本：离开桌面启动器，进入稿纸工作台（`view: "studio"`）。
+   * 不再在桌面底下套一层 shell 窗口。
+   */
   onOpenProject: (id: string) => void;
   onNewProject: () => void;
   apps: DesktopApp[];
-  /** 当前剧本的工作台窗口是否打开（打开时工作台以"最大化窗口"形式出现在桌面上） */
-  scriptOpen: boolean;
   activeProjectTitle?: string;
-  onCloseScript: () => void;
-  onScriptMinimize?: () => void;
   /** 右键剧本图标：重命名 / 复制 / 删除（跟 Windows 的桌面右键一致） */
   onRenameProject?: (id: string) => void;
   onDuplicateProject?: (id: string) => void;
   onDeleteProject?: (id: string) => void;
   /**
    * 开始菜单里的"跳到这个剧本的某一页"（写作/设定/角色工坊/地图/剧情状态/项目）。
-   * 跟 Windows 任务栏的跳转列表一个意思：桌面视角下这些页在剧本窗口里，
-   * 但入口不该只有"双击图标再找标签"一条路。
+   * 会进入稿纸工作台并打开对应 overlay。
    */
   scriptTabs?: Array<{ id: string; label: string }>;
   onOpenScriptTab?: (id: string) => void;
@@ -77,7 +83,7 @@ type Props = {
   openAppRequest?: { id: string; nonce: number };
   /**
    * 「继续写作」：桌面空着时给一条零学习成本的回头路 ——
-   * 直接打开上次那个剧本、回到上次那一章（而不是"自己找哪个图标是刚才写的"）。
+   * 直接进入稿纸工作台、回到上次那一章。
    */
   resume?: { projectTitle: string; chapterLabel: string };
   onResume?: () => void;
@@ -106,20 +112,15 @@ function isBlankSpot(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (!el) return true;
   return !el.closest(
-    "button, [data-desktop-menu], [data-testid^='desktop-window-'], [data-testid='desktop-script-window']"
+    "button, [data-desktop-menu], [data-testid^='desktop-window-']"
   );
 }
 
 /**
- * 桌面视图：图标有固定座位（拖动=换座，松手自动对齐）、应用开成窗口、任务栏管窗口。
+ * 桌面启动器：图标有固定座位、应用开成窗口、任务栏管窗口。
  *
- * 桌面上**没有"剧本编辑器"这个软件**：剧本自己就是入口 —— 双击某个剧本图标，
- * 打开的是这个剧本自己的工作台窗口（写作页 / 设定 / 角色工坊 / 地图 / 剧情状态，
- * 以及只读这个剧本的 AI 责编）。剧本的常用操作（重命名/复制/删除）在图标右键菜单里，
- * 跟 Windows 桌面一致；导入/模板这类"管理全部剧本"的事在开始菜单的「剧本库」窗口里。
- *
- * 窗口是**自己的形态**而不是跳回原界面；桌面只放"快捷方式"，系统设置/帮助/公告进开始菜单；
- * 图标座位与窗口位置会被记住（跨刷新）。
+ * 双击剧本 / 「继续写作」/ 开始菜单跳转 → 由父组件切到稿纸工作台；
+ * 桌面本身不再套一层「剧本编辑器窗口」（已去掉 dual-shell / shellUnderDesktop）。
  *
  * 边界仍然没变：窄屏自动回工作台（见 shouldShowDesktop），数据模型/编辑器逻辑一行没动。
  */
@@ -130,10 +131,7 @@ export function DesktopView({
   onOpenProject,
   onNewProject,
   apps,
-  scriptOpen,
   activeProjectTitle,
-  onCloseScript,
-  onScriptMinimize,
   onRenameProject,
   onDuplicateProject,
   onDeleteProject,
@@ -200,11 +198,6 @@ export function DesktopView({
     return () => window.clearInterval(timer);
   }, []);
 
-  // 小抄只在"桌面空着"时出现；一旦打开剧本窗口就自动收掉（别挡着要干的活）
-  useEffect(() => {
-    if (scriptOpen && tipsOpen) setTipsOpen(false);
-  }, [scriptOpen, tipsOpen]);
-
   // 外部请求开窗口（例如工作台顶栏的「审稿」→ 桌面上的「AI 责编」窗口）
   const lastOpenRequest = useRef(openAppRequest?.nonce ?? 0);
   useEffect(() => {
@@ -220,7 +213,6 @@ export function DesktopView({
 
   /**
    * 关掉开始菜单/右键菜单：点任务栏外面、按 ESC、或者点了别处都算。
-   * 必须挂在 document 上：剧本窗口打开时桌面层是"事件穿透"的，点在面板上收不到桌面的事件。
    */
   useEffect(() => {
     if (!menuOpen && !ctxMenu && !tipsOpen) return;
@@ -281,126 +273,107 @@ export function DesktopView({
     };
   }, []);
 
-  const openApp = useCallback(
-    (id: string) => {
-      const app = apps.find((a) => a.id === id);
-      if (!app) return;
-      app.run?.();
-      if (app.render) {
-        setLayout((cur) =>
-          openWindow(cur, app.id, app.defaultRect ?? { x: 90, y: 70, w: 520, h: 420 })
-        );
-      }
-    },
-    [apps]
-  );
+  const closeTips = useCallback(() => {
+    markDesktopTipsSeen();
+    setTipsOpen(false);
+  }, []);
+
+  function openApp(id: string) {
+    const app = apps.find((a) => a.id === id);
+    if (!app) return;
+    app.run?.();
+    if (!app.render) return;
+    setLayout((cur) =>
+      openWindow(cur, id, app.defaultRect ?? { x: 90, y: 70, w: 520, h: 420 })
+    );
+  }
 
   function openIcon(icon: DesktopIcon) {
-    if (icon.kind === "project") {
+    setSelected(icon.id);
+    if (icon.id.startsWith("project:")) {
       onOpenProject(icon.id.slice("project:".length));
       return;
     }
-    const appId = icon.id.slice("action:".length);
-    if (appId === "new") {
-      onNewProject();
-      return;
-    }
-    if (appId === "more") {
-      // 「更多剧本」= 打开剧本库窗口（全部剧本的管理入口）
-      openApp("library");
-      return;
-    }
-    openApp(appId);
+    openApp(icon.id);
   }
 
+  /** 单击选中；短间隔二次点击当双击（触控板/触屏不完全可靠） */
   function handleIconClick(icon: DesktopIcon) {
-    const t = Date.now();
-    const isDouble = lastClick.current.id === icon.id && t - lastClick.current.at < 400;
-    lastClick.current = { id: icon.id, at: t };
+    const nowMs = Date.now();
+    const same = lastClick.current.id === icon.id && nowMs - lastClick.current.at < 450;
+    lastClick.current = { id: icon.id, at: nowMs };
+    if (same) {
+      openIcon(icon);
+      return;
+    }
     setSelected(icon.id);
-    if (isDouble) openIcon(icon);
   }
 
-  /** 关掉一次性小抄（记住，以后不再出现） */
-  function closeTips() {
-    setTipsOpen(false);
-    markDesktopTipsSeen();
-  }
-
-  /**
-   * 排列图标：忘掉手工摆过的座位，回到默认顺序（跟 Windows 的自动排列一致）。
-   * 只动图标、不动窗口 —— "窗口找不回来"是另一件事，见开始菜单里的「关掉所有窗口」。
-   */
-  function tileIcons() {
-    setLayout((cur) => ({ ...cur, icons: {} }));
-  }
-
-  /**
-   * 键盘操作（桌面比喻该有的那几件）：方向键在座位间移动、Enter 打开、
-   * F2 重命名、Delete 删除。焦点跟着走，选中态同步，底部提示条会显示这个图标能干什么。
-   */
-  function handleIconKey(e: React.KeyboardEvent<HTMLButtonElement>, icon: DesktopIcon) {
-    const dir =
-      e.key === "ArrowUp"
-        ? "up"
-        : e.key === "ArrowDown"
-          ? "down"
-          : e.key === "ArrowLeft"
-            ? "left"
-            : e.key === "ArrowRight"
-              ? "right"
-              : null;
-    if (dir) {
-      e.preventDefault();
-      const next = nextIconInDirection(slots, icon.id, dir);
-      if (next) {
-        setSelected(next);
-        iconRefs.current[next]?.focus();
-      }
-      return;
-    }
-    const projectId = icon.id.startsWith("project:") ? icon.id.slice("project:".length) : null;
-    if (e.key === "F2" && projectId && onRenameProject) {
-      e.preventDefault();
-      onRenameProject(projectId);
-      return;
-    }
-    if (e.key === "Delete" && projectId && onDeleteProject) {
-      e.preventDefault();
-      onDeleteProject(projectId);
-      return;
-    }
-    if (e.key === "Enter") {
+  function handleIconKey(e: ReactKeyboardEvent, icon: DesktopIcon) {
+    if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       openIcon(icon);
+      return;
+    }
+    if (
+      e.key === "ArrowLeft" ||
+      e.key === "ArrowRight" ||
+      e.key === "ArrowUp" ||
+      e.key === "ArrowDown"
+    ) {
+      e.preventDefault();
+      const dir =
+        e.key === "ArrowLeft"
+          ? "left"
+          : e.key === "ArrowRight"
+            ? "right"
+            : e.key === "ArrowUp"
+              ? "up"
+              : "down";
+      const next = nextIconInDirection(slots, icon.id, dir);
+      if (!next) return;
+      setSelected(next);
+      iconRefs.current[next]?.focus();
     }
   }
 
-  const selectedHint =
-    icons.find((i) => i.id === selected)?.hint ??
-    "双击打开；右键有菜单；拖动可以换座位（松手自动对齐）";
+  function tileIcons() {
+    setLayout((cur) => {
+      const next: DesktopLayout = { ...cur, icons: {} };
+      icons.forEach((icon, i) => {
+        next.icons[icon.id] = i;
+      });
+      return next;
+    });
+  }
 
-  /** 右键菜单的项目（按图标类型给不同的项） */
   function menuItemsFor(icon: DesktopIcon): Array<{ label: string; run: () => void }> {
-    const id = icon.id.startsWith("project:") ? icon.id.slice("project:".length) : null;
-    const items: Array<{ label: string; run: () => void }> = [
-      { label: "打开", run: () => openIcon(icon) },
-    ];
-    if (id) {
-      if (onRenameProject) items.push({ label: "重命名…", run: () => onRenameProject(id) });
-      if (onDuplicateProject) items.push({ label: "复制一份", run: () => onDuplicateProject(id) });
-      if (onDeleteProject) items.push({ label: "删除…", run: () => onDeleteProject(id) });
+    if (icon.id.startsWith("project:")) {
+      const id = icon.id.slice("project:".length);
+      return [
+        { label: "📖 打开（进入写作）", run: () => onOpenProject(id) },
+        ...(onRenameProject
+          ? [{ label: "✎ 重命名", run: () => onRenameProject(id) }]
+          : []),
+        ...(onDuplicateProject
+          ? [{ label: "⧉ 复制", run: () => onDuplicateProject(id) }]
+          : []),
+        ...(onDeleteProject
+          ? [{ label: "🗑 删除", run: () => onDeleteProject(id) }]
+          : []),
+      ];
     }
-    return items;
+    return [{ label: "打开", run: () => openIcon(icon) }];
   }
 
-  const ctxIcon = ctxMenu?.id
-    ? icons.find((i) => i.id === ctxMenu.id) ?? null
-    : null;
+  const ctxIcon = ctxMenu?.id ? icons.find((i) => i.id === ctxMenu.id) : null;
+  const selectedHint = selected
+    ? icons.find((i) => i.id === selected)?.hint ?? ""
+    : "双击剧本进入写作 · 右键可重命名/复制/删除";
 
   return (
     <div
-      className={`${styles.desktop} ${scriptOpen ? styles.desktopPassThrough : ""}`}
+      className={styles.desktop}
       data-testid="desktop-view"
       onPointerDown={(e) => {
         // 任何一次点击都算"看懂了"，小抄让路
@@ -420,11 +393,10 @@ export function DesktopView({
         setCtxMenu({ id: null, x: e.clientX, y: e.clientY });
       }}
     >
-      {/* 图标与暗角只在"没有打开剧本窗口"时出现 —— 否则会浮在工作台上面 */}
-      {!scriptOpen ? <div className={styles.dim} aria-hidden data-blank="1" /> : null}
+      <div className={styles.dim} aria-hidden data-blank="1" />
 
       {/* 首次进入桌面视角的一次性小抄：放在右侧空白区，不挡图标；点任意处或「知道了」即关闭 */}
-      {!scriptOpen && tipsOpen ? (
+      {tipsOpen ? (
         <aside
           className={styles.tips}
           data-testid="desktop-tips"
@@ -446,96 +418,72 @@ export function DesktopView({
       ) : null}
 
       {/* 桌面图标：剧本（文件夹）+ 放上桌面的应用快捷方式。位置=座位号，吸附对齐 */}
-      {!scriptOpen ? (
-        <div
-          className={styles.iconArea}
-          role="list"
-          aria-label="桌面图标"
-          style={{ paddingBottom: RESERVE_BOTTOM + 3.4 * 16 }}
-        >
-          {icons.map((icon) => {
-            const pos = slotToPosition(slots[icon.id] ?? 0);
-            const isDragging = dragging?.id === icon.id;
-            return (
-              <button
-                key={icon.id}
-                type="button"
-                role="listitem"
-                aria-label={icon.label}
-                className={`${styles.icon} ${selected === icon.id ? styles.iconOn : ""} ${
-                  icon.id === `project:${activeProjectId}` ? styles.iconActive : ""
-                } ${isDragging ? styles.iconDragging : ""}`}
-                style={
-                  isDragging
-                    ? { left: dragging.x, top: dragging.y, zIndex: 20 }
-                    : { left: pos.x, top: pos.y }
-                }
-                onClick={() => handleIconClick(icon)}
-                onDoubleClick={() => openIcon(icon)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setMenuOpen(false);
-                  setSelected(icon.id);
-                  setCtxMenu({ id: icon.id, x: e.clientX, y: e.clientY });
-                }}
-                onPointerDown={(e) => {
-                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                  pendingDrag.current = {
-                    id: icon.id,
-                    x: r.left,
-                    y: r.top,
-                    dx: e.clientX - r.left,
-                    dy: e.clientY - r.top,
-                    startX: e.clientX,
-                    startY: e.clientY,
-                  };
-                }}
-                ref={(el) => {
-                  iconRefs.current[icon.id] = el;
-                }}
-                onFocus={() => setSelected(icon.id)}
-                onKeyDown={(e) => handleIconKey(e, icon)}
-                title={icon.hint}
-              >
-                <span className={styles.glyph} aria-hidden>
-                  {icon.glyph}
+      <div
+        className={styles.iconArea}
+        role="list"
+        aria-label="桌面图标"
+        style={{ paddingBottom: RESERVE_BOTTOM + 3.4 * 16 }}
+      >
+        {icons.map((icon) => {
+          const pos = slotToPosition(slots[icon.id] ?? 0);
+          const isDragging = dragging?.id === icon.id;
+          return (
+            <button
+              key={icon.id}
+              type="button"
+              role="listitem"
+              aria-label={icon.label}
+              className={`${styles.icon} ${selected === icon.id ? styles.iconOn : ""} ${
+                icon.id === `project:${activeProjectId}` ? styles.iconActive : ""
+              } ${isDragging ? styles.iconDragging : ""}`}
+              style={
+                isDragging
+                  ? { left: dragging.x, top: dragging.y, zIndex: 20 }
+                  : { left: pos.x, top: pos.y }
+              }
+              onClick={() => handleIconClick(icon)}
+              onDoubleClick={() => openIcon(icon)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setMenuOpen(false);
+                setSelected(icon.id);
+                setCtxMenu({ id: icon.id, x: e.clientX, y: e.clientY });
+              }}
+              onPointerDown={(e) => {
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                pendingDrag.current = {
+                  id: icon.id,
+                  x: r.left,
+                  y: r.top,
+                  dx: e.clientX - r.left,
+                  dy: e.clientY - r.top,
+                  startX: e.clientX,
+                  startY: e.clientY,
+                };
+              }}
+              ref={(el) => {
+                iconRefs.current[icon.id] = el;
+              }}
+              onFocus={() => setSelected(icon.id)}
+              onKeyDown={(e) => handleIconKey(e, icon)}
+              title={icon.hint}
+            >
+              <span className={styles.glyph} aria-hidden>
+                {icon.glyph}
+              </span>
+              {icon.badge ? (
+                <span className={styles.badge} data-testid={`icon-badge-${icon.id}`}>
+                  {icon.badge}
                 </span>
-                {icon.badge ? (
-                  <span className={styles.badge} data-testid={`icon-badge-${icon.id}`}>
-                    {icon.badge}
-                  </span>
-                ) : null}
-                <span className={styles.label}>{icon.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+              ) : null}
+              <span className={styles.label}>{icon.label}</span>
+            </button>
+          );
+        })}
+      </div>
 
-      {/* 剧本窗口：标题就是剧本名。一个剧本一套工作台（写作页/设定/角色/地图/剧情状态 +
-          只读这个剧本的 AI 责编），所以它不是"某个编辑器"，而是这个剧本自己的工作区。
-          工作台本体由 StudioApp 渲染在下面这一层（见 .shellUnderDesktop），
-          它的高度/边距正好让开这条标题栏与任务栏。 */}
-      {scriptOpen ? (
-        <div className={styles.editorFrame} data-testid="desktop-script-window">
-          <header className={styles.editorBar}>
-            <span aria-hidden>📖</span>
-            <span className={styles.editorTitle}>{activeProjectTitle || "未命名剧本"}</span>
-            <span className={styles.editorSub}>仅此剧本</span>
-            <div className={styles.editorButtons}>
-              <button type="button" onClick={onScriptMinimize} title="最小化到任务栏">
-                —
-              </button>
-              <button type="button" onClick={onCloseScript} title="关闭">
-                ✕
-              </button>
-            </div>
-          </header>
-        </div>
-      ) : null}
-
-      {/* 应用窗口 */}
+      {/* 应用窗口（剧本库 / AI 责编 / 设置等）—— 不是稿纸工作台本身 */}
       {openWins.map((win) => {
         const app = apps.find((a) => a.id === win.id);
         if (!app?.render || win.minimized) return null;
@@ -617,7 +565,7 @@ export function DesktopView({
 
         {menuOpen ? (
           <div className={styles.menu} role="menu" data-desktop-menu="1">
-            {/* 当前剧本的各个篇章：一键打开剧本窗口并跳到那一页（不用先进去再找标签） */}
+            {/* 当前剧本：一键进入稿纸并打开对应面板 */}
             {scriptTabs && scriptTabs.length > 0 && activeProjectTitle ? (
               <>
                 <p className={styles.menuGroup}>
@@ -670,10 +618,8 @@ export function DesktopView({
               role="menuitem"
               onClick={() => {
                 setMenuOpen(false);
-                // 关掉所有窗口：窗口被拖到看不见的地方时，这样就能找回来
-                // （重新打开会回到默认位置，因为位置记录随窗口一起清掉了）
+                // 关掉所有应用窗口：窗口被拖到看不见的地方时，这样就能找回来
                 setLayout((cur) => ({ ...cur, windows: {} }));
-                onCloseScript();
               }}
             >
               🪟 关掉所有窗口
@@ -703,16 +649,6 @@ export function DesktopView({
 
         {/* 已打开窗口 = 任务栏按钮（点一下切换/还原） */}
         <div className={styles.tasks}>
-          {scriptOpen ? (
-            <button
-              type="button"
-              className={styles.task}
-              onClick={() => onScriptMinimize?.()}
-              title={activeProjectTitle || "未命名剧本"}
-            >
-              📖 {activeProjectTitle || "未命名剧本"}
-            </button>
-          ) : null}
           {openWins.map((win) => {
             const app = apps.find((a) => a.id === win.id);
             if (!app?.render) return null;
@@ -734,7 +670,7 @@ export function DesktopView({
         </div>
 
         {/* 「继续写作」：桌面空着时最常做的动作，放在最显眼、零学习成本的位置 */}
-        {!scriptOpen && resume && onResume ? (
+        {resume && onResume ? (
           <button
             type="button"
             className={styles.resume}
@@ -755,7 +691,7 @@ export function DesktopView({
           className={styles.task}
           data-testid="desktop-to-studio"
           onClick={onSwitchToStudioView}
-          title="切换为工作台视图（三栏布局，设置里可以切回来）"
+          title="切换为工作台视图（稿纸壳，设置里可以切回来）"
         >
           🖥️ 工作台
         </button>
@@ -769,7 +705,7 @@ export function DesktopView({
         </span>
       </div>
 
-      <span className={styles.hintBar} style={{ opacity: scriptOpen ? 0 : 1 }}>
+      <span className={styles.hintBar}>
         {selectedHint}
       </span>
     </div>

@@ -80,44 +80,8 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* 桌面视图打开时把工作台整体收起：用 display:none 而不是盖住，
-   否则隐藏的输入框仍然能被 Tab 聚焦（键盘用户会"跳进看不见的地方"） */
-.shellHidden {
-  display: none;
-}
-
-/* 桌面视图里工作台就是这个剧本的"窗口内容"：正好占住标题栏与任务栏之间的工作区，
-   并且**由它自己滚**（不再让整页滚，否则工作台会被推到标题栏/任务栏下面去）。
-
-   注意下面那条 flex-shrink: 0 —— 这里是定高的，如果还允许内部 flex 收缩，
-   .layout/.main 会被压扁，而里面 overflow:auto 的行（篇章标签栏、章节条）的自动最小尺寸
-   是 0，会直接塌成 1px；它们的内容接着溢出，被后面的兄弟节点（"三步上手"引导条）盖住，
-   表现就是"写作页的剧本/分析切不了、章节也点不动"（2026-09-17 实测复现并定位）。 */
-.shell.shellUnderDesktop {
-  position: fixed;
-  top: 30px;
-  left: 0;
-  right: 0;
-  bottom: 46px;
-  z-index: 0;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.shell.shellUnderDesktop .main {
-  flex-shrink: 0;
-}
-
-/* 桌面里不渲染底部音乐条（音乐是"应用窗口"），工作台不用给那条留位置。
-   注意 flex 要用 `1 0 auto` 而不是默认的 `1 0 0%`：basis 0% 会让 .layout 的高度等于
-   外壳高度，内容比它高时就溢出，紧跟在后面的页脚（使用指南 / 备案号）就会被"溢出的编辑器"
-   盖住 —— 表现是页脚跑到写作页文本框里去了。basis:auto 才能"内容多高就多高，够高才撑满"，
-   多出来的交给外壳滚动。 */
-.shell.shellUnderDesktop .layout {
-  flex: 1 0 auto;
-  padding-bottom: 0;
-}
+/* 桌面视图打开时工作台不渲染（见 StudioApp 的 showDesktop 分支），
+   不再用「桌面底下套一层 shell」的双壳布局。 */
 
 /* 工作台视图里页脚要躲开底部固定的音乐条（否则"使用指南 / 备案号"会被压在条下面点不到） */
 .footerLift {
@@ -598,6 +562,31 @@
 .subActive:active {
   transform: scale(0.97);
   box-shadow: 1px 1px 0 color-mix(in srgb, var(--ink) 12%, transparent);
+}
+
+.docLayout {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: row;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
+/* 窄屏：ChapterOutline 折成顶部横条，稿纸在下 */
+@media (max-width: 720px) {
+  .docLayout {
+    flex-direction: column;
+  }
+}
+
+.docMain {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
 }
 
 .layout {
@@ -1122,7 +1111,67 @@
   box-shadow: var(--shadow-sm);
 }.scriptEditor {
   min-height: calc(100dvh - 240px);
-}/* Writing mode: quieter chrome so the editor owns attention (Phase-2 light) */
+}
+
+/* 稿纸顶：章节名当文档标题，不再挤在工具条里当表单字段 */
+.docSheet {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.docTitle {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.35rem 0.55rem 0.45rem;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: clamp(1.15rem, 2.2vw, 1.45rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+}
+
+.docTitle::placeholder {
+  color: var(--ink-soft);
+  opacity: 0.55;
+  font-weight: 600;
+}
+
+.docTitle:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+.saveBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--field-bg) 80%, transparent);
+  color: var(--ink-soft);
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.saveBadgeError {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  background: color-mix(in srgb, var(--danger) 10%, var(--field-bg));
+  color: var(--danger);
+}
+
+/* Writing mode: quieter chrome so the editor owns attention (Phase-2 light) */
 .writeQuiet .top {
   opacity: 0.72;
   border-bottom-width: 1px;
@@ -1213,6 +1262,42 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   cursor: pointer;
+}
+
+/* 写作页里「专注」是一等入口：比「审稿」更醒目，并露出快捷键，避免只靠 title。 */
+.focusTogglePrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--field-bg));
+  color: var(--ink);
+  box-shadow: 2px 2px 0 color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.focusTogglePrimary:hover {
+  background: color-mix(in srgb, var(--accent) 18%, var(--field-bg));
+  border-color: var(--accent);
+}
+
+.focusKbd {
+  display: inline-block;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, var(--accent));
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--paper) 70%, transparent);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink-soft);
+  line-height: 1.3;
+}
+
+@media (max-width: 560px) {
+  .focusKbd {
+    display: none;
+  }
 }
 
 /* Phase-3: another quiet tier on top of writeQuiet */
@@ -1326,6 +1411,17 @@
 
 .focusMode .toolbar .hintInline {
   display: none;
+}
+
+/* 专注时不渲染音乐条，也不再给它预留底边距 */
+.focusMode .layout {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.focusMode .docTitle {
+  border-bottom-color: color-mix(in srgb, var(--line) 55%, transparent);
+  padding-left: 0.15rem;
+  padding-right: 0.15rem;
 }
 
 .focusMode:fullscreen .editor,

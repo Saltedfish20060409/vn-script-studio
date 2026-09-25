@@ -130,15 +130,21 @@ export function WriteAids({
    * 这是对"它是不是只是在占地方"的正面回答：三行读数确实占掉正文上方一条空间，
    * 而有的人一天只关心字数、不关心分场。所以给一个折叠开关，状态记在本机
    * （localStorage：跟"上次打开的章节"一样属于本设备的记忆，不跟着作品走）。
-   * **不做侧栏大纲**：写作页已经是三栏 + 悬浮 Agent 面板，再加一列会挤掉正文宽度；
-   * 而分场信息要的是"点一下就跳过去"，横条已经能做到——需要一屏纵览全部场景时，
-   * 该去的是「结构分析」，那里有整章结构视图。
+   *
+   * **默认折叠**：没写过本地记录的新用户（或清过存储）直接收成一行；曾经点过
+   * 「展开」存成 `"0"` 的，仍按展开回来——不要用新默认把老用户的选择冲掉。
+   * **不做侧栏大纲**：写作页已经是纵向堆叠 + 悬浮 Agent 面板，再加一列会挤掉
+   * 正文宽度；而分场信息要的是"点一下就跳过去"，横条已经能做到——需要一屏
+   * 纵览全部场景时，该去的是「结构分析」，那里有整章结构视图。
    */
   const [collapsed, setCollapsed] = useState(() => {
     try {
-      return localStorage.getItem(AIDS_COLLAPSED_KEY) === "1";
+      const raw = localStorage.getItem(AIDS_COLLAPSED_KEY);
+      // 无记录 → 默认折叠；显式 "0" → 展开；其它（含 "1"）→ 折叠
+      if (raw === null) return true;
+      return raw !== "0";
     } catch {
-      return false;
+      return true;
     }
   });
   function toggleCollapsed() {
@@ -240,12 +246,20 @@ export function WriteAids({
   }
 
   return (
-    <div className={styles.wrap} data-testid="write-aids">
+    <div className={styles.wrap} data-testid="write-aids" data-collapsed={collapsed ? "1" : "0"}>
       <div className={styles.head}>
         <strong className={styles.headTitle}>写作辅助</strong>
-        <span className={styles.hint}>
-          字数目标 · 分场导航 · 笔误体检（点条目可直接跳到正文那一处）
-        </span>
+        {collapsed ? (
+          <span className={styles.hint} data-testid="write-aids-summary">
+            本章 {formatWords(chapterWords)} 字
+            {issues.length ? ` · ${issues.length} 处笔误` : ""}
+            {scenes.length > 1 ? ` · ${scenes.length} 场` : ""}
+          </span>
+        ) : (
+          <span className={styles.hint}>
+            字数目标 · 分场导航 · 笔误体检（点条目可直接跳到正文那一处）
+          </span>
+        )}
         <button
           type="button"
           className={styles.ghost}

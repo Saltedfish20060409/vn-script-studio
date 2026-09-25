@@ -54,13 +54,12 @@ async function register(page: Page, username: string) {
 }
 
 /** 新账号现在会自带一个示例剧本（不再是空剧本库），所以：
- *  先看空库里有没有「空白剧本」入口，没有就走 项目 → 剧本库 再新建。 */
+ *  先看空库里有没有「空白剧本」入口，没有就走 文件 → 剧本库 再新建。 */
 async function createBlankProject(page: Page) {
   const blank = page.getByRole("button", { name: "空白剧本" });
   if (!(await blank.isVisible().catch(() => false))) {
-    const rail = page.locator('nav[aria-label="剧本篇章"]');
-    await rail.getByRole("button", { name: /项目/ }).click();
-    await page.getByRole("button", { name: "剧本库", exact: true }).first().click();
+    const { openFilePage } = await import("./nav");
+    await openFilePage(page, /打开（剧本库）|剧本库/);
     await blank.waitFor({ state: "visible", timeout: 15_000 });
   }
   await blank.click();
