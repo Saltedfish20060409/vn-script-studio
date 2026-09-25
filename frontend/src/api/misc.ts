@@ -1,4 +1,4 @@
-import type { ServerSettingsOut } from "../lib/settings";
+import type { ServerSettingsOut, SettingsPutBody } from "../lib/settings";
 import type { VnProject } from "../types/vn";
 import { apiFetch } from "./http";
 import { TIMEOUTS } from "./timeouts";
@@ -279,7 +279,9 @@ export function getSettings(): Promise<ServerSettingsOut> {
   return apiFetch<ServerSettingsOut>("/settings");
 }
 
-export function putSettings(body: Record<string, unknown>): Promise<ServerSettingsOut> {
+/** 保存设置。**用 SettingsPutBody 而不是 Record<string, unknown>**：
+ *  后端 Pydantic 会静默忽略未知键（键名写错也返回 200），所以键名必须由类型来保证。 */
+export function putSettings(body: SettingsPutBody): Promise<ServerSettingsOut> {
   return apiFetch<ServerSettingsOut>("/settings", {
     method: "PUT",
     body: JSON.stringify(body),

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings, get_settings
 from app.core import llm_budget
 from app.core.ai import DeepSeekConfig
-from app.core.llm_client_override import _is_safe_base_url
+from app.core.llm_client_override import _is_safe_base_url, https_url_shape_ok
 from app.core.llm_http import content_from_response
 from app.core.llm_provider import provider_from_config
 from app.core.rate_limit import require_rate
@@ -36,9 +36,37 @@ async def put_settings_api(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    _reject_obviously_unusable_base_url("api_base_url", body.api_base_url)
+    _reject_obviously_unusable_base_url("critic_api_base_url", body.critic_api_base_url)
     row = await get_or_create_settings(db, user.id)
     row = await update_settings(db, row, body)
     return settings_to_out(row)
+
+
+def _reject_obviously_unusable_base_url(field: str, value: str | None) -> None:
+    """保存自定义接口地址时先拦下**明显用不了**的写法。
+
+    只管形状（https + 带点的域名），不查 DNS——见 `https_url_shape_ok` 的说明。
+    为什么必须在保存时拦：这些地址在**请求时**由 `merge_llm_credentials` 过安全守卫，
+    过不了就**静默换成服务端地址**。用户于是看到"保存成功 + 当前生效却是别的域名"
+    （真实反馈截图），而且他填的 Key 会被发到自己没有指定的域名去。
+    拦下来并说清怎么改，比让它静默失效好得多。
+    """
+    if value is None:
+        return
+    url = value.strip()
+    if not url:
+        return  # 空串 = 清空/未设置，合法
+    if https_url_shape_ok(url):
+        return
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"接口地址不可用：{url}。只接受 https 的公网地址"
+            "（例如 https://api.deepseek.com）。本机/内网地址（http://localhost…、192.168…）"
+            "服务端连不上，请改由部署环境变量配置；地址写错也会在这里被拦下来。"
+        ),
+    )
 
 
 @router.get("/models")

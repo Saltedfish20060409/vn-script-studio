@@ -177,6 +177,19 @@ function LlmPane() {
             `账号已保存 Key（${s.api_key_masked}）。留空保存表示沿用账号 Key。`
           );
         }
+        // 账号模式：URL / 模型名也要从**账号**回显。
+        //
+        // 为什么必须回显：账号模式保存时会把本机那份清空（防 header 覆盖），
+        // 而这三个输入框此前只从本机读——于是下次打开设置它们是空的，
+        // 而下面「当前生效」显示的是账号里的值。用户看到"框里没有、生效的却有"
+        // （或反过来：框里有、生效的没有）只会得出"我填的没存上"。
+        // 用 `prev || ...` 而不是直接赋值：别把用户在当前会话里已经敲进去的内容冲掉。
+        if (loadStorageMode() === "account") {
+          setBaseUrl((prev) => prev || s.api_base_url || "");
+          setModel((prev) => prev || s.api_model || "");
+          setCriticBaseUrl((prev) => prev || s.critic_api_base_url || "");
+          setCriticModel((prev) => prev || s.critic_api_model || "");
+        }
       })
       .catch((e) => setError(e instanceof Error ? e.message : "读取失败"));
     getModelCatalogue()
@@ -234,7 +247,13 @@ function LlmPane() {
       }
       void putSettings({
         api_key: opts?.clearAccountKey ? "" : next.apiKey === "" ? undefined : next.apiKey,
-        base_url: next.baseUrl || undefined,
+        // **必须以 api_base_url 送出**：后端 SettingsPutIn 只声明这个名字，
+        // Pydantic 会**静默忽略**未知键（接口仍返回 200、界面仍提示"已保存"）。
+        // 这里曾经写成 base_url，后果是账号存储模式下 Base URL 从来没存进去、
+        // `row.api_base_url` 停在建表默认的 https://api.deepseek.com，
+        // 于是用户的 Key 被发到自己没有指定的域名去（用户截图里"当前生效"与输入框
+        // 自相矛盾就是这么来的）。守卫见 backend/tests/test_settings_put_contract.py。
+        api_base_url: next.baseUrl || undefined,
         api_model: next.model || undefined,
         // 留空 = 自动（0）；不合法/超限时用解析后的值（并在提示里说明）
         api_context_window_k: parsedWindow.value,
@@ -243,6 +262,9 @@ function LlmPane() {
         critic_api_model: next.criticModel || undefined,
       })
         .then((s) => {
+          // 用服务端返回的这份覆盖本地快照：下面「有未保存的改动」是拿输入框与它比出来的，
+          // 不刷新的话，保存成功之后提示仍然会挂着（假警报比没有提示更糟）。
+          setServerFallback(s);
           setSavedNote(
             opts?.clearAccountKey
               ? "账号 Key 已清除"
@@ -355,6 +377,27 @@ function LlmPane() {
         ? t("settings.activeUser")
         : "使用站内免费档（服务端配置）";
 
+  /** 账号模式下：输入框与**已保存**的那一套是否不一致（= 有未保存的改动）。
+   *
+   * 为什么需要这一行：上面「当前生效」按设计显示的是**服务端已保存**的配置，
+   * 而输入框里是用户正在敲的内容——两者不同是正常的，但界面上没有任何提示时，
+   * 用户看到的就是"我填了 Base URL，当前生效却是另一个域名"，只会以为工具坏了
+   * （真实反馈截图）。这里把"还没保存"这件事说出来，并给出可执行动作。
+   * Key 不参与比较：账号模式下它故意留空（留空 = 沿用已存的 Key）。
+   */
+  const storedWindowStr = (() => {
+    const k = readDeclaredK(serverFallback?.api_context_window_k);
+    return k > 0 ? String(k) : "";
+  })();
+  const dirtyAccount =
+    storageMode === "account" &&
+    Boolean(serverFallback) &&
+    (baseUrl.trim() !== (serverFallback?.api_base_url ?? "").trim() ||
+      model.trim() !== (serverFallback?.api_model ?? "").trim() ||
+      windowK.trim() !== storedWindowStr ||
+      criticBaseUrl.trim() !== (serverFallback?.critic_api_base_url ?? "").trim() ||
+      criticModel.trim() !== (serverFallback?.critic_api_model ?? "").trim());
+
   return (
     <div className={styles.form}>
       <p className={styles.note}>{t("settings.llmNote")}</p>
@@ -365,6 +408,12 @@ function LlmPane() {
         })}
         {activeHost ? ` @ ${activeHost}` : ""} · {sourceLabel}
       </p>
+      {dirtyAccount ? (
+        <p className={styles.warnNote} data-testid="llm-unsaved-hint">
+          ⚠️ 下面有**未保存**的改动——上面这一行显示的仍是**已保存**的那一套。
+          改完记得点「保存」；只想试连通性可以点「测试连接」（它用你填的地址试，并顺手保存）。
+        </p>
+      ) : null}
       {(() => {
         // 手填的模型名 / 账号里存的旧档位也可能不支持 JSON 模式，这里再看一眼
         const warn = activeModel ? jsonModeWarning(presets, activeModel) : "";
@@ -525,7 +574,7 @@ function LlmPane() {
       </label>
       <div className={styles.llmActions}>
         <button type="button" className={styles.primary} onClick={save}>
-          {t("settings.save")}
+          {dirtyAccount ? "保存（有改动）" : t("settings.save")}
         </button>
         <button
           type="button"

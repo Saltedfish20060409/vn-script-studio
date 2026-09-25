@@ -93,6 +93,42 @@ def _is_safe_base_url(url: str) -> bool:
     return True
 
 
+def https_url_shape_ok(url: str) -> bool:
+    """只查**形状**：https + 带点的域名。**故意不查 DNS**。
+
+    为什么需要第二个、更宽松的检查：`_is_safe_base_url` 要做 DNS 解析，于是不适合放在
+    **保存**路径上——保存设置不该因为一次 DNS 抖动而失败，测试里也不好用不存在的域名。
+    但"保存时完全不管"会让最常见的手输入错误（`http://…`、`localhost`、漏掉 scheme）
+    以**静默**方式落地：地址被存下来，请求时却因过不了守卫被换成服务端地址，
+    用户看到的是"我填的地址没生效"（真实反馈就是这么来的）。
+
+    所以分两道：
+    - 保存时用本函数 → 明显的写法错误当场报 400，附一句能照着改的话；
+    - 请求时用 `_is_safe_base_url` → 连 DNS 一起查（那是真正的安全边界，不能松）。
+
+    空串返回 False，但调用方应当先判断"是不是要清空"——空串是合法的"未设置"。
+
+    写成 IP 字面量时（`https://192.168.1.10/v1`）在这里就能判掉：不需要 DNS，
+    内网/环回/保留段一律不是"公网地址"。域名则只能交给请求时的守卫去解析。
+    """
+    try:
+        parsed = urlparse((url or "").strip())
+    except ValueError:
+        return False
+    if parsed.scheme != "https":
+        return False
+    host = (parsed.hostname or "").strip().lower()
+    if not host or "." not in host:
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return True  # 域名：形状层面到此为止
+    if ip.is_private or not ip.is_global:
+        return False
+    return not any(ip in ipaddress.ip_network(net) for net in _BLOCKED_IPS)
+
+
 def parse_llm_headers(headers: Mapping[str, str]) -> Optional[dict[str, str]]:
     """Extract non-empty X-LLM-* fields. Returns None when none are present."""
     out: dict[str, str] = {}

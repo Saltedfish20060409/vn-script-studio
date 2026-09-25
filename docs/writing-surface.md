@@ -279,7 +279,49 @@ Word 客户端的观感（所以字号是参数）。阅读导出 `/export/docx`
 一致；`<WriteAids>` 必须被 `focusMode ? null` 包住。这类"取色合同"用数字钉住比
 "看起来还行"可靠——**只刷底色、忘了改字色**正是这类改动最容易做一半的地方。
 
-## 十二、明确没做的
+## 十二、设置页 · 模型凭据：存到哪、以什么名字存
+
+用户发图问"账号存储模式下 Base URL 填了 `https://api.mc08.eu.org/v1`，
+为什么「当前生效」显示的是 `@ api.deepseek.com`"。查下来**不是显示问题，是真丢数据**。
+
+**真因**：`SettingsModal.persist()` 送出的键名是 `base_url`，而 `SettingsPutIn` 只声明
+`api_base_url`。Pydantic 默认**忽略未知字段**（不报错），于是这一项被无声丢掉——
+接口返回 200、界面提示"已保存到账号"，而 `user_settings.api_base_url` 一直是建表默认值
+（`models/tables.py` 里的 `default="https://api.deepseek.com"`）。
+
+**后果不只是显示难看**：请求时 `merge_llm_credentials` 用「用户层的 Key + 这个地址」发出去，
+**用户自己的 Key 被送到他没有指定的域名**。同一端点里 `api_model` /
+`api_context_window_k` / `critic_api_key` / `critic_api_base_url` / `critic_api_model`
+的键名都是对的，所以只有 URL 一项丢——这正是"两行自相矛盾"的来源。
+
+**三道守卫**（缺一不可）：
+
+| 层 | 做什么 | 在哪 |
+|---|---|---|
+| 类型 | `putSettings` 的入参从 `Record<string, unknown>` 换成显式 `SettingsPutBody`——键名写错在 `tsc -b` 阶段就红 | `lib/settings.ts`、`api/misc.ts` |
+| 跨语言契约 | 解析 TS 里 `putSettings({...})` 的**顶层键**，断言每个键都是 `SettingsPutIn` 的字段（多一个都算错），并单独钉住 `api_base_url` 这个名字（防止"加个别名"绕过） | `backend/tests/test_settings_put_contract.py` |
+| 端到端 | 存一个地址 → `GET /settings` 读得回 → `GET /settings/models` 的 `active.base_url` 就是它（证明"存进去 = 会生效"）；另钉"用错的键名不会改动已存地址" | `backend/tests/test_api_settings_llm.py` |
+
+**同一类问题的另一半**：地址能存进去之后，如果它不是 https 公网地址，请求时的安全守卫
+会拦下并**静默换成服务端地址**——用户又会看到"保存成功、生效的却是别的域名"。
+所以保存时先用 `https_url_shape_ok` 拦明显用不了的写法（https + 带点域名 + 排除内网/保留
+IP 字面量；**故意不查 DNS**：保存设置不该因一次 DNS 抖动失败，测试也不该看网络脸色），
+请求时仍是含 DNS 的 `_is_safe_base_url`（真正的安全边界，不放松）。
+单测见 `backend/tests/test_base_url_validation.py`。
+
+**界面上的两处透明化**（这类"看起来自相矛盾"的根源是界面不说实话）：
+
+- 账号模式下 Base URL / 模型名 / 窗口也**从账号回显**。此前只从本机读，而账号模式保存时
+  会把本机那份清空，于是字段是空的、而「当前生效」有值——两个方向都会让人以为"没存上"。
+- 输入框与已保存值不一致时显示「有未保存的改动——上面这一行显示的仍是已保存的那一套」，
+  按钮变「保存（有改动）」。保存成功时用 PUT 的返回值刷新本地快照，否则提示会挂着不放
+  （假警报比没有提示更糟）。
+
+**没做的一件事**：账号里 `api_base_url` 历史的默认值（`https://api.deepseek.com`）不做数据迁移——
+我们不知道每个用户"本来想用哪个地址"，改数据只会把"他确实想用 DeepSeek"的人改坏。
+现在界面会把这个值显示出来（回显 + 当前生效），他要改就改得动，这是正确的处理方式。
+
+## 十三、明确没做的
 
 - 场景导航只做"读 + 跳"，不做拖拽重排、不做场景级元数据（POV/时间/地点）挂载。
 - 字数目标只有三档（本章/本卷/今日），没有"连续打卡奖励""目标历史"。
@@ -291,7 +333,7 @@ Word 客户端的观感（所以字号是参数）。阅读导出 `/export/docx`
   自选色，都要多一组状态与一套对比度校验，而现在并没有"有人真的想在专注里看黑底"的证据；
   真需要时再加，那时把校验一起扩上去即可。
 
-## 十三、验证
+## 十四、验证
 
 ```powershell
 # 前端纯函数层（55 + 14 + 25 + 14 + 10 项）+ 全量
@@ -306,7 +348,7 @@ cd backend; $env:PYTHONPATH="."
   tests/test_ln_template.py tests/test_novel_audit_surface.py tests/test_agent_tool_polish.py `
   tests/test_export_submission.py tests/test_export_submission_route.py tests/test_typo_words.py `
   tests/test_mark_revise.py tests/test_variant_select.py tests/test_llm_logprobs.py `
-  tests/test_focus_paper.py
+  tests/test_focus_paper.py tests/test_settings_put_contract.py tests/test_base_url_validation.py
 ```
 
 `test_typo_words.py` 覆盖：解析前端 TS 词表逐条比对（含顺序）、词表自身的自洽性

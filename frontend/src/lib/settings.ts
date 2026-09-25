@@ -107,8 +107,40 @@ export function applySettingsToDom(s: AppSettings) {
   }
 }
 
-export interface ServerSettingsOut {
-  theme: string;
+/**
+ * `PUT /settings` 的请求体：**字段名必须与后端 `app/schemas/SettingsPutIn` 逐字一致**。
+ *
+ * 为什么要一个显式类型（原来这里是 `Record<string, unknown>`）：
+ * 后端用 Pydantic，未知键**默认被忽略而不是报错**——键名写错时接口照样 200、
+ * 界面照样提示"已保存"，数据却没进去。线上真实踩到过：Base URL 写成 `base_url`
+ * （后端叫 `api_base_url`），于是账号里的地址一直是建表默认值，
+ * 用户在界面上填的地址从未生效（见 backend/tests/test_settings_put_contract.py）。
+ * 有了这个类型，写错键名在 `tsc -b` 阶段就是错误，不必等到线上。
+ *
+ * 除凭据外还包含外观字段（主题 / 背景），因为同一端点也保存这些。
+ * 未列出的键就是"后端不认"的键——不要靠 `Record<string, unknown>` 绕过去。
+ */
+export interface SettingsPutBody {
+  theme?: string;
+  font_scale?: number;
+  bg_image?: string;
+  bg_scale?: number;
+  bg_opacity?: number;
+  bg_pan_x?: number;
+  bg_pan_y?: number;
+  panel_glass?: string;
+  bg_scrim?: number;
+  /** 新 Key 加密保存；""清空；省略 = 保持不变 */
+  api_key?: string;
+  api_base_url?: string;
+  api_model?: string;
+  api_context_window_k?: number;
+  critic_api_key?: string;
+  critic_api_base_url?: string;
+  critic_api_model?: string;
+}
+
+export interface ServerSettingsOut {  theme: string;
   font_scale: number;
   bg_image: string;
   bg_scale: number;

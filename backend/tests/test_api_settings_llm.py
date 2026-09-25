@@ -50,6 +50,116 @@ def test_model_catalogue_shape():
     _run(_scenario())
 
 
+def test_account_saved_base_url_is_stored_and_becomes_effective():
+    """账号里存的 Base URL 必须**存得下、且真的生效**。
+
+    守的是线上真实反馈（用户截图）：账号存储模式下填了 Base URL、界面提示"已保存"，
+    但「当前生效」显示的是另一个域名。真因是前端把键写成 `base_url`
+    （后端 schema 叫 `api_base_url`），Pydantic 静默忽略 → 账号里那列一直是
+    建表默认的 `https://api.deepseek.com`，于是**用户自己的 Key 被发到他没有指定的域名**。
+    键名守卫在 `test_settings_put_contract.py`；这一条走完整链路证明"存进去 = 会生效"。
+    """
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "llm_baseurl")
+            r = await client.put(
+                "/api/v1/settings",
+                headers=headers,
+                json={
+                    "api_key": "sk-test-relay-key",
+                    "api_base_url": "https://relay.example.test/v1",
+                    "api_model": "space-bunny",
+                },
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["api_base_url"] == "https://relay.example.test/v1"
+            # 读回也要是它（而不是建表默认值）
+            r = await client.get("/api/v1/settings", headers=headers)
+            assert r.json()["api_base_url"] == "https://relay.example.test/v1"
+            assert r.json()["api_model"] == "space-bunny"
+
+            # 生效值：把 SSRF 守卫里的 DNS 解析换掉，避免这条测试看网络脸色
+            # （守卫本身另有测试；这里要证明的是"存的地址会被用"）。
+            with patch(
+                "app.core.llm_client_override._is_safe_base_url", return_value=True
+            ):
+                r = await client.get("/api/v1/settings/models", headers=headers)
+            assert r.status_code == 200, r.text
+            active = r.json()["active"]
+            assert active is not None
+            assert active["base_url"] == "https://relay.example.test/v1", (
+                "账号里存的 Base URL 没有生效——用户填的地址被忽略了"
+            )
+            assert active["model"] == "space-bunny"
+            assert active["source"] == "user"
+
+    _run(_scenario())
+
+
+def test_wrong_key_name_does_not_silently_change_the_saved_url():
+    """用错的键名（`base_url`）不能改动已存的地址——它会被忽略，而不是被当别名。
+
+    这条把"静默忽略"这个事实钉在接口层：将来若有人给 schema 加 `base_url` 别名，
+    这里会红，那时应当连同前端一起改，而不是让两份真源长期并存。
+    """
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "llm_baseurl_alias")
+            await client.put(
+                "/api/v1/settings",
+                headers=headers,
+                json={"api_key": "sk-test-relay-key", "api_base_url": "https://kept.example.test/v1"},
+            )
+            r = await client.put(
+                "/api/v1/settings",
+                headers=headers,
+                json={"base_url": "https://ignored.example.test/v1"},
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["api_base_url"] == "https://kept.example.test/v1"
+
+    _run(_scenario())
+
+
+def test_obviously_unusable_base_url_is_rejected_at_save_time():
+    """明显用不了的接口地址在**保存时**就报 400，别存下来再在请求时被静默换掉。
+
+    为什么这条重要：请求时的安全守卫过不了就会**回落**到服务端地址，而界面不会说
+    （用户看到的正是"我填的地址没生效、当前生效是别的域名"）。保存时拦住 = 当场给话。
+    """
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "llm_badurl")
+            for bad in (
+                "http://localhost:11434",
+                "api.deepseek.com",
+                "https://192.168.1.10/v1",
+            ):
+                r = await client.put(
+                    "/api/v1/settings", headers=headers, json={"api_base_url": bad}
+                )
+                assert r.status_code == 400, f"{bad} 本该被拒：{r.status_code} {r.text}"
+                assert "https" in r.json()["detail"]
+
+            # 合法地址照常能存（保存时不查 DNS，所以不存在的域名也能先存下来）
+            r = await client.put(
+                "/api/v1/settings",
+                headers=headers,
+                json={"api_base_url": "https://ok.example.test/v1"},
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["api_base_url"] == "https://ok.example.test/v1"
+
+            # 空串 = 清空，仍然合法
+            r = await client.put(
+                "/api/v1/settings", headers=headers, json={"api_base_url": ""}
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["api_base_url"] == ""
+
+    _run(_scenario())
+
+
 def test_declared_model_window_round_trips_and_is_clamped():
     """用户声明的模型窗口：存得下、读得回、填错不会打穿预算。
 
