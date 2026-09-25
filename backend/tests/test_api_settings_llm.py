@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, patch
 import db_gate
 import httpx
 import pytest
-from sqlalchemy import text
 
 pytestmark = [
     pytest.mark.db,
@@ -19,21 +18,6 @@ pytestmark = [
 ]
 
 APP = db_gate.make_app()
-
-
-def _ensure_window_column() -> None:
-    """已存在的测试库不会走 create_all 增列——幂等补列（与 0029 迁移一致）。"""
-
-    async def _run():
-        async with db_gate.engine.begin() as conn:
-            await conn.execute(
-                text(
-                    "ALTER TABLE user_settings "
-                    "ADD COLUMN IF NOT EXISTS api_context_window_k INTEGER NOT NULL DEFAULT 0"
-                )
-            )
-
-    asyncio.run(_run())
 
 
 def _run(coro):
@@ -71,9 +55,10 @@ def test_declared_model_window_round_trips_and_is_clamped():
 
     为什么要这条：上下文预算按模型窗口夹一次；窗口只有用户自己知道
     （预设表收不全，撑爆窗口会被上游直接拒答）。
-    """
-    _ensure_window_column()
 
+    说明：老测试库里 `user_settings` 缺 `api_context_window_k` 的情况由
+    `db_gate.create_all` 统一按元数据补列（见那里的注释），所以这里不再单独补。
+    """
     async def _scenario():
         async with db_gate.make_client(APP) as client:
             headers = await db_gate.register_headers(client, "llm_window")

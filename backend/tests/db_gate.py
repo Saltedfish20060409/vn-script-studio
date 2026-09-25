@@ -87,12 +87,101 @@ if DB_AVAILABLE:
 
 
 async def create_all() -> None:
-    """Create the full schema on the test database (idempotent)."""
+    """Create the full schema on the test database (idempotent).
+
+    **为什么不能只调 `create_all`**：它只建**缺的表**，永远不会给已存在的表**加列**。
+    而测试库（容器里的 `vnss_test`）是跨次运行长期存在的，于是任何新迁移往老表加的列
+    都不会出现——表现是一大片 `UndefinedColumn` 失败（实测一次 94 个），
+    而且失败原因看起来像"业务代码坏了"，很难查。
+
+    以前的做法是"谁用到谁补"（某个测试模块里手写一句 `ALTER TABLE ... ADD COLUMN
+    IF NOT EXISTS`），这必然会漏：同一个表被别的模块用到时就没人补。
+
+    所以这里改成**按元数据对齐**：建表之后逐表比对 `information_schema.columns`，
+    缺哪列补哪列（`ADD COLUMN IF NOT EXISTS`，幂等）。这是测试库的维护动作，
+    不是迁移——真实环境仍然只走 `alembic upgrade head`。
+
+    补列时的两条取舍：
+    - 带上模型声明的 `server_default`（`"false"` / `"0"` / `text("1")` 这类），
+      否则插入不带该列的行、或老数据里的 NULL，会和真实 schema 的行为不一致；
+    - 声明为 `NOT NULL` 但**没有**默认值的列，只能先按可空补上：往已有行上加
+      NOT NULL 列在 PostgreSQL 里会直接失败（除非给默认值，而那等于替作者改数据）。
+      表在每个用例前都会被 TRUNCATE，ORM 插入时也会显式写值，所以这不影响测试有效性。
+    """
     import app.models  # noqa: F401  (registers every table on Base.metadata)
     from app.db import Base
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        existing = await _existing_columns(conn)
+        failed: list[str] = []
+        for ddl in missing_column_statements(Base.metadata, existing, engine.dialect):
+            try:
+                await conn.execute(text(ddl))
+            except Exception as exc:  # noqa: BLE001
+                # 不静默吞掉：把语句和原因打出来（pytest 失败时会显示捕获的输出），
+                # 同时继续补剩下的列——一列补不上不该让整个会话起不来。
+                failed.append(f"{ddl}  <- {exc}")
+        if failed:
+            print("\n[db_gate] 以下补列语句执行失败（测试库可能与元数据不一致）：")
+            for line in failed:
+                print(f"  - {line}")
+
+
+def missing_column_statements(metadata, existing: dict, dialect) -> list[str]:
+    """按元数据算"库里缺的列"，返回幂等的 ALTER 语句（**纯函数，可离线测**）。
+
+    参数：
+    - `metadata`：`Base.metadata`；
+    - `existing`：`{表名: {列名, ...}}`（只从库里读到的表；不在其中的表由 `create_all` 负责）；
+    - `dialect`：用来把列类型编译成该库的 SQL。
+    """
+    statements: list[str] = []
+    for table in metadata.sorted_tables:
+        have = existing.get(table.name)
+        if have is None:
+            continue  # 表本身不存在：create_all 会连新列一起建好
+        for column in table.columns:
+            if column.name in have:
+                continue
+            ddl = (
+                f'ALTER TABLE "{table.name}" '
+                f'ADD COLUMN IF NOT EXISTS "{column.name}" '
+                f"{column.type.compile(dialect=dialect)}"
+            )
+            default_sql = _server_default_sql(column, dialect)
+            if default_sql:
+                ddl += f" DEFAULT {default_sql}"
+            statements.append(ddl)
+    return statements
+
+
+def _server_default_sql(column, dialect) -> str:
+    """把模型上的 `server_default` 变成可以直接拼进 DDL 的字符串（拿不到就返回空串）。"""
+    default = getattr(column, "server_default", None)
+    if default is None:
+        return ""
+    arg = getattr(default, "arg", None)
+    if isinstance(arg, str):
+        return arg
+    try:
+        return str(arg.compile(dialect=dialect, compile_kwargs={"literal_binds": True}))
+    except Exception:  # noqa: BLE001 - 编译不出来的默认值不值得让补列失败
+        return ""
+
+
+async def _existing_columns(conn) -> dict:
+    """`{表名: {列名}}`（当前 schema）。"""
+    rows = await conn.execute(
+        text(
+            "SELECT table_name, column_name FROM information_schema.columns "
+            "WHERE table_schema = current_schema()"
+        )
+    )
+    out: dict[str, set[str]] = {}
+    for table_name, column_name in rows:
+        out.setdefault(table_name, set()).add(column_name)
+    return out
 
 
 async def truncate_all() -> None:
