@@ -37,6 +37,26 @@
   line-height: 1.55;
 }
 
+/* 文体剖面：读数列表（每条带依据，"读数 ≠ 评分"） */
+.list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.list li strong {
+  color: var(--ink, inherit);
+}
+
+.list .hint {
+  display: block;
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+
 .warnLine {
   margin: 0;
   font-size: 0.82rem;

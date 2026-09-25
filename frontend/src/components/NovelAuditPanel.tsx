@@ -217,6 +217,22 @@ export function NovelAuditPanel({ projectId, onOpenChapter }: Props) {
             </div>
           ) : null}
 
+          {craft?.styleProfile && craft.styleProfile.readings.length > 0 ? (
+            <div className={styles.section} data-testid="novel-audit-style-profile">
+              <h3 className={styles.sectionTitle}>文体剖面（读数，不是评分）</h3>
+              <ul className={styles.list}>
+                {craft.styleProfile.readings.map((r, i) => (
+                  <li key={`${r.label}-${i}`}>
+                    <strong>{r.label}</strong>：{r.value}
+                    {/* 每条读数都带依据：作者能核对"这个数凭什么这么说" */}
+                    <span className={styles.hint}>（依据：{r.basis}）</span>
+                  </li>
+                ))}
+              </ul>
+              <p className={styles.hint}>{craft.styleProfile.note}</p>
+            </div>
+          ) : null}
+
           {craft && craft.perChapter.length > 0 ? (
             <div className={styles.section}>
               <h3 className={styles.sectionTitle}>每章文面读数</h3>
@@ -227,6 +243,7 @@ export function NovelAuditPanel({ projectId, onOpenChapter }: Props) {
                     <th>字数</th>
                     <th>对白占比</th>
                     <th>平均段长</th>
+                    <th>句长中位</th>
                     <th>长段落</th>
                     <th>拟声/千字</th>
                     <th>注音/千字</th>
@@ -248,6 +265,7 @@ export function NovelAuditPanel({ projectId, onOpenChapter }: Props) {
                       <td>{formatWords(c.words.total)}</td>
                       <td>{pct(c.ratio.dialogue)}</td>
                       <td>{c.paragraphs.avgChars}</td>
+                      <td>{c.sentence?.p50 ?? "—"}</td>
                       <td>{c.paragraphs.longCount}</td>
                       <td>{c.onomatopoeia.per1000Chars.toFixed(1)}</td>
                       <td>{c.ruby.per1000Chars.toFixed(1)}</td>
@@ -260,7 +278,7 @@ export function NovelAuditPanel({ projectId, onOpenChapter }: Props) {
               </table>
               <p className={styles.hint}>
                 钩子是**启发式评分**（末段类型/长度/收尾标点/账本记账四项加权），不是文学判断；
-                对白占比在"混合行"口径下会略微偏低。
+                对白占比在"混合行"口径下会略微偏低；句长按句末标点切句（逗号不断句）。
               </p>
             </div>
           ) : null}

@@ -926,7 +926,237 @@ def chapter_readability(
     }
 
 
-# ------------------------------------------------------------ 相对比较（本书内）
+# ------------------------------------------------------------ 文体剖面（读数）
+#
+# 依据（2026-09 核对，见 docs/references.md「视觉小说 / 轻小说实务（参考层）」）：
+# - 《轻浅的美学：论日本轻小说的文体特征与审美价值》（硕士论文）：短句、对白占比高、
+#   第一人称、拟声/拟态词与注音是轻小说文体的构成要素。
+# - 《ライトノベル表現論：会話・創造・遊びのディスコースの考察》：轻小说以**会话**为文体中心。
+# - 《日本轻小说模式的演变及特征》（出版发行研究 2017(08)）：文库本/连载形态决定
+#   "一章一个起落、章末留钩子"的节奏。
+#
+# 纪律（与项目其它读数一致）：**只给读数与本书内的相对位置，不给好坏分**。
+# 文学价值判断交给作者与人工盲测（Art or Artifice? 那条已经这么定了）。
+
+#: 句末标点：中日文句号/叹号/问号/省略号。分句时只按这些切，逗号/顿号不断句。
+_SENTENCE_END_RE = re.compile(r"[。．.！!？?…]+")
+
+#: 短句阈值（字符）：《轻浅的美学》里"短句"是文体特征，但**不是规范**——
+#: 这里只用来算"短句占比"，不产出"应该写短句"的建议。
+SHORT_SENTENCE_CHARS = 15
+LONG_SENTENCE_CHARS = 40
+
+#: 地の文里的第一人称 / 第三人称标记。
+#: 只统计**叙述**（不含对白）：对白里出现「我」「你」是常态，混进来会把读数带偏。
+_FIRST_PERSON_MARKERS = ("我", "俺", "僕", "ぼく", "わたし", "私", "咱")
+_THIRD_PERSON_MARKERS = ("他", "她", "它", "他们", "她們", "她们", "祂")
+
+
+def _sentence_lengths(text: str) -> List[int]:
+    """按句末标点切句，返回每句的字符数（不含句末标点）。"""
+    lengths: List[int] = []
+    for part in _SENTENCE_END_RE.split(text or ""):
+        cleaned = part.strip()
+        if cleaned:
+            lengths.append(len(cleaned))
+    return lengths
+
+
+def _percentile(values: Sequence[int], q: float) -> Optional[int]:
+    """最近秩分位（与 `core/latency_stats` 同一个定义：可手算、可复现）。"""
+    if not values:
+        return None
+    ordered = sorted(values)
+    index = min(len(ordered), max(1, int(-(-(q * len(ordered)) // 1))))
+    return int(ordered[index - 1])
+
+
+def sentence_stats(units: Sequence[ProseUnit]) -> Dict[str, Any]:
+    """句长读数：条数、中位/90 分位、短句比、长句比。
+
+    没有正文时给 `None` 而不是 0——"没有句子" ≠ "句长 0 字"。
+    """
+    lengths = _sentence_lengths("\n".join(u.text for u in units))
+    if not lengths:
+        return {
+            "count": 0,
+            "p50": None,
+            "p90": None,
+            "shortRatio": None,
+            "longRatio": None,
+            "shortThreshold": SHORT_SENTENCE_CHARS,
+            "longThreshold": LONG_SENTENCE_CHARS,
+        }
+    short = sum(1 for n in lengths if n <= SHORT_SENTENCE_CHARS)
+    long = sum(1 for n in lengths if n >= LONG_SENTENCE_CHARS)
+    return {
+        "count": len(lengths),
+        "p50": _percentile(lengths, 0.5),
+        "p90": _percentile(lengths, 0.9),
+        "shortRatio": round(short / len(lengths), 3),
+        "longRatio": round(long / len(lengths), 3),
+        "shortThreshold": SHORT_SENTENCE_CHARS,
+        "longThreshold": LONG_SENTENCE_CHARS,
+    }
+
+
+def person_stats(units: Sequence[ProseUnit]) -> Dict[str, Any]:
+    """地の文的人称倾向：第一/第三人称标记的次数与占比（对白不计）。"""
+    narration = "\n".join(u.text for u in units if u.kind == KIND_NARRATION)
+    first = sum(narration.count(m) for m in _FIRST_PERSON_MARKERS)
+    third = sum(narration.count(m) for m in _THIRD_PERSON_MARKERS)
+    total = first + third
+    return {
+        "first": first,
+        "third": third,
+        "firstRatio": (round(first / total, 3) if total else None),
+        "checked": bool(narration.strip()),
+    }
+
+
+#: 文体剖面各读数的**依据**（界面/文档与代码共用一份，避免两处各写一套）。
+STYLE_BASIS: Dict[str, str] = {
+    "dialogue": (
+        "《ライトノベル表現論：会話・創造・遊びのディスコースの考察》"
+        "（轻小说以会话为文体中心）；《轻浅的美学：论日本轻小说的文体特征与审美价值》"
+        "（对白占比高）"
+    ),
+    "sentence": (
+        "《轻浅的美学：论日本轻小说的文体特征与审美价值》（短句是轻小说文体特征之一；"
+        "这里的分位数是**本书内的读数**，不是规范阈值）"
+    ),
+    "person": (
+        "《轻浅的美学》（第一人称叙述是常见选择）；"
+        "《ライトノベル表現論》（叙述人称与会话的关系）——**只统计地の文**"
+    ),
+    "onomatopoeia": (
+        "《轻浅的美学》（拟声/拟态词是轻小说文体的构成要素之一）——"
+        "密度高低都合法，这里只给读数"
+    ),
+    "ruby": (
+        "《轻浅的美学》（注音/ルビ属轻小说排版要素）；"
+        "渲染与校验见 core/ruby_render.py 与本模块的注音规则"
+    ),
+    "serialization": (
+        "《日本轻小说模式的演变及特征》（出版发行研究 2017(08)）："
+        "文库本/连载形态决定「一章一个起落、章末留钩子」的节奏"
+    ),
+}
+
+
+def style_readings(
+    rows: Sequence[Dict[str, Any]], summary: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """把各读数写成**描述性**的几句话（附依据），供界面直接显示。
+
+    刻意**不产出建议**：这些是"这本书读起来是什么样"，不是"应该改成什么样"——
+    文体偏好是作者的，要提建议得另找依据。所以每条都带 `kind="reading"` 与 `basis`，
+    界面据此把"读数"与"问题/建议"分开显示。
+    """
+    readings: List[Dict[str, Any]] = []
+    if not rows:
+        return readings
+
+    d_ratios = [r["ratio"]["dialogue"] for r in rows if r["ratio"]["dialogue"] is not None]
+    if d_ratios:
+        median = round(statistics.median(d_ratios), 3)
+        driver = (
+            "对白驱动" if median >= 0.55 else ("叙述驱动" if median <= 0.30 else "对白与叙述接近")
+        )
+        readings.append(
+            {
+                "kind": "reading",
+                "label": "对白 / 叙述",
+                "value": f"全书中位对白占比 {round(median * 100)}%（{driver}）",
+                "basis": STYLE_BASIS["dialogue"],
+            }
+        )
+
+    p50s = [r["sentence"]["p50"] for r in rows if r.get("sentence", {}).get("p50")]
+    short = [
+        r["sentence"]["shortRatio"]
+        for r in rows
+        if r.get("sentence", {}).get("shortRatio") is not None
+    ]
+    if p50s:
+        readings.append(
+            {
+                "kind": "reading",
+                "label": "句长",
+                "value": (
+                    f"句长中位 {round(statistics.median(p50s))} 字"
+                    + (
+                        f"，短句（≤{SHORT_SENTENCE_CHARS} 字）占 "
+                        f"{round(statistics.median(short) * 100)}%"
+                        if short
+                        else ""
+                    )
+                ),
+                "basis": STYLE_BASIS["sentence"],
+            }
+        )
+
+    persons = [r["person"] for r in rows if r.get("person", {}).get("firstRatio") is not None]
+    if persons:
+        ratio = statistics.median([p["firstRatio"] for p in persons])
+        readings.append(
+            {
+                "kind": "reading",
+                "label": "叙述人称（地の文）",
+                "value": (
+                    f"第一人称标记占 {round(ratio * 100)}%"
+                    + (
+                        "（偏「我」视角）"
+                        if ratio >= 0.6
+                        else ("（偏第三人称）" if ratio <= 0.3 else "")
+                    )
+                ),
+                "basis": STYLE_BASIS["person"],
+            }
+        )
+
+    ono = summary.get("onomatopoeiaPer1000")
+    if ono is not None:
+        readings.append(
+            {
+                "kind": "reading",
+                "label": "拟声 / 拟态",
+                "value": f"{ono} 次每千字",
+                "basis": STYLE_BASIS["onomatopoeia"],
+            }
+        )
+
+    ruby = summary.get("rubyPer1000")
+    if ruby is not None:
+        readings.append(
+            {
+                "kind": "reading",
+                "label": "注音密度",
+                "value": f"{ruby} 处每千字",
+                "basis": STYLE_BASIS["ruby"],
+            }
+        )
+
+    avg_words = summary.get("avgChapterWords")
+    if avg_words:
+        readings.append(
+            {
+                "kind": "reading",
+                "label": "连载节奏",
+                "value": (
+                    f"平均每章 {avg_words} 字"
+                    + (
+                        f"，章末钩子评分中位 {summary.get('hookMedian')}"
+                        if summary.get("hookMedian") is not None
+                        else ""
+                    )
+                ),
+                "basis": STYLE_BASIS["serialization"],
+            }
+        )
+
+    return readings
+
 
 RELATIVE_METRICS: Dict[str, Tuple[str, float, float]] = {
     # 指标 key: (中文名, 相对倍数阈值, 绝对下限)
@@ -1090,6 +1320,19 @@ def _summary(
     return "；".join(bits) + "。"
 
 
+def _style_summary(rows: List[Dict[str, Any]], words: int) -> Dict[str, Any]:
+    """文体剖面给 `style_readings()` 用的几个中位数（全书的，不是逐章）。"""
+    hooks = [r["hook"]["score"] for r in rows if r["hook"]["level"] != "empty"]
+    ono = sum(int(r["onomatopoeia"]["count"]) for r in rows)
+    ruby = sum(int(r["ruby"]["count"]) for r in rows)
+    return {
+        "avgChapterWords": (round(words / len(rows)) if rows and words else None),
+        "hookMedian": (round(statistics.median(hooks), 2) if hooks else None),
+        "onomatopoeiaPer1000": (round(ono / words * 1000, 2) if words else None),
+        "rubyPer1000": (round(ruby / words * 1000, 2) if words else None),
+    }
+
+
 def _notes(
     *, long_paragraph_chars: int, coverage: Dict[str, Any]
 ) -> List[str]:
@@ -1190,6 +1433,9 @@ def analyze_novel_craft(
 
         readability = chapter_readability(units, long_paragraph_chars=long_paragraph_chars)
         ono = onomatopoeia_stats(text, words=words)
+        # 文体剖面：句长与人称倾向（《轻浅的美学》《ライトノベル表現論》那两个读数的依据）
+        sentence = sentence_stats(units)
+        person = person_stats(units)
 
         # —— 注音：逐行扫，位置（行/列）才有意义 ——
         marks: List[Dict[str, Any]] = []
@@ -1262,6 +1508,8 @@ def analyze_novel_craft(
                 "ratio": readability["ratio"],
                 "lines": readability["lines"],
                 "paragraphs": readability["paragraphs"],
+                "sentence": sentence,
+                "person": person,
                 "punctuation": ono["punctuation"],
                 "onomatopoeia": ono["onomatopoeia"],
                 "ruby": {
@@ -1324,9 +1572,23 @@ def analyze_novel_craft(
     )
 
     notes = _notes(long_paragraph_chars=long_paragraph_chars, coverage=coverage)
+    style_summary = _style_summary(rows, int(coverage["wordsScanned"]))
     return {
         "perChapter": rows,
         "summary": _summary(rows, ruby_issues, coverage),
+        # 文体剖面：**描述性读数**（对白驱动程度/句长/人称/拟声/注音/连载节奏），每条带依据。
+        # 依据见 STYLE_BASIS 与 docs/references.md 的「视觉小说 / 轻小说实务（参考层）」。
+        "styleProfile": {
+            "summary": style_summary,
+            "readings": style_readings(rows, style_summary),
+            "basis": STYLE_BASIS,
+            # 说明它是什么、不是什么：读数不是评分，文体偏好归作者
+            "note": (
+                "这些是**读数**（这本书读起来是什么样），不是评分也不是规范："
+                "阈值只用于分档描述（如「对白驱动」），不产出「应该改短句」这类建议。"
+                "依据见各条的 basis。"
+            ),
+        },
         "rubyIssues": ruby_issues,
         "hookScores": hook_rows,
         "rubyConsistency": ruby_consistency,

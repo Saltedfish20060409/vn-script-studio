@@ -2149,6 +2149,18 @@ export type NovelAuditChapter = {
   ratio: { dialogue: number | null; narration: number | null };
   lines: { dialogue: number; narration: number; choice: number };
   paragraphs: { count: number; avgChars: number; longCount: number; longRatio: number };
+  /** 句长读数（文体剖面）：没有正文时各分位是 null，不是 0 */
+  sentence?: {
+    count: number;
+    p50: number | null;
+    p90: number | null;
+    shortRatio: number | null;
+    longRatio: number | null;
+    shortThreshold: number;
+    longThreshold: number;
+  };
+  /** 地の文的人称倾向（对白不计）；没有人称标记时 firstRatio 为 null */
+  person?: { first: number; third: number; firstRatio: number | null; checked: boolean };
   punctuation: Record<string, number>;
   onomatopoeia: { count: number; strictCount: number; per1000Chars: number };
   ruby: { count: number; per1000Chars: number };
@@ -2159,6 +2171,23 @@ export type NovelAuditChapter = {
 export type NovelAuditCraft = {
   perChapter: NovelAuditChapter[];
   summary: string;
+  /**
+   * 文体剖面：**描述性读数**（对白驱动程度/句长/人称/拟声/注音/连载节奏），每条带依据。
+   *
+   * 依据是《轻浅的美学》（轻小说文体特征）、《ライトノベル表現論》（会话中心）、
+   * 《日本轻小说模式的演变及特征》（连载节奏）。**读数不是评分**，不产出建议。
+   */
+  styleProfile?: {
+    summary: {
+      avgChapterWords: number | null;
+      hookMedian: number | null;
+      onomatopoeiaPer1000: number | null;
+      rubyPer1000: number | null;
+    };
+    readings: Array<{ kind: string; label: string; value: string; basis: string }>;
+    basis: Record<string, string>;
+    note: string;
+  };
   rubyIssues: NovelAuditRubyIssue[];
   hookScores: Array<{
     chapterId: string;
