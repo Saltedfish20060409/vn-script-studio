@@ -86,3 +86,57 @@ def test_user_layer_url_is_bound_to_the_user_key():
     assert merged["source"] == "user"
     assert merged["api_key"] == "sk-user"
     assert merged["base_url"] == "https://server.example"
+    # 空地址是"没填"，不是"被拒"——两者必须能区分，否则界面会误报
+    assert merged["url_rejected"] == ""
+
+
+def test_rejected_user_url_is_reported_not_silently_swapped():
+    """用户填了地址但过不了守卫时，必须**留下痕迹**（`url_rejected`）。
+
+    为什么要单独一个键：这通调用会改用服务端地址发出，而用户以为用的是自己的地址
+    （真实反馈就是两行数字打架）。只靠前端比较域名去猜会误报；
+    服务端在这里是**确切知道**自己丢了哪个地址的，所以由它告诉界面。
+    """
+    bad = "https://192.168.1.10/v1"  # 内网：守卫必拒
+    merged = merge_llm_credentials(
+        override=None,
+        user_creds={"api_key": "sk-user", "base_url": bad, "model": "m"},
+        server={"api_key": "sk-server", "base_url": "https://server.example", "model": "s"},
+    )
+    assert merged["base_url"] == "https://server.example"
+    assert merged["url_rejected"] == bad
+    assert merged["source"] == "user", "换了地址不等于换了谁的账户"
+
+
+def test_rejected_client_url_is_reported_too():
+    """浏览器层（本机存储）同样要留痕：那是用户此刻填在设置页里的地址。"""
+    bad = "http://localhost:11434"
+    merged = merge_llm_credentials(
+        override={"api_key": "sk-client", "base_url": bad, "model": "m"},
+        user_creds=None,
+        server={"api_key": "sk-server", "base_url": "https://server.example", "model": "s"},
+    )
+    assert merged["source"] == "client"
+    assert merged["url_rejected"] == bad
+
+
+def test_healthy_url_is_not_reported_as_rejected():
+    """能用的地址不能被误标成"被拒"——否则界面天天报一条假警报。"""
+    merged = merge_llm_credentials(
+        override=None,
+        user_creds={"api_key": "sk-user", "base_url": "https://api.deepseek.com", "model": "m"},
+        server={"api_key": "sk-server", "base_url": "https://server.example", "model": "s"},
+    )
+    assert merged["base_url"] == "https://api.deepseek.com"
+    assert merged["url_rejected"] == ""
+
+
+def test_server_layer_never_reports_a_rejection():
+    """用站方 Key 时不看用户地址，也就不该报"你的地址被拒"。"""
+    merged = merge_llm_credentials(
+        override=None,
+        user_creds=None,
+        server={"api_key": "sk-server", "base_url": "https://server.example", "model": "s"},
+    )
+    assert merged["source"] == "server"
+    assert merged["url_rejected"] == ""

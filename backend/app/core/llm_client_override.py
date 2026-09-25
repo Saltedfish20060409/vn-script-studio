@@ -198,6 +198,9 @@ def merge_llm_credentials(
     client_url = _pick(o.get("base_url"))
     user_key = _pick(u.get("api_key"))
     user_url = _pick(u.get("base_url"))
+    # 被安全守卫拒掉的**用户自己填的**地址（空地址是"没填"，不算被拒）。
+    # 初始化为空串放在这里：下面两个分支会给它赋值，绝不能留到赋值之前使用。
+    url_rejected = ""
 
     # 先定 key（client > user > server），后面一切都跟着这一层走
     if client_key:
@@ -209,12 +212,19 @@ def merge_llm_credentials(
 
     if key_layer == "client":
         base_url = _safe_or_blank(client_url)
+        # 给了地址却过不了守卫 → 记下来。**不能只是悄悄回落**：请求会改用服务端地址发出，
+        # 而用户看到的是"我填的地址没生效"（真实反馈：设置页两行自相矛盾）。
+        # 这个值经 /settings/models 回到界面，那里才能如实说一句"你的地址没被采用"。
+        if not base_url and client_url:
+            url_rejected = client_url
         model = _pick(o.get("model"), u.get("model"), server.get("model"))
         critic_model = _pick(
             o.get("critic_model"), u.get("critic_model"), server.get("critic_model"), model
         )
     elif key_layer == "user":
         base_url = _safe_or_blank(user_url)
+        if not base_url and user_url:
+            url_rejected = user_url
         model = _pick(u.get("model"), server.get("model"))
         critic_model = _pick(u.get("critic_model"), server.get("critic_model"), model)
     else:
@@ -254,6 +264,8 @@ def merge_llm_credentials(
         "model": model or DEFAULT_LLM_MODEL,
         "provider": _pick(server.get("provider")) or "openai",
         "source": source,
+        # 非空 = 用户填的地址被守卫拒了、这通调用改用了服务端地址（界面据此如实说明）
+        "url_rejected": url_rejected,
         "critic_api_key": critic_key,
         "critic_base_url": critic_base_url or base_url,
         "critic_model": critic_model or model or DEFAULT_LLM_MODEL,

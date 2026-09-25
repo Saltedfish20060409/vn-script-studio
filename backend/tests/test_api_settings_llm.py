@@ -160,6 +160,66 @@ def test_obviously_unusable_base_url_is_rejected_at_save_time():
     _run(_scenario())
 
 
+def test_models_endpoint_reports_a_rejected_base_url():
+    """/settings/models 必须如实报告"你保存的地址没被采用"。
+
+    为什么必须有这条：请求时的守卫会把不可用的地址**静默换成服务端地址**，
+    用户看到的就是"我填的地址没生效"（真实反馈的两行数字打架）。
+    让前端比较域名去猜会误报；服务端在这里是**确切知道**丢了哪个地址的，
+    所以由它给出 `url_rejected`，界面照说即可。
+
+    造状态的方式：先走 HTTP 存一个合法地址与 Key，再直接改库把它换成守卫会拒的地址
+    ——HTTP 层现在会拦下这类地址（那是另一条测试），但历史数据与其他客户端
+    仍可能留下这种状态，这里验的是**读取与上报**这一半。
+    """
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "llm_rejected_url")
+            r = await client.put(
+                "/api/v1/settings",
+                headers=headers,
+                json={"api_key": "sk-test-key", "api_base_url": "https://ok.example.test/v1"},
+            )
+            assert r.status_code == 200, r.text
+            # 正常情况下不该报"被拒"。这里把守卫换成桩：`_is_safe_base_url` 是**含 DNS** 的，
+            # 而本用例要验的是"上报有没有接上"，不是守卫本身。
+            # （第一版没换桩、用了 `ok.example.test`——`.test` 是保留域名、解析不到，
+            #   守卫本来就该拒它，于是断言在**正确**的行为上红了。）
+            with patch(
+                "app.core.llm_client_override._is_safe_base_url", return_value=True
+            ):
+                r = await client.get("/api/v1/settings/models", headers=headers)
+            assert r.json()["active"]["url_rejected"] == ""
+
+            from sqlalchemy import select
+
+            from app.models import User, UserSettings
+
+            bad = "https://192.168.1.10/v1"
+            async with db_gate.SessionLocal() as session:
+                user = (
+                    await session.execute(
+                        select(User).where(User.username == "llm_rejected_url")
+                    )
+                ).scalar_one()
+                row = (
+                    await session.execute(
+                        select(UserSettings).where(UserSettings.user_id == user.id)
+                    )
+                ).scalar_one()
+                row.api_base_url = bad
+                await session.commit()
+
+            r = await client.get("/api/v1/settings/models", headers=headers)
+            active = r.json()["active"]
+            assert active["url_rejected"] == bad
+            assert active["source"] == "user"
+            # 实际生效的地址确实被换掉了（与 url_rejected 同时出现才说得通）
+            assert active["base_url"] != bad
+
+    _run(_scenario())
+
+
 def test_declared_model_window_round_trips_and_is_clamped():
     """用户声明的模型窗口：存得下、读得回、填错不会打穿预算。
 

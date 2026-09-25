@@ -85,6 +85,9 @@ async def model_catalogue(
             "base_url": creds.get("base_url") or "",
             "model": creds.get("model") or "",
             "source": creds.get("source") or "server",
+            # 用户填的地址被安全守卫拒了、实际改用了服务端地址时非空。
+            # 界面据此说一句"你的地址没被采用"，而不是让两行数字自己打架。
+            "url_rejected": creds.get("url_rejected") or "",
         }
     return {"presets": list_model_presets(), "active": active}
 

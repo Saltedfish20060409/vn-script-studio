@@ -307,6 +307,9 @@ export interface ActiveLlmInfo {
   base_url: string;
   model: string;
   source: "user" | "server" | "client";
+  /** 非空 = 你填的地址被安全守卫拒了，实际调用改用了服务端地址。
+   *  为什么不靠前端比较域名来猜：只有服务端**确切知道**它丢了哪个地址。 */
+  url_rejected?: string;
 }
 
 export function getModelCatalogue(): Promise<{

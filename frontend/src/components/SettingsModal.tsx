@@ -423,6 +423,14 @@ function LlmPane() {
           改完记得点「保存」；只想试连通性可以点「测试连接」（它用你填的地址试，并顺手保存）。
         </p>
       ) : null}
+      {activeInfo?.url_rejected ? (
+        <p className={styles.warnNote} data-testid="llm-url-rejected">
+          ⚠️ 你保存的地址 <code>{activeInfo.url_rejected}</code> 没有被采用，
+          实际调用走的是 <strong>{activeHost || "服务端配置的地址"}</strong>。
+          原因通常是：它不是 https 的公网地址、解析不到，或指向内网/本机
+          （服务端连不上这类地址）。请核对后重新保存——本机模型请改由部署环境变量配置。
+        </p>
+      ) : null}
       {(() => {
         // 手填的模型名 / 账号里存的旧档位也可能不支持 JSON 模式，这里再看一眼
         const warn = activeModel ? jsonModeWarning(presets, activeModel) : "";
