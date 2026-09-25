@@ -2211,10 +2211,45 @@ export type NovelAuditCraft = {
   };
 };
 
+/** 改编检查表的一条：事实（title/why）+ 具体改法（action）+ 证据。 */
+export type AdaptationItem = {
+  code: string;
+  severity: "warn" | "info";
+  title: string;
+  why: string;
+  action: string;
+  where: string;
+  evidence?: Record<string, unknown>;
+};
+
+export type AdaptationOut = {
+  items: AdaptationItem[];
+  counts: { warn: number; info: number; total: number };
+  perChapter: Array<{
+    chapterId: string;
+    chapterTitle: string;
+    chapterOrdinal: number;
+    chars: number;
+    dialogueRatio: number | null;
+    sceneBlocks: number;
+    menus: number;
+  }>;
+  characters: {
+    appearing: Array<{ id: string; name: string; hasVoice: boolean; corpusCount: number; hasMind: boolean }>;
+    thin: Array<{ id: string; name: string }>;
+  };
+  /** 分支与结局的事实读数（不判断该不该有分支） */
+  flow: { menus: number; labels: number; endingsDeclared: number; endingsReached: number; computed: boolean };
+  coverage: { chaptersTotal: number; chaptersWithText: number; sceneBlocks: number; note: string };
+  notes: string[];
+};
+
 export type NovelAuditOut = {
   parts: string[];
   consistency?: NovelAuditConsistency;
   craft?: NovelAuditCraft;
+  /** 改编检查表（小说 → 视觉小说）：只报结构事实，不把 kinetic 当缺陷 */
+  adapt?: AdaptationOut;
 };
 
 /**

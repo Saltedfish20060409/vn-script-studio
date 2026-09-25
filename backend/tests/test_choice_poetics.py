@@ -15,8 +15,14 @@ from app.core.choice_poetics import (
     CLASS_DILEMMA,
     CLASS_OBVIOUS,
     CLASS_RELAXED,
+    CONSEQUENCE_CONTINUES,
+    CONSEQUENCE_REJOINS,
+    CONSEQUENCE_SHORT_END,
+    CONSEQUENCE_UNKNOWN,
     analyze_choice_variety,
+    analyze_consequence_tiers,
     classify_choice_menu,
+    consequence_recommendations,
     variety_recommendations,
 )
 from app.core.project import normalize_project
@@ -220,3 +226,98 @@ def test_analyze_branches_can_be_reused_without_reparsing():
     branch = analyze_branches(project)
     variety = analyze_choice_variety(project, branch=branch)
     assert variety["counts"]["menus"] == 1
+
+
+# ---- 后果分层（JSET 2024 / VN 先行研究サーベイ的结构代理） --------------------
+
+
+def _tier_project(choices, tail_labels=4):
+    """造一个带"选项 → 若干 label → 收束"的工程，用来观察后果形态。"""
+    blocks = [
+        {
+            "type": "menu",
+            "id": "m1",
+            "prompt": "怎么办？",
+            "choices": [{"text": c[0], "jump": c[1], "blocks": []} for c in choices],
+        }
+    ]
+    for i in range(1, tail_labels + 1):
+        blocks.append({"type": "label", "id": f"t{i}", "name": f"t{i}"})
+        blocks.append({"type": "narration", "text": f"第 {i} 段。"})
+        if i < tail_labels:
+            blocks.append({"type": "jump", "target": f"t{i + 1}"})
+    # 所有分支最后汇到同一个收束点（结构上的"汇合"）
+    blocks.append({"type": "label", "id": "final", "name": "final"})
+    blocks.append({"type": "narration", "text": "收束。"})
+    return normalize_project(
+        {
+            "id": "p-tier",
+            "title": "后果分层",
+            "chapters": [{"id": "ch1", "title": "第一章", "blocks": blocks}],
+        }
+    )
+
+
+def test_options_are_classified_by_downstream_shape():
+    """同一个菜单里：长尾巴 → continues；短尾巴且走到结局 → short_end；原地 → unknown。"""
+    project = _tier_project([("去天台", "t1"), ("留在教室", "final"), ("什么也不做", None)], tail_labels=8)
+    out = analyze_consequence_tiers(project)
+    rows = out["menus"][0]["choices"]
+    tiers = {r["text"]: r["tier"] for r in rows}
+    assert tiers["去天台"] == CONSEQUENCE_CONTINUES
+    assert tiers["留在教室"] == CONSEQUENCE_SHORT_END  # 只到一个收束点就没了
+    assert tiers["什么也不做"] == CONSEQUENCE_UNKNOWN  # inline/无目标：不猜
+    assert out["counts"][CONSEQUENCE_UNKNOWN] == 1
+    # 每条读数都要能自证：可达节点数 + 是否走到结局
+    long_row = next(r for r in rows if r["tier"] == CONSEQUENCE_CONTINUES)
+    assert long_row["reachableNodes"] >= 4
+    assert long_row["reachesEnding"] is True
+
+
+def test_rejoining_options_are_marked_as_rejoins():
+    """两个选项都汇到同一批后续 → rejoins（"部分对/走了弯路又回来"的结构形态）。"""
+    project = _tier_project([("往左", "t1"), ("往右", "t2")], tail_labels=4)
+    # t1 与 t2 都往下走并在 t3 之后汇合
+    out = analyze_consequence_tiers(project)
+    rows = out["menus"][0]["choices"]
+    assert all(r["rejoins"] for r in rows), rows
+    assert out["counts"][CONSEQUENCE_REJOINS] == 2
+
+
+def test_imbalance_is_reported_with_numbers_and_action():
+    """分量悬殊（长尾 vs 一句收束）要给出数字与具体改法，且只报 info。"""
+    project = _tier_project([("去天台", "t1"), ("留在教室", "final")], tail_labels=8)
+    out = analyze_consequence_tiers(project)
+    assert out["imbalance"] is not None
+    assert out["imbalance"]["max"] >= 4 * out["imbalance"]["min"]
+    recs = consequence_recommendations(out)
+    rec = next(r for r in recs if r["code"] == "consequence_imbalance")
+    assert rec["severity"] == "info"
+    assert "倍" in rec["title"]
+    assert rec["action"]
+    assert "JSET" in rec["why"]
+
+
+def test_balanced_book_gets_no_imbalance_recommendation():
+    """分量相当的书不该报——否则就是噪音，作者会关掉这一类提示。"""
+    project = _tier_project([("往左", "t1"), ("往右", "t2")], tail_labels=4)
+    out = analyze_consequence_tiers(project)
+    assert out["imbalance"] is None
+    assert consequence_recommendations(out) == []
+
+
+def test_consequence_report_states_its_limits():
+    out = analyze_consequence_tiers(_tier_project([("去天台", "t1"), ("留在教室", "final")]))
+    assert any("结构读数" in n for n in out["notes"])
+    assert any("unknown" in n for n in out["notes"])
+    assert "JSET" in out["basis"] or "サーベイ" in out["basis"]
+
+
+def test_project_without_menus_does_not_crash():
+    project = normalize_project(
+        {"id": "p-plain", "title": "无分支", "chapters": [{"id": "c1", "title": "第一章", "prose": "雨停了。"}]}
+    )
+    out = analyze_consequence_tiers(project)
+    assert out["menus"] == []
+    assert out["counts"]["menus"] == 0
+    assert consequence_recommendations(out) == []

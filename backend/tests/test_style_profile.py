@@ -23,7 +23,6 @@ from app.core.novel_craft import (
     chapter_readability,
     person_stats,
     sentence_stats,
-    style_readings,
 )
 from app.core.project import normalize_project
 

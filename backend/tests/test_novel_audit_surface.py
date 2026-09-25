@@ -170,6 +170,17 @@ def test_novel_audit_route_parts_filter_and_bad_parts():
             assert only_craft.json()["parts"] == ["craft"]
             assert "consistency" not in only_craft.json()
 
+            # 改编检查表是第三段：能单独请求，也会带上自己的 coverage 与免责说明
+            only_adapt = await client.post(
+                f"/api/v1/projects/{pid}/analysis/novel-audit?parts=adapt",
+                headers=owner,
+            )
+            assert only_adapt.status_code == 200, only_adapt.text
+            adapt = only_adapt.json()["adapt"]
+            assert "items" in adapt and "coverage" in adapt
+            assert any("kinetic" in n for n in adapt["notes"]), adapt["notes"]
+            assert "craft" not in only_adapt.json()
+
             # 全是拼错的段名 → 400，而不是"什么都没查、返回 200 看着像通过"
             bad = await client.post(
                 f"/api/v1/projects/{pid}/analysis/novel-audit?parts=nope",

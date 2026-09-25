@@ -59,7 +59,9 @@ export function NovelAuditPanel({ projectId, onOpenChapter }: Props) {
     setBusy(true);
     setError("");
     try {
-      setData(await fetchNovelAudit(projectId));
+      // 三部分都要：表记/视角一致性、文面读数（含文体剖面）、改编检查表。
+      // 都是离线统计（不调模型），所以一次拿全比来回点便宜。
+      setData(await fetchNovelAudit(projectId, { parts: "consistency,craft,adapt" }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "体检失败");
     } finally {
@@ -73,6 +75,7 @@ export function NovelAuditPanel({ projectId, onOpenChapter }: Props) {
 
   const consistency = data?.consistency;
   const craft = data?.craft;
+  const adapt = data?.adapt;
   const sev = consistency?.counts?.bySeverity ?? {};
   const issues = consistency?.issues ?? [];
   const rubyIssues = craft?.rubyIssues ?? [];
@@ -230,6 +233,33 @@ export function NovelAuditPanel({ projectId, onOpenChapter }: Props) {
                 ))}
               </ul>
               <p className={styles.hint}>{craft.styleProfile.note}</p>
+            </div>
+          ) : null}
+
+          {adapt && adapt.items.length > 0 ? (
+            <div className={styles.section} data-testid="novel-audit-adapt">
+              <h3 className={styles.sectionTitle}>
+                改编检查表（小说 → 视觉小说）
+                <span className={styles.badge}>
+                  {adapt.counts.warn} 条要动手 · {adapt.counts.info} 条提示
+                </span>
+              </h3>
+              <ul className={styles.list}>
+                {adapt.items.map((item, i) => (
+                  <li key={`${item.code}-${i}`}>
+                    <strong>{item.title}</strong>
+                    {item.where ? <em>（{item.where}）</em> : null}
+                    {/* why = 依据，action = 具体改法：两者都要显示，不能只给结论 */}
+                    <span className={styles.hint}>{item.why}</span>
+                    <span className={styles.hint}>改法：{item.action}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className={styles.hint}>
+                只统计有正文的章节（{adapt.coverage.chaptersWithText}/
+                {adapt.coverage.chaptersTotal} 章 · 分场块 {adapt.coverage.sceneBlocks} 个）。
+                检查表**不评写得好不好**，也**不把「没有选项」当缺陷**（kinetic 是合法形态）。
+              </p>
             </div>
           ) : null}
 

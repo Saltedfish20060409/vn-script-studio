@@ -1331,13 +1331,17 @@ async def analysis_novel_audit(
     就点一次。带模型的那条（`/consistency/scan`、`/consistency/audit`）语义层更贵，
     两者互补而不是替代。
 
-    `parts` 只接受 `consistency` / `craft`（逗号分隔，默认两者都跑）。返回里
+    `parts` 只接受 `consistency` / `craft` / `adapt`（逗号分隔，默认前两者）。返回里
     `coverage` 会如实说明扫了多少章、哪几章没扫到、有没有截断——不静默丢章节。
+    `adapt` 是**改编检查表**（小说 → 视觉小说：一屏文字、对白占比、分场、选项与结局、
+    角色素材），零模型调用；它**不把"没有选项"当缺陷**（kinetic 是合法形态）。
     """
     wanted = {p.strip() for p in str(parts).split(",") if p.strip()}
-    wanted &= {"consistency", "craft"}
+    wanted &= {"consistency", "craft", "adapt"}
     if not wanted:
-        raise HTTPException(status_code=400, detail="parts 需要包含 consistency 或 craft")
+        raise HTTPException(
+            status_code=400, detail="parts 需要包含 consistency / craft / adapt 之一"
+        )
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     out: dict = {"parts": sorted(wanted)}
@@ -1351,6 +1355,10 @@ async def analysis_novel_audit(
         from app.core.novel_craft import analyze_novel_craft
 
         out["craft"] = analyze_novel_craft(vn, chapter_id=chapter_id or None)
+    if "adapt" in wanted:
+        from app.core.adaptation_checklist import build_adaptation_checklist
+
+        out["adapt"] = build_adaptation_checklist(vn)
     return out
 
 

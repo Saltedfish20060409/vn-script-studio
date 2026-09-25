@@ -399,10 +399,20 @@ def recommend_branch_improvements(
     rows = _static_recommendations(branch)
     # 选项分类（Dunyazad 三分法的结构代理，见 core/choice_poetics.py）：报"缺哪一类"，
     # 只出 info——没有两难选择不是错误，日常系作品的轻松选择是有意为之。
-    from app.core.choice_poetics import analyze_choice_variety, variety_recommendations
+    from app.core.choice_poetics import (
+        analyze_choice_variety,
+        analyze_consequence_tiers,
+        consequence_recommendations,
+        variety_recommendations,
+    )
 
     variety = analyze_choice_variety(project, branch=branch)
     for item in variety_recommendations(variety):
+        rows.append(_rec(**item))
+    # 后果分层（JSET 2024「按正解/部分正解/不正解决定结果展开」的结构代理）：
+    # 只报"选项分量悬殊"这种通常不是有意的形态，其余（该不该有坏结局）是设计选择。
+    tiers = analyze_consequence_tiers(project, branch=branch)
+    for item in consequence_recommendations(tiers):
         rows.append(_rec(**item))
     basis = "script-only"
     sample_note = (
@@ -443,10 +453,14 @@ def recommend_branch_improvements(
         },
         "coverage": (branch.get("coverage") or {}),
         "choiceVariety": variety,
+        "consequenceTiers": tiers,
         "notes": [
             "每条建议都带 why（依据）与 action（具体改法），不做「建议优化剧情」这种空话。",
             "没有任何建议不等于剧本没问题：语义层面的问题（动机、反转、潜台词）不在这里的射程内。",
             "选项分类（怎么选都一样 / 意图明确 / 两难）是**结构启发式**：看选项把玩家送去哪、"
             "改了哪些状态，不判断玩家心理，也不给「这个选项写得好不好」打分。",
+            "后果分层（继续 / 汇合 / 短结局 / 看不出）同样是结构读数："
+            "看每个选项后面还有多少内容、是否走到结局、是否与别的选项汇合（JSET 2024 的"
+            "「按正解/部分正解/不正解决定结果展开」只作为设计视角，不作为规则）。",
         ],
     }

@@ -39,7 +39,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Mapping, Optional
 
-from app.core.branch_analysis import analyze_branches
+from app.core.branch_analysis import analyze_branches, build_graph, reachable_from
 from app.domain.types import VnProject
 
 CLASS_RELAXED = "relaxed"
@@ -219,6 +219,203 @@ def variety_recommendations(variety: Mapping[str, Any]) -> List[Dict[str, Any]]:
                 "后文再按这个状态位分岔。",
                 "where": "",
                 "evidence": {"menus": counts.get("menus"), "counts": dict(counts)},
+            }
+        )
+    return out
+
+
+# --------------------------------------------------------- 后果分层（结构代理）
+#
+# 依据（2026-09 核对，见 docs/references.md 的「视觉小说 / 轻小说实务（参考层）」）：
+# - JSET 2024 那篇把「**按正解 / 部分正解 / 不正解分别决定结果的展开**」列为分支设计的一步
+#   （原文第 4 条：正解、部分的正解、不正解に即した結果のストーリー展開を決める）。
+# - ビジュアルノベル先行研究サーベイ（デジタルゲーム学研究）把 VN 的表达力归到
+#   「用选项操作故事 / 坏结局 / 别的路线 → 只有玩家站在超越视角反复经历」这一类结构上。
+#
+# 我们能判的只有**结构**：某个选项把玩家送到哪、后面还有多少内容、是否走到结局、
+# 是否与同菜单的别的选项汇合。所以这里是**后果形态**的描述，不是"这个结局好不好"。
+
+CONSEQUENCE_CONTINUES = "continues"
+CONSEQUENCE_REJOINS = "rejoins"
+CONSEQUENCE_SHORT_END = "short_end"
+CONSEQUENCE_UNKNOWN = "unknown"
+
+#: 给界面看的解释（作者语言）。
+CONSEQUENCE_LABELS: Dict[str, str] = {
+    CONSEQUENCE_CONTINUES: "继续往下走（与别的选项不汇合）",
+    CONSEQUENCE_REJOINS: "与同菜单的别的选项汇合（差在状态上）",
+    CONSEQUENCE_SHORT_END: "只走到一个很短的结局（坏结局/提前收场）",
+    CONSEQUENCE_UNKNOWN: "看不出后果（原地写正文 / 目标解析不出来）",
+}
+
+#: "很短的结局"阈值：目标之后只有 ≤ 这么多个 label 就结束。
+SHORT_TAIL_NODES = 3
+#: 后果分量悬殊的倍数阈值（手调）：最大 / 最小 ≥ 这个值且都 ≥ 1 才算悬殊。
+IMBALANCE_RATIO = 4.0
+
+CONSEQUENCE_BASIS = (
+    "JSET 2024《正解・部分的正解・不正解に即した結果のストーリー展開を決める》；"
+    "ビジュアルノベル先行研究サーベイ（デジタルゲーム学研究）——"
+    "两者都把「选项把玩家送到哪、走到哪个结局」当成可设计的结构"
+)
+
+
+def _ending_labels(project: VnProject, graph: Any) -> set:
+    """判定"走到结局"用的 label 集合：作者声明的结局 + 图里的**终端** label。
+
+    终端 = 没有任何出边的 label（`graph.edges` 是按边存的，`labels[...]["edges"]` 是空的——
+    踩过一次：按后者算会把每个 label 都当成结局，于是"是否走到结局"永远为真）。
+    """
+    labels: set = set()
+    for e in project.endings or []:
+        target = str(getattr(e, "label", None) or getattr(e, "target", None) or "").strip()
+        if target:
+            labels.add(target)
+    has_outgoing = {
+        str(edge.src)
+        for edge in (getattr(graph, "edges", None) or [])
+        if getattr(edge, "dst", None)
+    }
+    for name in (getattr(graph, "labels", {}) or {}):
+        if name not in has_outgoing:
+            labels.add(name)
+    return labels
+
+
+def analyze_consequence_tiers(
+    project: VnProject, *, branch: Optional[Mapping[str, Any]] = None
+) -> Dict[str, Any]:
+    """每个选项的**后果形态**：继续 / 汇合 / 短结局 / 看不出，以及全书分布。
+
+    与 `analyze_choice_variety` 互补：那个判"这个菜单是不是白选"，这个判
+    "选下去之后玩家各自被送到哪"（后果是否真的分层）。两者都只给结构事实。
+    """
+    data = branch if branch is not None else analyze_branches(project)
+    graph = build_graph(project)
+    endings = _ending_labels(project, graph)
+
+    menus_out: List[Dict[str, Any]] = []
+    counts: Dict[str, int] = {
+        CONSEQUENCE_CONTINUES: 0,
+        CONSEQUENCE_REJOINS: 0,
+        CONSEQUENCE_SHORT_END: 0,
+        CONSEQUENCE_UNKNOWN: 0,
+    }
+    tails: List[int] = []
+
+    for menu in data.get("menus") or []:
+        if not isinstance(menu, Mapping):
+            continue
+        options = [c for c in (menu.get("choices") or []) if isinstance(c, Mapping)]
+        if not options:
+            continue
+        # 先算每个选项的可达集合，才能判"是否与别人汇合"
+        reach: List[Optional[set]] = []
+        for choice in options:
+            target = str(choice.get("target") or "").strip()
+            if str(choice.get("effect") or "") == "inline" or not target:
+                reach.append(None)  # 原地写正文：没有独立后果，不猜
+            elif target not in graph.labels:
+                reach.append(None)
+            else:
+                reach.append(reachable_from(graph, target))
+
+        rows: List[Dict[str, Any]] = []
+        for idx, choice in enumerate(options):
+            nodes = reach[idx]
+            if nodes is None:
+                tier = CONSEQUENCE_UNKNOWN
+                size = 0
+                reaches = False
+                rejoins = False
+            else:
+                size = len(nodes)
+                reaches = bool(nodes & endings)
+                # "汇合"要看**非结局**的公共后续：所有路最终走到同一个结局是常态，
+                # 那不算"走了弯路又回来"（否则每个菜单都会被判成汇合）。
+                rejoins = any(
+                    other is not None and bool((nodes & other) - endings)
+                    for j, other in enumerate(reach)
+                    if j != idx
+                )
+                if reaches and size <= SHORT_TAIL_NODES:
+                    tier = CONSEQUENCE_SHORT_END
+                elif rejoins:
+                    tier = CONSEQUENCE_REJOINS
+                else:
+                    tier = CONSEQUENCE_CONTINUES
+                tails.append(size)
+            counts[tier] += 1
+            rows.append(
+                {
+                    "index": idx,
+                    "text": str(choice.get("text") or "").strip(),
+                    "tier": tier,
+                    "tierLabel": CONSEQUENCE_LABELS[tier],
+                    "target": choice.get("target"),
+                    "reachableNodes": size,
+                    "reachesEnding": reaches,
+                    "rejoins": rejoins,
+                    "available": bool(choice.get("available", True)),
+                }
+            )
+        menus_out.append(
+            {
+                "where": f"{menu.get('chapterId') or ''}/{menu.get('menuId') or 'menu'}",
+                "prompt": str(menu.get("prompt") or "").strip(),
+                "choices": rows,
+            }
+        )
+
+    imbalance: Optional[Dict[str, Any]] = None
+    resolved = [n for n in tails if n >= 1]
+    if len(resolved) >= 2:
+        smallest, largest = min(resolved), max(resolved)
+        ratio = round(largest / smallest, 2)
+        if ratio >= IMBALANCE_RATIO:
+            imbalance = {"min": smallest, "max": largest, "ratio": ratio, "options": len(resolved)}
+
+    return {
+        "menus": menus_out,
+        "counts": {**counts, "menus": len(menus_out), "optionsResolved": len(resolved)},
+        "tierLabels": CONSEQUENCE_LABELS,
+        "imbalance": imbalance,
+        "basis": CONSEQUENCE_BASIS,
+        "notes": [
+            "后果形态是**结构读数**：看选项把玩家送到哪、后面还有多少内容、是否走到结局、"
+            "是否与同菜单别的选项汇合——不判断这个结局写得好不好。",
+            "「继续往下走」与「汇合」的区分依据是可达集合是否与别的选项相交："
+            "汇合是「部分对 / 走了弯路又回来」的结构形态。",
+            "看不到后果（原地写正文 / 目标解析不出来）一律记 unknown，不猜。",
+        ],
+    }
+
+
+def consequence_recommendations(tiers: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    """后果分层的可执行建议（目前只出一条：分量悬殊）。
+
+    为什么只出一条：JSET 那套"正解/部分正解/不正解"要求作者**有意识地分层**，
+    而"该不该有坏结局"是设计选择（kinetic 作品一个结局也没有问题）。
+    所以只有"同一菜单里选项分量差 4 倍以上"这种**通常不是有意**的形态才提示。
+    """
+    out: List[Dict[str, Any]] = []
+    imbalance = tiers.get("imbalance")
+    if isinstance(imbalance, Mapping):
+        out.append(
+            {
+                "code": "consequence_imbalance",
+                "severity": "info",
+                "title": (
+                    f"有几个选项的后果分量悬殊：最长的一条要到 {imbalance.get('max')} 个节点，"
+                    f"最短的只到 {imbalance.get('min')} 个（相差 {imbalance.get('ratio')} 倍）"
+                ),
+                "why": "分支设计里，选项之间的'分量'应当与它代表的取舍相当"
+                "（JSET 2024：按正解/部分正解/不正解分别决定结果的展开）。"
+                "相差数倍通常不是有意的，而是某条线只写了一句就跳回主线。",
+                "action": "给那条最短的分支补一小段收束（它的后果值得一点展开），"
+                "或者把它改成不额外分支的 inline 选项——两种都比「点进去只有一句话」好。",
+                "where": "",
+                "evidence": dict(imbalance),
             }
         )
     return out
