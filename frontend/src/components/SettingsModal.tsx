@@ -272,6 +272,15 @@ function LlmPane() {
                 ? `已保存到账号（加密存储 · ${s.api_key_masked}）。下次登录自动生效。`
                 : "已保存到账号（未设置主 Key）"
           );
+          // 「当前生效」那一行以**服务端解析结果**（`activeInfo`，含 source 与最终地址）为准，
+          // 而它优先级高于刚刷新的 `serverFallback`。所以保存成功后必须重新拉一次目录，
+          // 否则那一行还是保存前的旧值——用户会看到"提示已保存、但上面那行没变"，
+          // 从而得出"还是没存上"（这正是这次用户反馈的困惑，不能只修一半）。
+          void getModelCatalogue()
+            .then(({ active }) => setActiveInfo(active))
+            .catch(() => {
+              /* 目录拿不到不影响保存结果：上面那行仍有 serverFallback 兜底 */
+            });
         })
         .catch((e) =>
           setError(e instanceof Error ? e.message : "保存到账号失败")
