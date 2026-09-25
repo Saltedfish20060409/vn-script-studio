@@ -69,10 +69,39 @@
   width: min(92vw, 1100px);
 }
 
+/* 铺满：抽屉占满稿纸区（不看稿纸，专心改设定/看结构）。 */
+.drawerFull {
+  width: 100%;
+  border-left: none;
+  box-shadow: none;
+}
+
 .drawerBody {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+}
+
+/* 尺寸开关：默认按面板给一档合适的宽度，需要时一键铺满。
+   为什么不把默认值直接调成 wide：写作时多数面板只是"瞥一眼"，
+   一上来就占 92vw 会把稿纸挤走；而 VN 的结构分析这类面板又确实需要宽度。
+   给一个开关，比替用户猜一次更划算。 */
+.drawerSizeBtn {
+  margin-left: auto;
+  min-height: 30px;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--field-bg);
+  color: var(--ink-soft);
+  font-family: var(--font-display);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.drawerSizeBtn:hover {
+  border-color: var(--accent);
+  color: var(--ink);
 }
 
 @media (max-width: 720px) {
@@ -80,5 +109,10 @@
   .drawerWide {
     width: 100%;
     border-left: none;
+  }
+
+  /* 窄屏本来就是全宽，尺寸开关没有意义 */
+  .drawerSizeBtn {
+    display: none;
   }
 }

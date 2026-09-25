@@ -3,6 +3,19 @@
   flex-direction: column;
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--panel-bg) 72%, transparent);
+  /* 顶栏整组抬到稿纸区之上：下拉菜单必须能盖住下面的东西
+     （VN 的「视图快捷条」是静态元素；稿纸工具条 .toolbar 是 z-index 70）。
+
+     为什么显式给这一层 z-index，而不是只靠下拉自己的 z-index: 80：
+     下拉的 80 只在**它所在的层叠上下文**里有效，而"顶栏这一组属于哪个上下文"
+     取决于浏览器对 details 内容槽的处理（Chrome 对关闭的 details 用
+     content-visibility，带 containment）。现在的正常表现因此依赖
+     "80 恰好没被关进顶栏这一层"这个假设——换个引擎、或有人改动这里的 nesting，
+     就可能翻车，表现正是"下拉被下面那条半透明长条盖住"。
+     给顶栏一个高于工具条（70）的层级，把这个假设变成事实。
+     回归测试：frontend/e2e/writeShell.harness.spec.ts（不挂后端，逐项命中测试）。 */
+  position: relative;
+  z-index: 90;
 }
 
 .ribbon {

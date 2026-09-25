@@ -4,11 +4,28 @@ import { LOOSE_VOLUME_ID, buildVolumeRows, volumeIdOfChapter } from "../lib/volu
 import { formatWords } from "../lib/wordCount";
 import styles from "./ChapterOutline.module.css";
 
-const COLLAPSED_KEY = "vnss-chapter-outline-collapsed";
+/**
+ * 折叠状态按**体裁分别记**。
+ *
+ * 为什么要分：同一个键会让"我在写小说时展开了大纲"影响"我写 VN 时的默认"，
+ * 而两类工程的默认本来就相反（见下面 GENRE_DEFAULT_COLLAPSED），
+ * 一个键等于让两个默认互相打架。
+ */
+const COLLAPSED_KEY_PREFIX = "vnss-chapter-outline-collapsed";
 const NARROW_MQ = "(max-width: 720px)";
 
+/**
+ * 默认是否收起。
+ *
+ * **两类都是展开**（这里改过：起初 VN 默认收起，理由是"VN 的结构在脚本图里"）。
+ * 但实际用起来不对：脚本作者切章/切场是高频动作，收起等于每次都多一步，
+ * 而左侧栏本来就只在宽屏出现、窄屏自动折成顶部横条，并不占稿纸的垂直空间。
+ * 真正需要"只留稿子"时该按的是专注模式，不是把大纲藏起来。
+ */
+const GENRE_DEFAULT_COLLAPSED = { vn: false, novel: false } as const;
+
 type Props = {
-  /** vn：默认收起；novel：默认展开。用户手动折叠后仍以 localStorage 为准。 */
+  /** 只影响默认折叠状态与用词；两边默认都是展开（见 GENRE_DEFAULT_COLLAPSED）。 */
   genre?: "vn" | "novel";
   chapterId: string;
   chapters: SceneChapter[];
@@ -35,14 +52,15 @@ export function ChapterOutline(props: Props) {
     typeof window !== "undefined" ? window.matchMedia(NARROW_MQ).matches : false
   );
   const [collapsed, setCollapsed] = useState(() => {
+    const genre = props.genre === "novel" ? "novel" : "vn";
     try {
-      const stored = localStorage.getItem(COLLAPSED_KEY);
+      const stored = localStorage.getItem(`${COLLAPSED_KEY_PREFIX}-${genre}`);
       if (stored === "1") return true;
       if (stored === "0") return false;
     } catch {
       /* ignore */
     }
-    return props.genre === "vn";
+    return GENRE_DEFAULT_COLLAPSED[genre];
   });
 
   useEffect(() => {
@@ -56,8 +74,9 @@ export function ChapterOutline(props: Props) {
   function toggleCollapsed() {
     setCollapsed((prev) => {
       const next = !prev;
+      const genre = props.genre === "novel" ? "novel" : "vn";
       try {
-        localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0");
+        localStorage.setItem(`${COLLAPSED_KEY_PREFIX}-${genre}`, next ? "1" : "0");
       } catch {
         /* ignore */
       }

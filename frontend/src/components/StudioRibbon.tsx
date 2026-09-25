@@ -23,6 +23,8 @@ type Props = {
   canReturnDesktop?: boolean;
   /** 当前视图抽屉面板：快捷条高亮用（仅 VN） */
   activeViewPanel?: ViewPanel | null;
+  /** 结构分析抽屉是否开着（仅 VN 的快捷条用） */
+  analysisOpen?: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
   onTitleChange: (value: string) => void;
   onFocusToggle: () => void;
@@ -84,6 +86,11 @@ const VIEW_QUICK: ReadonlyArray<readonly [ViewPanel, string]> = [
 /**
  * Word 式顶栏：作品标题 + 文件/开始/审阅/视图。
  * 菜单互斥：同时只开一组；点菜单项后关闭。
+ *
+ * VN 多一条「视图快捷条」（设定/角色工坊/地图/剧情状态 + 结构分析）：
+ * 轻小说的结构单位是"章"，左侧大纲就够；VN 的结构单位是"场景 / 分支 / 结局"，
+ * 写作时要反复在稿纸与结构之间来回看——所以它必须是一击可达，
+ * 而不是埋在「视图 → 写作分析」里（用户反馈："不如原来适合写 VN 剧本"）。
  */
 export function StudioRibbon({
   copy = copyFor("vn"),
@@ -99,6 +106,7 @@ export function StudioRibbon({
   adminAlert = false,
   canReturnDesktop = false,
   activeViewPanel = null,
+  analysisOpen = false,
   fileInputRef,
   onTitleChange,
   onFocusToggle,
@@ -497,6 +505,18 @@ export function StudioRibbon({
               {label}
             </button>
           ))}
+          {/* 结构分析（分支 / 选项 / 结局 / 节奏）是 VN 最常用的对照面，
+              所以它也在快捷条上，而不是只在「视图」菜单里。 */}
+          <button
+            type="button"
+            className={analysisOpen ? styles.viewQuickOn : styles.viewQuickBtn}
+            data-testid="vn-quick-analysis"
+            aria-pressed={analysisOpen}
+            title="结构分析：分支 / 选项 / 结局 / 节奏（与稿纸来回对照）"
+            onClick={onOpenAnalysis}
+          >
+            结构分析
+          </button>
         </div>
       ) : null}
     </header>

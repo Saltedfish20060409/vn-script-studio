@@ -151,6 +151,14 @@ import { loreLinkOptions } from "../lib/loreEntries";
 import { diffProjectAgainst } from "../lib/projectDiff";
 import { EVENTS, trackOncePerUser } from "../lib/track";
 import {
+  loadViewSizeOverrides,
+  nextViewSize,
+  resolveViewSize,
+  saveViewSizeOverrides,
+  type ViewPanelId,
+  type ViewSizeOverrides,
+} from "../lib/viewDrawerSize";
+import {
   applySettingsToDom,
   DEFAULT_SETTINGS,
   fromServerSettings,
@@ -452,6 +460,24 @@ export function StudioApp() {
   const [saveBadge, setSaveBadge] = useState<"idle" | "saving" | "error">("idle");
   // 顶栏"审稿"按钮的展开信号：每次 +1 让 AgentFloat 把面板拉出来
   const [agentOpenTick, setAgentOpenTick] = useState(0);
+  /**
+   * 视图抽屉的宽度选择（panel → narrow/wide/full）。见 lib/viewDrawerSize.ts。
+   *
+   * 为什么记在 localStorage 而不是作品里：它是**这个人的屏幕/习惯**，
+   * 不是作品的属性——和写作辅助条的折叠、专注模式的纸色同一类。
+   * 换设备后重新挑一次即可，不该跟着作品跑到别的协作者那里去。
+   */
+  const [viewSizeOverrides, setViewSizeOverrides] = useState<ViewSizeOverrides>(() =>
+    loadViewSizeOverrides()
+  );
+  const toggleViewSize = useCallback((panel: ViewPanelId) => {
+    setViewSizeOverrides((prev) => {
+      const current = resolveViewSize(panel, prev);
+      const next = { ...prev, [panel]: nextViewSize(panel, current) };
+      saveViewSizeOverrides(next);
+      return next;
+    });
+  }, []);
   const [focusSetupOpen, setFocusSetupOpen] = useState(false);
   const [focusPrefs, setFocusPrefs] = useState<FocusTimerPrefs | null>(null);
   // 之前每次渲染都调 loadFocusTimerPrefs()（localStorage.getItem + JSON.parse），
@@ -2955,6 +2981,7 @@ export function StudioApp() {
           }}
           onInsertScene={() => insertAtCaret(`\n${SCENE_SEPARATOR}\n`)}
           activeViewPanel={overlay?.type === "view" ? overlay.panel : null}
+          analysisOpen={overlay?.type === "analysis"}
         />
 
         <div className={styles.layout}>
@@ -3363,6 +3390,8 @@ export function StudioApp() {
                 {overlay?.type === "analysis" ? (
                   <StudioViewDrawer
                     title="写作分析"
+                    size={resolveViewSize("analysis", viewSizeOverrides)}
+                    onToggleSize={() => toggleViewSize("analysis")}
                     onClose={() => applyOverlay(null)}
                   >
                     <AnalysisPanels
@@ -3378,7 +3407,8 @@ export function StudioApp() {
                 {overlay?.type === "view" ? (
                   <StudioViewDrawer
                     title={VIEW_PANEL_TITLES[overlay.panel]}
-                    wide={overlay.panel === "map"}
+                    size={resolveViewSize(overlay.panel, viewSizeOverrides)}
+                    onToggleSize={() => toggleViewSize(overlay.panel)}
                     onClose={() => applyOverlay(null)}
                   >
                     {overlay.panel === "world" ? (
