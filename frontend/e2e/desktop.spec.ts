@@ -78,8 +78,8 @@ test("桌面启动器：双击剧本进入稿纸，Ribbon 与大纲可用", asyn
   const box = await ribbon.boundingBox();
   expect(box?.height ?? 0).toBeGreaterThan(30);
 
-  // 视图 → 写作分析
-  await openViewPanel(page, "写作分析");
+  // 视图 → 结构分析（原「写作分析」；文件菜单里那条已按"同一功能不要两套 UI"去掉）
+  await openViewPanel(page, "结构分析");
   await expect(page.getByTestId("file-backstage").or(page.getByTestId("view-drawer"))).toBeVisible();
   const close = page.getByTestId("backstage-close").or(page.getByTestId("drawer-close"));
   await close.first().click();

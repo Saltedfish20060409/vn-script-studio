@@ -172,9 +172,11 @@ test("待审列表：AI 提议的设定条目要作者点了接受才进设定�
     });
   });
 
-  // 文件 → 结构分析（待审列表就在这里；AI 回复里也这么指路）
-  await openFilePage(page, "结构分析");
-  const backstage = page.getByTestId("file-backstage");
+  // 视图 → 结构分析（待审列表就在这里；AI 回复里也这么指路）
+  // 文件菜单里那条入口已去掉：它和这个抽屉渲染的是同一个 AnalysisPanels，
+  // 同一功能留两份入口只会让人不知道该点哪个（变量名沿用 backstage，少改后续行）。
+  await openViewPanel(page, "结构分析");
+  const backstage = page.getByTestId("view-drawer");
   const openBtn = backstage.getByRole("button", { name: /待审列表/ }).first();
   await expect(openBtn).toBeEnabled({ timeout: 20_000 });
   await openBtn.click();

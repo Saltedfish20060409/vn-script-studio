@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openFilePage, openRibbonMenu } from "./nav";
 
 /**
  * End-to-end smoke tests — the critical user journey:
@@ -112,7 +113,8 @@ test("登出后回到登录页，旧账号可重新登录", async ({ page }) => 
     timeout: 15_000,
   });
 
-  await page.getByRole("button", { name: "退出" }).click();
+  // 「退出」现在在文件菜单里（Word 壳把顶栏散落按钮收进去了），不再是顶栏按钮
+  await (await openRibbonMenu(page, "文件")).getByRole("menuitem", { name: "退出" }).click();
   await expect(page).toHaveURL(/\/login/);
 
   await page.fill("#vnss-username", username);
@@ -129,7 +131,8 @@ test("协作入口：成员页签可打开", async ({ page }) => {
     timeout: 15_000,
   });
 
-  await page.getByRole("button", { name: "协作" }).click();
+  // 「协作」也收进了文件菜单；成员页现在在「项目 ▸」分组里（下钻），用 nav 的辅助函数
+  await openFilePage(page, "成员");
   await expect(page.getByText("成员", { exact: true })).toBeVisible();
   // 用户名在 owner 卡 + 成员卡等多处出现，取任一即可（避免 strict mode 冲突）
   await expect(page.getByText(username).first()).toBeVisible();
