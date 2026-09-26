@@ -16,9 +16,16 @@ export async function openRibbonMenu(
   return details;
 }
 
-/** 文件 → 二级页（剧本库 / 导出 / 写作统计…） */
+/** 文件 → 二级页（剧本库 / 导出 / 写作统计…）
+ *
+ * 项目二级页收在「项目 ▸」分组里（下钻，见 StudioRibbon）：所以先看第一层有没有，
+ * 没有就进分组再点。这样调用方不用关心分组怎么变的。 */
 export async function openFilePage(page: Page, label: string | RegExp) {
   const menu = await openRibbonMenu(page, "文件");
+  const item = menu.getByRole("menuitem", { name: label });
+  if (!(await item.isVisible().catch(() => false))) {
+    await menu.getByTestId("file-group-project").click();
+  }
   await menu.getByRole("menuitem", { name: label }).click();
   await page.getByTestId("file-backstage").waitFor({ state: "visible" });
 }

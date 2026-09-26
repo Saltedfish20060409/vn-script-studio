@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openFilePage, openViewPanel } from "./nav";
+import { closeOverlay, openFilePage, openViewPanel } from "./nav";
 
 /**
  * Word 壳回归：稿纸常在；文件二级页 / 视图抽屉可开可关；设定子页仍在。
@@ -73,13 +73,19 @@ test("文件菜单：二级页都能打开，返回正文后稿纸还在", async
   await page.setViewportSize({ width: 1440, height: 1000 });
   await registerAndLogin(page, randomName("e2e_subs_"));
 
-  for (const label of ["打开（剧本库）", "写作统计", "结构分析", "导出…"]) {
+  for (const label of ["打开（剧本库）", "写作统计", "导出…"]) {
     await openFilePage(page, label);
     await expect(page.getByTestId("file-backstage")).toBeVisible();
     await page.getByTestId("backstage-close").click();
     await expect(page.getByTestId("file-backstage")).toHaveCount(0);
     await expect(page.getByTestId("script-editor")).toBeVisible();
   }
+
+  // 结构分析现在是**抽屉**（与 VN 快捷条同一入口），不再是文件菜单里的整页：
+  // 同一功能两套 UI 只会让人不知道该点哪个，所以文件菜单里那条已去掉。
+  await openViewPanel(page, "结构分析");
+  await expect(page.getByTestId("view-drawer")).toBeVisible();
+  await closeOverlay(page);
 
   for (const label of ["本地化", "成员", "账本 / 摘要"]) {
     await openFilePage(page, label);
