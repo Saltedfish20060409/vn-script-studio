@@ -294,7 +294,21 @@ export function DesktopView({
       onOpenProject(icon.id.slice("project:".length));
       return;
     }
-    openApp(icon.id);
+    /* 图标 id 带命名空间（`project:` / `action:`），而 `openApp` 要的是**应用 id**。
+       上一版重构给图标加命名空间时漏了这里：以前 icon.id 直接就是应用 id，
+       加前缀之后 `apps.find(a => a.id === id)` 永远找不到，
+       于是"双击应用图标 / 双击「更多剧本」都没有任何反应"。
+       回归用例：desktop.harness.spec.ts 的两条窗口用例（剧本库 / AI 责编）。
+       三种 action 各有归宿：`new` 走新建、`more` 打开剧本库、
+       其余是应用快捷方式（`action:agent` → 应用 `agent`）。 */
+    const action = icon.id.startsWith("action:")
+      ? icon.id.slice("action:".length)
+      : icon.id;
+    if (action === "new") {
+      onNewProject();
+      return;
+    }
+    openApp(action === "more" ? "library" : action);
   }
 
   /** 单击选中；短间隔二次点击当双击（触控板/触屏不完全可靠） */
@@ -313,6 +327,20 @@ export function DesktopView({
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       openIcon(icon);
+      return;
+    }
+    /* F2 / Delete：桌面图标的通用键盘操作（与右键菜单「重命名 / 删除」同一对动作）。
+       上一版重构把这两个键丢了——只剩方向键与 Enter——而右键菜单还在，
+       于是"能点鼠标、不能按键盘"。回归用例：desktop.harness.spec.ts
+       「键盘：方向键移动、Enter 打开、F2 重命名、Delete 删除」。 */
+    if (e.key === "F2" && onRenameProject) {
+      e.preventDefault();
+      onRenameProject(icon.id);
+      return;
+    }
+    if (e.key === "Delete" && onDeleteProject) {
+      e.preventDefault();
+      onDeleteProject(icon.id);
       return;
     }
     if (

@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent, type RefObject } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type RefObject } from "react";
 import { copyFor, type GenreCopy } from "../lib/genreCopy";
 import type { ProjectSub, ViewPanel } from "../lib/studioOverlay";
 import { openNotice } from "../lib/notice";
@@ -51,11 +51,18 @@ type Props = {
   onInsertScene?: () => void;
 };
 
+/**
+ * 「文件」菜单里的项目二级页。
+ *
+ * **不含结构分析**：它已经有两条直达路径（顶栏『视图 → 结构分析』的抽屉、
+ * VN 专属视图快捷条），再从文件菜单进就是同一功能的第三套 UI——
+ * 项目自己的纪律是"同一功能两套 UI 只会让人不知道该点哪个"。
+ * 需要整页宽度时用抽屉标题栏的「铺满」，不必再走一遍文件菜单。
+ */
 const FILE_PAGES_NOVEL: ReadonlyArray<readonly [ProjectSub, string]> = [
   ["stats", "写作统计"],
   ["serial", "连载 / 发布"],
   ["audit", "稿件体检"],
-  ["analysis", "结构分析"],
   ["ledger", "账本 / 摘要"],
   ["assets", "素材"],
   ["localization", "本地化"],
@@ -63,10 +70,9 @@ const FILE_PAGES_NOVEL: ReadonlyArray<readonly [ProjectSub, string]> = [
   ["members", "成员"],
 ];
 
-/** VN：统计/连载往后排，素材与分析更靠前 */
+/** VN：统计/连载往后排，素材更靠前（VN 更常翻素材与本地化） */
 const FILE_PAGES_VN: ReadonlyArray<readonly [ProjectSub, string]> = [
   ["audit", "稿件体检"],
-  ["analysis", "结构分析"],
   ["assets", "素材"],
   ["localization", "本地化"],
   ["history", "快照 / 分享"],
@@ -133,16 +139,91 @@ export function StudioRibbon({
   onInsertScene,
 }: Props) {
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
+  /** 文件菜单内的下钻分组（目前只有「项目」）。关菜单时回到第一层。 */
+  const [fileGroup, setFileGroup] = useState<"project" | null>(null);
   const filePages = copy.genre === "vn" ? FILE_PAGES_VN : FILE_PAGES_NOVEL;
   const showViewQuick = copy.genre === "vn";
 
   function toggleMenu(id: MenuId) {
-    setOpenMenu((prev) => (prev === id ? null : id));
+    setOpenMenu((prev) => {
+      if (prev !== id) setFileGroup(null); // 换菜单、或重开，都回到第一层
+      return prev === id ? null : id;
+    });
   }
 
   function runAndClose(fn: () => void) {
     fn();
+    setFileGroup(null);
     setOpenMenu(null);
+  }
+
+  const menusRef = useRef<HTMLElement | null>(null);
+
+  /**
+   * 菜单的键盘行为。
+   *
+   * 菜单声明了 `role="menu"`，**ARIA 的菜单模式就要求实现对应的键盘操作**——
+   * 只声明不实现，对键盘/读屏用户来说这些项等于不存在（桌面视图那份用例里
+   * 已经有方向键 / F2 / Delete，说明这个项目是在意键盘的）。这里补三件：
+   * - `Alt+F / E / R / V` 开关对应菜单（桌面软件的 Alt 助记键习惯）；
+   * - 打开后焦点落进第一项，`↑↓` 在项之间移动，`Home/End` 到首尾；
+   * - `Esc` 关闭并把焦点还给触发它的那个菜单标题。
+   */
+  useEffect(() => {
+    const HOTKEY: Record<string, MenuId> = { f: "file", e: "home", r: "review", v: "view" };
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey || e.ctrlKey || e.metaKey) return;
+      const id = HOTKEY[e.key.toLowerCase()];
+      if (!id) return;
+      e.preventDefault();
+      // 状态逻辑写在监听器里（用函数式更新），这样 effect 可以只挂一次。
+      // 只挂一次是**必要的**：没有依赖数组时每次渲染都会重新订阅、
+      // StrictMode 还会多挂一次，按键可能落在"已卸载、尚未重挂"的空档里。
+      // （写 e2e 时快捷键一度时好时坏：一半是这里，一半是测试在 React 挂载完成前
+      //   就发了按键——两边都修了。）
+      setOpenMenu((prev) => {
+        if (prev !== id) setFileGroup(null); // 换菜单、或重开，都回到第一层
+        return prev === id ? null : id;
+      });
+      window.setTimeout(() => {
+        menusRef.current
+          ?.querySelector<HTMLElement>('details[open] [role="menuitem"]')
+          ?.focus();
+      }, 0);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  function onPanelKeyDown(e: React.KeyboardEvent<HTMLElement>) {
+    const items = Array.from(
+      e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).filter((el) => !el.hasAttribute("disabled"));
+    if (!items.length) return;
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      items[at + 1 < items.length ? at + 1 : 0]?.focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      items[at - 1 >= 0 ? at - 1 : items.length - 1]?.focus();
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      items[0]?.focus();
+    } else if (e.key === "End") {
+      e.preventDefault();
+      items[items.length - 1]?.focus();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      const details = e.currentTarget.querySelector("details[open]") as HTMLDetailsElement | null;
+      // 同时把原生 `open` 属性去掉：`<details>` 自己也会响应 Esc，
+      // 两条路径（原生关 DOM / React 改状态）只走一条时会出现"DON 关了、state 还开着"，
+      // 下一次渲染又把面板拉回来。显式两边一起收，行为才确定。
+      details?.removeAttribute("open");
+      setFileGroup(null);
+      setOpenMenu(null);
+      details?.querySelector<HTMLElement>("summary")?.focus();
+    }
   }
 
   return (
@@ -184,7 +265,12 @@ export function StudioRibbon({
           ) : null}
         </div>
 
-        <nav className={styles.menus} aria-label="写作菜单">
+        <nav
+          className={styles.menus}
+          aria-label="写作菜单"
+          ref={menusRef}
+          onKeyDown={onPanelKeyDown}
+        >
           <details className={styles.menu} open={openMenu === "file"}>
             <summary
               onClick={(e) => {
@@ -238,16 +324,44 @@ export function StudioRibbon({
                 导出…
               </button>
               <hr className={styles.sep} />
-              {filePages.map(([id, label]) => (
+              {/* 项目二级页收进一个「项目 ▸」分组：摊平时这条菜单有 19 项，
+                  面板 max-height 只有 28rem，用户得在里面滚着找。
+                  用**下钻**（同一面板内换页）而不是悬浮子菜单：子菜单要靠 hover 意图 +
+                  二级定位，键盘与触屏都更难用；下钻只要一个状态位，
+                  而且键盘 Tab / 方向键天然可用。 */}
+              {fileGroup === "project" ? (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-testid="file-group-back"
+                    onClick={() => setFileGroup(null)}
+                  >
+                    ‹ 返回
+                  </button>
+                  <hr className={styles.sep} />
+                  {filePages.map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => runAndClose(() => onOpenFilePage(id))}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </>
+              ) : (
                 <button
-                  key={id}
                   type="button"
                   role="menuitem"
-                  onClick={() => runAndClose(() => onOpenFilePage(id))}
+                  data-testid="file-group-project"
+                  aria-haspopup="menu"
+                  onClick={() => setFileGroup("project")}
                 >
-                  {label}
+                  项目 ▸（{filePages.length}）
                 </button>
-              ))}
+              )}
               <hr className={styles.sep} />
               {canReturnDesktop && onReturnDesktop ? (
                 <button
@@ -438,7 +552,7 @@ export function StudioRibbon({
                 role="menuitem"
                 onClick={() => runAndClose(onOpenAnalysis)}
               >
-                写作分析
+                结构分析
               </button>
             </div>
           </details>

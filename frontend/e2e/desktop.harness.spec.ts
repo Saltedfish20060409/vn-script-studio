@@ -79,12 +79,11 @@ test("进入稿纸后按钮仍可点、可滚", async ({ page }) => {
   await page.getByTestId("wb-button").click();
   await expect(page.getByTestId("wb-hits")).toHaveText("2");
 
-  await page.getByTestId("fake-workbench").evaluate((el) => {
-    el.scrollTop = 400;
-  });
-  await expect
-    .poll(() => page.getByTestId("fake-workbench").evaluate((el) => el.scrollTop))
-    .toBeGreaterThan(0);
+  /* 原来这里还断言"工作台能滚"（在桌面窗口里 el.scrollTop > 0）。
+     那条前提已经不存在了：桌面改成**纯启动器**后，进入剧本就是全屏稿纸，
+     不再套一层可滚的窗口。**"内容被 flex 压扁 → 按钮点不到/切不动"这个风险并没有消失**，
+     只是搬到了稿纸壳里——那条现在由 frontend/e2e/writeShell.harness.spec.ts 守着
+     （逐项命中测试 + 工具条可点），这里只留"进稿纸后按钮仍可点"。 */
 });
 
 test("右键剧本图标有打开/重命名/复制/删除，点了会执行", async ({ page }) => {
@@ -181,9 +180,9 @@ test("键盘：方向键移动、Enter 打开、F2 重命名、Delete 删除", a
   await expect(page.getByRole("listitem", { name: "长篇1" })).toBeFocused();
 
   await page.keyboard.press("F2");
-  await expect(page.getByTestId("harness-log")).toContainText("rename:q0");
+  await expect(page.getByTestId("harness-log")).toContainText("rename:project:q0");
   await page.keyboard.press("Delete");
-  await expect(page.getByTestId("harness-log")).toContainText("delete:q0");
+  await expect(page.getByTestId("harness-log")).toContainText("delete:project:q0");
 
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("fake-workbench")).toBeVisible();

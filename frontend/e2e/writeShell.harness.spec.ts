@@ -74,7 +74,7 @@ test.describe("写作页顶栏菜单", () => {
   test("点菜单项真的能触发动作（不是被盖住后点了别处）", async ({ page }) => {
     await page.goto("/e2e/writeShell.html?genre=vn");
     await page.locator("summary", { hasText: "视图" }).first().click();
-    await page.getByRole("menuitem", { name: "写作分析", exact: true }).click();
+    await page.getByRole("menuitem", { name: "结构分析", exact: true }).click();
     await expect(page.getByTestId("harness-log")).toContainText("analysis");
   });
 
@@ -82,6 +82,66 @@ test.describe("写作页顶栏菜单", () => {
     await page.goto("/e2e/writeShell.html?genre=vn");
     await page.getByRole("button", { name: "查找 / 替换" }).click();
     await expect(page.getByTestId("harness-log")).toContainText("find");
+  });
+
+  test("文件菜单保持精简：项目二级页收进分组，能下钻也能返回", async ({ page }) => {
+    await page.goto("/e2e/writeShell.html?genre=vn");
+    await page.locator("summary", { hasText: "文件" }).first().click();
+
+    // 第一层不该再摊平出全部项目页（摊平是 19 项、要滚）
+    const first = await page.evaluate(
+      () =>
+        document.querySelectorAll('details[open] [role="menuitem"]').length
+    );
+    expect(first, `文件菜单第一层有 ${first} 项，太多了`).toBeLessThanOrEqual(12);
+
+    await page.getByTestId("file-group-project").click();
+    await expect(page.getByRole("menuitem", { name: "稿件体检" })).toBeVisible();
+    await page.getByTestId("file-group-back").click();
+    await expect(page.getByTestId("file-group-project")).toBeVisible();
+  });
+
+  test("键盘：Alt+V 打开视图菜单、↑↓ 移动焦点、Esc 关闭", async ({ page }) => {
+    await page.goto("/e2e/writeShell.html?genre=vn");
+    // 必须先等组件挂载好再发按键：快捷键监听器是 React 挂载后才注册的，
+    // 抢在挂载前按就等于按在空气上（这条竞态让本用例一度"时好时坏"）。
+    await expect(page.getByTestId("studio-ribbon")).toBeVisible();
+    const panel = page.locator('details[open] [role="menu"]');
+
+    await page.keyboard.press("Alt+v");
+    await expect(panel).toBeVisible();
+    // 打开后焦点应当已经在第一项上（否则键盘用户还得再 Tab 一圈）
+    await expect(page.getByRole("menuitem", { name: "设定" })).toBeFocused();
+
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("menuitem", { name: "角色工坊" })).toBeFocused();
+    await page.keyboard.press("End");
+    await expect(page.getByRole("menuitem", { name: "结构分析" })).toBeFocused();
+
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+  });
+
+  test("四个菜单都有 Alt 助记键，且各开各的", async ({ page }) => {
+    await page.goto("/e2e/writeShell.html?genre=vn");
+    await expect(page.getByTestId("studio-ribbon")).toBeVisible();
+    const panel = page.locator('details[open] [role="menu"]');
+    // 每个键都要开出**它自己**那个菜单（顺便排除"上一个没关、看起来像开了"的假通过）
+    for (const [key, ownItem] of [
+      ["Alt+f", "新建剧本"],
+      ["Alt+e", "剧本"],
+      ["Alt+r", "AI 责编"],
+      ["Alt+v", "设定"],
+    ] as const) {
+      await page.keyboard.press(key);
+      await expect(panel, `按 ${key} 后应当有菜单打开`).toBeVisible();
+      await expect(
+        page.getByRole("menuitem", { name: ownItem, exact: false }),
+        `按 ${key} 后应当能看到「${ownItem}」`
+      ).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(panel, `Esc 后 ${key} 的菜单应当关掉`).toHaveCount(0);
+    }
   });
 });
 
