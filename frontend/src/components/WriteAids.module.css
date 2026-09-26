@@ -56,6 +56,27 @@
   line-height: 1.5;
 }
 
+.mustForm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.4rem;
+  flex: 1 1 12rem;
+}
+
+.mustArea {
+  flex: 1 1 100%;
+  min-height: 3.2rem;
+  resize: vertical;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--panel-bg, transparent);
+  color: inherit;
+  font: inherit;
+  line-height: 1.45;
+}
+
 .ghost {
   padding: 0.22rem 0.5rem;
   border: 1px solid var(--line);

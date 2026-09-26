@@ -227,12 +227,29 @@ export function NovelAuditPanel({ projectId, onOpenChapter }: Props) {
                 {craft.styleProfile.readings.map((r, i) => (
                   <li key={`${r.label}-${i}`}>
                     <strong>{r.label}</strong>：{r.value}
-                    {/* 每条读数都带依据：作者能核对"这个数凭什么这么说" */}
-                    <span className={styles.hint}>（依据：{r.basis}）</span>
+                    <span className={styles.hint}>（{r.basis}）</span>
                   </li>
                 ))}
               </ul>
               <p className={styles.hint}>{craft.styleProfile.note}</p>
+            </div>
+          ) : null}
+
+          {craft?.hardRuleChecks && craft.hardRuleChecks.length > 0 ? (
+            <div className={styles.section} data-testid="novel-audit-hard-rules">
+              <h3 className={styles.sectionTitle}>作者硬规则 · 结构对照</h3>
+              <ul className={styles.list}>
+                {craft.hardRuleChecks.map((item, i) => (
+                  <li key={`${item.code}-${i}`}>
+                    <strong>{item.severity === "warn" ? "对照" : item.severity}</strong>
+                    {item.rule ? <em>（规则：{item.rule}）</em> : null}
+                    <span className={styles.issueMsg}>{item.message}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className={styles.hint}>
+                只检查结构上能证伪的硬规则（目前：叙述人称）。文风类规则仍靠提示词，不会在这里「打分」。
+              </p>
             </div>
           ) : null}
 

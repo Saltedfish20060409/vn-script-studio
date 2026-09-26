@@ -595,6 +595,9 @@ class WritingGoals(BaseModel):
     为什么不塞进 writingMentors 之类的自由字典：目标要跟着作品走（换设备要还在），
     而且是界面上会反复读写的小结构，声明成模型才能被 normalize 与合并逻辑带上。
     留 None 表示"没设目标"——界面上不显示进度条，而不是显示一个 0/0。
+
+    ``mustBring`` 不是字数目标，但同属"作者为本场写作钉的短约束"：
+    编排层保证进上下文头部且超预算不挤掉（见 agent_context / memory_probe）。
     """
 
     model_config = ConfigDict(extra="allow")
@@ -605,6 +608,8 @@ class WritingGoals(BaseModel):
     chapter: Optional[int] = None
     # 单卷目标（按 /stats 的该卷累计字数算）
     volume: Optional[int] = None
+    # 本场必带进窗的短句（人/地/物/禁写）；空/缺省 = 不注入
+    mustBring: Optional[List[str]] = None
 
 
 class VnProject(BaseModel):
@@ -782,6 +787,10 @@ class AgentContextMeta(BaseModel):
     lensIds: Optional[List[str]] = None
     # Self-review outcome note
     selfReview: Optional[str] = None
+    # 写后廉价闸（确定性；见 core/write_gate.py）
+    writeGate: Optional[Dict[str, Any]] = None
+    # 写路径材料预取（上下文被裁时服务端已取回的工具清单）
+    retrievePrefetch: Optional[Dict[str, Any]] = None
     # LLM chat-memory summary produced this run (persisted to the session)
     chatMemorySummary: Optional[str] = None
 

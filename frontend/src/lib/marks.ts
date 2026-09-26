@@ -97,6 +97,48 @@ export function createMark(opts: {
 }
 
 /**
+ * 从写后闸给出的 quote 在正文里建标记（不依赖当前选区）。
+ * 找不到原文 → null（调用方提示作者手动选）。
+ */
+export function createMarkFromQuote(opts: {
+  text: string;
+  quote: string;
+  chapterId: string;
+  instruction?: string;
+  intent?: MarkIntent;
+  now?: number;
+}): Mark | null {
+  const quote = (opts.quote || "").trim();
+  if (!quote) return null;
+  const from = opts.text.indexOf(quote);
+  if (from < 0) {
+    // 闸里的 quote 可能截断过：退回最长前缀命中
+    const needle = quote.slice(0, Math.min(quote.length, 48));
+    if (needle.length < 8) return null;
+    const soft = opts.text.indexOf(needle);
+    if (soft < 0) return null;
+    return createMark({
+      text: opts.text,
+      from: soft,
+      to: soft + needle.length,
+      chapterId: opts.chapterId,
+      intent: opts.intent ?? "rewrite",
+      instruction: opts.instruction,
+      now: opts.now,
+    });
+  }
+  return createMark({
+    text: opts.text,
+    from,
+    to: from + quote.length,
+    chapterId: opts.chapterId,
+    intent: opts.intent ?? "rewrite",
+    instruction: opts.instruction,
+    now: opts.now,
+  });
+}
+
+/**
  * 在当前正文里重新定位一个标记。
  * 优先"上文+原文+下文"整段唯一命中，其次原文唯一命中，最后退回首次出现。
  * 都找不到 → null（调用方标成 stale，让人来确认）。

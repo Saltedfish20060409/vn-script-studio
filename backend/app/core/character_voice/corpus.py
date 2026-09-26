@@ -405,3 +405,73 @@ def corpus_stats(c: Character) -> Dict[str, Any]:
         "confirmedAxes": confirmed_axes(c),
         "preferNoteCount": len(c.voicePreferNotes or []),
     }
+
+
+def dialogue_write_policy(c: Character) -> Dict[str, Any]:
+    """对白代写策略：有思维包/足量正例 → 强制对照；否则只建议不代写长场。
+
+    - ``anchored``：可代写长对白，提示词必须带短样例硬对照
+    - ``soft``：有少量正例/语气卡，可短变体，长场次仍劝退
+    - ``advise_only``：证据不足，长场次/互聊类代写应拒绝并给建议
+    """
+    stats = corpus_stats(c)
+    has_mind = bool(stats.get("hasMindPack"))
+    ready = bool(stats.get("readyForMind"))
+    n = int(stats.get("sampleCount") or 0)
+    has_voice = bool((c.voice or "").strip())
+    if has_mind or ready:
+        return {
+            "mode": "anchored",
+            "mustSample": True,
+            "reason": "已有思维包或足量正例，对白须对照短样例",
+            "stats": stats,
+        }
+    if n >= 2 or has_voice:
+        return {
+            "mode": "soft",
+            "mustSample": n >= 1,
+            "reason": "正例偏少：可做短变体；长场次请先补语料或合成思维包",
+            "stats": stats,
+        }
+    return {
+        "mode": "advise_only",
+        "mustSample": False,
+        "reason": "样本与思维包不足：只给声线建议，不代写长对白",
+        "stats": stats,
+    }
+
+
+def format_voice_contrast_tail(
+    characters: Sequence[Character],
+    *,
+    max_chars_each: int = 2,
+    max_sample_chars: int = 320,
+) -> str:
+    """续写尾部「当场生效」的短口吻对照（Lost in the Middle：尾部利用率高）。
+
+    只取有思维包/足量正例的角色，每角色最多 2 条短正例；勿复制整份角色卡。
+    """
+    blocks: List[str] = []
+    for c in characters:
+        policy = dialogue_write_policy(c)
+        if policy["mode"] != "anchored":
+            continue
+        bit = format_corpus_for_prompt(
+            c, max_samples=max_chars_each, max_chars=max_sample_chars
+        )
+        if not bit.strip():
+            # 有思维包但无正例：给一行忌讳/语气
+            voice = (c.voice or "").strip()
+            if not voice:
+                continue
+            bit = f"  语气: {voice[:80]}"
+        name = c.displayName or c.defineName or c.id
+        blocks.append(f"- {name}\n{bit}")
+        if len(blocks) >= 4:
+            break
+    if not blocks:
+        return ""
+    return (
+        "\n## 口吻对照（短·务必贴近，勿照抄）\n"
+        + "\n".join(blocks)
+    )

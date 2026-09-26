@@ -198,7 +198,10 @@ export type MarkVariantRow = {
   } | null;
   /** 与其余候选的平均一致度；候选少于 3 份时为 null（没有多数可依） */
   consensus?: number | null;
+  /** 按证据排第一（非「文学最佳」） */
   recommended?: boolean;
+  /** 相对其它版的结构差异标签（更短 / 对白更多…） */
+  diffTags?: string[];
 };
 
 /** 写作页「标记批改」：让 AI 只改标出来的这一处（intent=advice 时只给建议，不动正文）。 */
@@ -2172,10 +2175,8 @@ export type NovelAuditCraft = {
   perChapter: NovelAuditChapter[];
   summary: string;
   /**
-   * 文体剖面：**描述性读数**（对白驱动程度/句长/人称/拟声/注音/连载节奏），每条带依据。
-   *
-   * 依据是《轻浅的美学》（轻小说文体特征）、《ライトノベル表現論》（会话中心）、
-   * 《日本轻小说模式的演变及特征》（连载节奏）。**读数不是评分**，不产出建议。
+   * 文体剖面：**描述性读数**，每条带 basis（说明读数含义，不是论文教条）。
+   * 文献索引见 docs/references.md。**读数不是评分**，不产出「应该改成…」。
    */
   styleProfile?: {
     summary: {
@@ -2188,6 +2189,13 @@ export type NovelAuditCraft = {
     basis: Record<string, string>;
     note: string;
   };
+  /** 作者硬规则里可证伪的子集（目前：人称）对照正文 */
+  hardRuleChecks?: Array<{
+    code: string;
+    severity: string;
+    message: string;
+    rule: string;
+  }>;
   rubyIssues: NovelAuditRubyIssue[];
   hookScores: Array<{
     chapterId: string;

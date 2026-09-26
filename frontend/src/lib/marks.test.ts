@@ -4,6 +4,7 @@ import {
   applyMark,
   chapterKey,
   createMark,
+  createMarkFromQuote,
   currentMarkRange,
   findMarkRange,
   isLocatable,
@@ -64,6 +65,20 @@ describe("markContext / createMark", () => {
     expect(mark.intent).toBe("rewrite");
     expect(mark.status).toBe("pending");
     expect(mark.chapterId).toBe("c1");
+  });
+
+  it("从写后闸 quote 建标记（不依赖选区）", () => {
+    const mark = createMarkFromQuote({
+      text: TEXT,
+      quote: "他慢慢抬起手，举到眼前。",
+      chapterId: "c1",
+      instruction: "去掉说明书腔",
+      now: 1000,
+    });
+    expect(mark).not.toBeNull();
+    expect(mark!.quote).toBe("他慢慢抬起手，举到眼前。");
+    expect(mark!.instruction).toBe("去掉说明书腔");
+    expect(createMarkFromQuote({ text: TEXT, quote: "正文里没有的句子", chapterId: "c1" })).toBeNull();
   });
 });
 

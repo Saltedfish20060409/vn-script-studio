@@ -1014,33 +1014,16 @@ def person_stats(units: Sequence[ProseUnit]) -> Dict[str, Any]:
     }
 
 
-#: 文体剖面各读数的**依据**（界面/文档与代码共用一份，避免两处各写一套）。
+#: 文体剖面各读数的**依据**（界面可见）。
+#: 纪律：只写「这是什么读数 / 不是规范」，**不把论文名当作者必读依据**。
+#: 文献索引仍在 docs/references.md「视觉小说 / 轻小说实务（参考层）」。
 STYLE_BASIS: Dict[str, str] = {
-    "dialogue": (
-        "《ライトノベル表現論：会話・創造・遊びのディスコースの考察》"
-        "（轻小说以会话为文体中心）；《轻浅的美学：论日本轻小说的文体特征与审美价值》"
-        "（对白占比高）"
-    ),
-    "sentence": (
-        "《轻浅的美学：论日本轻小说的文体特征与审美价值》（短句是轻小说文体特征之一；"
-        "这里的分位数是**本书内的读数**，不是规范阈值）"
-    ),
-    "person": (
-        "《轻浅的美学》（第一人称叙述是常见选择）；"
-        "《ライトノベル表現論》（叙述人称与会话的关系）——**只统计地の文**"
-    ),
-    "onomatopoeia": (
-        "《轻浅的美学》（拟声/拟态词是轻小说文体的构成要素之一）——"
-        "密度高低都合法，这里只给读数"
-    ),
-    "ruby": (
-        "《轻浅的美学》（注音/ルビ属轻小说排版要素）；"
-        "渲染与校验见 core/ruby_render.py 与本模块的注音规则"
-    ),
-    "serialization": (
-        "《日本轻小说模式的演变及特征》（出版发行研究 2017(08)）："
-        "文库本/连载形态决定「一章一个起落、章末留钩子」的节奏"
-    ),
+    "dialogue": "结构读数：对白 vs 叙述占比（描述本书现状，不是「应对白更多」）",
+    "sentence": "结构读数：句长分位与短/长句比（本书内分布，不是投稿阈值）",
+    "person": "结构读数：地の文人称标记占比（对白不计；无标记则显示未测量）",
+    "onomatopoeia": "结构读数：拟声/拟态密度（高低都合法，只描述）",
+    "ruby": "结构读数：注音密度（排版要素统计；用不用注音由作者决定）",
+    "serialization": "结构读数：章均字数与章末钩子中位（连载节奏描述，不是考核）",
 }
 
 
@@ -1583,6 +1566,39 @@ def analyze_novel_craft(
 
     notes = _notes(long_paragraph_chars=long_paragraph_chars, coverage=coverage)
     style_summary = _style_summary(rows, int(coverage["wordsScanned"]))
+
+    # 作者硬规则里**可证伪**的子集（目前：人称）对照全书地の文读数。
+    from app.core.constraints import author_hard_rules, check_executable_hard_rules
+
+    bible = project.bible
+    hard_rules = author_hard_rules(
+        bible_text="\n".join(
+            [
+                str(getattr(bible, "world", "") or ""),
+                str(getattr(bible, "notes", "") or ""),
+                str(getattr(bible, "themes", "") or ""),
+                str(getattr(bible, "outline", "") or ""),
+            ]
+        ),
+        entry_texts=[
+            f"{getattr(e, 'title', '')}：{getattr(e, 'body', '')}"
+            for e in (project.loreEntries or [])
+        ],
+        limit=8,
+    )
+    first_total = sum(int((r.get("person") or {}).get("first") or 0) for r in rows)
+    third_total = sum(int((r.get("person") or {}).get("third") or 0) for r in rows)
+    marker_total = first_total + third_total
+    first_ratio = (
+        round(first_total / marker_total, 3) if marker_total else None
+    )
+    hard_rule_checks = check_executable_hard_rules(
+        hard_rules,
+        first=first_total,
+        third=third_total,
+        first_ratio=first_ratio,
+    )
+
     return {
         "perChapter": rows,
         "summary": _summary(rows, ruby_issues, coverage),
@@ -1595,10 +1611,11 @@ def analyze_novel_craft(
             # 说明它是什么、不是什么：读数不是评分，文体偏好归作者
             "note": (
                 "这些是**读数**（这本书读起来是什么样），不是评分也不是规范："
-                "阈值只用于分档描述（如「对白驱动」），不产出「应该改短句」这类建议。"
-                "依据见各条的 basis。"
+                "阈值只用于分档描述（如「对白驱动」），绝不产出「应该改成…」这类建议。"
+                "文献出处见 docs/references.md；界面 basis 只说明读数含义。"
             ),
         },
+        "hardRuleChecks": hard_rule_checks,
         "rubyIssues": ruby_issues,
         "hookScores": hook_rows,
         "rubyConsistency": ruby_consistency,

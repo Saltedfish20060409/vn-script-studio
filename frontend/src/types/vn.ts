@@ -424,6 +424,11 @@ export interface WritingGoals {
   chapter?: number;
   /** 单卷目标（按写作统计的该卷累计字数算） */
   volume?: number;
+  /**
+   * 本场必带进窗的短句（人/地/物/禁写）。
+   * 编排层放进上下文头部，超预算也不得挤掉；记忆探针可测。
+   */
+  mustBring?: string[];
 }
 
 export interface VnProject {
@@ -721,6 +726,25 @@ export interface AgentContextMeta {
   lensIds?: string[];
   /** Self-review outcome note */
   selfReview?: string;
+  /** 写后廉价闸（确定性；失败只警告；可带标记批改 hint） */
+  writeGate?: {
+    passed?: boolean;
+    issueCount?: number;
+    issues?: Array<{ severity?: string; code?: string; message?: string }>;
+    warnings?: string[];
+    markHints?: Array<{
+      quote?: string;
+      reason?: string;
+      instruction?: string;
+      code?: string;
+    }>;
+  };
+  /** 写路径材料预取（上下文被裁时服务端已取回） */
+  retrievePrefetch?: {
+    callCount?: number;
+    okCount?: number;
+    calls?: Array<{ name?: string; reason?: string; arguments?: Record<string, unknown> }>;
+  };
 }
 
 interface VoiceIssue {

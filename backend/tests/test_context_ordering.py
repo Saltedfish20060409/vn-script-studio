@@ -151,6 +151,32 @@ def test_current_chapter_body_sits_in_the_recency_window():
 # ---- 与裁剪的交互：这才是位置策略真正的后果 ------------------------------------
 
 
+def test_continue_task_keeps_focus_chapter_prose_in_the_window():
+    """写路径不变量：续写时当前章正文必须进窗（不能只剩标题）。
+
+    回归：「只看 blocks 不看 prose」曾让纯正文工程的「当前章节」几乎为空，
+    模型被要求接写却看不见稿子。探针抓到后已修；这里用位置策略测试钉住。
+    """
+    marker = "UNIQUE_PROSE_MARKER_钟声里有人喊他的名字"
+    project = normalize_project(
+        {
+            "id": "p-prose",
+            "title": "正文进窗",
+            "chapters": [
+                {"id": "ch1", "title": "第一章", "prose": marker + "。雨又下起来了。"},
+            ],
+        }
+    )
+    ctx = build_agent_context(
+        project,
+        chapterId="ch1",
+        userMessage="接着写",
+        task="continue",
+    )
+    assert marker in ctx.text
+    assert "## 当前章节" in ctx.text
+
+
 def test_big_reference_doc_does_not_squeeze_out_the_high_stakes_blocks():
     """回归：参考文档很大时，角色/关系/设定必须仍在（过去它们在参考文档之后被挤掉）。"""
     project = _project(focus_chars=3000)

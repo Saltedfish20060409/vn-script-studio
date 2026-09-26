@@ -299,11 +299,54 @@ def test_reason_names_the_actual_evidence():
     )
     reason = reason_for_winner(selection)
     assert "第 1 版" in reason
+    assert "非文学最佳" in reason
     assert "确定性检查通过" in reason
     assert "总分" in reason
 
     empty_reason = reason_for_winner(select_best_variant([]))
     assert "没有可比较的候选" in empty_reason
+
+
+def test_contrast_variants_tags_structural_diffs_not_literary_rank():
+    from app.core.variant_select import contrast_variants
+
+    short_dlg = '林夏：「走。」\n周屿：「嗯。」'
+    long_narr = (
+        "仿佛一切都缓缓流淌开来，他似乎听见了什么，又不禁微微一笑，"
+        "心里涌上一股说不清的情绪，轻轻转过身去。"
+    )
+    out = contrast_variants([short_dlg, long_narr])
+    assert out["points"]
+    tags0 = out["points"][0]["tags"]
+    tags1 = out["points"][1]["tags"]
+    assert tags0 or tags1
+    assert "文学" not in out["summary"] or "非文学" in out["summary"]
+    # 短对白版应被标成更短或对白更多之一
+    assert any(t in tags0 for t in ("更短", "对白更多", "句更短", "虚写更少"))
+
+
+def test_select_best_attaches_diff_tags_and_contrast():
+    selection = select_best_variant(
+        [
+            {
+                "text": '林夏：「别跟。」\n他停住。',
+                "problems": [],
+            },
+            {
+                "text": (
+                    "仿佛雨丝缓缓落下，他似乎看见她微微转过身，"
+                    "心中一动，又不禁轻轻叹了口气，说不清那是什么情绪。"
+                ),
+                "problems": [],
+            },
+        ]
+    )
+    assert "contrast" in selection
+    assert all("diffTags" in row for row in selection["ranking"])
+    # 至少一版带结构标签（两版结构差足够大时）
+    assert any(row.get("diffTags") for row in selection["ranking"]) or selection[
+        "contrast"
+    ].get("summary")
 
 
 def test_certainty_report_is_json_serializable():

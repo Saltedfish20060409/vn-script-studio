@@ -327,6 +327,25 @@ async def revise_marked_text(
         return MarkReviseResult(error="未配置模型密钥：请在「设置 → 模型」填入自己的 Key，或使用站内免费档。")
     if not quote.strip():
         return MarkReviseResult(error="标记内容为空")
+
+    # 建议模式 + 作者没写要求：先跑确定性体检。全过则**不调模型**——
+    # 「请随便看看有没有问题」在软约束下只会得到空话，不如如实说结构门过了。
+    if intent == "advice" and not (instruction or "").strip():
+        from app.core.narrative_lint import lint_narrative_draft
+
+        blockers = [
+            i for i in lint_narrative_draft(quote) if getattr(i, "severity", "") == "error"
+        ]
+        if not blockers:
+            return MarkReviseResult(
+                advice=(
+                    "这段在确定性体检里没有 error 级问题。"
+                    "若是风格、节奏或信息密度上的不满意，请在标记要求里写明方向"
+                    "（例如「少说明、多动作」或「语气冷一点」），再点建议或改写。"
+                ),
+                warnings=["skipped_llm:deterministic_clean"],
+            )
+
     want = _variant_count(candidates) if intent == "rewrite" else 1
     try:
         messages = build_mark_messages(
@@ -402,6 +421,8 @@ async def revise_marked_text(
                         "consensus": r.get("consensus"),
                         "weights": r.get("weights"),
                         "recommended": int(r.get("rank") or 0) == 1,
+                        # 结构差异标签（更短/对白更多…）；不是文学评分
+                        "diffTags": list(r.get("diffTags") or []),
                     }
                     for r in ranking
                 ],

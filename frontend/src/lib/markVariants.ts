@@ -11,11 +11,15 @@
  */
 import type { MarkVariantRow } from "../api/projects";
 
-/** 版本按钮上的短标签：第一顺位标"推荐"，其余标顺位。 */
+/** 版本按钮上的短标签：第一顺位标「证据优先」（不作文学最佳）。 */
 export function variantBadge(row: MarkVariantRow | undefined, fallbackRank: number): string {
   if (!row) return `第 ${fallbackRank} 版`;
-  if (row.recommended || row.rank === 1) return `推荐 · 第 ${row.variantIndex + 1} 版`;
-  return `第 ${row.variantIndex + 1} 版`;
+  const tags = (row.diffTags || []).slice(0, 2).join("·");
+  const tagBit = tags ? ` · ${tags}` : "";
+  if (row.recommended || row.rank === 1) {
+    return `证据优先 · 第 ${row.variantIndex + 1} 版${tagBit}`;
+  }
+  return `第 ${row.variantIndex + 1} 版${tagBit}`;
 }
 
 function num(value: unknown, digits = 2): string | null {
@@ -39,6 +43,7 @@ export function variantTitle(row: MarkVariantRow | undefined): string {
   if (consensus) bits.push(`与其余候选一致度 ${consensus}`);
   if (row.temperature != null) bits.push(`温度 ${Number(row.temperature).toFixed(2)}`);
   if (row.chars) bits.push(`${row.chars} 字`);
+  if (row.diffTags?.length) bits.push(`差异：${row.diffTags.join("、")}`);
   if (row.problems?.length) bits.push(`问题：${row.problems.join("；")}`);
   return bits.join(" · ");
 }

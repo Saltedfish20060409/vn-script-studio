@@ -181,7 +181,7 @@ export function SerialPanel({ project, onOpenChapter, onTogglePublish }: Props) 
 
       {streak.current === 0 && streak.totalDays > 0 ? (
         <p className={styles.warnLine}>
-          连续性断了（最近一次产出：{streak.lastWriteDate || "——"}）。日历上的今天还是空的。
+          今天日历上还没有净增产出（最近一次：{streak.lastWriteDate || "——"}）。
         </p>
       ) : null}
       {streak.totalDays === 0 ? (

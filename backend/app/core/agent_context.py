@@ -301,6 +301,8 @@ _SECTION_ORDER: Tuple[str, ...] = (
     # —— 头部：地基，且会被裁剪原样保留
     "meta",
     "rules",
+    "mustBring",
+    "precheck",
     "characters",
     "relations",
     "locations",
@@ -333,6 +335,8 @@ TASK_KEY_RULES: Dict[str, List[str]] = {
         "只输出正文本身：不要解释、不要总结、不要加小标题。",
         "保持紧邻前文的人称、时态与专名；新出现的专名必须能在设定里找到出处。",
         "对白与叙述的比例、句子长短要贴近紧邻的前文。",
+        "角色卡若有【声线硬对照】/正例，对白必须贴近；标了【声线降级】的角色勿代写长对白。",
+        "默认只写一小段可上演内容（约 180–450 字）；不要一次写长章。作者要继续会再点续写。",
     ],
     "rewrite": [
         "只改指定的这一段（或这一章），其余一字不动。",
@@ -377,14 +381,19 @@ TASK_KEY_RULES: Dict[str, List[str]] = {
 }
 
 
-def task_key_rules(task: str) -> List[str]:
-    return TASK_KEY_RULES.get(task or "chat") or TASK_KEY_RULES["chat"]
+def task_key_rules(task: str, project: Optional[VnProject] = None) -> List[str]:
+    base = list(TASK_KEY_RULES.get(task or "chat") or TASK_KEY_RULES["chat"])
+    if project is not None:
+        from app.core.genre_write import genre_key_rules
+
+        base.extend(genre_key_rules(project, task or "chat"))
+    return base
 
 
 # 每个任务的**输出契约**：长度与形态。写清楚"给我什么形状的东西"，
 # 模型就不会拿解释、总结、小标题来凑数——这也是"工具不如裸聊"的一个常见原因。
 TASK_OUTPUT_CONTRACT: Dict[str, str] = {
-    "continue": "只输出续写的正文（300–900 字，用户另有要求按用户要求）；不要解释、不要小结、不要标题。",
+    "continue": "只输出续写的一小段可上演正文（默认 180–450 字；用户另有字数要求按用户）；不要一次写长章、不要解释、不要小结、不要标题。",
     "scene": "只输出这一场的正文；场景切换用空行分隔，不要写镜头术语或舞台指令（除非用户要求）。",
     "rewrite": "只输出改写后的正文；长度与原文相当；不附说明、不附对照。",
     "polish": "只输出润色后的正文；不改情节、不改专名。",
@@ -399,7 +408,13 @@ TASK_OUTPUT_CONTRACT: Dict[str, str] = {
 }
 
 
-def output_contract(task: str) -> str:
+def output_contract(task: str, project: Optional[VnProject] = None) -> str:
+    if project is not None:
+        from app.core.genre_write import genre_output_contract
+
+        override = genre_output_contract(project, task or "chat")
+        if override:
+            return override
     return TASK_OUTPUT_CONTRACT.get(task or "chat") or TASK_OUTPUT_CONTRACT["chat"]
 
 
@@ -410,9 +425,10 @@ TASK_HINTS: Dict[str, str] = {
         "若用户征求修改意见/点评长文分析：actions=[]，用 message 长文回应。"
     ),
     "continue": (
-        "本轮任务：续写一小段可上演节拍。紧接【当前章末尾】；人设只校准语气。禁止设定宣讲；"
+        "本轮任务：续写一小段可上演节拍（默认短拍 180–450 字，不要一次成章）。"
+        "紧接【当前章末尾】；人设只校准语气。禁止设定宣讲；"
         "禁止陌生人连问盘人（一拍一角色 ideally ≤1 问）；信息用环境/失言/残缺感推进。默认 append_script；不要重写前文。"
-        "message 须简要说明本段节拍意图。"
+        "message 须简要说明本段节拍意图；作者要继续会再点续写。"
     ),
     "rewrite": (
         "本轮任务：改写选区。保持剧情意图，砍盘问串与说明书腔，提升画面感与对白张力；"
@@ -741,10 +757,26 @@ def _clip(text: str, max_len: int) -> str:
 
 
 def _char_card(c: Character) -> str:
-    from app.core.character_voice.corpus import format_corpus_for_prompt, format_mind_for_prompt
+    from app.core.character_voice.corpus import (
+        dialogue_write_policy,
+        format_corpus_for_prompt,
+        format_mind_for_prompt,
+    )
 
+    policy = dialogue_write_policy(c)
     mind = format_mind_for_prompt(c, max_chars=1600)
-    corpus = format_corpus_for_prompt(c, max_samples=6, max_chars=1400)
+    # anchored：强制多带一点短样例；advise_only：少带或不代写长对白的说明
+    max_samples = 6 if policy["mode"] == "anchored" else (3 if policy["mode"] == "soft" else 2)
+    corpus = format_corpus_for_prompt(c, max_samples=max_samples, max_chars=1400)
+    policy_line = ""
+    if policy["mode"] == "anchored" and (mind or corpus):
+        policy_line = "  【声线硬对照】对白须贴近上方正例/思维包的句法与节奏，禁止通用漂亮话。"
+    elif policy["mode"] == "advise_only":
+        policy_line = (
+            f"  【声线降级】{policy['reason']}——本角色勿写成长篇对白代笔，只给短句方向。"
+        )
+    elif policy["mode"] == "soft":
+        policy_line = f"  【声线提示】{policy['reason']}"
     return "\n".join(
         p
         for p in [
@@ -754,6 +786,7 @@ def _char_card(c: Character) -> str:
             f"  关系: {c.relationships}" if c.relationships else "",
             mind,
             corpus,
+            policy_line,
         ]
         if p
     )
@@ -842,6 +875,8 @@ def _section_label(key: str) -> str:
 _SECTION_LABELS_EXTRA: Dict[str, str] = {
     "meta": "作品信息",
     "rules": "写作规则",
+    "mustBring": "本场必带",
+    "precheck": "续写前对账",
     "timeline": "时间线",
     "focus": "当前章正文",
     "selection": "你的选区",
@@ -1067,6 +1102,31 @@ LEGACY_CLIP_GLOBAL_MEMORY = 2400
 
 LEGACY_MID_CUT_MARKER = "…(上下文中段压缩)…"
 """旧超预算处理：压缩其他章摘要之后，**从中间切一刀**（块边界被切碎、也没有说明）。"""
+
+
+
+#: 必带清单上限：短、可扫描；太长会挤掉真正该读的事实。
+_MUST_BRING_MAX_ITEMS = 12
+_MUST_BRING_MAX_CHARS = 80
+
+
+def must_bring_items(project: VnProject) -> List[str]:
+    """作者钉的本场必带短句（来自 writingGoals.mustBring）。"""
+    goals = getattr(project, "writingGoals", None)
+    raw = getattr(goals, "mustBring", None) if goals is not None else None
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out: List[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        s = " ".join(str(item or "").split()).strip()
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        out.append(s[:_MUST_BRING_MAX_CHARS])
+        if len(out) >= _MUST_BRING_MAX_ITEMS:
+            break
+    return out
 
 
 def _timeline_lines(project: VnProject, focus_chapter: Any) -> Tuple[List[str], str]:
@@ -1666,7 +1726,21 @@ def build_agent_context(
     # 而是这一轮的任务契约，必须首尾各出现一次（末尾那次见下方 tail）。
     #
     # **下面的书写顺序不代表输出顺序**：真正的顺序由 `_SECTION_ORDER` 决定（见那里的理由）。
-    head_rules = task_key_rules(resolved_task)
+    head_rules = task_key_rules(resolved_task, project)
+    must_bring_list = must_bring_items(project)
+    if must_bring_list:
+        included.append(f"必带×{len(must_bring_list)}")
+    precheck_block = ""
+    if resolved_task in ("continue", "scene", "branch", "rewrite"):
+        from app.core.write_precheck import precheck_before_continue
+
+        pre = precheck_before_continue(
+            project,
+            chapter_id=str(getattr(focus_chapter, "id", "") or "") or None,
+        )
+        precheck_block = pre.as_context_block()
+        if pre.issues:
+            included.append(f"对账×{len(pre.issues)}")
     keyed_sections: List[Tuple[str, str]] = [
         ("meta", "\n".join(meta_lines)),
         (
@@ -1678,6 +1752,16 @@ def build_agent_context(
             if head_rules
             else "",
         ),
+        (
+            "mustBring",
+            (
+                "\n## 本场必带（作者钉的事实红线；超预算也不得挤掉）\n"
+                + "\n".join(f"- {x}" for x in must_bring_list)
+                if must_bring_list
+                else ""
+            ),
+        ),
+        ("precheck", precheck_block),
         ("bible", f"\n## Story Bible（内部参考，禁止整段搬进正文）\n{bible_block}" if bible_block else ""),
         (
             # 时间线放进**头部**：它是"什么已经发生了"的地基（LongMemEval 的"时间推理"
@@ -1838,11 +1922,19 @@ def build_agent_context(
         + long_note
     )
     # 硬规则在**末尾再出现一次**：长上下文里夹在中间的要求最容易被忽略。
-    key_rules = task_key_rules(resolved_task)
+    # 口吻短对照贴在硬规则前：尾部利用率高（Lost in the Middle）。
+    if not legacy and resolved_task in ("continue", "scene", "voice", "rewrite"):
+        from app.core.character_voice.corpus import format_voice_contrast_tail
+
+        voice_tail = format_voice_contrast_tail([r[0] for r in picked_chars])
+        if voice_tail:
+            tail += "\n" + voice_tail
+            included.append("口吻对照")
+    key_rules = task_key_rules(resolved_task, project)
     if key_rules:
         tail += "\n\n## 本次硬规则（务必遵守）\n" + "\n".join(f"- {r}" for r in key_rules)
         included.append("本次硬规则")
-    tail += "\n\n## 输出契约\n" + output_contract(resolved_task)
+    tail += "\n\n## 输出契约\n" + output_contract(resolved_task, project)
     included.append("输出契约")
 
     # 作者自己写的硬规则（"必须/不要/禁止…"）单独拎出来，放进末尾的硬规则区：

@@ -102,6 +102,13 @@ type Props = {
   prepareProject?: () => VnProject;
   onProjectChange: (project: VnProject) => void;
   onChapterFocus?: (chapterId: string) => void;
+  /**
+   * 写后闸失败段 → 在正文建「标记批改」（不自动跑模型）。
+   * 由 StudioApp 接 marks 状态；返回成功建了几条。
+   */
+  onCreateMarksFromHints?: (
+    hints: Array<{ quote?: string; reason?: string; instruction?: string; code?: string }>
+  ) => number;
   compact?: boolean;
   /** Hidden when float is minimized — keep mounted so state survives */
   hidden?: boolean;
@@ -150,7 +157,7 @@ function parseUndoStack(raw: unknown[]): UndoEntry[] {
  * 点了只填进输入框，不直接发送——省打字，但不替作者花模型调用。
  */
 const STARTERS = [
-  "接着往下写一段",
+  "接着写一小段可上演的内容",
   "帮我润色这一章",
   "这章有什么问题？",
   "按附件整理设定条目",
@@ -164,6 +171,7 @@ export function AgentChat({
   prepareProject,
   onProjectChange,
   onChapterFocus,
+  onCreateMarksFromHints,
   compact,
   hidden,
 }: Props) {
@@ -278,6 +286,9 @@ export function AgentChat({
     !busy && input.trim() === "" && !messages.some((m) => m.role === "user");
   const [error, setError] = useState("");
   const [lastContext, setLastContext] = useState<string>("");
+  const [gateMarkHints, setGateMarkHints] = useState<
+    Array<{ quote?: string; reason?: string; instruction?: string; code?: string }>
+  >([]);
   /** 「资料」开关：这次不交给 AI 的资料块（只影响本机会话；后端会忽略未知 key） */
   const [excluded, setExcluded] = useState<string[]>(() => loadExcludedSections());
   const [sectionsOpen, setSectionsOpen] = useState(false);
@@ -812,6 +823,7 @@ export function AgentChat({
           : "编辑正在检索设定 / 读当前章…"
     );
     setBusy(true);
+    setGateMarkHints([]);
     // 防御：**90 秒一个字节都没收到**（连服务端 20s 一次的 `: keepalive` 都没有）
     // 才判定连接出了问题，否则 busy 永远为 true，界面卡死在"正在检索设定"。
     //
@@ -926,6 +938,25 @@ export function AgentChat({
             ? "自检过"
             : "自检"
         : "";
+      const gateShort =
+        meta?.writeGate && meta.writeGate.passed === false
+          ? meta.writeGate.markHints?.length
+            ? "写后闸⚠可标记改"
+            : "写后闸⚠"
+          : meta?.writeGate &&
+              ((meta.writeGate.warnings?.length ?? 0) > 0 ||
+                (meta.writeGate.markHints?.length ?? 0) > 0)
+            ? meta.writeGate.markHints?.length
+              ? "写后闸⚠可标记改"
+              : "写后闸⚠"
+            : meta?.writeGate?.passed
+              ? "写后闸过"
+              : "";
+      const prefetchShort =
+        typeof meta?.retrievePrefetch?.callCount === "number" &&
+        meta.retrievePrefetch.callCount > 0
+          ? `预取×${meta.retrievePrefetch.callCount}`
+          : "";
       const lensShort =
         Array.isArray(meta?.lensIds) && meta.lensIds.length
           ? `视角×${meta.lensIds.length}`
@@ -935,7 +966,7 @@ export function AgentChat({
       // `included` 里的中文串——那种写法每加一个资料块都得同步改正则，漏了就不显示。
       const refShort = includedSummary(meta?.budgetReport);
       setLastContext(
-        [taskName, resultBit, craftShort, reviewShort, lensShort, refShort]
+        [taskName, resultBit, craftShort, reviewShort, gateShort, prefetchShort, lensShort, refShort]
           .filter(Boolean)
           .join(" · ")
       );
@@ -960,12 +991,24 @@ export function AgentChat({
       // AI 提议的设定条目/关系/时间线不会直接落地：明确告诉作者去哪儿点确认，
       // 否则作者会以为"它说整理好了"其实什么都没进设定库。
       const proposed = actions.some((a) => String(a.op || "").startsWith("propose_"));
+      const markHints = Array.isArray(meta?.writeGate?.markHints)
+        ? meta.writeGate.markHints.filter((h) => h && h.quote)
+        : [];
+      setGateMarkHints(markHints);
+      const markFoot =
+        markHints.length > 0
+          ? `写后闸失败段可用「标记批改」只改这些（不必整章回炉）：\n${markHints
+              .slice(0, 3)
+              .map((h, i) => `${i + 1}. 「${String(h.quote).slice(0, 48)}」— ${h.reason || h.instruction || ""}`)
+              .join("\n")}`
+          : "";
       const foot = [
         applied ? `已落地：${describeActions(actions, copy)}` : "",
         proposed
           ? "上面的「提议」都放进了「项目 → 结构分析 → 待审列表」，你逐条勾选接受后才会写进工程（AI 不会直接改设定库）"
           : "",
         warnings.length ? `未执行：${warnings.join("；")}` : "",
+        markFoot,
         noteUndo,
       ]
         .filter(Boolean)
@@ -1999,6 +2042,24 @@ export function AgentChat({
                  顶到标题栏底下点不到（起手句那次已经踩过一遍）。
                  起手句点了只填不发，不替作者花模型调用。 */
               <>
+                {gateMarkHints.length > 0 && onCreateMarksFromHints ? (
+                  <div className={styles.resumeBar} role="status" data-testid="gate-mark-hints">
+                    <span>
+                      写后闸标出 {gateMarkHints.length} 处可改失败段（只建标记，不自动改稿）
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      data-testid="gate-mark-one-click"
+                      onClick={() => {
+                        const n = onCreateMarksFromHints(gateMarkHints);
+                        if (n > 0) setGateMarkHints([]);
+                      }}
+                    >
+                      一键标记批改
+                    </button>
+                  </div>
+                ) : null}
                 {showStarters ? (
                   <div className={styles.starters} data-testid="agent-starters">
                     <span className={styles.startersHint}>想干什么？点一个：</span>

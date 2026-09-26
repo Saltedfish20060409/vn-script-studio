@@ -31,6 +31,8 @@ from app.core.agent_tools import (
 )
 from app.core.ai import DeepSeekConfig
 from app.core.harness.audit_full import full_audit_draft
+from app.core.write_gate import WriteGateResult, gate_continue_draft, should_write_gate
+from app.core.agent_retrieve import PrefetchReport, run_write_prefetch, should_prefetch
 from app.core.lenses import (
     build_lens_prompt_for_project,
     infer_lens_intent,
@@ -423,6 +425,17 @@ async def run_agent_loop(
     # 也会随 contextMeta 返回给界面（"这次它读了多少、够不够"）。
     ctx_budget = context_budget_for_model(model)
 
+    mentor_ids: List[str] = []
+    lens_ids: List[str] = []
+    chat_memory_block = ""
+    craft = select_craft_mode(
+        task="chat",
+        user_message="",
+        project=request.project,
+        chapter_id=request.chapterId,
+        preference=request.craftMode,
+    )
+
     async def emit(evt: Dict[str, Any]) -> None:
         """Fire a stream event; a failing sink must never break the loop."""
         if on_event is None:
@@ -579,8 +592,29 @@ async def run_agent_loop(
             task_steps = {"consistency": 9, "outline": 8, "rewrite": 8, "voice": 8, "scene": 7}
             steps = max(1, min(12, task_steps.get(task, DEFAULT_MAX_STEPS)))
         start_step = 0
-        mentor_ids: List[str] = []
-        lens_ids: List[str] = []
+
+    prefetch_report: Optional[PrefetchReport] = None
+    if should_prefetch(task, ctx):
+        prefetch_report = run_write_prefetch(
+            working,
+            ctx,
+            task=task,
+            chapter_id=request.chapterId,
+            user_message=last_user or "",
+        )
+        for msg in prefetch_report.as_messages():
+            messages.append(msg)
+        if prefetch_report.calls:
+            note = "；".join(c.reason for c in prefetch_report.calls[:2])
+            trace.append({"type": "thought", "text": f"材料预取：{note}"})
+            await emit(
+                {
+                    "type": "retrieve_prefetch",
+                    "calls": [
+                        {"name": c.name, "reason": c.reason} for c in prefetch_report.calls
+                    ],
+                }
+            )
 
     working, accumulated, trace, final_message, messages, last_tool_text = (
         await _agent_steps(
@@ -603,6 +637,7 @@ async def run_agent_loop(
     review_note = ""
     review_pref = request.selfReview or "auto"
     actions_out = list(accumulated)
+    write_gate: Optional[WriteGateResult] = None
     if should_self_review(task, review_pref) and actions_out:
         script_hit = extract_script_from_actions(actions_out)
         if script_hit.op and script_hit.text:
@@ -643,6 +678,50 @@ async def run_agent_loop(
             elif lint_has_blockers(lint_issues) and not review.revisedText:
                 error_msgs = [i.message for i in lint_issues if i.severity == "error"][:2]
                 review_note = review_note or f"规则未过：{'；'.join(error_msgs)}"
+
+    # 写后廉价闸：自检开/关都跑；失败只标警告，不挡落地（责编改写是可选下一层）。
+    # 失败时给出标记批改 hint（只改失败段，不全章重写）。
+    # 通过但仍有 warn（如声线 drift）同样给出 tip + markHints，避免「过」掩盖跑偏。
+    if should_write_gate(task) and actions_out:
+        gated = extract_script_from_actions(actions_out)
+        if gated.op and gated.text:
+            write_gate = gate_continue_draft(
+                gated.text,
+                project=working,
+                chapter_id=request.chapterId,
+            )
+            has_soft = bool(write_gate.warnings or write_gate.markHints)
+            if not write_gate.passed or has_soft:
+                tip = "；".join(write_gate.warnings[:2]) or (
+                    "确定性规则未过" if not write_gate.passed else "有提醒"
+                )
+                if not write_gate.passed:
+                    review_note = review_note or f"写后闸：{tip}"
+                    trace.append({"type": "thought", "text": f"写后闸未通过：{tip}"})
+                elif has_soft:
+                    trace.append({"type": "thought", "text": f"写后闸提醒：{tip}"})
+                await emit(
+                    {
+                        "type": "write_gate",
+                        "passed": write_gate.passed,
+                        "warnings": write_gate.warnings,
+                        "markHints": write_gate.markHints,
+                    }
+                )
+                mark_tip = ""
+                if write_gate.markHints:
+                    q0 = str(write_gate.markHints[0].get("quote") or "")[:40]
+                    mark_tip = (
+                        f"；可用「标记批改」处理：「{q0}…」"
+                        if q0
+                        else "；可用「标记批改」只改提示段"
+                    )
+                if "写后闸" not in (final_message or ""):
+                    final_message = (
+                        f"{final_message}\n\n（写后闸提醒：{tip}{mark_tip}）"
+                        if final_message
+                        else f"写后闸提醒：{tip}{mark_tip}"
+                    )
 
     if not final_message:
         if actions_out:
@@ -690,6 +769,8 @@ async def run_agent_loop(
             mentorIds=mentor_ids or None,
             lensIds=lens_ids or None,
             selfReview=review_note or None,
+            writeGate=write_gate.as_meta() if write_gate is not None else None,
+            retrievePrefetch=prefetch_report.as_meta() if prefetch_report is not None else None,
             chatMemorySummary=chat_memory_block or None,
         ),
         trace=trace,

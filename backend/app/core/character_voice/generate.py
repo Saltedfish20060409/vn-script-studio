@@ -621,7 +621,30 @@ async def generate_long_scene(
     extra_constraints: str = "",
     turns: int = 10,
 ) -> Dict[str, Any]:
+    from app.core.character_voice.corpus import dialogue_write_policy
+
     char = find_character(project, character_id)
+    policy = dialogue_write_policy(char)
+    if policy["mode"] == "advise_only":
+        return {
+            "kind": "advice",
+            "adviceOnly": True,
+            "advice": (
+                f"角色「{char.displayName}」{policy['reason']}。"
+                "请先在声线工坊多收几条正例，或合成思维包后再生成长场次；"
+                "也可先用「三选一」短变体校准口吻。"
+            ),
+            "reason": policy["reason"],
+            "lines": [],
+            "characterId": character_id,
+            "scenarioId": scenario_id or "custom",
+            "scenarioLabel": scenario_label or "长场次",
+            "scenarioPrompt": (scenario_prompt or "").strip(),
+            "model": "",
+        }
+    if policy["mode"] == "soft" and not (char.voiceMind or "").strip():
+        # 软档：允许生成但在返回里打标，前端可提示"证据偏弱"
+        pass
     sc = _scenario_by_id(
         scenario_id, scenario_label, scenario_prompt=scenario_prompt
     )
@@ -640,6 +663,11 @@ async def generate_long_scene(
     )
     script_bit = format_script_anchors_for_prompt(project, character_id, limit=4, max_chars=700)
     mind = (char.voiceMind or "").strip()[:1600]
+    hard_sample = (
+        "硬规则：必须贴近【口吻正例】与思维包的句法节奏；禁止写成通用漂亮话。"
+        if policy.get("mustSample")
+        else ""
+    )
     system = (
         "你是视觉小说场次编剧。为指定角色写一段可演对白长场次，供作者审阅后整段入库。\n"
         "必须输出 JSON 对象，键名固定为 lines（数组）。\n"
@@ -647,7 +675,8 @@ async def generate_long_scene(
         "speaker 仅用 self（本角色）或 other（对手）。\n"
         f"共约 {turns} 条台词（双方交替），本角色台词要充分体现人设与已有正例感觉。\n"
         "优先对齐【偏好】与高权重正例；有【剧本锚点】时对齐用词习惯，禁止照抄；情节服从场景压力。\n"
-        "与【忌讳】冲突时服从忌讳。禁止设定说明书与旁白括号戏。不要用 markdown 代码围栏。"
+        "与【忌讳】冲突时服从忌讳。禁止设定说明书与旁白括号戏。不要用 markdown 代码围栏。\n"
+        + hard_sample
     )
     user = "\n".join(
         p
@@ -678,6 +707,7 @@ async def generate_long_scene(
         "lines": lines,
         "model": parsed.get("_model"),
         "characterId": character_id,
+        "voicePolicy": policy["mode"],
     }
 
 

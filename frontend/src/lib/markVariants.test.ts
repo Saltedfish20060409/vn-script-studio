@@ -20,10 +20,16 @@ function row(over: Partial<MarkVariantRow> = {}): MarkVariantRow {
 }
 
 describe("variantBadge", () => {
-  it("第一顺位标推荐，其余标顺位", () => {
+  it("第一顺位标证据优先（不作文学最佳），并可附结构差异标签", () => {
     expect(variantBadge(row({ variantIndex: 1, rank: 1, recommended: true }), 1)).toBe(
-      "推荐 · 第 2 版"
+      "证据优先 · 第 2 版"
     );
+    expect(
+      variantBadge(
+        row({ variantIndex: 1, rank: 1, recommended: true, diffTags: ["更短", "对白更多"] }),
+        1
+      )
+    ).toBe("证据优先 · 第 2 版 · 更短·对白更多");
     expect(variantBadge(row({ variantIndex: 0, rank: 2, recommended: false }), 1)).toBe("第 1 版");
   });
 
@@ -58,6 +64,11 @@ describe("variantTitle", () => {
   it("有问题时把问题写进提示", () => {
     const title = variantTitle(row({ problems: ["丢了原文里的专名：林夏"] }));
     expect(title).toContain("丢了原文里的专名");
+  });
+
+  it("结构差异标签进提示（非文学评分）", () => {
+    const title = variantTitle(row({ chars: 80, diffTags: ["更短", "叙述更多"] }));
+    expect(title).toContain("差异：更短、叙述更多");
   });
 });
 

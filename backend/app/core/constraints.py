@@ -202,3 +202,94 @@ def author_hard_rules(
     # 去掉内部标记符号，保持短
     cleaned = [re.sub(r"^[-*·•\s]+", "", r).strip() for r in audit.hard]
     return [r[:120] for r in cleaned if r][:limit]
+
+
+# 可执行硬规则：只有**结构上能证伪**的才进校验；其余仍只靠提示词（软约束）。
+_POV_FIRST = ("第一人称", "一人称", "我视角", "见证书")
+_POV_THIRD = ("第三人称", "三人称", "全知视角", "全知")
+# 地の文人称标记太少时不下结论（避免短段误报）
+_POV_MIN_MARKERS = 8
+# 主导人称占比阈值：低于此视为明显偏离作者硬规则
+_POV_MIN_RATIO = 0.28
+
+
+def check_executable_hard_rules(
+    hard_rules: Sequence[str],
+    *,
+    first: int,
+    third: int,
+    first_ratio: Optional[float],
+) -> List[Dict[str, str]]:
+    """对照作者硬规则做**可证伪**检查（目前：叙述人称）。
+
+    返回 ``[{code, severity, message, rule}]``。
+    - 不做文风评价；标记不足时返回空（"未测量" ≠ "合规"）。
+    - 硬规则里同时**正面要求**第一与第三人称时跳过（冲突由 ``detect_conflicts`` 管）。
+    - 「不要/禁止第一人称」计为要求第三人称，不会误判成要求第一人称。
+    """
+    rules = [str(r).strip() for r in hard_rules if str(r).strip()]
+    if not rules:
+        return []
+
+    def _mentions(rule: str, keys: tuple[str, ...]) -> bool:
+        return any(k in rule for k in keys)
+
+    def _negated(rule: str, keys: tuple[str, ...]) -> bool:
+        """「不要用第一人称」这类：命中人称词且同句带禁令标记。"""
+        if not _mentions(rule, keys):
+            return False
+        return any(m in rule for m in ("不要", "不许", "不得", "禁止", "严禁", "别用", "勿"))
+
+    wants_first = False
+    wants_third = False
+    matched = ""
+    for rule in rules:
+        if _negated(rule, _POV_FIRST):
+            wants_third = True
+            matched = matched or rule
+        elif _negated(rule, _POV_THIRD):
+            wants_first = True
+            matched = matched or rule
+        elif _mentions(rule, _POV_FIRST):
+            wants_first = True
+            matched = matched or rule
+        elif _mentions(rule, _POV_THIRD):
+            wants_third = True
+            matched = matched or rule
+
+    if wants_first and wants_third:
+        return []
+    if not wants_first and not wants_third:
+        return []
+    markers = int(first) + int(third)
+    if markers < _POV_MIN_MARKERS or first_ratio is None:
+        return []
+
+    out: List[Dict[str, str]] = []
+    if wants_first and first_ratio < _POV_MIN_RATIO:
+        out.append(
+            {
+                "code": "hard_rule_pov_first",
+                "severity": "warn",
+                "message": (
+                    f"作者硬规则要求第一人称叙述，但地の文里第一人称标记只占 "
+                    f"{first_ratio:.0%}（共 {markers} 处标记）。"
+                    "这是结构对照，不是文笔评分。"
+                ),
+                "rule": matched[:120],
+            }
+        )
+    if wants_third and first_ratio > (1.0 - _POV_MIN_RATIO):
+        out.append(
+            {
+                "code": "hard_rule_pov_third",
+                "severity": "warn",
+                "message": (
+                    f"作者硬规则要求第三人称叙述，但地の文里第一人称标记占 "
+                    f"{first_ratio:.0%}（共 {markers} 处标记）。"
+                    "这是结构对照，不是文笔评分。"
+                ),
+                "rule": matched[:120],
+            }
+        )
+    return out

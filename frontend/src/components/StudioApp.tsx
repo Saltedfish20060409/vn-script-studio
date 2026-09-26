@@ -124,6 +124,7 @@ import { caretKey, loadCaretMap, readCaret, rememberCaret } from "../lib/caretMe
 import {
   applyMark,
   createMark,
+  createMarkFromQuote,
   currentMarkRange,
   loadMarks,
   pendingMarks,
@@ -882,6 +883,38 @@ export function StudioApp() {
     // 立刻把卡片贴到这一段旁边（用户不用去下面找）
     setActiveMarkId(mark.id);
     setStatus("已标记这一段：在正文旁边直接处理，或点「按标记处理」批量跑");
+  }
+
+  /** 写后闸失败段 → 在当前章正文建标记（不自动调模型）。 */
+  function createMarksFromGateHints(
+    hints: Array<{ quote?: string; reason?: string; instruction?: string; code?: string }>
+  ): number {
+    if (!chapterId) {
+      setStatus("请先打开一章正文，再一键标记");
+      return 0;
+    }
+    const text = editorRef.current;
+    const created: Mark[] = [];
+    for (const h of hints) {
+      const quote = String(h.quote || "").trim();
+      if (!quote) continue;
+      const mark = createMarkFromQuote({
+        text,
+        quote,
+        chapterId,
+        intent: "rewrite",
+        instruction: String(h.instruction || h.reason || "").trim() || "去掉写后闸标出的硬伤，不要扩写全章。",
+      });
+      if (mark) created.push(mark);
+    }
+    if (!created.length) {
+      setStatus("闸里的失败段在当前正文里找不到——请先确认续写已写入本章，或手动选中再标记");
+      return 0;
+    }
+    setMarks((prev) => refreshMarks(text, [...prev, ...created]));
+    setActiveMarkId(created[0].id);
+    setStatus(`已从写后闸建 ${created.length} 条标记：在正文旁点「改写」处理（不会自动改稿）`);
+    return created.length;
   }
 
   /** 处理单个标记（改写或只给建议）。wantVariants>1 时一次要几版改写。 */
@@ -2735,6 +2768,7 @@ export function StudioApp() {
                 onChapterFocus={(id) => {
                   openChapterInDocument(id);
                 }}
+                onCreateMarksFromHints={createMarksFromGateHints}
               />
             </div>
           </div>

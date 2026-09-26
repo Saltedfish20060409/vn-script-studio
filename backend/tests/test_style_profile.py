@@ -174,11 +174,25 @@ def test_style_readings_do_not_emit_suggestions():
         assert not any(word in row["value"] for word in ("应该", "建议", "必须", "改成"))
 
 
-def test_style_basis_names_the_sources():
-    """依据表要指向具体文献（否则几个月后没人知道这个阈值哪来的）。"""
-    assert "轻浅的美学" in STYLE_BASIS["sentence"]
-    assert "ライトノベル表現論" in STYLE_BASIS["dialogue"]
-    assert "出版发行研究" in STYLE_BASIS["serialization"]
+def test_style_basis_is_structural_not_paper_costume():
+    """界面 basis 说明读数含义；文献索引在 docs/references.md，不拿论文名当作者规范。"""
+    for key, text in STYLE_BASIS.items():
+        assert "结构读数" in text, key
+        assert "应该" not in text
+        assert "必须改" not in text
+        assert "应当" not in text
+    assert "对白" in STYLE_BASIS["dialogue"]
+    assert "句长" in STYLE_BASIS["sentence"]
+    assert "人称" in STYLE_BASIS["person"]
+
+
+def test_style_readings_values_never_say_should():
+    """读数 value / basis 都不能出现「应该改成」类措辞。"""
+    out = analyze_novel_craft(_project(_dialogue_heavy(), _narration_heavy()))
+    for row in out["styleProfile"]["readings"]:
+        blob = f"{row['value']} {row['basis']}"
+        assert not any(word in blob for word in ("应该", "必须改", "改成"))
+    assert "绝不产出" in out["styleProfile"]["note"] or "不是评分" in out["styleProfile"]["note"]
 
 
 def test_chapter_row_exposes_sentence_and_person():

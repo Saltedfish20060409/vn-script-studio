@@ -287,6 +287,7 @@ def test_multi_variant_all_failed_reports_error():
 
 
 def test_advice_mode_still_makes_exactly_one_call():
+    """有作者要求时建议仍只调一次模型（不走多变体）。"""
     calls = []
 
     async def fake(config, *, messages, **kwargs):  # noqa: ANN001, ANN003
@@ -295,7 +296,13 @@ def test_advice_mode_still_makes_exactly_one_call():
 
     async def _go():
         with patch("app.core.mark_revise.chat_completions", fake):
-            return await revise_marked_text(_cfg(), quote=QUOTE, intent="advice", candidates=3)
+            return await revise_marked_text(
+                _cfg(),
+                quote=QUOTE,
+                intent="advice",
+                instruction="少一点形容词",
+                candidates=3,
+            )
 
     result = asyncio.run(_go())
     assert len(calls) == 1, "建议模式不该走多变体"
@@ -334,4 +341,50 @@ def test_variant_count_falls_back_to_one(bad):
     replies = [_response("他抬起手。")]
     _, calls, _ = _run_multi(replies, want=bad)
     assert len(calls) == 1
+
+
+def test_advice_without_instruction_skips_llm_when_deterministic_clean():
+    """建议模式且作者没写要求：确定性体检全过 → 不调模型。"""
+    called = {"n": 0}
+
+    async def boom(*_a, **_k):
+        called["n"] += 1
+        raise AssertionError("不应调用模型")
+
+    async def _go():
+        with patch("app.core.mark_revise.chat_completions", boom):
+            return await revise_marked_text(
+                _cfg(),
+                quote="雨停了。他站在月台上，听见远处的钟声。",
+                intent="advice",
+                instruction="",
+            )
+
+    result = asyncio.run(_go())
+    assert called["n"] == 0
+    assert result.error is None
+    assert "确定性体检" in result.advice
+    assert any("skipped_llm" in w for w in result.warnings)
+
+
+def test_advice_with_instruction_still_calls_llm():
+    """作者写了风格要求时，即便体检干净也要调模型。"""
+    called = {"n": 0}
+
+    async def fake_chat(*_a, **_k):
+        called["n"] += 1
+        return _response("可以少一点说明，把钟声写成他身体的反应。")
+
+    async def _go():
+        with patch("app.core.mark_revise.chat_completions", fake_chat):
+            return await revise_marked_text(
+                _cfg(),
+                quote="雨停了。他站在月台上，听见远处的钟声。",
+                intent="advice",
+                instruction="语气再冷一点",
+            )
+
+    result = asyncio.run(_go())
+    assert called["n"] == 1
+    assert result.advice
 

@@ -43,6 +43,7 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -312,6 +313,14 @@ def select_best_variant(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         note += f" 前两名分差 {margin:.3f}（< {TIE_MARGIN}）：这次没有明显更好的一版，建议都看看。"
     elif len(ranking) == 1:
         note += " 只有一个候选，没有取舍余地。"
+    # 结构差异点（非文学评分）
+    contrast = contrast_variants([str(r.get("text") or "") for r in ranking])
+    by_index = {int(p["index"]): p for p in contrast.get("points") or []}
+    for position, row in enumerate(ranking):
+        # ranking 已按证据重排；contrast 按重排后的顺序 index
+        pt = by_index.get(position) or {}
+        row["diffTags"] = list(pt.get("tags") or [])
+    note = (note + " " + str(contrast.get("summary") or "")).strip()
     return {
         "winner": winner,
         "winnerIndex": order[0],
@@ -319,6 +328,7 @@ def select_best_variant(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         "margin": round(margin, 4),
         "tie": tie,
         "note": note,
+        "contrast": contrast,
     }
 
 
@@ -339,7 +349,91 @@ def reason_for_winner(selection: Dict[str, Any]) -> str:
             + ("（样本过短）" if certainty.get("thin") else "")
         )
     return (
-        f"第 {int(winner.get('variantIndex', 0)) + 1} 版："
+        f"第 {int(winner.get('variantIndex', 0)) + 1} 版（按证据优先，非文学最佳）："
         + "、".join(bits)
         + f"，总分 {float(winner.get('score') or 0.0):.2f}"
     )
+
+
+def _avg_sentence_len(text: str) -> float:
+    parts = [p for p in re.split(r"[。！？!?；;\n]+", text or "") if p.strip()]
+    if not parts:
+        return float(len(text or ""))
+    return sum(len(p) for p in parts) / len(parts)
+
+
+def _dialogue_ratio(text: str) -> float:
+    t = text or ""
+    if not t:
+        return 0.0
+    # 「」对白 + 说话人行
+    quoted = sum(len(m) for m in re.findall(r"[「『].*?[」』]", t))
+    speaker = sum(
+        len(m.group(0))
+        for m in re.finditer(r"^[^\s:：]{1,12}\s*[:：].+$", t, flags=re.M)
+    )
+    return min(1.0, (quoted + speaker) / max(1, len(t)))
+
+
+_ABSTRACT = re.compile(r"仿佛|似乎|好像|不禁|涌上|微微|缓缓|轻轻|心中一动|说不清")
+
+
+def contrast_variants(texts: Sequence[str]) -> Dict[str, Any]:
+    """多变体之间的**可感知结构差异**（不是文学评分）。
+
+    返回每版相对中位数的短标签，供界面并列展示；并列时诚实说「差异不大」。
+    """
+    cleaned = [str(t or "").strip() for t in texts]
+    if len(cleaned) < 2:
+        return {"points": [], "summary": "只有一版，没有可对比的差异。"}
+
+    rows: List[Dict[str, Any]] = []
+    for i, t in enumerate(cleaned):
+        rows.append(
+            {
+                "index": i,
+                "chars": len(t),
+                "avgSentence": round(_avg_sentence_len(t), 1),
+                "dialogueRatio": round(_dialogue_ratio(t), 3),
+                "abstractHits": len(_ABSTRACT.findall(t)),
+            }
+        )
+
+    def _med(key: str) -> float:
+        vals = sorted(float(r[key]) for r in rows)
+        mid = len(vals) // 2
+        if len(vals) % 2:
+            return vals[mid]
+        return (vals[mid - 1] + vals[mid]) / 2.0
+
+    med_chars = _med("chars")
+    med_sent = _med("avgSentence")
+    med_dlg = _med("dialogueRatio")
+    med_abs = _med("abstractHits")
+
+    points: List[Dict[str, Any]] = []
+    for r in rows:
+        tags: List[str] = []
+        if med_chars > 0 and abs(r["chars"] - med_chars) / med_chars >= 0.15:
+            tags.append("更短" if r["chars"] < med_chars else "更长")
+        if med_sent > 0 and abs(r["avgSentence"] - med_sent) / med_sent >= 0.18:
+            tags.append("句更短" if r["avgSentence"] < med_sent else "句更长")
+        if abs(r["dialogueRatio"] - med_dlg) >= 0.08:
+            tags.append("对白更多" if r["dialogueRatio"] > med_dlg else "叙述更多")
+        if abs(r["abstractHits"] - med_abs) >= 1.5:
+            tags.append(
+                "虚写更少" if r["abstractHits"] < med_abs else "虚写更多（仿佛/微微等）"
+            )
+        points.append({"index": r["index"], "tags": tags, **r})
+
+    tagged = sum(1 for p in points if p["tags"])
+    if tagged == 0:
+        summary = "各版结构差异不大（字数/句长/对白比接近）；请直接读原文挑选，不作文学排名。"
+    else:
+        bits = []
+        for p in points:
+            if not p["tags"]:
+                continue
+            bits.append(f"第{p['index'] + 1}版：" + "、".join(p["tags"]))
+        summary = "结构差异（非文学评分）：" + "；".join(bits)
+    return {"points": points, "summary": summary}

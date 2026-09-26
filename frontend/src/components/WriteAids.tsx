@@ -123,6 +123,8 @@ export function WriteAids({
   const [stats, setStats] = useState<ProjectStats | null>(null);
   const [goalOpen, setGoalOpen] = useState(false);
   const [draft, setDraft] = useState({ daily: "", chapter: "", volume: "" });
+  const [mustOpen, setMustOpen] = useState(false);
+  const [mustDraft, setMustDraft] = useState("");
   const [issueIndex, setIssueIndex] = useState(0);
   /**
    * 是否折叠这条辅助条。
@@ -205,6 +207,8 @@ export function WriteAids({
 
   const goals = writingGoals ?? {};
   const hasGoals = Boolean(goals.daily || goals.chapter || goals.volume);
+  const mustBring = (goals.mustBring ?? []).filter((s) => String(s || "").trim());
+  const hasMustBring = mustBring.length > 0;
 
   useEffect(() => {
     setIssueIndex(0);
@@ -238,11 +242,30 @@ export function WriteAids({
 
   function saveGoals() {
     onSaveGoals({
+      ...goals,
       daily: parseGoal(draft.daily),
       chapter: parseGoal(draft.chapter),
       volume: parseGoal(draft.volume),
     });
     setGoalOpen(false);
+  }
+
+  function openMustEditor() {
+    setMustDraft(mustBring.join("\n"));
+    setMustOpen(true);
+  }
+
+  function saveMustBring() {
+    const lines = mustDraft
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 12);
+    onSaveGoals({
+      ...goals,
+      mustBring: lines.length ? lines : undefined,
+    });
+    setMustOpen(false);
   }
 
   return (
@@ -254,6 +277,7 @@ export function WriteAids({
             本章 {formatWords(chapterWords)} 字
             {issues.length ? ` · ${issues.length} 处笔误` : ""}
             {scenes.length > 1 ? ` · ${scenes.length} 场` : ""}
+            {hasMustBring ? ` · 必带 ${mustBring.length}` : ""}
           </span>
         ) : (
           <span className={styles.hint}>
@@ -337,6 +361,51 @@ export function WriteAids({
               onClick={openGoalEditor}
             >
               设置字数目标
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className={styles.row}>
+        <span className={styles.rowLabel}>必带</span>
+        {mustOpen ? (
+          <span className={styles.mustForm}>
+            <textarea
+              className={styles.mustArea}
+              rows={3}
+              placeholder={"一行一条，例如：\n林夏左手有旧伤\n禁止第一人称"}
+              value={mustDraft}
+              onChange={(e) => setMustDraft(e.target.value)}
+              data-testid="must-bring-editor"
+            />
+            <button type="button" className={styles.ghost} onClick={saveMustBring}>
+              保存
+            </button>
+            <button type="button" className={styles.ghost} onClick={() => setMustOpen(false)}>
+              取消
+            </button>
+            <span className={styles.hint}>续写时进上下文头部，超预算也不挤掉；最多 12 条</span>
+          </span>
+        ) : hasMustBring ? (
+          <>
+            <span className={styles.hint} data-testid="must-bring-summary">
+              {mustBring.slice(0, 3).join(" · ")}
+              {mustBring.length > 3 ? ` · 另 ${mustBring.length - 3} 条` : ""}
+            </span>
+            <button type="button" className={styles.ghost} onClick={openMustEditor}>
+              改必带
+            </button>
+          </>
+        ) : (
+          <>
+            <span className={styles.hint}>本场必提的人/地/物/禁写，钉在这里就不会被挤出窗口</span>
+            <button
+              type="button"
+              className={styles.ghost}
+              data-testid="open-must-bring"
+              onClick={openMustEditor}
+            >
+              设置必带
             </button>
           </>
         )}

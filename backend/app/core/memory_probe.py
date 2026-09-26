@@ -23,6 +23,7 @@
 | 时间推理 | `project.timeline` | 焦点章之前的事件是否在时间线段里 |
 | 知识更新 | 账本 / 长程记忆（**调用方提供**） | 不在本探针范围：那两块是调用方拼好传进来的 |
 | 拒答 | 检索无命中时的行为 | 问一个书里没有的词，**不能有任何（非钉住的）条目正文被注入** |
+| （产品扩展）必带清单 | `writingGoals.mustBring` | 作者钉的短句是否在上下文头部 |
 
 "知识更新"一栏刻意留空而不是假装覆盖：`loreCraft` / `globalMemory` / `longChapterMemory`
 是 HTTP 层拼好传进 `build_agent_context` 的字符串，本模块看不到它们的构造过程。
@@ -237,6 +238,20 @@ def build_probes(
                     )
                 )
                 break
+
+    # —— 必带清单：作者钉的短句必须进头部（超预算也不得挤掉） ——
+    from app.core.agent_context import must_bring_items
+
+    for i, item in enumerate(must_bring_items(project)[:_MAX_PROBES_PER_DIMENSION]):
+        probes.append(
+            Probe(
+                id=f"must-bring-{i}",
+                dimension="must_bring",
+                question=f"本场必带「{item[:24]}」进上下文了吗",
+                needles=[item[: min(len(item), _SNIPPET_LEN + 6)]],
+                note="writingGoals.mustBring：编排层头部不可挤掉",
+            )
+        )
 
     return probes
 
