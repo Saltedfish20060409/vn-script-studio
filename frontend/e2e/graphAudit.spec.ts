@@ -71,10 +71,10 @@ async function createBlankProject(page: Page) {
   const blank = backstage.getByRole("button", { name: "空白剧本" });
   await blank.waitFor({ state: "visible", timeout: 15_000 });
   await blank.click();
-  // 标题输入框的 aria-label 随体裁变（「重命名剧本 / 重命名小说」），取第一个文本框即可：
-  // 这条用例要的是"建一个干净的空剧本"，不该绑死某个标签写法。
-  await backstage.getByRole("textbox").first().fill("E2E 关系图体检");
-  await backstage.getByRole("button", { name: "创建" }).click();
+  // 建号现在**不弹提示框**：点「空白剧本」直接建出空剧本，标题在顶栏那行输入框里改。
+  const title = page.getByLabel("作品标题");
+  await title.waitFor({ state: "visible", timeout: 15_000 });
+  await title.fill("E2E 关系图体检");
   await expect(page.getByLabel("作品标题")).toHaveValue("E2E 关系图体检", { timeout: 15_000 });
 }
 
