@@ -71,10 +71,16 @@ async function createBlankProject(page: Page) {
   const blank = backstage.getByRole("button", { name: "空白剧本" });
   await blank.waitFor({ state: "visible", timeout: 15_000 });
   await blank.click();
-  // 建号现在**不弹提示框**：点「空白剧本」直接建出空剧本，标题在顶栏那行输入框里改。
-  const title = page.getByLabel("作品标题");
-  await title.waitFor({ state: "visible", timeout: 15_000 });
-  await title.fill("E2E 关系图体检");
+  // 建号走的是**提示框**（截图实证：标题「新剧本标题」+ 默认值「未命名剧本」+ 创建按钮）——
+  // 与建卷同一套交互（volumes.spec.ts 的 answerPrompt 就是干这个的）。
+  // 注意：这个对话框有遮罩，**不处理它的话后面所有点击都会 failed（not stable）**，
+  // 我上一轮就是误判成"不弹框"而卡在这里。
+  // 提示框要**按标题过滤**：同一时刻文件二级页也是 role="dialog"（StrictMode 下会撞两个元素）
+  const dialog = page.getByRole("dialog").filter({ hasText: "新剧本标题" });
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  await dialog.locator("input").fill("E2E 关系图体检");
+  await dialog.getByRole("button", { name: "创建" }).click();
+  await expect(dialog).toHaveCount(0);
   await expect(page.getByLabel("作品标题")).toHaveValue("E2E 关系图体检", { timeout: 15_000 });
 }
 
