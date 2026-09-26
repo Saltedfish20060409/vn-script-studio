@@ -458,6 +458,15 @@ export function StudioApp() {
   const [focusMode, setFocusMode] = useState(false);
   /** 顶栏稀疏保存提示：idle 不显示；只在保存请求进行中 / 失败时出现 */
   const [saveBadge, setSaveBadge] = useState<"idle" | "saving" | "error">("idle");
+  /**
+   * 最近一次**成功保存**的时刻（本地时间）。
+   *
+   * 为什么要显示"已保存 · 12:03"而不只是"保存中/失败"：自动保存是作者看不见的过程，
+   * 只报"出问题"等于平时什么都不说——而"反馈要及时"是这个项目里已有的判据
+   * （目标设定理论那条：反馈的及时性与目标难度同为调节变量）。
+   * 有这一行，作者瞟一眼就知道"我刚才那句已经落盘了"。
+   */
+  const [savedAt, setSavedAt] = useState<number | null>(null);
   // 顶栏"审稿"按钮的展开信号：每次 +1 让 AgentFloat 把面板拉出来
   const [agentOpenTick, setAgentOpenTick] = useState(0);
   /**
@@ -1286,6 +1295,7 @@ export function StudioApp() {
         )
       );
       setSaveBadge("idle");
+      setSavedAt(Date.now());
       if (!silent) setStatus("工程已同步到服务器");
       return true;
     } catch (e) {
@@ -2954,6 +2964,7 @@ export function StudioApp() {
           }}
           onLogout={handleLogout}
           saveBadge={saveBadge === "idle" ? null : saveBadge}
+          savedAt={savedAt}
           onOpenFilePage={(page) => applyOverlay({ type: "file", page })}
           onOpenViewPanel={(panel) => applyOverlay({ type: "view", panel })}
           onOpenAnalysis={() => {

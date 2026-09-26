@@ -122,7 +122,19 @@ export function WriteToolbar({
           </button>
         </div>
       ) : writeMode === "prose" ? (
-        <span className={styles.hintInline}>{copy.proseHint}</span>
+        /* 格式说明（"默认写普通剧本文字…"）原来平铺在这里，是一整句话：
+           窄一点的窗口就会换行，把工具条撑成两行、正文跟着往下挪。
+           收成「？」按钮：鼠标悬停能看到全文，读屏用户拿 aria-label 也能听到，
+           而工具条永远只有一行。 */
+        <button
+          type="button"
+          className={styles.ghost}
+          data-testid="write-mode-hint"
+          title={copy.proseHint}
+          aria-label={`写作格式说明：${copy.proseHint}`}
+        >
+          ？
+        </button>
       ) : null}
     </div>
   );

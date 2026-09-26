@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type RefObject } from "r
 import { copyFor, type GenreCopy } from "../lib/genreCopy";
 import type { ProjectSub, ViewPanel } from "../lib/studioOverlay";
 import { openNotice } from "../lib/notice";
+import { formatClock } from "../lib/desktopView";
 import styles from "./StudioRibbon.module.css";
 
 export type WriteMode = "prose" | "rpy";
@@ -13,6 +14,8 @@ type Props = {
   title: string;
   username?: string;
   saveBadge?: "saving" | "error" | null;
+  /** 最近一次成功保存的时刻（毫秒）。有值就显示「已保存 · HH:MM」。 */
+  savedAt?: number | null;
   showFocusToggle: boolean;
   writeMode: WriteMode;
   rpyStale?: boolean;
@@ -103,6 +106,7 @@ export function StudioRibbon({
   title,
   username,
   saveBadge = null,
+  savedAt = null,
   showFocusToggle,
   writeMode,
   rpyStale,
@@ -261,6 +265,19 @@ export function StudioRibbon({
               title="自动保存失败，可用「文件 → 保存章节」手动保存"
             >
               保存失败
+            </span>
+          ) : savedAt ? (
+            /* 平时也报一句"已经存下了"：自动保存是作者看不见的过程，
+               只报异常等于平时什么都不说。时间只到分钟，够用又不吵。 */
+            <span
+              className={styles.saveBadge}
+              data-testid="save-badge"
+              data-kind="saved"
+              role="status"
+              aria-live="polite"
+              title="已保存到服务器"
+            >
+              已保存 · {formatClock(new Date(savedAt))}
             </span>
           ) : null}
         </div>
