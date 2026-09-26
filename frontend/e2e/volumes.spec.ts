@@ -78,14 +78,14 @@ test("建卷 → 新章节落进当前卷 → 卷头显示章数", async ({ page
   await expect(page.getByTestId("volume-row")).toBeVisible();
   const volChip = page.getByTestId(VOL_CHIP).first();
   await expect(volChip).toContainText("第一卷 春");
-  await expect(volChip).toContainText("0 章");
+  await expect(volChip).toContainText("0章");
   // 已有章节还没归卷 → 出现「未分卷」一档，章数正确
-  await expect(page.getByTestId("volume-chip-loose")).toContainText(`${chaptersBefore} 章`);
+  await expect(page.getByTestId("volume-chip-loose")).toContainText(`${chaptersBefore}章`);
 
   // 在当前卷里新建一章 → 落进这一卷
   await page.getByRole("button", { name: "+ 章" }).click();
   await answerPrompt(page, "春之一", "添加");
-  await expect(volChip).toContainText("1 章");
+  await expect(volChip).toContainText("1章");
   await expect(page.getByTestId(CHAPTER_CHIP)).toHaveCount(1); // 只显示当前卷的章节
   await expect(page.getByTestId(CHAPTER_CHIP).first()).toContainText("春之一");
 
@@ -110,8 +110,8 @@ test("章节改归属 → 卷改名 → 删卷后章节回到「未分卷」，�
   await page.getByTestId(CHAPTER_CHIP).first().click();
   await page.getByTestId("chapter-volume-select").selectOption({ label: "第一卷" });
   const firstVol = page.getByTestId(VOL_CHIP).first();
-  await expect(firstVol).toContainText("1 章");
-  await expect(page.getByTestId("volume-chip-loose")).toContainText(`${totalChapters - 1} 章`);
+  await expect(firstVol).toContainText("1章");
+  await expect(page.getByTestId("volume-chip-loose")).toContainText(`${totalChapters - 1}章`);
 
   // 改卷名
   // 注意：要等**带着这次改名的那次 PUT** 落盘，不能只等"任意一次 PUT"——
@@ -141,6 +141,6 @@ test("章节改归属 → 卷改名 → 删卷后章节回到「未分卷」，�
     .getByRole("button", { name: "删掉这卷" })
     .click();
   await expect(page.getByTestId(VOL_CHIP)).toHaveCount(1);
-  await expect(page.getByTestId("volume-chip-loose")).toContainText(`${totalChapters} 章`);
+  await expect(page.getByTestId("volume-chip-loose")).toContainText(`${totalChapters}章`);
   await expect(page.getByTestId(CHAPTER_CHIP)).toHaveCount(totalChapters);
 });

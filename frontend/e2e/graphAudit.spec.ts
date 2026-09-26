@@ -56,8 +56,9 @@ async function registerAndLogin(page: Page, username: string) {
 }
 
 async function openRelationsSub(page: Page) {
-  await openFilePage(page, "结构分析");
-  const backstage = page.getByTestId("file-backstage");
+  // 结构分析现在是右侧抽屉（文件菜单里那条入口已去掉；两处渲染的是同一个 AnalysisPanels）
+  await openViewPanel(page, "结构分析");
+  const backstage = page.getByTestId("view-drawer");
   await backstage.getByRole("button", { name: "角色关系", exact: true }).first().click();
   await expect(backstage.getByLabel("角色 A")).toBeVisible({ timeout: 20_000 });
 }
@@ -70,7 +71,9 @@ async function createBlankProject(page: Page) {
   const blank = backstage.getByRole("button", { name: "空白剧本" });
   await blank.waitFor({ state: "visible", timeout: 15_000 });
   await blank.click();
-  await backstage.getByRole("textbox", { name: "新剧本标题" }).fill("E2E 关系图体检");
+  // 标题输入框的 aria-label 随体裁变（「重命名剧本 / 重命名小说」），取第一个文本框即可：
+  // 这条用例要的是"建一个干净的空剧本"，不该绑死某个标签写法。
+  await backstage.getByRole("textbox").first().fill("E2E 关系图体检");
   await backstage.getByRole("button", { name: "创建" }).click();
   await expect(page.getByLabel("作品标题")).toHaveValue("E2E 关系图体检", { timeout: 15_000 });
 }
