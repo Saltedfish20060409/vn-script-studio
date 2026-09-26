@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { closeOverlay, openFilePage, openViewPanel } from "./nav";
+import { closeOverlay, openFilePage, openRibbonMenu, openViewPanel } from "./nav";
 
 /**
  * Word 壳回归：稿纸常在；文件二级页 / 视图抽屉可开可关；设定子页仍在。
@@ -102,6 +102,36 @@ test("顶栏有文件/开始/审阅/视图四菜单", async ({ page }) => {
   for (const name of ["文件", "开始", "审阅", "视图"]) {
     await expect(ribbon.getByText(name, { exact: true }).first()).toBeVisible();
   }
+});
+
+/**
+ * Agent 起手句：一下都不用打字，点一下就填好。
+ *
+ * 这条是上一版重构时丢掉、这一轮恢复的（旧版按"六个篇章 + 顶栏审稿按钮"的导航写的）。
+ * 恢复时改了两处、其余断言原样保留：
+ * - 打开方式：旧版点顶栏那个 title 含「AI 责编」的按钮；现在是**审阅菜单 → AI 责编**
+ *   （Word 壳把入口收进了菜单，title 也换成了「打开审稿 Agent」）；
+ * - 起手句按钮用 `agent-starters` 里的**第一个**，不再绑死某句文案。
+ */
+test("Agent 起手句：点一下就填好，且不会自动发送", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await registerAndLogin(page, randomName("e2e_starter_"));
+
+  const menu = await openRibbonMenu(page, "审阅");
+  await menu.getByRole("menuitem", { name: "AI 责编" }).click();
+
+  const starters = page.getByTestId("agent-starters");
+  await expect(starters).toBeVisible({ timeout: 20_000 });
+
+  // 输入框初始为空。用正则匹配「用平常话说…」那个输入框（AgentComposerBox）；
+  // 聊天里的「一句话就行」在空状态还没渲染，别用那个。
+  const composer = page.getByPlaceholder(/用平常话说/).first();
+  await expect(composer).toHaveValue("");
+
+  // 点第一个起手句 → 内容进了输入框（不用打字），而且**没有**被自动发送
+  await starters.getByRole("button").first().click();
+  await expect(composer).not.toHaveValue("");
+  await expect(starters).toHaveCount(0);
 });
 
 test("设定抽屉：写作参考卡不再和设定条目并列，但入口还在", async ({ page }) => {
