@@ -72,6 +72,7 @@ import { FilingFooter } from "./FilingFooter";
 import { useConfirm, usePrompt } from "../lib/confirmDialog";
 import { EmptyStage } from "./EmptyStage";
 import { FirstRunChecklist } from "./FirstRunChecklist";
+import { ShortcutHintBar } from "./ShortcutHintBar";
 import { ProjectLibraryPanel } from "./ProjectLibraryPanel";
 import { copyForProject } from "../lib/genreCopy";
 import { CollabPanel } from "./CollabPanel";
@@ -102,7 +103,12 @@ import { AdminPanel } from "./AdminPanel";
 import { ClickFx } from "./ClickFx";import { WorldPanel } from "./WorldPanel";
 import type { DesktopApp } from "./DesktopView";
 import { DeskPetApp } from "./DeskPetApp";
-import { shouldShowDesktop, rearmBoot } from "../lib/desktopView";
+import {
+  shouldShowDesktop,
+  rearmBoot,
+  loadDesktopScriptOpen,
+  saveDesktopScriptOpen,
+} from "../lib/desktopView";
 import { openNotice } from "../lib/notice";
 import { WriteToolbar, type WriteMode } from "./WriteToolbar";
 import { ScriptCommandBar } from "./ScriptCommandBar";
@@ -384,8 +390,29 @@ export function StudioApp() {
   const initialOverlay: StudioOverlay =
     cachedWs.overlay !== undefined ? cachedWs.overlay : null;
   const [overlay, setOverlay] = useState<StudioOverlay>(initialOverlay);
-  /** 视图：稿纸工作台 / 桌面启动器。默认 studio（老用户习惯不变），可在系统设置里切换。 */
+  /** 视图：稿纸工作台 / 桌面。默认 studio（老用户习惯不变），可在系统设置里切换。 */
   const [view, setView] = useState<"studio" | "desktop">(cachedWs.view || wsDefaults.view);
+  /**
+   * 桌面上的「作品窗口」：双击剧本 = 在桌面上打开这个剧本自己的窗口（不是跳走）。
+   *
+   * 两个位一起管一扇窗：`Open` = 这扇窗存在，`Min` = 它被最小化到任务栏。
+   * 工作台本体只有一个（就是下面那个 shell），这里只决定"它摆在哪"：
+   * 铺满屏幕（全屏写作）/ 摆在桌面标题栏下（窗口）/ 收起（display:none）。
+   * 所以不存在"两份稿纸互相打架"——编辑器、光标、选区、抽屉状态始终是同一套。
+   */
+  const [desktopScriptOpen, setDesktopScriptOpen] = useState(() =>
+    loadDesktopScriptOpen()
+  );
+  const [desktopScriptMin, setDesktopScriptMin] = useState(false);
+  /**
+   * 程序化开窗的信号：桌面视角下，顶栏那些"打开某个面板"的入口不该弹浮窗
+   * （浮窗会压住稿纸，也说不清自己在哪一层），而要打开桌面上的对应应用窗口。
+   * 改 nonce 即触发一次；id 决定开哪一扇。
+   */
+  const [desktopAppOpen, setDesktopAppOpen] = useState<{ id: string; nonce: number }>({
+    id: "agent",
+    nonce: 0,
+  });
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === "undefined" ? 1280 : window.innerWidth
   );
@@ -2444,6 +2471,13 @@ export function StudioApp() {
     setFocusMode(true);
     saveFocusMode(true);
     applyOverlay(null);
+    /* 专注的承诺是"整屏只剩稿子"，所以在桌面上开专注时先把桌面收起
+       （跟窗口标题栏的「全屏写作」走同一条路）：
+       否则专注界面会被留在窗口那一条里——标题栏与任务栏都是 z-index 高于工作台的桌面层，
+       浏览器拒绝全屏时它们会直接盖在专注界面上。退出专注后停在稿纸壳，
+       顶栏「文件 → 返回桌面」能回到原来那扇窗（窗口状态没被清掉）。 */
+    setView("studio");
+    saveWorkspace({ view: "studio" });
     try {
       await enterFullscreen(shellRef.current ?? document.documentElement);
     } catch {
@@ -2550,12 +2584,55 @@ export function StudioApp() {
     overlay?.type === "file" || overlay?.type === "view";
   /** 桌面视图：只在用户选了它、且屏幕够宽时显示（窄屏自动回工作台）。 */
   const showDesktop = shouldShowDesktop({ view, width: viewportWidth });
+  /** 作品窗口正开在桌面上（工作台渲染在标题栏与任务栏之间那一条） */
+  const desktopWindowOpen = showDesktop && desktopScriptOpen && !desktopScriptMin;
+  /** 作品窗口最小化了（窗口还在任务栏上，但桌面这会儿显示的是图标） */
+  const desktopScriptMinimized = showDesktop && desktopScriptOpen && desktopScriptMin;
+  /** 工作台这会儿是不是被桌面挡着（桌面开着、但没有可见的作品窗口） */
+  const shellUnderDesktopHidden = showDesktop && !desktopWindowOpen;
 
   /** 从桌面进入稿纸工作台（可选打开某个 overlay）。 */
   function enterStudio(next: StudioOverlay = null) {
     setView("studio");
     applyOverlay(next);
     saveWorkspace({ view: "studio", overlay: next });
+  }
+
+  /**
+   * 在桌面上打开（或切到）某个剧本的窗口 —— B 方案里"双击剧本"就是这个动作。
+   *
+   * 注意它**不离开桌面**：桌面这一层继续画标题栏与任务栏，稿纸铺在中间那一条。
+   * 想只留稿子，走窗口标题栏的「全屏写作」（enterStudio）或顶栏「专注」。
+   */
+  function openProjectWindow(id?: string) {
+    setView("desktop");
+    saveWorkspace({ view: "desktop" });
+    setDesktopScript(true);
+    if (id && id !== project?.id) void switchProject(id);
+  }
+
+  /** 关掉桌面上的作品窗口：回到桌面图标（剧本还在，双击就能再开） */
+  function closeProjectWindow() {
+    setDesktopScript(false);
+  }
+
+  /**
+   * 作品窗口的两个位一起改（开/最小化/还原/关），顺便落盘。
+   *
+   * 落盘的是"窗口正开在屏幕上"这一件事：**最小化与关掉都不该在刷新后自己长回来**
+   * （那是用户明确做过的动作），而"桌面里写到一半刷新"应该还是这扇窗。
+   * 写在这里而不是 useEffect 里：这段代码在若干提前 return 之后，
+   * 放 effect 会踩 react-hooks/rules-of-hooks（钩子顺序必须每次一致）。
+   */
+  function setDesktopScript(open: boolean, min = false) {
+    setDesktopScriptOpen(open);
+    setDesktopScriptMin(min);
+    saveDesktopScriptOpen(open && !min);
+  }
+
+  /** 打开桌面上的某个应用窗口（设置 / 帮助 / AI 责编…） */
+  function openDesktopApp(id: string) {
+    setDesktopAppOpen((cur) => ({ id, nonce: cur.nonce + 1 }));
   }
 
   function openChapterInDocument(id: string) {
@@ -2720,12 +2797,18 @@ export function StudioApp() {
           onCommitRename={() => void commitRename()}
           onCancelRename={cancelRename}
           onOpen={(id) => {
+            // 桌面视角里打开的剧本 = 桌面上那扇窗（不是跳去全屏）；工作台视图里保持原样
+            if (showDesktop) {
+              openProjectWindow(id);
+              return;
+            }
             enterStudio(null);
             if (id !== project?.id) void switchProject(id);
           }}
           onCreateBlank={() => {
             void createBlank();
-            enterStudio(null);
+            if (showDesktop) openProjectWindow();
+            else enterStudio(null);
           }}
           onCreateDemo={() => void createDemo()}
           onPickTemplate={(tid) => void createFromTemplate(tid)}
@@ -2843,7 +2926,10 @@ export function StudioApp() {
   return (
     <>
       <PwaInstallPrompt />
-      {/* 桌面视图：纯启动器。双击剧本 / 继续写作 → 切到稿纸工作台（不再套一层窗口）。 */}
+      {/* 桌面：打开项目 = 在桌面上打开该项目的窗口（B 方案）。
+          桌面这一层只画自己的东西（图标 / 标题栏 / 任务栏 / 应用窗口），
+          稿纸工作台由下面的 shell 渲染在标题栏与任务栏之间那一条。
+          「全屏写作」才离开桌面（enterStudio，"专注"也是同一条路）。 */}
       {showDesktop ? (
         <DesktopView
           username={user?.username}
@@ -2855,19 +2941,23 @@ export function StudioApp() {
           }))}
           activeProjectId={project?.id}
           activeProjectTitle={project?.title}
+          scriptOpen={desktopWindowOpen}
+          scriptMinimized={desktopScriptMinimized}
+          onScriptFullscreen={() => enterStudio(null)}
+          onScriptMinimize={() => setDesktopScript(true, true)}
+          onScriptRestore={() => setDesktopScript(true)}
+          onCloseScript={closeProjectWindow}
+          openAppRequest={desktopAppOpen}
           onSwitchToStudioView={() => enterStudio(null)}
           onLogout={() => {
             // 注销回登录页，并重新武装开机画面（"重启"的感觉）
             rearmBoot();
             handleLogout();
           }}
-          onOpenProject={(id: string) => {
-            enterStudio(null);
-            if (id !== project?.id) void switchProject(id);
-          }}
+          onOpenProject={(id: string) => openProjectWindow(id)}
           onNewProject={() => {
             void createBlank();
-            enterStudio(null);
+            openProjectWindow();
           }}
           onRenameProject={(id) => {
             const target = projectsList.find((p) => p.id === id);
@@ -2883,7 +2973,9 @@ export function StudioApp() {
           onDeleteProject={(id) => void deleteProjectById(id)}
           scriptTabs={STUDIO_TABS.map(([id, , label]) => ({ id, label }))}
           onOpenScriptTab={(id) => {
-            enterStudio(overlayFromScriptTabId(id));
+            // 桌面上的窗口只属于当前剧本：直接把这扇窗打开并翻到那一页
+            setDesktopScript(true);
+            applyOverlay(overlayFromScriptTabId(id));
           }}
           resume={
             project
@@ -2898,7 +2990,7 @@ export function StudioApp() {
                 }
               : undefined
           }
-          onResume={() => enterStudio(null)}
+          onResume={() => openProjectWindow()}
           apps={desktopApps}
         />
       ) : null}
@@ -2934,14 +3026,23 @@ export function StudioApp() {
           <div className="vnss-grain" aria-hidden />
         </>
       ) : null}
-      {!showDesktop ? (
+      {/* 工作台：只有一套。摆在哪儿由桌面决定 ——
+          没有桌面 → 铺满整页；桌面上开着作品窗口 → 摆进标题栏与任务栏之间那一条
+          （shellUnderDesktop）；桌面开着但窗口关着/最小化 → 收起（shellHidden，
+          用 display:none 而不是盖住，否则隐藏的输入框还能被 Tab 聚焦）。
+
+          一处提醒：桌面里不要再用第二份稿纸。桌面那层只画标题栏/任务栏/应用窗口，
+          编辑器、光标、选区、抽屉状态始终是这一份（这也是当初删掉双壳的原因）。 */}
       <div
         ref={shellRef}
         className={`vnss-app ${styles.shell} ${
           writeQuiet ? styles.writeQuiet : ""
         } ${writeQuiet && focusMode ? styles.focusMode : ""} ${
           menuStage ? styles.menuStage : ""
+        } ${shellUnderDesktopHidden ? styles.shellHidden : ""} ${
+          desktopWindowOpen ? styles.shellUnderDesktop : ""
         }`}
+        aria-hidden={shellUnderDesktopHidden ? true : undefined}
       >
         <FocusChrome
           setupOpen={focusSetupOpen}
@@ -2989,10 +3090,19 @@ export function StudioApp() {
           onSaveChapter={commitEditor}
           onExport={() => void exportCurrentView()}
           exportLabel={writeMode === "rpy" ? "导出 .rpy" : "导出 .docx"}
-          onOpenHelp={() => setHelpOpen(true)}
+          onOpenHelp={() => {
+            // 桌面里设置/帮助本来就是桌面上的应用窗口（跟 Windows 一致），
+            // 顶栏这两个入口就照那个开，不再叠一个居中弹窗（会被任务栏压住一条）
+            if (showDesktop) openDesktopApp("help");
+            else setHelpOpen(true);
+          }}
           onOpenAdmin={() => setAdminOpen(true)}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={() => {
+            if (showDesktop) openDesktopApp("settings");
+            else setSettingsOpen(true);
+          }}
           onReturnDesktop={() => {
+            // 全屏写作的那扇窗没被关掉时（✕ 才关），回来还是它
             setView("desktop");
             saveWorkspace({ view: "desktop" });
           }}
@@ -3008,7 +3118,12 @@ export function StudioApp() {
               applyOverlay({ type: "analysis" });
             })();
           }}
-          onOpenAgent={() => setAgentOpenTick((t) => t + 1)}
+          onOpenAgent={() => {
+            // 桌面视角里没有浮窗（会压住稿纸，也说不清是哪一层）：
+            // 顶栏「审稿」改成打开桌面上的「AI 责编」窗口。
+            if (showDesktop) openDesktopApp("agent");
+            else setAgentOpenTick((t) => t + 1);
+          }}
           onWriteModeChange={switchWriteMode}
           onGenerateRpy={() => void generateRpyFromManuscript()}
           onFind={openFind}
@@ -3095,6 +3210,9 @@ export function StudioApp() {
                     }
                   />
                 ) : null}
+                {/* 键盘提示条：跟「三步上手」一样只出现一次（关掉就记住）。
+                    专注模式不画——那时候要的是"只留稿子"。 */}
+                {writeQuiet && !focusMode ? <ShortcutHintBar /> : null}
                 <section className={styles.panel}>
                     <WriteToolbar
                       copy={copy}
@@ -3642,12 +3760,12 @@ export function StudioApp() {
           />
         ) : null}
         {/* 页脚（使用指南 / 备案号）：工作台视图里底部音乐条是 fixed 的，会盖住它，
-            所以这里给它让出音乐条的高度；桌面视角没有音乐条，也就不要那段空白。 */}
-        <div className={musicBarOn ? styles.footerLift : undefined}>
+            所以这里给它让出音乐条的高度；桌面里音乐是"应用窗口"、没有那条，
+            也就不要那段空白。 */}
+        <div className={!showDesktop && musicBarOn ? styles.footerLift : undefined}>
           <FilingFooter />
         </div>
       </div>
-      ) : null}
     </>
   );
 }

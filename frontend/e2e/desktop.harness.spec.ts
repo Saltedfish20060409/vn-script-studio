@@ -1,8 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * 桌面启动器组件台回归（无需后端）。
- * 双击 / 继续写作 / 开始菜单跳转 → 离开桌面进入假稿纸。
+ * 桌面组件台回归（无需后端）。
+ *
+ * 语义（B 方案）：双击剧本 = 在桌面上打开**这个剧本自己的窗口**，桌面不退场；
+ * 窗口标题栏的「全屏写作」才离开桌面（那一套由 desktop.spec.ts 在真机里验）。
  */
 
 const HARNESS = "/e2e/harness.html";
@@ -56,34 +58,53 @@ test("拖动图标 → 换到最近的座位，松手自动对齐", async ({ pag
   await expect(page.getByRole("listitem", { name: "新建剧本" })).toBeVisible();
 });
 
-test("单击不触发拖动，双击进入稿纸", async ({ page }) => {
+test("单击不触发拖动，双击在桌面上打开这个剧本的窗口", async ({ page }) => {
   await openHarness(page);
 
   const icon = page.getByRole("listitem", { name: "九幽诀" });
   await icon.click();
-  await expect(page.getByTestId("fake-workbench")).toHaveCount(0);
+  await expect(page.getByTestId("desktop-script-window")).toHaveCount(0);
 
   await icon.dblclick();
-  await expect(page.getByTestId("desktop-view")).toHaveCount(0);
+  // 桌面不退场：这一层还在（标题栏 / 任务栏），只是让位给窗口
+  await expect(page.getByTestId("desktop-view")).toBeVisible();
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
   await expect(page.getByTestId("fake-workbench")).toBeVisible();
   await expect(page.getByTestId("fake-workbench")).toContainText("九幽诀");
   await expect(page.getByTestId("harness-log")).toContainText("open:p2");
+  // 图标让位给窗口（不然会浮在稿纸上面）
+  await expect(page.getByRole("listitem", { name: "雨夜站台" })).toHaveCount(0);
 });
 
-test("进入稿纸后按钮仍可点、可滚", async ({ page }) => {
+test("窗口里的工作台仍可点、可滚（压扁这个老问题不能回来）", async ({ page }) => {
   await openHarness(page);
   await page.getByRole("listitem", { name: "九幽诀" }).dblclick();
-  await expect(page.getByTestId("fake-workbench")).toBeVisible();
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
 
   await page.getByTestId("wb-button").click();
   await page.getByTestId("wb-button").click();
   await expect(page.getByTestId("wb-hits")).toHaveText("2");
 
-  /* 原来这里还断言"工作台能滚"（在桌面窗口里 el.scrollTop > 0）。
-     那条前提已经不存在了：桌面改成**纯启动器**后，进入剧本就是全屏稿纸，
-     不再套一层可滚的窗口。**"内容被 flex 压扁 → 按钮点不到/切不动"这个风险并没有消失**，
-     只是搬到了稿纸壳里——那条现在由 frontend/e2e/writeShell.harness.spec.ts 守着
-     （逐项命中测试 + 工具条可点），这里只留"进稿纸后按钮仍可点"。 */
+  /* 工作台在桌面里是**定高**的（标题栏 30px 到任务栏 46px 之间），内容比它高时
+     必须由它自己滚。这里量的是那条老问题：允许内部 flex 收缩时 .layout/.main
+     会被压扁，行高塌成 1px，表现为"按钮点不到/滚动条不出现"。
+     生产里同一个壳由 writeShell.harness.spec.ts 守着工具条那一层，这里守桌面这一层。 */
+  const scroll = await page.getByTestId("harness-shell").evaluate((el) => ({
+    scrollable: el.scrollHeight > el.clientHeight + 1,
+    clientHeight: el.clientHeight,
+  }));
+  expect(scroll.scrollable, "桌面窗口里的工作台应当能自己滚").toBe(true);
+  await page.getByTestId("harness-shell").evaluate((el) => {
+    el.scrollTop = 400;
+  });
+  expect(
+    await page.getByTestId("harness-shell").evaluate((el) => el.scrollTop)
+  ).toBeGreaterThan(0);
+  // 滚到底也不能把工作台推到标题栏/任务栏底下去
+  // （boundingBox 给的是 {x, y, width, height}——没有 top 字段，写错会静默变成 undefined）
+  const box = await page.getByTestId("harness-shell").boundingBox();
+  expect(Math.round(box?.y ?? -1)).toBe(30);
+  expect(Math.round(box?.height ?? 0)).toBe(800 - 30 - 46);
 });
 
 test("右键剧本图标有打开/重命名/复制/删除，点了会执行", async ({ page }) => {
@@ -123,7 +144,7 @@ test("剧本多于 6 个时出现「更多剧本」，双击打开剧本库", as
   await expect(page.getByTestId("library-window")).toBeVisible();
 });
 
-test("开始菜单能直达设定/地图，并进入稿纸", async ({ page }) => {
+test("开始菜单能直达设定/地图，并在桌面上那扇窗里翻到那一页", async ({ page }) => {
   await openHarness(page);
 
   await page.getByRole("button", { name: "开始" }).click();
@@ -132,7 +153,8 @@ test("开始菜单能直达设定/地图，并进入稿纸", async ({ page }) =>
   await expect(menu.getByRole("menuitem", { name: "角色工坊" })).toBeVisible();
 
   await menu.getByRole("menuitem", { name: "地图" }).click();
-  await expect(page.getByTestId("fake-workbench")).toBeVisible();
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
+  await expect(page.getByTestId("desktop-view")).toBeVisible();
   await expect(page.getByTestId("wb-tab")).toHaveText("当前面板：map");
   await expect(page.getByTestId("harness-log")).toContainText("tab:map");
 });
@@ -185,7 +207,7 @@ test("键盘：方向键移动、Enter 打开、F2 重命名、Delete 删除", a
   await expect(page.getByTestId("harness-log")).toContainText("delete:q0");
 
   await page.keyboard.press("Enter");
-  await expect(page.getByTestId("fake-workbench")).toBeVisible();
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
   await expect(page.getByTestId("harness-log")).toContainText("open:q0");
 });
 
@@ -212,17 +234,19 @@ test("一次性小抄：第一次进桌面出现，点「知道了」后不再�
   await expect(page.getByTestId("desktop-tips")).toHaveCount(0);
 });
 
-test("进入稿纸后桌面与小抄都离开", async ({ page }) => {
+test("打开作品窗口后：图标与小抄退场，桌面与任务栏还在", async ({ page }) => {
   await openHarness(page);
   await expect(page.getByTestId("desktop-tips")).toBeVisible();
 
   await page.getByRole("listitem", { name: "九幽诀" }).dblclick();
-  await expect(page.getByTestId("fake-workbench")).toBeVisible();
-  await expect(page.getByTestId("desktop-view")).toHaveCount(0);
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
+  await expect(page.getByTestId("desktop-view")).toBeVisible();
+  await expect(page.getByTestId("desktop-task-script")).toBeVisible();
   await expect(page.getByTestId("desktop-tips")).toHaveCount(0);
+  await expect(page.getByRole("listitem", { name: "雨夜站台" })).toHaveCount(0);
 });
 
-test("剧本图标角标与「继续写作」进入稿纸", async ({ page }) => {
+test("剧本图标角标与「继续写作」打开这扇窗", async ({ page }) => {
   await openHarness(page);
 
   await expect(page.getByTestId("icon-badge-project:p1")).toHaveText("12 章");
@@ -237,9 +261,63 @@ test("剧本图标角标与「继续写作」进入稿纸", async ({ page }) => 
   await expect(resume).toBeVisible();
   await expect(resume).toContainText("第 3 章 · 夜雨");
   await resume.click();
-  await expect(page.getByTestId("fake-workbench")).toBeVisible();
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
+  await expect(page.getByTestId("fake-workbench")).toContainText("雨夜站台");
   await expect(page.getByTestId("harness-log")).toContainText("resume");
   await expect(page.getByTestId("desktop-resume")).toHaveCount(0);
+});
+
+test("「全屏写作」离开桌面，「返回桌面」回来还是这扇窗", async ({ page }) => {
+  await openHarness(page);
+  await page.getByRole("listitem", { name: "九幽诀" }).dblclick();
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
+
+  await page.getByTestId("script-window-fullscreen").click();
+  // 全屏 = 桌面整层退场，工作台铺满整页（顶栏那套 Word 壳）
+  await expect(page.getByTestId("desktop-view")).toHaveCount(0);
+  await expect(page.getByTestId("fake-workbench")).toBeVisible();
+  await expect(page.getByTestId("harness-log")).toContainText("fullscreen");
+  const box = await page.getByTestId("harness-shell").boundingBox();
+  expect(Math.round(box?.top ?? 0)).toBe(0);
+
+  // 从全屏回来：窗口状态没被丢掉，因此还是那扇窗（不是回到图标页）
+  await page.getByTestId("wb-return-desktop").click();
+  await expect(page.getByTestId("desktop-view")).toBeVisible();
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
+  await expect(page.getByTestId("fake-workbench")).toContainText("九幽诀");
+});
+
+test("最小化到任务栏：图标回来，点任务栏按钮还原", async ({ page }) => {
+  await openHarness(page);
+  await page.getByRole("listitem", { name: "九幽诀" }).dblclick();
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
+
+  await page.getByTestId("script-window-minimize").click();
+  await expect(page.getByTestId("desktop-script-window")).toHaveCount(0);
+  // 最小化 ≠ 关掉：任务栏上还留着这扇窗，桌面图标也回来了
+  await expect(page.getByTestId("desktop-task-script")).toBeVisible();
+  await expect(page.getByRole("listitem", { name: "雨夜站台" })).toBeVisible();
+  // 工作台被收起（display:none），不是盖在桌面底下等着被点到
+  expect(
+    await page.getByTestId("harness-shell").evaluate((el) => getComputedStyle(el).display)
+  ).toBe("none");
+
+  await page.getByTestId("desktop-task-script").click();
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
+  await expect(page.getByTestId("harness-log")).toContainText("restore");
+});
+
+test("关闭窗口回桌面图标，双击能再开", async ({ page }) => {
+  await openHarness(page);
+  await page.getByRole("listitem", { name: "九幽诀" }).dblclick();
+  await page.getByTestId("script-window-close").click();
+
+  await expect(page.getByTestId("desktop-script-window")).toHaveCount(0);
+  await expect(page.getByTestId("desktop-task-script")).toHaveCount(0);
+  await expect(page.getByRole("listitem", { name: "九幽诀" })).toBeVisible();
+
+  await page.getByRole("listitem", { name: "九幽诀" }).dblclick();
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
 });
 
 test("任务栏「工作台」出口进入稿纸", async ({ page }) => {
@@ -251,11 +329,18 @@ test("任务栏「工作台」出口进入稿纸", async ({ page }) => {
   await expect(page.getByTestId("harness-log")).toContainText("studio");
 });
 
-test("排列图标只动图标，关掉所有窗口只关窗口", async ({ page }) => {
+test("排列图标只动图标，关掉所有窗口只关窗口（含作品窗口）", async ({ page }) => {
   await openHarness(page);
 
   await page.getByRole("listitem", { name: "AI 责编" }).dblclick();
   await expect(page.getByTestId("desktop-window-agent")).toBeVisible();
+  // 作品窗口也开着：关掉所有窗口时它要一起关（窗口拖到看不见时的找回手段）
+  await page.getByRole("button", { name: "开始" }).click();
+  await page.getByRole("menuitem", { name: /^写作$/ }).click();
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
+  // 但图标这会儿为了让位给窗口收起来了，先关掉它再量图标
+  await page.getByTestId("script-window-close").click();
+
   const before = await iconBox(page, "夏日回声");
   const target = await iconBox(page, "新建剧本");
   await page.mouse.move(before.x + before.width / 2, before.y + 20);
@@ -271,9 +356,13 @@ test("排列图标只动图标，关掉所有窗口只关窗口", async ({ page 
   expect(tidy.y).toBeGreaterThan(first.y);
   await expect(page.getByTestId("desktop-window-agent")).toBeVisible();
 
+  // 再开一次作品窗口，验"关掉所有窗口"两扇一起关
+  await page.getByRole("listitem", { name: "九幽诀" }).dblclick();
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
   await page.getByRole("button", { name: "开始" }).click();
   await page.getByRole("menuitem", { name: /关掉所有窗口/ }).click();
   await expect(page.getByTestId("desktop-window-agent")).toHaveCount(0);
+  await expect(page.getByTestId("desktop-script-window")).toHaveCount(0);
   const stillTidy = await iconBox(page, "夏日回声");
   expect(Math.round(stillTidy.x)).toBe(Math.round(first.x));
 });

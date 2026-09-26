@@ -77,7 +77,7 @@ export function buildDesktopIcons(opts: {
       kind: "project" as const,
       badge: chapters === null ? undefined : chapters > 0 ? `${chapters} 章` : "空",
       hint: [
-        `双击打开《${p.title || "未命名剧本"}》的稿纸（文件 / 开始 / 审阅 / 视图）`,
+        `双击在桌面上打开《${p.title || "未命名剧本"}》的窗口（标题栏有「全屏写作」）`,
         meta ? `${meta}；右键可重命名 / 复制 / 删除` : "右键可重命名 / 复制 / 删除",
       ].join("\n"),
     };
@@ -191,9 +191,9 @@ const TIPS_SEEN_KEY = "vnss-desktop-tips-v1";
 
 /** 首次进入桌面视角时的小抄内容（一次讲清四条，不再出现）。 */
 export const DESKTOP_TIPS: ReadonlyArray<string> = [
-  "双击剧本图标 → 进入这个剧本的稿纸（顶栏有文件 / 开始 / 审阅 / 视图）",
+  "双击剧本图标 → 在桌面上打开这个剧本的窗口（标题栏有「全屏写作」，顶栏是文件 / 开始 / 审阅 / 视图）",
   "右键图标 → 重命名 / 复制 / 删除；右键空白处 → 新建剧本 / 排列图标",
-  "「开始」里是全部应用与系统设置，也能直接打开设定 / 地图等视图抽屉",
+  "「开始」里是全部应用与系统设置，也能直接打开设定 / 地图等视图",
   "图标拖到想放的位置就会自动对齐；「排列图标」「关掉所有窗口」能把桌面收拾回原样",
 ];
 
@@ -237,6 +237,52 @@ export function markDesktopTipsSeen(
   }
   try {
     store?.setItem(TIPS_SEEN_KEY, "1");
+  } catch {
+    /* 隐私模式下写不进去也不该崩 */
+  }
+}
+
+const SCRIPT_WIN_KEY = "vnss-desktop-window-v1";
+
+/**
+ * 桌面上的「作品窗口」开着没有 —— 刷新后要不要把这扇窗原样摆回来。
+ *
+ * 为什么要记：桌面里写作时刷新（或断网重连）是最常见的一次中断，
+ * 只因为"视图是桌面"就把人丢回图标页、还得再双击一次，等于每次刷新都要重走一步。
+ * 关掉窗口（✕）时会写回 0，所以"我特意关掉它"这件事不会被刷新推翻。
+ */
+export function loadDesktopScriptOpen(
+  storage?: Pick<Storage, "getItem"> | null
+): boolean {
+  let store = storage ?? null;
+  if (!storage) {
+    try {
+      store = window.localStorage;
+    } catch {
+      store = null;
+    }
+  }
+  try {
+    return store?.getItem(SCRIPT_WIN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function saveDesktopScriptOpen(
+  open: boolean,
+  storage?: Pick<Storage, "setItem"> | null
+): void {
+  let store = storage ?? null;
+  if (!storage) {
+    try {
+      store = window.localStorage;
+    } catch {
+      store = null;
+    }
+  }
+  try {
+    store?.setItem(SCRIPT_WIN_KEY, open ? "1" : "0");
   } catch {
     /* 隐私模式下写不进去也不该崩 */
   }

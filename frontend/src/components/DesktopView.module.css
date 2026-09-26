@@ -404,7 +404,8 @@
   text-overflow: ellipsis;
 }
 
-/* 剧本窗口：只画标题栏，工作台本体在它下面（StudioApp 渲染）——一个剧本一个窗口 */
+/* 剧本窗口：只画标题栏，工作台本体在它下面（StudioApp 渲染）——一个剧本一个窗口。
+   高度与 .shellUnderDesktop 的 top 是同一个数：标题栏占住那一条，稿纸从它下面开始。 */
 .editorFrame {
   position: absolute;
   left: 0;
@@ -454,18 +455,28 @@
 }
 
 .editorButtons button {
-  width: 24px;
   height: 20px;
+  min-width: 24px;
+  padding: 0 0.35rem;
   border: none;
   border-radius: var(--radius-sm, 6px);
   background: transparent;
   color: #cfe2f5;
+  font-size: 0.72rem;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .editorButtons button:hover {
   background: color-mix(in srgb, var(--accent-hot) 22%, transparent);
   color: #fff;
+}
+
+/* 「全屏写作」是这扇窗最主要的动作（桌面里写作的下一步），给它一点重量 */
+.editorFullscreen {
+  font-weight: 700;
+  background: color-mix(in srgb, #7fd1ff 16%, transparent) !important;
 }
 
 /* 屏幕底部一条操作提示（选中图标时显示"双击打开"） */

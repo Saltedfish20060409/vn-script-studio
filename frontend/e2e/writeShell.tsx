@@ -5,6 +5,7 @@ import { StrictMode, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { StudioRibbon } from "../src/components/StudioRibbon";
 import { StudioViewDrawer } from "../src/components/StudioChrome";
+import { ShortcutHintBar } from "../src/components/ShortcutHintBar";
 import { WriteToolbar } from "../src/components/WriteToolbar";
 import { copyFor } from "../src/lib/genreCopy";
 import shellStyles from "../src/components/StudioApp.module.css";
@@ -75,6 +76,10 @@ function WriteShell({
           <div className={shellStyles.docLayout}>
             <div className={shellStyles.docMain}>
               <section className={shellStyles.panel} data-testid="harness-doc-panel">
+                {/* 键盘提示条与真实写作页同位置（「三步上手」下方、工具条上方）。
+                    它是"一次性"的，靠 localStorage 记住——组件台每次用独立上下文，
+                    所以这里每次都是第一次进。 */}
+                <ShortcutHintBar />
                 <WriteToolbar
                   copy={copy}
                   writeMode={writeMode}

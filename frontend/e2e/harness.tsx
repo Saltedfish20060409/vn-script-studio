@@ -6,10 +6,17 @@ import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DesktopView, type DesktopApp } from "../src/components/DesktopView";
 import { MusicPlayerBar } from "../src/components/MusicPlayerBar";
+import shellStyles from "../src/components/StudioApp.module.css";
 import "../src/styles/globals.css";
 
 /**
- * 桌面视图组件台：桌面只作启动器，选中作品后进入假稿纸（与生产 Word 壳一致）。
+ * 桌面组件台：双击剧本 = **在桌面上打开这个剧本自己的窗口**，桌面不退场；
+ * 窗口标题栏的「全屏写作」才离开桌面（与生产 Word 壳一致）。
+ *
+ * 这里刻意复用 StudioApp.module.css 的 `.shell` / `.shellUnderDesktop` / `.shellHidden`
+ * ——双壳的位置关系（标题栏 30px、任务栏 46px、"工作台被 flex 压扁导致按钮点不到"）
+ * 全在那几条 CSS 里，用内联样式搭个像样的假壳就验证不到真问题了。
+ *
  * 跑法：npm run test:harness
  */
 
@@ -61,16 +68,26 @@ const APPS: DesktopApp[] = [
   },
 ];
 
-/** 假稿纸：模拟离开桌面后的 Word 壳主区 */
-function FakeWorkbench({ title, tab }: { title: string; tab: string }) {
+/** 假稿纸：模拟工作台本体（写作页那一套） */
+function FakeWorkbench({
+  title,
+  tab,
+  fullscreen,
+  onReturnDesktop,
+}: {
+  title: string;
+  tab: string;
+  fullscreen: boolean;
+  onReturnDesktop: () => void;
+}) {
   const [hits, setHits] = useState(0);
   return (
     <div
       data-testid="fake-workbench"
       style={{
-        minHeight: "100vh",
+        // 全屏时铺满整页；在桌面窗口里则填满"标题栏与任务栏之间"那一条
+        minHeight: fullscreen ? "100vh" : "100%",
         padding: "1rem",
-        overflow: "auto",
         background: "#f6f1e6",
       }}
     >
@@ -84,6 +101,15 @@ function FakeWorkbench({ title, tab }: { title: string; tab: string }) {
         点我
       </button>
       <span data-testid="wb-hits">{hits}</span>
+      {fullscreen ? (
+        <button
+          type="button"
+          data-testid="wb-return-desktop"
+          onClick={onReturnDesktop}
+        >
+          返回桌面
+        </button>
+      ) : null}
       {Array.from({ length: 40 }, (_, i) => (
         <p key={i}>假正文行 {i + 1}</p>
       ))}
@@ -97,23 +123,48 @@ function Harness({
 }: {
   projects?: Array<{ id: string; title: string; chapters?: number; updatedAt?: string }>;
 }) {
-  const [inStudio, setInStudio] = useState(false);
   const [activeId, setActiveId] = useState(projects[0].id);
   const [tab, setTab] = useState("write");
+  /** 桌面上的作品窗口：Open = 存在，Min = 最小化到任务栏 */
+  const [scriptOpen, setScriptOpen] = useState(false);
+  const [scriptMin, setScriptMin] = useState(false);
+  /** 全屏写作：收起桌面，工作台铺满整页（≙ 生产里的 view: "studio"） */
+  const [fullscreen, setFullscreen] = useState(false);
   const [log, setLog] = useState<string[]>([]);
 
-  function enterStudio(nextTab = "write") {
-    setTab(nextTab);
-    setInStudio(true);
+  const windowOpen = !fullscreen && scriptOpen && !scriptMin;
+  const title = projects.find((p) => p.id === activeId)?.title ?? "";
+
+  function openProject(id: string) {
+    setActiveId(id);
+    setScriptOpen(true);
+    setScriptMin(false);
+    setLog((cur) => [...cur, `open:${id}`]);
   }
 
-  if (inStudio) {
+  const workbench = (
+    <div
+      data-testid="harness-shell"
+      className={`vnss-app ${shellStyles.shell} ${
+        !fullscreen && !windowOpen ? shellStyles.shellHidden : ""
+      } ${windowOpen ? shellStyles.shellUnderDesktop : ""}`}
+    >
+      <FakeWorkbench
+        title={title}
+        tab={tab}
+        fullscreen={fullscreen}
+        onReturnDesktop={() => {
+          setFullscreen(false);
+          setLog((cur) => [...cur, "return-desktop"]);
+        }}
+      />
+    </div>
+  );
+
+  if (fullscreen) {
     return (
       <>
-        <FakeWorkbench
-          title={projects.find((p) => p.id === activeId)?.title ?? ""}
-          tab={tab}
-        />
+        {workbench}
         <pre data-testid="harness-log" style={{ display: "none" }}>
           {log.join("\n")}
         </pre>
@@ -127,13 +178,28 @@ function Harness({
         username="harness"
         projects={projects}
         activeProjectId={activeId}
-        activeProjectTitle={projects.find((p) => p.id === activeId)?.title}
+        activeProjectTitle={title}
         apps={APPS}
-        onOpenProject={(id) => {
-          setActiveId(id);
-          enterStudio("write");
-          setLog((cur) => [...cur, `open:${id}`]);
+        scriptOpen={windowOpen}
+        scriptMinimized={scriptOpen && scriptMin}
+        onScriptFullscreen={() => {
+          setFullscreen(true);
+          setLog((cur) => [...cur, "fullscreen"]);
         }}
+        onScriptMinimize={() => {
+          setScriptMin(true);
+          setLog((cur) => [...cur, "minimize"]);
+        }}
+        onScriptRestore={() => {
+          setScriptMin(false);
+          setLog((cur) => [...cur, "restore"]);
+        }}
+        onCloseScript={() => {
+          setScriptOpen(false);
+          setScriptMin(false);
+          setLog((cur) => [...cur, "close"]);
+        }}
+        onOpenProject={(id) => openProject(id)}
         onNewProject={() => setLog((cur) => [...cur, "new"])}
         onRenameProject={(id) => setLog((cur) => [...cur, `rename:${id}`])}
         onDuplicateProject={(id) => setLog((cur) => [...cur, `duplicate:${id}`])}
@@ -147,21 +213,23 @@ function Harness({
           { id: "project", label: "项目" },
         ]}
         onOpenScriptTab={(id) => {
-          enterStudio(id);
+          setTab(id);
+          setScriptOpen(true);
+          setScriptMin(false);
           setLog((cur) => [...cur, `tab:${id}`]);
         }}
         resume={{ projectTitle: projects[0].title, chapterLabel: "第 3 章 · 夜雨" }}
         onResume={() => {
-          setActiveId(projects[0].id);
-          enterStudio("write");
+          openProject(projects[0].id);
           setLog((cur) => [...cur, "resume"]);
         }}
         onSwitchToStudioView={() => {
-          enterStudio("write");
+          setFullscreen(true);
           setLog((cur) => [...cur, "studio"]);
         }}
         onLogout={() => setLog((cur) => [...cur, "logout"])}
       />
+      {workbench}
       <pre data-testid="harness-log" style={{ display: "none" }}>
         {log.join("\n")}
       </pre>

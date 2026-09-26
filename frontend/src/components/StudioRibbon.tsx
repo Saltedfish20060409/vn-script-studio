@@ -3,11 +3,15 @@ import { copyFor, type GenreCopy } from "../lib/genreCopy";
 import type { ProjectSub, ViewPanel } from "../lib/studioOverlay";
 import { openNotice } from "../lib/notice";
 import { formatClock } from "../lib/desktopView";
+import {
+  MENU_MNEMONICS,
+  menuKeys,
+  type MenuId,
+  type MenuMnemonic,
+} from "../lib/shortcuts";
 import styles from "./StudioRibbon.module.css";
 
 export type WriteMode = "prose" | "rpy";
-
-type MenuId = "file" | "home" | "review" | "view";
 
 type Props = {
   copy?: GenreCopy;
@@ -144,6 +148,9 @@ export function StudioRibbon({
   const [fileGroup, setFileGroup] = useState<"project" | null>(null);
   const filePages = copy.genre === "vn" ? FILE_PAGES_VN : FILE_PAGES_NOVEL;
   const showViewQuick = copy.genre === "vn";
+  /** 菜单标题：label 与助记键都来自 lib/shortcuts（绑定也由它推导，不会各说一套） */
+  const menuMeta = (id: MenuId): MenuMnemonic =>
+    MENU_MNEMONICS.find((m) => m.id === id) ?? MENU_MNEMONICS[0];
 
   function toggleMenu(id: MenuId) {
     setOpenMenu((prev) => {
@@ -169,9 +176,14 @@ export function StudioRibbon({
    * - `Alt+F / E / R / V` 开关对应菜单（桌面软件的 Alt 助记键习惯）；
    * - 打开后焦点落进第一项，`↑↓` 在项之间移动，`Home/End` 到首尾；
    * - `Esc` 关闭并把焦点还给触发它的那个菜单标题。
+   *
+   * 键位表从 lib/shortcuts 推导（同一个字母既绑行为、也印在菜单标题上）：
+   * 上一版的问题是这些键只写在代码里，界面上一个字都没说。
    */
   useEffect(() => {
-    const HOTKEY: Record<string, MenuId> = { f: "file", e: "home", r: "review", v: "view" };
+    const HOTKEY: Record<string, MenuId> = Object.fromEntries(
+      MENU_MNEMONICS.map((m) => [m.letter, m.id])
+    );
     const onKey = (e: KeyboardEvent) => {
       if (!e.altKey || e.ctrlKey || e.metaKey) return;
       const id = HOTKEY[e.key.toLowerCase()];
@@ -290,12 +302,18 @@ export function StudioRibbon({
         >
           <details className={styles.menu} open={openMenu === "file"}>
             <summary
+              title={`${menuMeta("file").label}菜单（助记键 ${menuKeys(menuMeta("file"))}）`}
               onClick={(e) => {
                 e.preventDefault();
                 toggleMenu("file");
               }}
             >
-              文件
+              {/* 标题与助记键分成两个元素：label 单独包一层，
+                  既有 e2e 的 `getByText("文件", { exact: true })` 才继续找得到它 */}
+              <span className={styles.menuLabel}>{menuMeta("file").label}</span>
+              <kbd className={styles.menuKey} data-testid="menu-key-file">
+                {menuKeys(menuMeta("file"))}
+              </kbd>
             </summary>
             <div className={`${styles.panel} opaque-panel-bg`} role="menu">
               <button
@@ -431,12 +449,16 @@ export function StudioRibbon({
 
           <details className={styles.menu} open={openMenu === "home"}>
             <summary
+              title={`${menuMeta("home").label}菜单（助记键 ${menuKeys(menuMeta("home"))}）`}
               onClick={(e) => {
                 e.preventDefault();
                 toggleMenu("home");
               }}
             >
-              开始
+              <span className={styles.menuLabel}>{menuMeta("home").label}</span>
+              <kbd className={styles.menuKey} data-testid="menu-key-home">
+                {menuKeys(menuMeta("home"))}
+              </kbd>
             </summary>
             <div className={`${styles.panel} opaque-panel-bg`} role="menu">
               <button
@@ -505,12 +527,16 @@ export function StudioRibbon({
 
           <details className={styles.menu} open={openMenu === "review"}>
             <summary
+              title={`${menuMeta("review").label}菜单（助记键 ${menuKeys(menuMeta("review"))}）`}
               onClick={(e) => {
                 e.preventDefault();
                 toggleMenu("review");
               }}
             >
-              审阅
+              <span className={styles.menuLabel}>{menuMeta("review").label}</span>
+              <kbd className={styles.menuKey} data-testid="menu-key-review">
+                {menuKeys(menuMeta("review"))}
+              </kbd>
             </summary>
             <div className={`${styles.panel} opaque-panel-bg`} role="menu">
               <button
@@ -546,12 +572,16 @@ export function StudioRibbon({
 
           <details className={styles.menu} open={openMenu === "view"}>
             <summary
+              title={`${menuMeta("view").label}菜单（助记键 ${menuKeys(menuMeta("view"))}）`}
               onClick={(e) => {
                 e.preventDefault();
                 toggleMenu("view");
               }}
             >
-              视图
+              <span className={styles.menuLabel}>{menuMeta("view").label}</span>
+              <kbd className={styles.menuKey} data-testid="menu-key-view">
+                {menuKeys(menuMeta("view"))}
+              </kbd>
             </summary>
             <div className={`${styles.panel} opaque-panel-bg`} role="menu">
               {VIEW_QUICK.map(([id, label]) => (

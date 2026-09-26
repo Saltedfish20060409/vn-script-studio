@@ -147,6 +147,9 @@
 .menu summary {
   list-style: none;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   min-height: 34px;
   padding: 0.3rem 0.7rem;
   border: 1px solid transparent;
@@ -157,6 +160,27 @@
   letter-spacing: 0.06em;
   color: var(--ink);
   user-select: none;
+}
+
+/* 标题本身：单独包一层是为了让它仍是一个"文字等于「文件」"的元素
+   （e2e 与读屏都按标题文本找菜单；把助记键塞进同一个文本节点会让它变成「文件Alt+F」） */
+.menuLabel {
+  white-space: nowrap;
+}
+
+/* 助记键常驻显示在菜单标题上（桌面软件的惯例）：
+   它以前只写在 title 和代码里，等于没人知道这几个键。字比标题小一号、
+   颜色淡一档——看得见，但不跟标题抢注意力。 */
+.menuKey {
+  padding: 0 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink-soft);
+  opacity: 0.85;
 }
 
 .menu summary::-webkit-details-marker {

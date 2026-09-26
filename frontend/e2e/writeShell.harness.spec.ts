@@ -143,6 +143,68 @@ test.describe("写作页顶栏菜单", () => {
       await expect(panel, `Esc 后 ${key} 的菜单应当关掉`).toHaveCount(0);
     }
   });
+
+  /**
+   * 助记键要**看得见**，不能只活在代码里。
+   *
+   * 起因：上一版加了 Alt+F/E/R/V 与 ↑↓/Esc，但只在 `title` 里写了，
+   * 界面上一个字都没有 —— 等于给内部人用的暗号。
+   * 这一条同时钉两件事：① 标题上印着那个键；② 印的那个键真的能开这个菜单。
+   * 只钉①会出现"印的是一个、绑的是另一个"；只钉②会出现"能按但没人知道"。
+   */
+  test("助记键印在菜单标题上，且印的就是真正生效的那个键", async ({ page }) => {
+    await page.goto("/e2e/writeShell.html?genre=vn");
+    await expect(page.getByTestId("studio-ribbon")).toBeVisible();
+
+    for (const [id, label, hotkey] of [
+      ["file", "文件", "Alt+F"],
+      ["home", "开始", "Alt+E"],
+      ["review", "审阅", "Alt+R"],
+      ["view", "视图", "Alt+V"],
+    ] as const) {
+      const summary = page.locator("summary", { hasText: label }).first();
+      // 标题上的键帽：常驻可见，不是 hover 才有的 tooltip
+      await expect(page.getByTestId(`menu-key-${id}`)).toHaveText(hotkey);
+      await expect(page.getByTestId(`menu-key-${id}`)).toBeVisible();
+      // 标题文本仍然**恰好**是菜单名（助记键单独一个元素）：
+      // e2e 与读屏都按标题文本找菜单，塞进同一个文本节点就会变成"文件Alt+F"
+      await expect(summary.locator("span").first()).toHaveText(label);
+      // 印的那个键，按下去就能开这个菜单
+      await page.keyboard.press(hotkey);
+      await expect(page.locator('details[open] [role="menu"]')).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.locator('details[open] [role="menu"]')).toHaveCount(0);
+    }
+  });
+});
+
+/**
+ * 写作页的键盘提示条：一次性、关掉就记住。
+ *
+ * 为什么守它：这条提示是"发现性"的唯一保证——菜单标题上放得下助记键，
+ * 放不下"打开后还能用 ↑↓ 和 Esc"。谁把它删了，用户就又回到了"没人告诉过他"的状态。
+ */
+test.describe("键盘提示条", () => {
+  test("第一次进写作页出现，讲清菜单键盘", async ({ page }) => {
+    await page.goto("/e2e/writeShell.html?genre=vn");
+    const hint = page.getByTestId("shortcut-hint");
+    await expect(hint).toBeVisible();
+    await expect(hint).toContainText("Alt+F/E/R/V");
+    await expect(hint).toContainText("↑↓");
+    await expect(hint).toContainText("Esc");
+  });
+
+  test("关掉后不再出现（同一个浏览器只出现一次）", async ({ page }) => {
+    await page.goto("/e2e/writeShell.html?genre=vn");
+    await expect(page.getByTestId("shortcut-hint")).toBeVisible();
+
+    await page.getByTestId("shortcut-hint-close").click();
+    await expect(page.getByTestId("shortcut-hint")).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.getByTestId("harness-paper")).toBeVisible();
+    await expect(page.getByTestId("shortcut-hint")).toHaveCount(0);
+  });
 });
 
 /**

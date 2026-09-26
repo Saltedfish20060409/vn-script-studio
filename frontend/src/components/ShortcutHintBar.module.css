@@ -1,0 +1,54 @@
+/* 写作页「菜单支持键盘」一次性提示条：比「三步上手」更轻，一条细线。 */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  padding: 0.3rem 0.6rem;
+  margin: 0 0 0.5rem;
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: var(--radius-sm, 10px);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  font-size: 0.78rem;
+  color: var(--ink);
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.text {
+  font-weight: 600;
+}
+
+.more {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.close {
+  margin-left: auto;
+  padding: 0 0.3rem;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.close:hover {
+  color: var(--accent);
+}
+
+@media (max-width: 820px) {
+  .more {
+    display: none;
+  }
+}

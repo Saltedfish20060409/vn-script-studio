@@ -59,8 +59,8 @@ type Props = {
   projects: Array<{ id: string; title: string; chapters?: number; updatedAt?: string }>;
   activeProjectId?: string;
   /**
-   * 打开某个剧本：离开桌面启动器，进入稿纸工作台（`view: "studio"`）。
-   * 不再在桌面底下套一层 shell 窗口。
+   * 打开某个剧本：**在桌面上打开这个剧本自己的窗口**（B 方案）。
+   * 窗口标题栏上另有「全屏写作」，那才是离开桌面、进整套 Word 壳。
    */
   onOpenProject: (id: string) => void;
   onNewProject: () => void;
@@ -81,6 +81,18 @@ type Props = {
    * 而应该打开桌面上的「AI 责编」窗口）。改 nonce 即触发一次。
    */
   openAppRequest?: { id: string; nonce: number };
+  /** 作品窗口是否正开在桌面上（开着时图标/小抄收起，桌面让位给窗口） */
+  scriptOpen?: boolean;
+  /** 作品窗口最小化到任务栏：窗口还在（任务栏能点回来），只是不占屏幕 */
+  scriptMinimized?: boolean;
+  /** 标题栏「全屏写作」：离开桌面，用整套 Word 壳铺满屏幕（顶栏「返回桌面」回来） */
+  onScriptFullscreen?: () => void;
+  /** 标题栏「—」：最小化到任务栏 */
+  onScriptMinimize?: () => void;
+  /** 任务栏上的作品窗口按钮：从最小化还原 */
+  onScriptRestore?: () => void;
+  /** 标题栏「✕」与开始菜单「关掉所有窗口」：关掉作品窗口（回到桌面图标） */
+  onCloseScript?: () => void;
   /**
    * 「继续写作」：桌面空着时给一条零学习成本的回头路 ——
    * 直接进入稿纸工作台、回到上次那一章。
@@ -112,15 +124,21 @@ function isBlankSpot(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (!el) return true;
   return !el.closest(
-    "button, [data-desktop-menu], [data-testid^='desktop-window-']"
+    "button, [data-desktop-menu], [data-testid^='desktop-window-'], [data-testid='desktop-script-window']"
   );
 }
 
 /**
- * 桌面启动器：图标有固定座位、应用开成窗口、任务栏管窗口。
+ * 桌面：图标有固定座位、应用开成窗口、任务栏管窗口。
  *
- * 双击剧本 / 「继续写作」/ 开始菜单跳转 → 由父组件切到稿纸工作台；
- * 桌面本身不再套一层「剧本编辑器窗口」（已去掉 dual-shell / shellUnderDesktop）。
+ * 双击剧本 = **在桌面上打开这个剧本自己的窗口**（标题栏 + 底下的稿纸工作台），
+ * 桌面并不退场 —— 这就是"打开项目 = 打开该项目的窗口"。
+ * 想只留稿子，点窗口标题栏的「全屏写作」；从全屏回来走顶栏「文件 → 返回桌面」。
+ *
+ * 一扇窗，一套稿纸：工作台本体由 StudioApp 渲染在标题栏与任务栏之间那一条
+ * （见 `.shellUnderDesktop`），桌面这一层只画自己该画的（标题栏 / 任务栏 / 应用窗口），
+ * 其余空白处的鼠标事件让给下面的工作台（`.desktopPassThrough`）——
+ * 否则 fixed + inset:0 的桌面层会把整屏点击吃掉，"只能滚不能点"。
  *
  * 边界仍然没变：窄屏自动回工作台（见 shouldShowDesktop），数据模型/编辑器逻辑一行没动。
  */
@@ -138,6 +156,12 @@ export function DesktopView({
   scriptTabs,
   onOpenScriptTab,
   openAppRequest,
+  scriptOpen = false,
+  scriptMinimized = false,
+  onScriptFullscreen,
+  onScriptMinimize,
+  onScriptRestore,
+  onCloseScript,
   resume,
   onResume,
   onSwitchToStudioView,
@@ -149,7 +173,7 @@ export function DesktopView({
   const [menuOpen, setMenuOpen] = useState(false);
   /** 首次进入桌面视角的一次性小抄（讲清四条操作，关掉就永久不再出现） */
   const [tipsOpen, setTipsOpen] = useState(() =>
-    shouldShowDesktopTips({ scriptOpen: false })
+    shouldShowDesktopTips({ scriptOpen })
   );
   /** 右键菜单：图标菜单带 id，空白处菜单只有位置 */
   const [ctxMenu, setCtxMenu] = useState<{ id: string | null; x: number; y: number } | null>(
@@ -210,6 +234,11 @@ export function DesktopView({
       openWindow(cur, app.id, app.defaultRect ?? { x: 90, y: 70, w: 520, h: 420 })
     );
   }, [openAppRequest, apps]);
+
+  // 作品窗口开着时，一次性小抄让路（它讲的是"桌面怎么用"，而用户已经在用桌面了）
+  useEffect(() => {
+    if (scriptOpen && tipsOpen) setTipsOpen(false);
+  }, [scriptOpen, tipsOpen]);
 
   /**
    * 关掉开始菜单/右键菜单：点任务栏外面、按 ESC、或者点了别处都算。
@@ -401,11 +430,13 @@ export function DesktopView({
   const ctxIcon = ctxMenu?.id ? icons.find((i) => i.id === ctxMenu.id) : null;
   const selectedHint = selected
     ? icons.find((i) => i.id === selected)?.hint ?? ""
-    : "双击剧本进入写作 · 右键可重命名/复制/删除";
+    : "双击剧本 → 在桌面上打开这个剧本的窗口 · 右键可重命名/复制/删除";
 
   return (
     <div
-      className={styles.desktop}
+      /* 作品窗口开着时：桌面这一层只剩"自己的东西"（标题栏 / 任务栏 / 应用窗口），
+         空白处必须把鼠标事件让给下面的工作台（见 .desktopPassThrough 的注释）。 */
+      className={`${styles.desktop} ${scriptOpen ? styles.desktopPassThrough : ""}`}
       data-testid="desktop-view"
       onPointerDown={(e) => {
         // 任何一次点击都算"看懂了"，小抄让路
@@ -425,10 +456,11 @@ export function DesktopView({
         setCtxMenu({ id: null, x: e.clientX, y: e.clientY });
       }}
     >
-      <div className={styles.dim} aria-hidden data-blank="1" />
+      {/* 图标与暗角只在"没有开作品窗口"时出现 —— 否则会浮在工作台上面 */}
+      {!scriptOpen ? <div className={styles.dim} aria-hidden data-blank="1" /> : null}
 
       {/* 首次进入桌面视角的一次性小抄：放在右侧空白区，不挡图标；点任意处或「知道了」即关闭 */}
-      {tipsOpen ? (
+      {!scriptOpen && tipsOpen ? (
         <aside
           className={styles.tips}
           data-testid="desktop-tips"
@@ -450,6 +482,7 @@ export function DesktopView({
       ) : null}
 
       {/* 桌面图标：剧本（文件夹）+ 放上桌面的应用快捷方式。位置=座位号，吸附对齐 */}
+      {!scriptOpen ? (
       <div
         className={styles.iconArea}
         role="list"
@@ -514,6 +547,50 @@ export function DesktopView({
           );
         })}
       </div>
+      ) : null}
+
+      {/* 作品窗口：**只画标题栏**，稿纸工作台本体由 StudioApp 渲染在它下面那一条
+          （见 .shellUnderDesktop）——一扇窗一套稿纸，不复制第二个编辑器。
+          「全屏写作」= 收起桌面、让这套壳自己铺满屏幕；「—」最小化到任务栏；
+          「✕」关掉窗口（剧本还在桌面上，双击图标就能再开）。 */}
+      {scriptOpen ? (
+        <div className={styles.editorFrame} data-testid="desktop-script-window">
+          <header className={styles.editorBar}>
+            <span aria-hidden>📖</span>
+            <span className={styles.editorTitle}>
+              {activeProjectTitle || "未命名剧本"}
+            </span>
+            <span className={styles.editorSub}>仅此剧本</span>
+            <div className={styles.editorButtons}>
+              <button
+                type="button"
+                className={styles.editorFullscreen}
+                data-testid="script-window-fullscreen"
+                onClick={onScriptFullscreen}
+                title="全屏写作：收起桌面，只留稿纸（顶栏「文件 → 返回桌面」回来）"
+              >
+                ⛶ 全屏写作
+              </button>
+              <button
+                type="button"
+                data-testid="script-window-minimize"
+                onClick={onScriptMinimize}
+                title="最小化到任务栏"
+              >
+                —
+              </button>
+              <button
+                type="button"
+                data-testid="script-window-close"
+                onClick={onCloseScript}
+                title="关闭窗口（剧本还在桌面上，双击图标就能再打开）"
+              >
+                ✕
+              </button>
+            </div>
+          </header>
+        </div>
+      ) : null}
 
       {/* 应用窗口（剧本库 / AI 责编 / 设置等）—— 不是稿纸工作台本身 */}
       {openWins.map((win) => {
@@ -651,7 +728,9 @@ export function DesktopView({
               onClick={() => {
                 setMenuOpen(false);
                 // 关掉所有应用窗口：窗口被拖到看不见的地方时，这样就能找回来
+                // （作品窗口也一起关：它的位置记录随窗口清掉，重开会回到默认位置）
                 setLayout((cur) => ({ ...cur, windows: {} }));
+                onCloseScript?.();
               }}
             >
               🪟 关掉所有窗口
@@ -681,6 +760,20 @@ export function DesktopView({
 
         {/* 已打开窗口 = 任务栏按钮（点一下切换/还原） */}
         <div className={styles.tasks}>
+          {/* 作品窗口也是一个窗口：开着时高亮，点它最小化；最小化后点它还原。 */}
+          {scriptOpen || scriptMinimized ? (
+            <button
+              type="button"
+              data-testid="desktop-task-script"
+              className={scriptOpen ? `${styles.task} ${styles.taskOn}` : styles.task}
+              onClick={() => (scriptOpen ? onScriptMinimize?.() : onScriptRestore?.())}
+              title={`《${activeProjectTitle || "未命名剧本"}》${
+                scriptOpen ? "：点一下最小化" : "：点一下还原"
+              }`}
+            >
+              📖 {activeProjectTitle || "未命名剧本"}
+            </button>
+          ) : null}
           {openWins.map((win) => {
             const app = apps.find((a) => a.id === win.id);
             if (!app?.render) return null;
@@ -702,7 +795,7 @@ export function DesktopView({
         </div>
 
         {/* 「继续写作」：桌面空着时最常做的动作，放在最显眼、零学习成本的位置 */}
-        {resume && onResume ? (
+        {!scriptOpen && resume && onResume ? (
           <button
             type="button"
             className={styles.resume}
@@ -723,7 +816,7 @@ export function DesktopView({
           className={styles.task}
           data-testid="desktop-to-studio"
           onClick={onSwitchToStudioView}
-          title="切换为工作台视图（稿纸壳，设置里可以切回来）"
+          title="切换为工作台视图：收起桌面，稿纸铺满整屏（设置里可以切回来）"
         >
           🖥️ 工作台
         </button>
@@ -737,7 +830,7 @@ export function DesktopView({
         </span>
       </div>
 
-      <span className={styles.hintBar}>
+      <span className={styles.hintBar} style={{ opacity: scriptOpen ? 0 : 1 }}>
         {selectedHint}
       </span>
     </div>

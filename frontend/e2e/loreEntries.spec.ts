@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openFilePage, openViewPanel } from "./nav";
+import { openViewPanel } from "./nav";
 
 /**
  * 设定条目的两条新链路（对应宣传视频评论里的痛点）：

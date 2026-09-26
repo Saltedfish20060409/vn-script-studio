@@ -7,7 +7,9 @@ import {
   formatClockDate,
   formatRelativeTime,
   isDesktopViewport,
+  loadDesktopScriptOpen,
   markDesktopTipsSeen,
+  saveDesktopScriptOpen,
   shouldPlayBoot,
   shouldShowDesktop,
   shouldShowDesktopTips,
@@ -198,5 +200,30 @@ describe("桌面小抄（一次性引导）", () => {
     expect(text).toContain("排列图标");
     expect(text).toContain("关掉所有窗口");
     expect(text).not.toContain("重置桌面布局");
+  });
+});
+
+describe("桌面作品窗口的开关（刷新后回到同一扇窗）", () => {
+  it("没记过就不开窗（第一次进桌面看到的是图标）", () => {
+    expect(loadDesktopScriptOpen(fakeStorage())).toBe(false);
+    expect(loadDesktopScriptOpen(null)).toBe(false);
+  });
+
+  it("开着窗口时刷新，还是这扇窗", () => {
+    const store = fakeStorage();
+    saveDesktopScriptOpen(true, store);
+    expect(loadDesktopScriptOpen(store)).toBe(true);
+  });
+
+  it("用户特意关掉的窗口，刷新不该自己长回来", () => {
+    const store = fakeStorage();
+    saveDesktopScriptOpen(true, store);
+    saveDesktopScriptOpen(false, store);
+    expect(loadDesktopScriptOpen(store)).toBe(false);
+  });
+
+  it("storage 不可用（隐私模式）时安静地当作没开窗，不报错", () => {
+    expect(() => saveDesktopScriptOpen(true, null)).not.toThrow();
+    expect(loadDesktopScriptOpen(null)).toBe(false);
   });
 });

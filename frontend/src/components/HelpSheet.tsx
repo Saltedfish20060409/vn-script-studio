@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { HELP_DISCLAIMER, HELP_FAQ, HELP_QUICK } from "../lib/helpContent";
+import { HELP_DISCLAIMER, HELP_FAQ, HELP_QUICK, HELP_SHORTCUTS } from "../lib/helpContent";
 import {
   LN_QUICK_START_FAQ,
   LN_QUICK_START_INTRO,
@@ -108,6 +108,21 @@ export function HelpSheet({ open, onClose, embedded = false }: Props) {
             </div>
           </>
         )}
+
+        {/* 键盘快捷键：两条路都要有（键位跟写的是小说还是 VN 无关），
+            所以放在体裁分支之外，两条路共用一段。 */}
+        <section className={styles.shortcuts} data-testid="help-shortcuts">
+          <h3>键盘快捷键</h3>
+          <ul className={styles.keyList}>
+            {HELP_SHORTCUTS.map((s) => (
+              <li key={s.keys}>
+                <kbd className={styles.key}>{s.keys}</kbd>
+                <span>{s.what}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+
         <p className={styles.disclaimer}>{HELP_DISCLAIMER}</p>
         <div className={styles.actions}>
           <Link

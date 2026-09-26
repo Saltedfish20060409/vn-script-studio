@@ -2,7 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { openViewPanel } from "./nav";
 
 /**
- * 桌面视图回归：桌面只作启动器，选中作品进入稿纸（Word 壳）。
+ * 桌面回归：打开项目 = **在桌面上打开这个项目的窗口**（标题栏 + 稿纸）。
+ * 窗口标题栏的「全屏写作」才离开桌面（那一套由 writeShell / 组件台守着）。
  */
 
 const PASSWORD = "e2e-secret-123";
@@ -17,6 +18,8 @@ function seedLocalStorage(page: Page) {
       for (let v = 1; v <= 30; v += 1) localStorage.setItem(`vnss-notice-read-v${v}`, "1");
       localStorage.setItem("vnss-boot-v1", "1");
       localStorage.setItem("vnss-music-bar", "0");
+      // 组件台/真机共用同一台机器时别把"上次开着的那扇窗"带进来（这条用例要的是图标页）
+      localStorage.removeItem("vnss-desktop-window-v1");
       localStorage.setItem(
         "vnss-agent-float-v6",
         JSON.stringify({ mode: "docked", edge: "right", along: 96, size: "mini" })
@@ -49,16 +52,21 @@ async function registerAndLogin(page: Page, username: string) {
 
 async function goDesktopAndOpen(page: Page, title: string) {
   await page.evaluate(() => {
+    localStorage.removeItem("vnss-desktop-window-v1");
     localStorage.setItem("vnss-workspace-v1", JSON.stringify({ view: "desktop" }));
   });
   await page.reload();
   await expect(page.getByTestId("desktop-view")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("listitem", { name: title }).dblclick();
+  // 打开的是一扇窗：标题栏在，稿纸在它下面，桌面没有退场
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("script-editor")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("studio-ribbon")).toBeVisible();
 }
 
-test("桌面启动器：双击剧本进入稿纸，Ribbon 与大纲可用", async ({ page }) => {
+test("桌面作品窗口：双击剧本在桌面上开窗，Ribbon 与大纲可用；全屏写作与返回桌面", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1440, height: 860 });
   const username = randomName("e2e_desktop_");
   await registerAndLogin(page, username);
@@ -71,12 +79,17 @@ test("桌面启动器：双击剧本进入稿纸，Ribbon 与大纲可用", asyn
 
   await goDesktopAndOpen(page, title);
 
-  // 不再套桌面双壳窗口
-  await expect(page.getByTestId("desktop-script-window")).toHaveCount(0);
+  // 桌面还在（图标让位给窗口，任务栏与标题栏照旧）——一扇窗，一套稿纸
+  await expect(page.getByTestId("desktop-view")).toBeVisible();
+  await expect(page.getByTestId("desktop-task-script")).toBeVisible();
 
   const ribbon = page.getByTestId("studio-ribbon");
   const box = await ribbon.boundingBox();
   expect(box?.height ?? 0).toBeGreaterThan(30);
+  // 工作台摆在标题栏(30px)与任务栏(46px)之间：不能被压到屏幕外，也不能盖住任务栏
+  // （boundingBox 给的是 {x, y, width, height}）
+  expect(Math.round(box?.y ?? -1)).toBeGreaterThanOrEqual(30);
+  expect(Math.round((box?.y ?? 0) + (box?.height ?? 0))).toBeLessThanOrEqual(860 - 46);
 
   // 视图 → 结构分析（原「写作分析」；文件菜单里那条已按"同一功能不要两套 UI"去掉）
   await openViewPanel(page, "结构分析");
@@ -87,9 +100,18 @@ test("桌面启动器：双击剧本进入稿纸，Ribbon 与大纲可用", asyn
   // 章节可切
   await page.getByRole("option").nth(1).click();
   await expect(page.getByRole("option").nth(1)).toHaveAttribute("aria-selected", "true");
+
+  // 「全屏写作」= 收起桌面、稿纸铺满；顶栏「文件 → 返回桌面」回来还是这扇窗
+  await page.getByTestId("script-window-fullscreen").click();
+  await expect(page.getByTestId("desktop-view")).toHaveCount(0);
+  await expect(page.getByTestId("script-editor")).toBeVisible();
+  await page.locator("summary", { hasText: "文件" }).first().click();
+  await page.getByRole("menuitem", { name: "返回桌面" }).click();
+  await expect(page.getByTestId("desktop-view")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
 });
 
-test("桌面启动器：图标角标显示章数，「继续写作」进入稿纸", async ({ page }) => {
+test("桌面作品窗口：图标角标显示章数，「继续写作」打开该作品的窗口", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 860 });
   const username = randomName("e2e_desktop_badge_");
   await registerAndLogin(page, username);
@@ -106,6 +128,7 @@ test("桌面启动器：图标角标显示章数，「继续写作」进入稿�
   await page.waitForTimeout(2500);
 
   await page.evaluate(() => {
+    localStorage.removeItem("vnss-desktop-window-v1");
     localStorage.setItem("vnss-workspace-v1", JSON.stringify({ view: "desktop" }));
   });
   await page.reload();
@@ -121,8 +144,11 @@ test("桌面启动器：图标角标显示章数，「继续写作」进入稿�
   await expect(resume).toBeVisible();
   await expect(resume).toContainText(chapterLabel);
   await resume.click();
+  // 「继续写作」打开的还是这扇窗（当前作品 + 上次那一章），不是跳去另一套外壳
+  await expect(page.getByTestId("desktop-script-window")).toBeVisible();
   await expect(page.getByTestId("script-editor")).toBeVisible();
   await expect(page.getByRole("option").nth(1)).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("desktop-resume")).toHaveCount(0);
 });
 
 test("工作台视图：页脚在页面最底部，没被音乐条压住", async ({ page }) => {

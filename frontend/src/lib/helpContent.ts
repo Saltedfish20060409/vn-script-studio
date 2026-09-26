@@ -1,5 +1,7 @@
 /** Shared copy for the in-app help sheet and the public /help FAQ. */
 
+import { MENU_MNEMONICS, MENU_NAV_HINT, WRITE_SHORTCUTS, menuKeys } from "./shortcuts";
+
 export const HELP_DISCLAIMER =
   "AI 生成的内容仅供参考，请自行审稿后再公开使用。没配自己的密钥时走站内免费模型（每日限额），配了就走你自己的账户。";
 
@@ -29,7 +31,7 @@ export const HELP_FAQ: Array<{ q: string; a: string }> = [
   },
   {
     q: "「桌面视角」怎么写？跟工作台有什么区别？",
-    a: "只是把入口做成「像电脑桌面」的样子，写作本身和工作台一模一样（同一个编辑器、同一套设定）。双击图标打开、右键重命名/删除、开始菜单里能切回工作台；手机窄屏自动用工作台。第一次进会弹一张小抄，键位都在上面。",
+    a: "桌面把入口做成「像电脑桌面」的样子：双击剧本 = 在桌面上打开这个作品的窗口，标题栏的「⛶ 全屏写作」一按就只剩稿子，「文件 → 返回桌面」回来。写作本身和工作台完全相同（同一个编辑器、同一套设定，不会有两份稿子）。右键图标可重命名/删除，开始菜单能切回工作台；手机窄屏自动用工作台。",
   },
   {
     q: "怎么开始写？",
@@ -79,4 +81,20 @@ export const HELP_FAQ: Array<{ q: string; a: string }> = [
     q: "内容边界：可以写什么？",
     a: "本工具与所用 AI 模型均不提供色情、露骨成人内容的生成；请勿用于违法或侵权内容。分享页内容由作者自负，违规可能被删除并封号。",
   },
+];
+
+/**
+ * 「键盘快捷键」一节。
+ *
+ * 为什么要单独一节：这些键以前散在各自按钮的 `title` 里——**没人会去逐个悬停**，
+ * 等于不存在（用户原话："没有在界面上告诉任何人"）。
+ * 内容从 lib/shortcuts 生成，菜单标题上印的那几个键与这里、以及真正生效的绑定
+ * 是同一份数据，不会出现"帮助里写 Alt+E、实际按了没反应"。
+ */
+export const HELP_SHORTCUTS: Array<{ keys: string; what: string }> = [
+  ...MENU_MNEMONICS.map((m) => ({
+    keys: menuKeys(m),
+    what: `打开「${m.label}」菜单（打开后 ${MENU_NAV_HINT}）`,
+  })),
+  ...WRITE_SHORTCUTS,
 ];

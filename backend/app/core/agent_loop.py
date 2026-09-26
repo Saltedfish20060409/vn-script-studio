@@ -22,6 +22,7 @@ from app.core.agent_context import (
     is_agent_task,
     task_hint,
 )
+from app.core.agent_retrieve import PrefetchReport, run_write_prefetch, should_prefetch
 from app.core.agent_tools import (
     ASYNC_TOOL_NAMES,
     format_tool_result_message,
@@ -31,8 +32,6 @@ from app.core.agent_tools import (
 )
 from app.core.ai import DeepSeekConfig
 from app.core.harness.audit_full import full_audit_draft
-from app.core.write_gate import WriteGateResult, gate_continue_draft, should_write_gate
-from app.core.agent_retrieve import PrefetchReport, run_write_prefetch, should_prefetch
 from app.core.lenses import (
     build_lens_prompt_for_project,
     infer_lens_intent,
@@ -51,6 +50,7 @@ from app.core.narrative_review import (
     run_narrative_self_review,
     should_self_review,
 )
+from app.core.write_gate import WriteGateResult, gate_continue_draft, should_write_gate
 from app.core.writing_craft import build_writing_craft_prompt, select_craft_mode
 from app.domain.types import (
     AgentAction,
