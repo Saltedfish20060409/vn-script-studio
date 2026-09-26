@@ -888,3 +888,10 @@ a:not(.no-underline-anim):hover {
 a:not(.no-underline-anim):focus-visible {
   background-size: 100% 2.5px;
 }
+
+/* 浮在稿纸上的面板（Ribbon 下拉 / 视图抽屉）：--panel-bg 在自定义壁纸下半透明，
+   必须用不透明 --paper 打底再叠主题色，否则会透出后面的字。 */
+.opaque-panel-bg {
+  background-color: var(--paper);
+  background-image: linear-gradient(var(--panel-bg), var(--panel-bg));
+}

@@ -7,25 +7,27 @@ import styles from "./ChapterOutline.module.css";
 /**
  * 折叠状态按**体裁分别记**。
  *
- * 为什么要分：同一个键会让"我在写小说时展开了大纲"影响"我写 VN 时的默认"，
- * 而两类工程的默认本来就相反（见下面 GENRE_DEFAULT_COLLAPSED），
- * 一个键等于让两个默认互相打架。
+ * 为什么要分：同一个键会让「写小说时展开了大纲」影响「写 VN 时的记忆」，
+ * 两个工作流的偏好不该互相覆盖。默认两边都是展开（见 OUTLINE_DEFAULT_COLLAPSED）。
  */
 const COLLAPSED_KEY_PREFIX = "vnss-chapter-outline-collapsed";
 const NARROW_MQ = "(max-width: 720px)";
 
 /**
- * 默认是否收起。
+ * 默认是否收起：**VN / 小说都是展开**。
  *
- * **两类都是展开**（这里改过：起初 VN 默认收起，理由是"VN 的结构在脚本图里"）。
- * 但实际用起来不对：脚本作者切章/切场是高频动作，收起等于每次都多一步，
- * 而左侧栏本来就只在宽屏出现、窄屏自动折成顶部横条，并不占稿纸的垂直空间。
- * 真正需要"只留稿子"时该按的是专注模式，不是把大纲藏起来。
+ * 曾试过 VN 默认收起（以为结构在脚本图里），实际切章/切场是高频动作，
+ * 收起等于每次多一步；左侧栏只在宽屏出现、窄屏折成横条，不占稿纸纵向空间。
+ * 「只留稿子」交给专注模式。
  */
-const GENRE_DEFAULT_COLLAPSED = { vn: false, novel: false } as const;
+const OUTLINE_DEFAULT_COLLAPSED = false;
+
+function outlineGenre(genre?: "vn" | "novel"): "vn" | "novel" {
+  return genre === "novel" ? "novel" : "vn";
+}
 
 type Props = {
-  /** 只影响默认折叠状态与用词；两边默认都是展开（见 GENRE_DEFAULT_COLLAPSED）。 */
+  /** 只用于分键记折叠偏好；默认两边都展开。 */
   genre?: "vn" | "novel";
   chapterId: string;
   chapters: SceneChapter[];
@@ -52,7 +54,7 @@ export function ChapterOutline(props: Props) {
     typeof window !== "undefined" ? window.matchMedia(NARROW_MQ).matches : false
   );
   const [collapsed, setCollapsed] = useState(() => {
-    const genre = props.genre === "novel" ? "novel" : "vn";
+    const genre = outlineGenre(props.genre);
     try {
       const stored = localStorage.getItem(`${COLLAPSED_KEY_PREFIX}-${genre}`);
       if (stored === "1") return true;
@@ -60,7 +62,7 @@ export function ChapterOutline(props: Props) {
     } catch {
       /* ignore */
     }
-    return GENRE_DEFAULT_COLLAPSED[genre];
+    return OUTLINE_DEFAULT_COLLAPSED;
   });
 
   useEffect(() => {
@@ -74,7 +76,7 @@ export function ChapterOutline(props: Props) {
   function toggleCollapsed() {
     setCollapsed((prev) => {
       const next = !prev;
-      const genre = props.genre === "novel" ? "novel" : "vn";
+      const genre = outlineGenre(props.genre);
       try {
         localStorage.setItem(`${COLLAPSED_KEY_PREFIX}-${genre}`, next ? "1" : "0");
       } catch {

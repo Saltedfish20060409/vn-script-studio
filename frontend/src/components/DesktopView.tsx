@@ -332,16 +332,20 @@ export function DesktopView({
     /* F2 / Delete：桌面图标的通用键盘操作（与右键菜单「重命名 / 删除」同一对动作）。
        上一版重构把这两个键丢了——只剩方向键与 Enter——而右键菜单还在，
        于是"能点鼠标、不能按键盘"。回归用例：desktop.harness.spec.ts
-       「键盘：方向键移动、Enter 打开、F2 重命名、Delete 删除」。 */
-    if (e.key === "F2" && onRenameProject) {
-      e.preventDefault();
-      onRenameProject(icon.id);
-      return;
-    }
-    if (e.key === "Delete" && onDeleteProject) {
-      e.preventDefault();
-      onDeleteProject(icon.id);
-      return;
+       「键盘：方向键移动、Enter 打开、F2 重命名、Delete 删除」。
+       回调约定是**裸项目 id**（与右键一致）；icon.id 带 `project:` 前缀，这里剥掉。 */
+    if (icon.id.startsWith("project:")) {
+      const projectId = icon.id.slice("project:".length);
+      if (e.key === "F2" && onRenameProject) {
+        e.preventDefault();
+        onRenameProject(projectId);
+        return;
+      }
+      if (e.key === "Delete" && onDeleteProject) {
+        e.preventDefault();
+        onDeleteProject(projectId);
+        return;
+      }
     }
     if (
       e.key === "ArrowLeft" ||

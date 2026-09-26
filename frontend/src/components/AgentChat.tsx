@@ -1698,7 +1698,7 @@ export function AgentChat({
       const assistantMsg: AgentChatMessage = {
         role: "assistant",
         content: [
-          "已跑完事实扫描，候选先放进了「写作分析 → 待审列表」，需要你逐条确认后才会真正更新关系图和时间线——AI 不会直接改动。",
+          "已跑完事实扫描，候选先放进了「结构分析 → 待审列表」，需要你逐条确认后才会真正更新关系图和时间线——AI 不会直接改动。",
           s
             ? `摘要：新增候选 ${s.added}（关系 ${s.characterLinks} / 时间线 ${s.timelineEvents}）。`
             : "",

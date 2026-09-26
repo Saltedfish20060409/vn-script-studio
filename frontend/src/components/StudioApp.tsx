@@ -260,7 +260,7 @@ const AnalysisPanelsImpl = lazy(() =>
 );
 function AnalysisPanels(props: ComponentProps<typeof AnalysisPanelsImpl>) {
   return (
-    <Suspense fallback={<LazyPanelFallback label="写作分析面板" />}>
+    <Suspense fallback={<LazyPanelFallback label="结构分析面板" />}>
       <AnalysisPanelsImpl {...props} />
     </Suspense>
   );
@@ -2991,8 +2991,13 @@ export function StudioApp() {
             setStatus("已放弃这次改稿的对照预览。正文保持原样，没有做任何改动。");
           }}
           onInsertScene={() => insertAtCaret(`\n${SCENE_SEPARATOR}\n`)}
-          activeViewPanel={overlay?.type === "view" ? overlay.panel : null}
-          analysisOpen={overlay?.type === "analysis"}
+          activeQuickPanel={
+            overlay?.type === "view"
+              ? overlay.panel
+              : overlay?.type === "analysis"
+                ? "analysis"
+                : null
+          }
         />
 
         <div className={styles.layout}>
@@ -3400,7 +3405,7 @@ export function StudioApp() {
 
                 {overlay?.type === "analysis" ? (
                   <StudioViewDrawer
-                    title="写作分析"
+                    title="结构分析"
                     size={resolveViewSize("analysis", viewSizeOverrides)}
                     onToggleSize={() => toggleViewSize("analysis")}
                     onClose={() => applyOverlay(null)}

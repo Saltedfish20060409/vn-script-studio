@@ -59,7 +59,7 @@ export function StudioViewDrawer({
 }: DrawerProps) {
   return (
     <aside
-      className={`${styles.drawer} ${size === "wide" ? styles.drawerWide : ""} ${
+      className={`${styles.drawer} opaque-panel-bg ${size === "wide" ? styles.drawerWide : ""} ${
         size === "full" ? styles.drawerFull : ""
       }`}
       data-testid="view-drawer"

@@ -24,10 +24,8 @@ type Props = {
   showAdmin?: boolean;
   adminAlert?: boolean;
   canReturnDesktop?: boolean;
-  /** 当前视图抽屉面板：快捷条高亮用（仅 VN） */
-  activeViewPanel?: ViewPanel | null;
-  /** 结构分析抽屉是否开着（仅 VN 的快捷条用） */
-  analysisOpen?: boolean;
+  /** 当前快捷条高亮：视图面板 id，或结构分析 */
+  activeQuickPanel?: ViewPanel | "analysis" | null;
   fileInputRef: RefObject<HTMLInputElement | null>;
   onTitleChange: (value: string) => void;
   onFocusToggle: () => void;
@@ -99,7 +97,7 @@ const VIEW_QUICK: ReadonlyArray<readonly [ViewPanel, string]> = [
  * VN 多一条「视图快捷条」（设定/角色工坊/地图/剧情状态 + 结构分析）：
  * 轻小说的结构单位是"章"，左侧大纲就够；VN 的结构单位是"场景 / 分支 / 结局"，
  * 写作时要反复在稿纸与结构之间来回看——所以它必须是一击可达，
- * 而不是埋在「视图 → 写作分析」里（用户反馈："不如原来适合写 VN 剧本"）。
+ * 而不是埋在「视图 → 结构分析」里（用户反馈："不如原来适合写 VN 剧本"）。
  */
 export function StudioRibbon({
   copy = copyFor("vn"),
@@ -115,8 +113,7 @@ export function StudioRibbon({
   showAdmin = false,
   adminAlert = false,
   canReturnDesktop = false,
-  activeViewPanel = null,
-  analysisOpen = false,
+  activeQuickPanel = null,
   fileInputRef,
   onTitleChange,
   onFocusToggle,
@@ -200,8 +197,11 @@ export function StudioRibbon({
   }, []);
 
   function onPanelKeyDown(e: React.KeyboardEvent<HTMLElement>) {
+    // 只扫当前打开的那一组：关闭的 <details> 里 menuitem 仍在 DOM，
+    // 扫全 nav 会在末项再按 ↓ 时焦点飞到「文件」等隐藏项。
+    const openPanel = e.currentTarget.querySelector("details[open]");
     const items = Array.from(
-      e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')
+      (openPanel ?? e.currentTarget).querySelectorAll<HTMLElement>('[role="menuitem"]')
     ).filter((el) => !el.hasAttribute("disabled"));
     if (!items.length) return;
     const at = items.indexOf(document.activeElement as HTMLElement);
@@ -297,7 +297,7 @@ export function StudioRibbon({
             >
               文件
             </summary>
-            <div className={styles.panel} role="menu">
+            <div className={`${styles.panel} opaque-panel-bg`} role="menu">
               <button
                 type="button"
                 role="menuitem"
@@ -438,7 +438,7 @@ export function StudioRibbon({
             >
               开始
             </summary>
-            <div className={styles.panel} role="menu">
+            <div className={`${styles.panel} opaque-panel-bg`} role="menu">
               <button
                 type="button"
                 role="menuitem"
@@ -512,7 +512,7 @@ export function StudioRibbon({
             >
               审阅
             </summary>
-            <div className={styles.panel} role="menu">
+            <div className={`${styles.panel} opaque-panel-bg`} role="menu">
               <button
                 type="button"
                 role="menuitem"
@@ -553,7 +553,7 @@ export function StudioRibbon({
             >
               视图
             </summary>
-            <div className={styles.panel} role="menu">
+            <div className={`${styles.panel} opaque-panel-bg`} role="menu">
               {VIEW_QUICK.map(([id, label]) => (
                 <button
                   key={id}
@@ -628,9 +628,9 @@ export function StudioRibbon({
               key={id}
               type="button"
               className={
-                activeViewPanel === id ? styles.viewQuickOn : styles.viewQuickBtn
+                activeQuickPanel === id ? styles.viewQuickOn : styles.viewQuickBtn
               }
-              aria-pressed={activeViewPanel === id}
+              aria-pressed={activeQuickPanel === id}
               onClick={() => onOpenViewPanel(id)}
             >
               {label}
@@ -640,9 +640,13 @@ export function StudioRibbon({
               所以它也在快捷条上，而不是只在「视图」菜单里。 */}
           <button
             type="button"
-            className={analysisOpen ? styles.viewQuickOn : styles.viewQuickBtn}
+            className={
+              activeQuickPanel === "analysis"
+                ? styles.viewQuickOn
+                : styles.viewQuickBtn
+            }
             data-testid="vn-quick-analysis"
-            aria-pressed={analysisOpen}
+            aria-pressed={activeQuickPanel === "analysis"}
             title="结构分析：分支 / 选项 / 结局 / 节奏（与稿纸来回对照）"
             onClick={onOpenAnalysis}
           >

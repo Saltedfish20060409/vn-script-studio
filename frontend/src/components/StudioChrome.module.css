@@ -67,13 +67,7 @@
   width: min(52vw, 560px);
   max-width: 100%;
   border-left: 2px solid var(--line);
-  /* 抽屉是**压在稿纸之上**的面板，底色必须不透明：
-     直接用它 --panel-bg 在自定义壁纸下是半透明的（52% / rgba .55），
-     稿纸上的字会透上来（用户报过"透出后面的字"）。
-     做法：不透明的 --paper 打底，再把 --panel-bg 当作一层渐变叠上去——
-     既保留主题色，又保证不透。 */
-  background-color: var(--paper);
-  background-image: linear-gradient(var(--panel-bg), var(--panel-bg));
+  /* 底色见全局 .opaque-panel-bg（与 Ribbon 下拉共用） */
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08);
 }
 

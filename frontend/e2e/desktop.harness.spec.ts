@@ -180,9 +180,9 @@ test("键盘：方向键移动、Enter 打开、F2 重命名、Delete 删除", a
   await expect(page.getByRole("listitem", { name: "长篇1" })).toBeFocused();
 
   await page.keyboard.press("F2");
-  await expect(page.getByTestId("harness-log")).toContainText("rename:project:q0");
+  await expect(page.getByTestId("harness-log")).toContainText("rename:q0");
   await page.keyboard.press("Delete");
-  await expect(page.getByTestId("harness-log")).toContainText("delete:project:q0");
+  await expect(page.getByTestId("harness-log")).toContainText("delete:q0");
 
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("fake-workbench")).toBeVisible();
