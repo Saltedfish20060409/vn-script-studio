@@ -933,6 +933,29 @@
   overflow: hidden;
 }
 
+/*
+ * 设定抽屉根节点：铺满时 `.drawerFull .drawerBody > * { flex:1 }` 会作用在每一个
+ * 直系子节点上。以前 WorldPanel 用 Fragment，subNav 与内容各占一半高度，
+ * 表现就是「上面的页签条被撑开」。包成单根后，只有内容区吃剩余高度。
+ */
+.worldRoot {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  flex: 1 1 auto;
+}
+
+.worldRoot > .subNav {
+  flex: 0 0 auto;
+}
+
+.worldBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
 .subTab,
 .subActive {
   border-radius: 0;

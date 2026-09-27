@@ -78,7 +78,7 @@ export function WorldPanel({
   // 注意：「更多」按钮必须一直在（能开能关）——上一版展开后按钮自己消失，点开就收不回来。
   const [moreOpen, setMoreOpen] = useState(false);
   return (
-    <>
+    <div className={styles.worldRoot} data-testid="world-panel">
       <div className={styles.subNav} style={{ padding: "0.75rem 1.1rem 0" }}>
         <button
           type="button"
@@ -124,7 +124,7 @@ export function WorldPanel({
         </button>
       </div>
       {worldSub === "characters" && (
-        <section className={styles.panel}>
+        <section className={`${styles.panel} ${styles.worldBody}`}>
           <div className={styles.toolbar}>
             <span>角色卡（删除不会自动改写对白）</span>
             <button type="button" className={styles.primary} onClick={onAddCharacter}>
@@ -233,7 +233,7 @@ export function WorldPanel({
         </section>
       )}
       {worldSub === "bible" && (
-        <section className={styles.panel}>
+        <section className={`${styles.panel} ${styles.worldBody}`}>
           <div className={styles.toolbar}>
             {/* 这段以前写的是「每格有长度上限，超出会被截断」——没说清截的是什么，
                 读到的人会以为**保存**会把世界观 / 大纲砍掉。实际不会：这几个框想写多长都存得下，
@@ -344,12 +344,12 @@ export function WorldPanel({
         </section>
       )}
       {worldSub === "lore" && (
-        <section className={styles.panel} style={{ padding: 0 }}>
+        <section className={`${styles.panel} ${styles.worldBody}`} style={{ padding: 0 }}>
           <LorePanel projectId={projectId} />
         </section>
       )}
       {worldSub === "entries" && (
-        <section className={styles.panel} style={{ padding: 0 }}>
+        <section className={`${styles.panel} ${styles.worldBody}`} style={{ padding: 0 }}>
           <LoreEntriesPanel
             entries={loreEntries}
             onChange={onLoreEntriesChange}
@@ -358,6 +358,6 @@ export function WorldPanel({
           />
         </section>
       )}
-    </>
+    </div>
   );
 }
