@@ -55,3 +55,32 @@ def test_endpoint_returns_the_same_object_shape():
     payload = asyncio.run(get_notice())
     assert payload["version"] == LATEST["version"]
     assert len(payload["announcements"]) == len(ANNOUNCEMENTS)
+
+
+def test_no_section_is_repeated_verbatim_across_announcements():
+    """同一段话不要在两条公告里各说一遍。
+
+    实盘：9.26 那次发布先写了 v7，同一天又加了一条 v8 补桌面与键盘的事，
+    于是键位表、「接下来」那段在两条里各有一份 —— 读者会以为"这次又改了一遍"，
+    而且两条对同一件事的说法还会互相打架（v7 说"桌面只当启动器"，v8 说反了）。
+    两条后来合并成一条（version 8）。这一条守着别再来第二次。
+    """
+    seen: dict[str, int] = {}
+    for a in ANNOUNCEMENTS:
+        for s in a["sections"]:
+            key = " ".join(s["body"].split())
+            assert key not in seen, (
+                f"v{a['version']} 的「{s['heading']}」与 v{seen[key]} 里的正文逐字重复——"
+                "同一天同一件事请合并成一条公告"
+            )
+            seen[key] = a["version"]
+
+
+def test_desktop_launcher_claim_is_gone():
+    """v7 里那句「桌面视图只当启动器」已被推翻（改成打开作品 = 开它自己的窗口）。
+
+    公告是用户读到的"官方说明"：产品行为改了、公告还留着旧说法，
+    比没有公告更糟。这条防止它被重新写回去。
+    """
+    text = "\n".join(s["body"] for a in ANNOUNCEMENTS for s in a["sections"])
+    assert "桌面视图只当启动器" not in text
