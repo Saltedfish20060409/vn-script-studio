@@ -507,13 +507,28 @@ html[data-panel-glass="ink"] .stageOverlay {
   clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
 }
 
+/*
+ * 面板上的"元信息行"（状态 / 用量 / 依据 / 没装下的清单）。
+ *
+ * 为什么不能再用弱化色 + 透明底（用户反馈"字太浅、背景偏灰看不清"）：
+ * AgentFloat 的 .panel 底是**半透明渐变 + 背景图 + backdrop-filter**，自定义背景的
+ * 「mist」档 `--panel-bg` 只有 52% 不透明度，桌面会透过来，实际底色是浮动的中间调。
+ * 在那种底上 `--ink-soft` 再叠一层 opacity 就是二次变淡，整行糊掉。
+ *
+ * 这条教训本仓已经记过两次（见 .sectionToggle / .preQBtn），但下面这几行元信息当时
+ * 没被一起改到。现在统一成同一个办法：**自带一层浅底 + 主墨色**，层次感交给字号和底，
+ * 不再靠把字调淡。
+ */
 .statusLine {
   margin: 0;
   flex-shrink: 0;
+  align-self: flex-start;
+  padding: 0.12rem 0.45rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
   font-size: 0.68rem;
-  color: var(--ink-soft);
+  color: var(--ink);
   letter-spacing: 0.02em;
-  opacity: 0.85;
 }
 
 /* 免费档提示：一行、不打扰、可忽略（长任务建议配自己的 Key） */
@@ -538,12 +553,18 @@ html[data-panel-glass="ink"] .stageOverlay {
 .contextLine,
 .contextWarn {
   flex-shrink: 0;
+  align-self: flex-start;
   margin: 0 0 0.25rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
   font-size: 0.7rem;
-  color: var(--ink-soft);
+  color: var(--ink);
 }
 
 .contextWarn {
+  /* 告警色 + 暖底：在半透明面板上也要一眼看得见（见 .statusLine 上方那段说明） */
+  background: color-mix(in srgb, var(--accent-hot) 14%, transparent);
   color: var(--accent-hot);
 }
 
@@ -551,7 +572,7 @@ html[data-panel-glass="ink"] .stageOverlay {
   display: block;
   margin-top: 0.15rem;
   line-height: 1.5;
-  opacity: 0.85;
+  /* 不再叠 opacity：父级已是主墨色，层次靠字号，不靠把字调淡 */
 }
 
 /* 「没装下的 N 项」：默认收起，点开看每一项怎么取回 */
@@ -559,13 +580,16 @@ html[data-panel-glass="ink"] .stageOverlay {
   flex-shrink: 0;
   margin: 0 0 0.3rem;
   font-size: 0.7rem;
-  color: var(--ink-soft);
+  color: var(--ink);
 }
 
 .missing summary {
   cursor: pointer;
   list-style: none;
-  padding: 0.1rem 0;
+  align-self: flex-start;
+  padding: 0.12rem 0.45rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-hot) 14%, transparent);
   color: var(--accent-hot);
 }
 
@@ -575,7 +599,9 @@ html[data-panel-glass="ink"] .stageOverlay {
 
 .missing ul {
   margin: 0.15rem 0 0;
-  padding-left: 0.9rem;
+  padding: 0.3rem 0.45rem 0.3rem 0.9rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   display: grid;
   gap: 0.2rem;
 }
@@ -590,18 +616,21 @@ html[data-panel-glass="ink"] .stageOverlay {
 
 .missing li em {
   font-style: normal;
-  opacity: 0.85;
+  color: var(--ink-soft);
 }
 
 .missing li span {
   display: block;
-  opacity: 0.75;
+  color: var(--ink-soft);
 }
 
 .missingNote {
   margin: 0.3rem 0 0;
+  padding: 0.12rem 0.45rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   line-height: 1.5;
-  opacity: 0.75;
+  color: var(--ink);
 }
 
 /* 一键取回：把"提示"变成"动作"（发的就是后端给的那句话，前端不拼工具名） */
@@ -626,25 +655,36 @@ html[data-panel-glass="ink"] .stageOverlay {
   flex-shrink: 0;
   margin: 0 0 0.3rem;
   font-size: 0.7rem;
-  color: var(--ink-soft);
+  color: var(--ink);
 }
 
 .evidence summary {
   cursor: pointer;
   list-style: none;
-  padding: 0.1rem 0;
+  align-self: flex-start;
+  padding: 0.12rem 0.45rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
 }
 
 .evidence summary::-webkit-details-marker {
   display: none;
 }
 
+/*
+ * 折叠指示三角。**别把这行改成看起来"能编译就行"的字符**：
+ * 这里原来写的是「鈻?」——那是 UTF-8 的 "▶"（E2 96 B6）被当成 GBK 解码后再存回 UTF-8
+ * 的乱码。而且折叠态与展开态当时是**同一个（乱码）字符**，等于连"展开了"这个提示也没了。
+ * 现在恢复成两个真正的三角：折叠 ▶ / 展开 ▼。
+ */
 .evidence summary::before {
-  content: "鈻?";
+  content: "▶";
+  margin-right: 0.3rem;
+  font-size: 0.6rem;
 }
 
 .evidence[open] summary::before {
-  content: "鈻?";
+  content: "▼";
 }
 
 .evidence ul {
