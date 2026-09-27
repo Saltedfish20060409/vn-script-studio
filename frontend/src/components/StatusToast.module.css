@@ -1,6 +1,7 @@
 .toast {
   position: fixed;
-  z-index: 70;
+  /* 高于顶栏(90)与 Agent 展开面板(95)，保存/错误提示不被 chrome 挡住 */
+  z-index: 105;
   top: max(0.75rem, env(safe-area-inset-top, 0px));
   right: max(0.75rem, env(safe-area-inset-right, 0px));
   display: flex;

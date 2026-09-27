@@ -1125,8 +1125,8 @@
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
   backdrop-filter: var(--rail-blur);
   -webkit-backdrop-filter: var(--rail-blur);
-  /* 工具栏按钮必须可点：Agent 悬浮面板(fixed z-60)在窄视口会盖到
-     换行到右侧的按钮，工具栏提升到其之上 */
+  /* 工具栏在稿纸内容之上；Agent 展开面板(95)会盖住本条——展开审稿时这是预期。
+     未展开时本条仍高于贴边签(65)，窄屏换行按钮可点。 */
   position: relative;
   z-index: 70;
 }

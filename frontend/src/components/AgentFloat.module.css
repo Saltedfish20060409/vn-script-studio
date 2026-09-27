@@ -1,6 +1,7 @@
 .tab {
   position: fixed;
-  /* 高于音乐条(60)避免被盖住；低于顶栏(70)保证窄屏工具栏按钮可点 */
+  /* 收起态贴边签：高于音乐条(60)、低于工具条(70)/顶栏(90)，不挡写作 chrome。
+     展开面板见 .panel（更高）。 */
   z-index: 65;
   border: 2px solid var(--line);
   border-radius: var(--radius-sm);
@@ -93,8 +94,12 @@
 .panelCorner,
 .panelLarge {
   position: fixed;
-  /* 高于音乐条(60)避免被盖住；低于顶栏(70)保证窄屏工具栏按钮可点 */
-  z-index: 65;
+  /*
+   * 展开面板必须盖过持久 chrome，否则会被稿纸工具条(70)与顶栏 Ribbon(90)挡住。
+   * 层序（高→低）：Boot/公告 → 桌宠(380) → 本面板(95) → 顶栏(90) → 抽屉(80) → 工具条(70) → 音乐条(60)。
+   * 模态确认/帮助/管理仍更高(100+)，打开时盖住本面板是预期。
+   */
+  z-index: 95;
   display: flex;
   flex-direction: column;
   border: 2px solid var(--line);

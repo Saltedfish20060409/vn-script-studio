@@ -3,7 +3,8 @@
   left: 1rem;
   right: 1rem;
   bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-  z-index: 40;
+  /* 高于音乐条(60)，避免安装条被底栏挡住 */
+  z-index: 62;
   display: flex;
   align-items: center;
   gap: 0.55rem;
