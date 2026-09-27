@@ -1,4 +1,4 @@
-"""nginx / compose 配置守卫：**生产配置不许退步**，且几份拷贝不许飘开。
+"""nginx / compose 配置守卫：**生产契约不许退步**，且几份拷贝不许飘开。
 
 为什么专门一个文件：
 1. 线上出过一次 413——背景图是以 base64 data URL 存进设置 JSON 的，而 nginx 少了
@@ -8,25 +8,29 @@
 3. `Permissions-Policy` 写成 `microphone=()` 等于对所有用户禁用麦克风（语音输入失效）；
    CSP 少了 `media-src`/`worker-src` 的 `blob:` 会挡掉 blob 音频与 Worker。
    这两条**线上那份是对的、仓库模板曾经是错的**，靠"两边同步"的口头约定没能守住。
-4. `deploy/setup_server.sh` 曾经复制 `frontend/nginx.conf`（本地试用的最小配置：只 listen 80、
+4. `deploy/setup_server.sh` 曾经复制 `frontend/nginx.conf`（镜像内自带的默认配置：只 listen 80、
    没有上传上限、没有缓存策略），于是新装的服务器会把这几个坑再踩一遍；
-   而 `deploy/docker-compose.yml` 也少了 `443` 与 `./certs` 挂载——照着它装的新机器
-   **nginx 会因为找不到证书直接起不来**。
+   而 compose 也少了 `443` 与 `./certs` 挂载——照着装的新机器**nginx 会因为找不到证书
+   直接起不来**。
 
-## 这个文件能做什么、做不到什么（重要）
+## 文件布局（这份测试的路径就是这份布局的守卫）
 
-**能**：把"生产配置必须有哪些指令""几份拷贝共有的部分必须一致""装机与 compose 必须带上
-443/certs/上传上限"钉成断言，谁改动导致退步都会红。
+| 文件 | 角色 | 入库 |
+|---|---|---|
+| `ops/nginx.conf` | **生产 nginx 契约**（TLS / 443 / 安全头 / 缓存 / 反代） | ✅ 已跟踪 |
+| `ops/docker-compose.server.yml` | **生产 compose 契约**（含 443 与 certs 挂载） | ✅ 已跟踪 |
+| `frontend/nginx.conf` | 镜像内自带的默认配置（本地试用 + 无挂载时兜底） | ✅ 已跟踪 |
+| `deploy/setup_server.sh`、`deploy/push.py` … | 私有运维脚本 | ❌ 不入库（`.gitignore` 有意为之） |
 
-**做不到**：unit test 看不到服务器。**线上那份与仓库的差异**由 `deploy/push.py` 在每次部署
-（或 `--check`）时比对，打印 `NGINX OK / NGINX DRIFT`——那才是唯一能看见线上文件的地方。
+前两份原先只存在于维护者机器（`deploy/`）与服务器上，于是双双漂开。放进 `ops/` 之后：
+单一真源、漂移结构性消失、这份守卫在**任何环境**都能跑。第三份是本地试用配置，它不得与
+生产配置在共有的安全头上分叉。
 
-## 为什么有些用例会 skip
+## 做不到什么（写清楚免得误会）
 
-`deploy/` 整个目录**不在版本控制里**（根 `.gitignore` 第 51 行是 `deploy/`，把第 45/46 行
-更细的规则一起吞了；`git ls-files deploy/` 为空）。所以新克隆与 CI 上不存在那些文件，
-依赖它们的用例会 skip，只在维护者机器上跑。唯一**始终**能跑的是 `frontend/nginx.conf`
-（它是版本控制的，且是镜像内自带的默认配置）。
+unit test 看不到服务器。**线上那份与 `ops/` 的差异**由 `deploy/push.py` 在每次部署
+（或 `--check`）时比对，打印 `DRIFT OK / DRIFT!!`——那才是唯一能看见线上文件的地方。
+依赖 `deploy/`（不入库）的那几条用例在没有该目录的环境会 **skip**。
 """
 
 from __future__ import annotations
@@ -37,20 +41,22 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent.parent
-PROD = REPO / "deploy" / "nginx.conf"
+#: 生产契约（已入库）——下面绝大多数断言只看它们，所以到处都能跑
+PROD = REPO / "ops" / "nginx.conf"
+COMPOSE = REPO / "ops" / "docker-compose.server.yml"
+#: 镜像内自带的默认配置（也是本地 docker compose 试用用的那份）
 TRIAL = REPO / "frontend" / "nginx.conf"
+#: 私有运维脚本：不入库，只能在这台维护者机器上看到
 SETUP = REPO / "deploy" / "setup_server.sh"
-COMPOSE = REPO / "deploy" / "docker-compose.yml"
 
-#: deploy/ 不在版本控制里 → 新克隆/CI 上没有这些文件，相关用例跳过（见模块 docstring）。
-needs_deploy = pytest.mark.skipif(
-    not PROD.exists() or not SETUP.exists() or not COMPOSE.exists(),
-    reason="deploy/ 不在版本控制里（.gitignore 的 deploy/），只在维护者机器上有",
+needs_setup = pytest.mark.skipif(
+    not SETUP.exists(),
+    reason="deploy/setup_server.sh 是私有运维脚本（不入库），只在维护者机器上",
 )
 
 
 def _read(path: Path) -> str:
-    assert path.exists(), f"找不到 {path}"
+    assert path.exists(), f"找不到 {path}（这份应当已入库）"
     return path.read_text(encoding="utf-8")
 
 
@@ -101,7 +107,6 @@ def _header_value(text: str, name: str) -> str | None:
 # ---- 生产模板必须有哪些指令（每条都写清为什么，退步就会红） ------------------
 
 
-@needs_deploy
 def test_prod_config_listens_on_443_and_redirects_http():
     text = _read(PROD)
     assert "listen 443 ssl;" in text, "生产必须开 443"
@@ -111,7 +116,6 @@ def test_prod_config_listens_on_443_and_redirects_http():
     assert "ssl_certificate " in text and "ssl_certificate_key " in text
 
 
-@needs_deploy
 def test_prod_config_normalizes_www_to_apex():
     """www 与主域是两个 origin：cookie / localStorage / Service Worker 都按 host 隔离，
     不归一就会出现"在 www 登录、到主域显示未登录"。"""
@@ -119,16 +123,13 @@ def test_prod_config_normalizes_www_to_apex():
     assert "if ($host = www." in text and "return 301 https://" in text
 
 
-@needs_deploy
 def test_prod_config_sets_upload_limit():
     """少了它 = nginx 默认 1m：背景图（base64 data URL）稍大就 413。"""
-    text = _read(PROD)
-    assert re.search(r"client_max_body_size\s+3m;", text), (
+    assert re.search(r"client_max_body_size\s+3m;", _read(PROD)), (
         "生产配置必须显式给上传上限（线上 413 就是因为这个）"
     )
 
 
-@needs_deploy
 def test_prod_config_keeps_security_headers_with_always():
     """`always` 保证 4xx/5xx 错误页也带这些头。"""
     text = _read(PROD)
@@ -145,7 +146,6 @@ def test_prod_config_keeps_security_headers_with_always():
         assert "always" in got, f"{name} 必须带 always（错误页也要有）：{got}"
 
 
-@needs_deploy
 def test_csp_allows_what_the_app_actually_needs():
     """CSP 的每一项都对应一个真实需求，少一项就是线上功能直接坏掉。"""
     csp = _csp(_read(PROD))
@@ -161,7 +161,6 @@ def test_csp_allows_what_the_app_actually_needs():
     assert "default-src 'self'" in csp
 
 
-@needs_deploy
 def test_permissions_policy_keeps_microphone_for_self():
     """`microphone=()` 是对所有人禁用——语音输入（Web Speech API）会直接不能录。"""
     perms = _permissions(_read(PROD))
@@ -171,7 +170,6 @@ def test_permissions_policy_keeps_microphone_for_self():
     assert "camera=()" in perms and "geolocation=()" in perms, "相机与定位应保持关闭"
 
 
-@needs_deploy
 def test_gzip_on_and_never_compresses_sse():
     """text/event-stream 被压缩后 nginx 会缓冲，Agent / 管线进度就不再实时到达。"""
     text = _read(PROD)
@@ -181,7 +179,6 @@ def test_gzip_on_and_never_compresses_sse():
     assert "text/event-stream" not in types, "不能压缩 SSE（会被缓冲，事件不再实时）"
 
 
-@needs_deploy
 def test_prod_config_keeps_cache_strategy():
     """带哈希的产物长缓存；index.html / sw.js 必须每次校验，否则旧 HTML 去要已删除的
     chunk → 白屏（线上报过一次）。"""
@@ -197,7 +194,6 @@ def test_prod_config_keeps_cache_strategy():
     assert spa and "expires -1;" in spa.group(1), "SPA fallback 入口也必须 no-cache"
 
 
-@needs_deploy
 def test_prod_config_proxies_api_with_sse_friendly_settings():
     text = _read(PROD)
     api = re.search(r"location /api/ \{([^}]*)\}", text)
@@ -214,29 +210,20 @@ def test_prod_config_proxies_api_with_sse_friendly_settings():
     )
 
 
-@needs_deploy
-def test_prod_config_keeps_media_src_for_music_and_voice():
-    """CSP 里的 media-src 放开 blob: 是为了 blob 音频；这条与"语音/音乐能出声"绑定。"""
-    csp = _csp(_read(PROD))
-    assert "media-src" in csp and "blob:" in csp
-
-
 # ---- 两份仓库配置不许飘开（frontend/nginx.conf 的注释就要求"两边同步"） -------
 
 
 def test_trial_config_also_has_an_upload_limit():
     """本地试用的那份也得上限，否则本地导入稍大的图同样 413，排查半天以为是后端。"""
     assert re.search(r"client_max_body_size\s+3m;", _read(TRIAL)), (
-        "frontend/nginx.conf（本地试用）也要 client_max_body_size"
+        "frontend/nginx.conf（本地试用 / 镜像内默认）也要 client_max_body_size"
     )
 
 
 def test_trial_config_still_refuses_to_compress_sse():
-    types = _gzip_types(_read(TRIAL))
-    assert "text/event-stream" not in types
+    assert "text/event-stream" not in _gzip_types(_read(TRIAL))
 
 
-@needs_deploy
 def test_shared_security_headers_do_not_drift_between_the_two_configs():
     """两份配置共有的安全头必须逐字一致——"两边同步"不能只靠注释里的一句话。"""
     prod, trial = _read(PROD), _read(TRIAL)
@@ -245,28 +232,50 @@ def test_shared_security_headers_do_not_drift_between_the_two_configs():
     assert _gzip_types(prod) == _gzip_types(trial), "两份配置的 gzip_types 不一致"
 
 
-# ---- 装机路径与 compose 必须带上 443 / certs / 上传上限 ------------------------
+# ---- 生产 compose 必须带上 443 / certs --------------------------------------
 
 
-@needs_deploy
-def test_setup_script_installs_the_production_config():
-    """装机脚本曾经复制 frontend/nginx.conf（最小试用版），于是新机器缺上传上限、
-    缺 TLS/www 归一、缺缓存策略——线上踩过的坑会在新环境原样复现。
+def test_server_compose_exposes_443_and_mounts_certs():
+    """这份 compose 曾经缺 `443:443` 与 `./certs` 挂载（只存在于服务器那份上），
+    照着它装的新机器不会开 443、也没有证书目录——而 nginx 配置里写死了证书路径，
+    结果是 **nginx 直接起不来**。"""
+    text = _code(_read(COMPOSE))
+    assert '"443:443"' in text, "web 服务必须发布 443"
+    assert "./certs:/etc/nginx/certs:ro" in text, "必须把 ./certs 挂进容器"
+    assert "./nginx.conf:/etc/nginx/conf.d/default.conf:ro" in text
+    assert "./frontend/dist:/usr/share/nginx/html" in text
+
+
+def test_server_compose_keeps_nginx_pinned_to_a_digest():
+    """nginx 镜像必须钉 digest（可复现部署；:latest 会无预警漂移）。"""
+    text = _code(_read(COMPOSE))
+    assert re.search(r"image:\s*nginx:[\w.\-]+@sha256:[0-9a-f]{64}", text), (
+        "nginx 镜像应写 `nginx:<tag>@sha256:<digest>`"
+    )
+
+
+# ---- 装机脚本（私有，不入库；有它才跑） --------------------------------------
+
+
+@needs_setup
+def test_setup_script_installs_the_production_config_from_ops():
+    """装机脚本曾经复制 frontend/nginx.conf（默认配置），于是新机器缺上传上限、缺 TLS。
 
     只检查**代码行**：注释与提示语里可以（也应该）说明为什么不用 frontend/nginx.conf；
     真正要拦的是"从它 cp 过去"这个动作。
     """
     script = _code(_read(SETUP))
-    assert '"$SCRIPT_DIR/nginx.conf"' in script, "装机应复制 deploy/nginx.conf"
+    assert "$OPS_DIR/nginx.conf" in script, "装机应从 ops/nginx.conf 复制（生产真源）"
+    assert "$OPS_DIR/docker-compose.server.yml" in script, "compose 也应来自 ops/"
     offenders = [
         line for line in script.splitlines() if "cp " in line and "frontend/nginx.conf" in line
     ]
     assert not offenders, (
-        f"装机脚本不该从 frontend/nginx.conf 复制（那是本地试用配置，缺上传上限与 TLS）：{offenders}"
+        f"装机脚本不该从 frontend/nginx.conf 复制（那是默认/试用配置，缺上传上限与 TLS）：{offenders}"
     )
 
 
-@needs_deploy
+@needs_setup
 def test_setup_script_creates_the_certs_directory():
     """compose 把 ./certs 只读挂进 nginx 的证书目录；目录不存在时 nginx 会因为找不到
     证书**直接起不来**（比缺上传上限更严重），所以装机就要建出来。"""
@@ -274,7 +283,7 @@ def test_setup_script_creates_the_certs_directory():
     assert "$APP_DIR/certs" in script, "装机必须创建 $APP_DIR/certs"
 
 
-@needs_deploy
+@needs_setup
 def test_setup_script_tells_the_user_to_place_certificates():
     """证书文件名写死在 nginx.conf 里，装机提示必须把它讲出来，否则"装完了但起不来"。"""
     script = _read(SETUP)
@@ -282,14 +291,3 @@ def test_setup_script_tells_the_user_to_place_certificates():
         "装机说明要写清证书文件名（配置里就是这两个）"
     )
     assert "nginx -t" in script, "改完配置要先自检"
-
-
-@needs_deploy
-def test_deploy_compose_exposes_443_and_mounts_certs():
-    """仓库这份 compose 曾经缺 `443:443` 与 `./certs` 挂载（只存在于服务器那份上），
-    照着它装的新机器不会开 443、也没有证书目录。"""
-    text = _code(_read(COMPOSE))
-    assert '"443:443"' in text, "web 服务必须发布 443"
-    assert "./certs:/etc/nginx/certs:ro" in text, "必须把 ./certs 挂进容器"
-    assert "./nginx.conf:/etc/nginx/conf.d/default.conf:ro" in text
-    assert "./frontend/dist:/usr/share/nginx/html" in text

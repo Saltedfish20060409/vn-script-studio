@@ -1,0 +1,104 @@
+name: vnss
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+services:
+  postgres:
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    container_name: vnss-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vnss
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: vnss
+    volumes:
+      - vnss_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vnss -d vnss"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    networks:
+      - vnss
+
+  redis:
+    image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    container_name: vnss-redis
+    restart: unless-stopped
+    # SECURITY: require a password so any container that reaches the network
+    # cannot read/write the rate-limit + SSE bridge keys.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--requirepass", "${REDIS_PASSWORD}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    logging: *default-logging
+    networks:
+      - vnss
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vnss-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging: *default-logging
+    networks:
+      - vnss
+
+  web:
+    # SECURITY: pin nginx to a specific digest (reproducible deploys).
+    image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+    container_name: vnss-web
+    restart: unless-stopped
+    # 由 nginx 直接对外提供 HTTPS（证书挂在 ./certs）。Cloudflare 是可选的，
+    # 不是唯一终止 TLS 的地方——线上就是源站自己监听 443。
+    # 注意：443 与 certs 这两行曾经只存在于服务器上那份 compose 里，仓库这份缺，
+    # 于是照仓库装机的新服务器不会开 443、也没有证书目录（nginx 直接起不来）。
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - api
+    logging: *default-logging
+    networks:
+      - vnss
+      - coolify
+
+  # 音乐解析/代理（网易云等）：backend 通过 NETEASE_API_URL 调用
+  # SECURITY: pinned digest — the upstream repo is third-party and :latest
+  # moves without notice (supply-chain / regression risk).
+  ncm:
+    image: binaryify/netease_cloud_music_api:latest@sha256:42e7d2bf4a705ba4bea74ef9635a24d2921fc3457430b6bf60c6bcc50320b3a3
+    container_name: vnss-ncm
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - vnss
+
+volumes:
+  vnss_pg_data:
+
+networks:
+  vnss:
+  coolify:
+    external: true

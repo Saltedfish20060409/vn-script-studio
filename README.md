@@ -165,7 +165,16 @@ cd frontend
 npm ci && npm run build
 ```
 
-自己长期运行时，可用任意 Nginx / Caddy 反代 `/api` 到后端 :8000 并托管 `frontend/dist`；备份与日常维护由你自行安排（本仓库只含应用代码与本地部署入口，不含特定服务器的运维脚本）。
+自己长期运行时，可用任意 Nginx / Caddy 反代 `/api` 到后端 :8000 并托管 `frontend/dist`；备份与日常维护由你自行安排。
+
+仓库里有两份**生产契约**模板可以直接用（它们是本站线上实际用的那份，已与线上逐字对齐）：
+
+- `ops/nginx.conf`：TLS / 80→443 跳转 / www 归一 / 安全头（CSP、`microphone=(self)` 供语音输入）/ 上传上限 / `/assets` 长缓存与 index.html·sw.js no-cache / `/api` 反代（关缓冲 + 长读超时 + 覆盖 XFF）。
+- `ops/docker-compose.server.yml`：含 `443:443` 与 `./certs:/etc/nginx/certs:ro`（证书放同目录 `certs/`；文件名在 nginx.conf 里写死，换域名要一起改）。
+
+`frontend/nginx.conf` 则是**镜像内自带的默认配置**，只 listen 80，用于本地 `docker compose up` 试用——别拿它当生产配置（缺 TLS 与上传上限）。
+
+**不含**的是特定服务器的运维脚本（部署、备份、隧道等），那些按机器各自维护；比如 `python deploy/run_db_tests.py`（见 `deploy/`，不入库；需要线上有独立测试库）。
 
 ### 主要 API（`/api/v1`）
 
