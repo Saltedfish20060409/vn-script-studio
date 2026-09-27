@@ -301,34 +301,23 @@ def _normalize_agent_actions(raw: Any) -> List[AgentAction]:
     return out
 
 
-_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
-
-
 def _parse_agent_json(raw: str) -> Tuple[str, List[AgentAction]]:
-    text = raw.strip()
-    fence = _FENCE_RE.search(text)
-    if fence:
-        text = fence.group(1).strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        text = text[start : end + 1]
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
+    from app.core.llm_text import extract_json_object, normalize_model_text
+
+    parsed = extract_json_object(raw)
+    if parsed is None:
         # 模型没吐 JSON（如忽略 response_format 返回纯文本，或返回空串）：
         # 把原文当回复，绝不把裸 JSONDecodeError 抛给用户。
-        from app.core.llm_text import normalize_model_text
-
-        prose = normalize_model_text(text.strip())
+        #
+        # 注意这里喂给 normalize_model_text 的是**原文**，不是"最先找到的那段围栏"：
+        # 先挑围栏会把字符串值里的示例对白当成整份回复（见 llm_text.extract_json_object）。
+        prose = normalize_model_text((raw or "").strip())
         if not prose.strip():
             return "模型返回了无法解析的内容（空响应），请重试。", []
         return prose.strip()[:2000], []
     actions = _normalize_agent_actions(parsed.get("actions"))
     message = parsed.get("message")
     if isinstance(message, str) and message.strip():
-        from app.core.llm_text import normalize_model_text
-
         return normalize_model_text(message.strip()), actions
     # Empty message is a common model failure mode; never leave a dead "已处理。"
     if actions:

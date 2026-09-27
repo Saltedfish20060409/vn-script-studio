@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import re
+from typing import Optional
 
 # 语言标记：只有"整行就一个这类词"才当成围栏标签剥掉
 _LANG_TOKENS = {
@@ -93,3 +94,94 @@ def normalize_model_text(text: str) -> str:
     if "```" in out or out.split("\n")[0].strip().lower() in _LANG_TOKENS:
         out = strip_code_fence(out)
     return out
+
+
+# ---------------------------------------------------------------------------
+# 抽 JSON：**围栏最后才看**
+# ---------------------------------------------------------------------------
+
+#: 只有"整段被一层围栏从头包到尾"才算围栏。
+#: 千万不要用 ```` ```(?:json)?\s*([\s\S]*?)``` ```` 去 `search`——那会连**字符串值里**
+#: 的围栏一起匹配，把整份回复劫持成一小段示例（见 `extract_json_object` 的说明）。
+_WHOLE_FENCE_RE = re.compile(
+    r"^\s*```[A-Za-z0-9_+.-]*[ \t]*\r?\n(?P<body>[\s\S]*?)\r?\n?[ \t]*```\s*$"
+)
+
+
+def _balanced_json_object(text: str) -> Optional[str]:
+    """从第一个 `{` 起配平花括号切出一个对象；字符串里的括号不算数。"""
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
+def extract_json_object(text: str) -> Optional[dict]:
+    r"""取出模型输出里的 JSON 对象；取不到返回 None（兜底由调用方决定）。
+
+    为什么需要它（2026-09-27 线上实盘）：作者附上第一章问「帮我审查一下第一章……应该怎么改
+    合适？」，拿到的回复只有 214 字的一段示例对白，两千多字的审稿分析不见了。模型**答对了**
+    ——同一条 messages、同一个模型重跑一次，一次调用就返回 2427 字的完整意见。
+
+    丢在解析上：模型的 `message` 里嵌了一段 ```` ```renpy ```` 示例对白（提示词本来就写着
+    "可摘改写示例对白"），而各处解析器都是同一个顺序——
+
+        fence = _FENCE_RE.search(text)     # 先找围栏
+        if fence: text = fence.group(1)    # 把围栏内容当成 JSON
+        text = text[text.find("{"): text.rfind("}") + 1]
+
+    `_FENCE_RE` 用 `[\s\S]*?` 非贪婪地从**第一个**围栏取到第二个，于是字符串值里那段示例被
+    当成了整份输出；它当然不是合法 JSON，于是落到"纯文本当回复"的兜底——作者就只看到那段示例，
+    JSON 里真正的回复被静默丢掉，症状看起来像"模型理解不了指令"。
+
+    顺序即优先级，围栏只做最后一招：
+    1. 整段就是 JSON（开了 `response_format` 时最常见）；
+    2. 配平括号切出对象（前后夹着解释文字也能救回来）；
+    3. **整段被一层围栏包着**才剥围栏，再按 1/2 试一次。
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return None
+
+    candidates: list[str] = [raw]
+    sliced = _balanced_json_object(raw)
+    if sliced and sliced != raw:
+        candidates.append(sliced)
+
+    match = _WHOLE_FENCE_RE.match(raw)
+    body = match.group("body").strip() if match else ""
+    if body:
+        candidates.append(body)
+        inner = _balanced_json_object(body)
+        if inner and inner != body:
+            candidates.append(inner)
+
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None

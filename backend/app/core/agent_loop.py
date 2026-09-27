@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, Dict, List, Optional
 
 from app.core import llm_budget
@@ -83,8 +82,6 @@ _LOOP_PROTOCOL = """
 - 禁止声称使用 shell、读写磁盘或访问外网。
 """
 
-_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
-
 
 def _clip(text: str, n: int) -> str:
     t = (text or "").strip()
@@ -145,24 +142,13 @@ async def _force_final_message(
     except Exception:  # noqa: BLE001 — 收尾失败不该把整轮变成异常
         return ""
 
-    text = (content or "").strip()
-    fence = _FENCE_RE.search(text)
-    if fence:
-        text = fence.group(1).strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        text = text[start : end + 1]
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
+    from app.core.llm_text import extract_json_object, normalize_model_text
+
+    parsed = extract_json_object(content)
+    if parsed is None:
         # 补写这轮模型直接说了人话（没给 JSON）：那就是它的答复，照收——
         # 与正常路径"纯文本当回复"同一口径，绝不把 JSONDecodeError 抛给作者。
-        from app.core.llm_text import normalize_model_text
-
-        return normalize_model_text(text).strip()
-    if not isinstance(parsed, dict):
-        return ""
+        return normalize_model_text((content or "").strip()).strip()
     msg = _step_message(parsed)
     if msg:
         trace.append({"type": "thought", "text": f"收尾补写：{msg[:200]}"})
@@ -185,21 +171,20 @@ def _is_echo_of_tool_result(final_message: str, tool_text: str) -> bool:
 
 
 def _parse_loop_json(raw: str) -> Dict[str, Any]:
-    text = (raw or "").strip()
-    fence = _FENCE_RE.search(text)
-    if fence:
-        text = fence.group(1).strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        text = text[start : end + 1]
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
+    """解析这一步的输出。
+
+    用 `extract_json_object`（顺序：整段 JSON → 配平括号 → 整段围栏）而**不是**先找围栏：
+    模型常在 `message` 里嵌 ```` ```renpy ```` 示例对白，先找围栏会把那一段当成整份输出，
+    JSON 里的分析全丢（2026-09-27 实盘：审稿回复只剩 214 字示例）。详见
+    `llm_text.extract_json_object`。
+    """
+    from app.core.llm_text import extract_json_object
+
+    parsed = extract_json_object(raw)
+    if parsed is None:
+        # 不是 JSON（纯文本回复 / 空响应）：走老路径的兜底与文案
         msg, actions = _parse_agent_json(raw)
         return {"message": msg, "actions": actions, "tool_calls": [], "done": True}
-    if not isinstance(parsed, dict):
-        return {"message": str(parsed), "actions": [], "tool_calls": [], "done": True}
     return parsed
 
 
