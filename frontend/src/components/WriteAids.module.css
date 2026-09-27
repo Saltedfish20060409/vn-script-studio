@@ -1,4 +1,4 @@
-.wrap {
+﻿.wrap {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
@@ -9,7 +9,7 @@
   font-size: 0.82rem;
 }
 
-/* 默认折叠：只留一行读数，少占正文上方 */
+/* 榛樿鎶樺彔锛氬彧鐣欎竴琛岃鏁帮紝灏戝崰姝ｆ枃涓婃柟 */
 .wrap[data-collapsed="1"] {
   padding: 0.28rem 0.55rem;
   gap: 0;
@@ -20,8 +20,8 @@
   border-bottom: none;
 }
 
-/* 这块东西必须"一眼看得出存在"：它没有按钮，只有三行读数；
-   不写标题的话作者会以为这里是装饰条。 */
+/* 杩欏潡涓滆タ蹇呴』"涓€鐪肩湅寰楀嚭瀛樺湪"锛氬畠娌℃湁鎸夐挳锛屽彧鏈変笁琛岃鏁帮紱
+   涓嶅啓鏍囬鐨勮瘽浣滆€呬細浠ヤ负杩欓噷鏄楗版潯銆?*/
 .head {
   display: flex;
   align-items: baseline;
@@ -46,13 +46,13 @@
 .rowLabel {
   flex: 0 0 auto;
   min-width: 2.2rem;
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
   font-size: 0.78rem;
   letter-spacing: 0.02em;
 }
 
 .hint {
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
   line-height: 1.5;
 }
 
@@ -92,7 +92,7 @@
   cursor: not-allowed;
 }
 
-/* ---- 目标进度 ---- */
+/* ---- 鐩爣杩涘害 ---- */
 .goal {
   display: inline-flex;
   align-items: center;
@@ -100,7 +100,7 @@
 }
 
 .goalLabel {
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
   font-size: 0.78rem;
 }
 
@@ -109,7 +109,7 @@
 }
 
 .goalLeft {
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
   font-size: 0.76rem;
 }
 
@@ -123,7 +123,7 @@
   width: 4.5rem;
   height: 0.4rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--muted, #8a8f98) 25%, transparent);
+  background: color-mix(in srgb, var(--muted) 25%, transparent);
   overflow: hidden;
 }
 
@@ -154,7 +154,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
 }
 
 .goalInput input {
@@ -167,7 +167,7 @@
   font-size: 0.8rem;
 }
 
-/* ---- 分场导航 ---- */
+/* ---- 鍒嗗満瀵艰埅 ---- */
 .scenes {
   display: inline-flex;
   align-items: center;
@@ -199,7 +199,7 @@
 }
 
 .sceneWords {
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
 }
@@ -215,12 +215,12 @@
   border: 1px dashed var(--line);
   border-radius: var(--radius-sm, 6px);
   background: transparent;
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
   font-size: 0.76rem;
   cursor: pointer;
 }
 
-/* ---- 笔误体检 ---- */
+/* ---- 绗旇浣撴 ---- */
 .counts {
   display: inline-flex;
   gap: 0.45rem;
@@ -235,7 +235,7 @@
 }
 
 .countInfo {
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
 }
 
 .issue {
@@ -255,7 +255,7 @@
 }
 
 .navNums {
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
   font-size: 0.76rem;
   font-variant-numeric: tabular-nums;
 }

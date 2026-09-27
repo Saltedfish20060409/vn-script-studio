@@ -8,11 +8,11 @@ type BackstageProps = {
   children: ReactNode;
 };
 
-/** 文件菜单二级页：盖住稿纸中央，关了回到正文。 */
+/** 文件菜单二级页：盖在稿纸上；底板用壳层磨砂叠层，切换页时底景连续。 */
 export function FileBackstage({ title, onClose, children }: BackstageProps) {
   return (
     <div
-      className={styles.backstage}
+      className={`${styles.backstage} shell-overlay-surface`}
       data-testid="file-backstage"
       role="dialog"
       aria-label={title}
@@ -49,6 +49,9 @@ type DrawerProps = {
  * 会让"卡片网格、结构表、rail"这些本来就吃宽度的面板挤成一列——
  * 用户的原话是"不如前版看着详细易懂"。所以宽度按面板给默认档，
  * 并在标题栏给一个开关让作者自己决定"瞥一眼"还是"专心改"。
+ *
+ * 「铺满」= 工作区全宽（壳层藏左大纲，本抽屉 width:100%），不是浏览器全屏。
+ * 底板用 shell-overlay-surface：与壳层底景连续，不用实心纸色切断氛围。
  */
 export function StudioViewDrawer({
   title,
@@ -59,7 +62,7 @@ export function StudioViewDrawer({
 }: DrawerProps) {
   return (
     <aside
-      className={`${styles.drawer} opaque-panel-bg ${size === "wide" ? styles.drawerWide : ""} ${
+      className={`${styles.drawer} shell-overlay-surface ${size === "wide" ? styles.drawerWide : ""} ${
         size === "full" ? styles.drawerFull : ""
       }`}
       data-testid="view-drawer"
@@ -74,7 +77,11 @@ export function StudioViewDrawer({
             className={styles.drawerSizeBtn}
             data-testid="drawer-size-toggle"
             aria-pressed={size === "full"}
-            title={size === "full" ? "收窄，让出稿纸" : "铺满，看清全部"}
+            title={
+              size === "full"
+                ? "收窄，让出大纲与稿纸"
+                : "铺满工作区（藏大纲，保留顶栏）"
+            }
             onClick={onToggleSize}
           >
             {size === "full" ? "⤡ 收窄" : "⤢ 铺满"}

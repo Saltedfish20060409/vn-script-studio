@@ -10,6 +10,9 @@
  * 所以这里把"哪个面板默认多宽"变成**一处可读的规则**（而不是散在 JSX 里的三元表达式），
  * 并允许作者用抽屉标题栏的「铺满 / 收窄」开关覆盖它。
  *
+ * 「铺满」(full) = **工作区全宽**：壳层藏左大纲，抽屉吃满稿纸列；保留 Ribbon 顶栏。
+ * 不是浏览器 Fullscreen，也不是专注写作模式。
+ *
  * 为什么不是一律 wide：写作时多数时候只是"瞥一眼设定"，
  * 一上来就占 92vw 会把稿纸整个挤走——那是另一个方向的退步。
  */
@@ -75,6 +78,31 @@ export function resolveViewSize(
  */
 export function nextViewSize(panel: ViewPanelId, current: ViewSize): ViewSize {
   return current === "full" ? VIEW_DEFAULT_SIZE[panel] : "full";
+}
+
+/**
+ * 当前视图抽屉是否处于「工作区全宽」（铺满）档。
+ *
+ * 壳层用它决定是否藏左大纲：full = 藏大纲，保留顶栏；不是浏览器全屏。
+ * `analysis` 与 `view` 共用同一套尺寸记忆，所以两种 overlay 都要认。
+ */
+export function isViewDrawerWorkspaceFull(
+  overlay:
+    | { type: "view"; panel: ViewPanelId }
+    | { type: "analysis" }
+    | { type: string; panel?: string }
+    | null
+    | undefined,
+  overrides?: ViewSizeOverrides | null
+): boolean {
+  if (!overlay) return false;
+  if (overlay.type === "view" && isViewPanelId(overlay.panel)) {
+    return resolveViewSize(overlay.panel, overrides) === "full";
+  }
+  if (overlay.type === "analysis") {
+    return resolveViewSize("analysis", overrides) === "full";
+  }
+  return false;
 }
 
 /** 把 localStorage 里读到的原始对象过滤成合法的 overrides（坏值丢弃）。 */

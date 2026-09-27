@@ -12,6 +12,13 @@
   clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
 }
 
+/* 抽屉铺满工作区时：跟高，去掉 720px 封顶「矮岛」 */
+:global([data-testid="view-drawer"][data-size="full"]) .studio {
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+}
+
 .left,
 .right {
   padding: 0.7rem;

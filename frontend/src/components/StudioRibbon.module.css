@@ -204,7 +204,7 @@
   padding: 0.35rem;
   border: 2px solid var(--line);
   border-radius: var(--radius-sm, 4px);
-  /* 底色见全局 .opaque-panel-bg（与视图抽屉共用） */
+  /* 底色见全局 .opaque-panel-bg（菜单必须实心；视图抽屉改用 .shell-overlay-surface） */
   box-shadow: var(--shadow, 0 8px 24px rgba(0, 0, 0, 0.12));
 }
 

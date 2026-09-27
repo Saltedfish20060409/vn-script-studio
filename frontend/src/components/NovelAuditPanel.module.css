@@ -1,4 +1,4 @@
-.wrap {
+﻿.wrap {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -22,7 +22,7 @@
   border: 1px dashed var(--line);
   border-radius: 999px;
   font-size: 0.72rem;
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
 }
 
 .error {
@@ -33,11 +33,11 @@
 .hint {
   margin: 0;
   font-size: 0.82rem;
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
   line-height: 1.55;
 }
 
-/* 文体剖面：读数列表（每条带依据，"读数 ≠ 评分"） */
+/* 鏂囦綋鍓栭潰锛氳鏁板垪琛紙姣忔潯甯︿緷鎹紝"璇绘暟 鈮?璇勫垎"锛?*/
 .list {
   margin: 0;
   padding-left: 1.1rem;
@@ -51,10 +51,10 @@
   color: var(--ink, inherit);
 }
 
-/* 位置/角色名这类"在哪儿"的补充说明：不用斜体（中文斜体很难看） */
+/* 浣嶇疆/瑙掕壊鍚嶈繖绫?鍦ㄥ摢鍎?鐨勮ˉ鍏呰鏄庯細涓嶇敤鏂滀綋锛堜腑鏂囨枩浣撳緢闅剧湅锛?*/
 .list li em {
   font-style: normal;
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
 }
 
 .list .hint {
@@ -87,7 +87,7 @@
 
 .cardLabel {
   font-size: 0.78rem;
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
 }
 
 .cardValue {
@@ -98,12 +98,12 @@
 .cardUnit {
   font-size: 0.8rem;
   font-weight: 400;
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
 }
 
 .cardSub {
   font-size: 0.76rem;
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
 }
 
 .section {
@@ -144,12 +144,12 @@
   word-break: break-word;
 }
 
-/* 依据：比正文小一号、淡一档，但始终可见——作者要能一眼判断"该不该听" */
+/* 渚濇嵁锛氭瘮姝ｆ枃灏忎竴鍙枫€佹贰涓€妗ｏ紝浣嗗缁堝彲瑙佲€斺€斾綔鑰呰鑳戒竴鐪煎垽鏂?璇ヤ笉璇ュ惉" */
 .issueBasis {
   display: block;
   margin-top: 0.15rem;
   font-size: 0.74rem;
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
 }
 
 .sev_error,
@@ -172,7 +172,7 @@
 }
 
 .sev_info {
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
   border: 1px solid var(--line);
 }
 
@@ -206,7 +206,7 @@
 }
 
 .table th {
-  color: var(--muted, #8a8f98);
+  color: var(--muted);
   font-weight: 500;
 }
 

@@ -3,6 +3,8 @@
   /* Persona day: white slash + Klein blue */
   --ink: #0a0e1a;
   --ink-soft: #4a5568;
+  /* 次要说明色：与 ink-soft 同系，供面板 hint / 元数据；勿再写 #8a8f98 硬回退 */
+  --muted: #8a8f98;
   --paper: #f4f6fa;
   --paper-deep: #e6ebf4;
   --line: #1a2338;
@@ -381,6 +383,7 @@
   /* Persona night: black + crimson (medium) */
   --ink: #ffe8ec;
   --ink-soft: #c49aa3;
+  --muted: #a87884;
   --paper: #0a0507;
   --paper-deep: #14080c;
   --line: #4a1824;
@@ -889,9 +892,36 @@ a:not(.no-underline-anim):focus-visible {
   background-size: 100% 2.5px;
 }
 
-/* 浮在稿纸上的面板（Ribbon 下拉 / 视图抽屉）：--panel-bg 在自定义壁纸下半透明，
-   必须用不透明 --paper 打底再叠主题色，否则会透出后面的字。 */
+/* 浮在稿纸上的面板（Ribbon 下拉）：必须实心打底，否则菜单字会透出后面的稿纸。 */
 .opaque-panel-bg {
   background-color: var(--paper);
   background-image: linear-gradient(var(--panel-bg), var(--panel-bg));
+}
+
+/*
+ * 壳层里页叠层（文件二级页 / 视图抽屉）：
+ * 与 body 的 `--page-bg` / 壁纸连续，切换面板时不换一张实心底板；
+ * 磨砂 + 高不透明度挡住底下稿纸可读文字，避免「漏字」。
+ * Ribbon 下拉仍用 .opaque-panel-bg，不要混用。
+ */
+.shell-overlay-surface {
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(calc(var(--glass-blur, 12px) + 4px)) saturate(1.1);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur, 12px) + 4px)) saturate(1.1);
+}
+
+html[data-theme="night"] .shell-overlay-surface {
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
+}
+
+/* 自定义壁纸：跟已有 mist/ink 玻璃档对齐，多透一点底景 */
+html[data-custom-bg="1"] .shell-overlay-surface {
+  background: color-mix(in srgb, var(--panel-bg) 82%, transparent);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .shell-overlay-surface {
+    background-color: var(--paper);
+    background-image: linear-gradient(var(--panel-bg), var(--panel-bg));
+  }
 }

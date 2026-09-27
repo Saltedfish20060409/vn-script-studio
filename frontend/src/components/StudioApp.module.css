@@ -611,9 +611,15 @@
   position: relative;
 }
 
+/* 视图抽屉「铺满」：单列（大纲不挂载），docMain 独占行宽 */
+.docLayoutFull .docMain {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
 /* 窄屏：ChapterOutline 折成顶部横条，稿纸在下 */
 @media (max-width: 720px) {
-  .docLayout {
+  .docLayout:not(.docLayoutFull) {
     flex-direction: column;
   }
 }

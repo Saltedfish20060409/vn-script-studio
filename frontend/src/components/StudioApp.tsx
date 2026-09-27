@@ -159,6 +159,7 @@ import { loreLinkOptions } from "../lib/loreEntries";
 import { diffProjectAgainst } from "../lib/projectDiff";
 import { EVENTS, trackOncePerUser } from "../lib/track";
 import {
+  isViewDrawerWorkspaceFull,
   loadViewSizeOverrides,
   nextViewSize,
   resolveViewSize,
@@ -516,6 +517,8 @@ export function StudioApp() {
       return next;
     });
   }, []);
+  /** 视图抽屉铺满：藏左大纲，抽屉吃满工作区（保留 Ribbon）。 */
+  const viewWorkspaceFull = isViewDrawerWorkspaceFull(overlay, viewSizeOverrides);
   const [focusSetupOpen, setFocusSetupOpen] = useState(false);
   const [focusPrefs, setFocusPrefs] = useState<FocusTimerPrefs | null>(null);
   // 之前每次渲染都调 loadFocusTimerPrefs()（localStorage.getItem + JSON.parse），
@@ -3156,7 +3159,13 @@ export function StudioApp() {
 
         <div className={styles.layout}>
           <main className={styles.main}>
-            <div className={styles.docLayout}>
+            <div
+              className={
+                viewWorkspaceFull ? `${styles.docLayout} ${styles.docLayoutFull}` : styles.docLayout
+              }
+              data-workspace-full={viewWorkspaceFull ? "1" : undefined}
+            >
+              {!viewWorkspaceFull ? (
               <ChapterOutline
                 genre={copy.genre}
                 chapterId={chapterId}
@@ -3179,6 +3188,7 @@ export function StudioApp() {
                 onAddChapter={() => void addChapter()}
                 onDeleteChapter={() => void deleteChapter(chapterId)}
               />
+              ) : null}
               <div className={styles.docMain}>
                 {otherLock || collabNote ? (
                   <div className={styles.collabNote} role="status">

@@ -3,11 +3,11 @@
   inset: 0;
   /* 覆盖在稿纸之上的整页面板：必须高于稿纸工具条（.toolbar 是 z-index:70、且整宽），
      否则工具条会横着压在它上部——用户实测报过（"展开的页面被工具条挡住"）。
-     层级关系：稿纸内容 < 工具条 70 < 文件二级页/视图抽屉 80 < 顶栏 90。 */
+     层级关系：稿纸内容 < 工具条 70 < 文件二级页/视图抽屉 80 < 顶栏 90。
+     底色见全局 .shell-overlay-surface（磨砂叠层，切换里页时底景连续）。 */
   z-index: 80;
   display: flex;
   flex-direction: column;
-  background: var(--paper, var(--page-bg));
   border-top: 1px solid var(--line);
 }
 
@@ -18,8 +18,10 @@
   gap: 0.75rem;
   flex: 0 0 auto;
   padding: 0.55rem 0.9rem;
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--panel-bg) 80%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  background: color-mix(in srgb, var(--panel-bg) 55%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .backstageTitle,
@@ -67,7 +69,7 @@
   width: min(52vw, 560px);
   max-width: 100%;
   border-left: 2px solid var(--line);
-  /* 底色见全局 .opaque-panel-bg（与 Ribbon 下拉共用） */
+  /* 底色见全局 .shell-overlay-surface（与文件二级页共用，切换时底景连续） */
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08);
 }
 
@@ -75,11 +77,22 @@
   width: min(92vw, 1100px);
 }
 
-/* 铺满：抽屉占满稿纸区（不看稿纸，专心改设定/看结构）。 */
+/* 铺满：抽屉占满工作区（壳层已藏左大纲；保留 Ribbon）。不是浏览器全屏。 */
 .drawerFull {
   width: 100%;
   border-left: none;
   box-shadow: none;
+}
+
+/* 铺满时让子面板能吃满抽屉高度（避免地图等仍卡在 720px「矮岛」） */
+.drawerFull .drawerBody {
+  display: flex;
+  flex-direction: column;
+}
+
+.drawerFull .drawerBody > * {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .drawerBody {
@@ -88,7 +101,7 @@
   overflow: auto;
 }
 
-/* 尺寸开关：默认按面板给一档合适的宽度，需要时一键铺满。
+/* 尺寸开关：默认按面板给一档合适的宽度，需要时一键铺满工作区。
    为什么不把默认值直接调成 wide：写作时多数面板只是"瞥一眼"，
    一上来就占 92vw 会把稿纸挤走；而 VN 的结构分析这类面板又确实需要宽度。
    给一个开关，比替用户猜一次更划算。 */

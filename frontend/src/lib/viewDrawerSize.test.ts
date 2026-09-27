@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   VIEW_DEFAULT_SIZE,
+  isViewDrawerWorkspaceFull,
   nextViewSize,
   resolveViewSize,
   sanitizeViewSizeOverrides,
@@ -45,6 +46,21 @@ describe("视图抽屉宽度策略", () => {
     expect(nextViewSize("analysis", "full")).toBe("wide");
     expect(nextViewSize("system", "narrow")).toBe("full");
     expect(nextViewSize("system", "full")).toBe("narrow");
+  });
+
+  it("壳层用 isViewDrawerWorkspaceFull 判断是否藏左大纲", () => {
+    expect(isViewDrawerWorkspaceFull(null, {})).toBe(false);
+    expect(isViewDrawerWorkspaceFull({ type: "file", page: "export" }, {})).toBe(false);
+    expect(
+      isViewDrawerWorkspaceFull({ type: "view", panel: "map" }, { map: "wide" })
+    ).toBe(false);
+    expect(
+      isViewDrawerWorkspaceFull({ type: "view", panel: "map" }, { map: "full" })
+    ).toBe(true);
+    expect(isViewDrawerWorkspaceFull({ type: "analysis" }, {})).toBe(false);
+    expect(
+      isViewDrawerWorkspaceFull({ type: "analysis" }, { analysis: "full" })
+    ).toBe(true);
   });
 
   it("过滤只保留合法键与合法值", () => {
