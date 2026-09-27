@@ -22,6 +22,7 @@ import { VoicePackZone } from "./VoicePackZone";
 import { VoiceProgressRail } from "./VoiceProgressRail";
 import { VoiceRail } from "./VoiceRail";
 import { ensureCustomScenario, promptSlug, type ShapeMode } from "../lib/voiceScenarios";
+import { axisTagsForGeneration } from "../lib/voiceAxisPin";
 import { VoiceShapeZone } from "./VoiceShapeZone";
 import { VoiceWorkshopEmpty } from "./VoiceWorkshopEmpty";
 import { VoiceWorkshopHero } from "./VoiceWorkshopHero";
@@ -40,6 +41,8 @@ type GenMeta = {
   scenarioLabel: string;
   scenarioPrompt?: string;
   question?: string;
+  /** 这一轮真正用到的方向标签 id（后端回的 `pinnedTags`）；空 = 按角色卡出轴。 */
+  pinnedTags?: string[];
 };
 
 const GUIDE_STORAGE_KEY = "vnss-workshop-guide-v1";
@@ -389,7 +392,14 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
     });
   }
 
-  async function onGenerate(constraintOverride?: string) {
+  /**
+   * `pinTags = true` 只有「按标签重开」会传。
+   *
+   * **主按钮必须不钉标签**：它叫「生成三组」，界面上写的是"默认按角色卡出本轮三轴"。
+   * 过去这里无条件把 `selectedTagIds` 当轴发出去，而后端一收到 3 个 pinned 轴就命令
+   * 模型"必须严格使用这三条轴、勿改名"——于是勾过一次之后三组方向永远是那三个。
+   */
+  async function onGenerate(constraintOverride?: string, pinTags = false) {
     if (!character) return;
     if (resolvedScenario.isCustom && !scenarioPrompt.trim()) {
       setError("自定义场景请先填写「场景压力」（情境说明）");
@@ -418,10 +428,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
         extra_constraints: extra,
         kind,
         question: shapeMode === "interview" ? interviewQuestion : undefined,
-        axis_tags:
-          shapeMode === "preference" || shapeMode === "interview"
-            ? selectedTagIds
-            : undefined,
+        axis_tags: axisTagsForGeneration(shapeMode, pinTags, selectedTagIds),
       });
       if (res.confirmedAxes) setConfirmedAxes(res.confirmedAxes);
       if (kind === "scene") {
@@ -455,6 +462,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
           scenarioId: res.scenarioId || "interview",
           scenarioLabel: res.scenarioLabel || "扮演采访",
           question: res.question,
+          pinnedTags: res.pinnedTags || [],
         });
       } else {
         setVariants(res.variants || []);
@@ -462,6 +470,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
           scenarioId: res.scenarioId || resolvedScenario.id,
           scenarioLabel: res.scenarioLabel || resolvedScenario.label,
           scenarioPrompt: res.scenarioPrompt || resolvedScenario.prompt,
+          pinnedTags: res.pinnedTags || [],
         });
       }
     } catch (e) {
@@ -1157,6 +1166,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
               uniqueCount={uniqueCount}
               axisTags={axisTags}
               selectedTagIds={selectedTagIds}
+              lastPinnedTags={genMeta?.pinnedTags || []}
               sampleCount={sampleCount}
               ready={ready}
               readinessInfo={readinessInfo}
@@ -1185,7 +1195,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
               onScenarioPromptChange={setScenarioPrompt}
               onCustomLabelChange={setCustomScenarioLabel}
               onConstraintsChange={setConstraints}
-              onGenerate={() => void onGenerate()}
+              onGenerate={(pinTags) => void onGenerate(undefined, pinTags)}
               onRejectAll={() => void onRejectAll()}
               onSameSceneRetry={handleSameSceneRetry}
               onAcceptVariant={(v, i, source) => void onAcceptVariant(v, i, source)}

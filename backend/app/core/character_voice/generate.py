@@ -156,12 +156,29 @@ VOICE_AXIS_TAGS: List[Dict[str, str]] = [
     {"id": "loyal_blunt", "label": "忠直硬梆", "hint": "不会绕弯，忠诚但措辞生硬。"},
 ]
 
-# Cold-start only when no card signal and no tags
+# Cold-start seed only: used when no card signal and no tags.
+#
+# **它只是 seed，不是指令**：过去这里被写成"使用冷启动兜底三轴（一一对应）"下给模型，
+# 于是角色卡空白的作者反复点生成，拿到的永远是同样三个方向（与"标签钉死"是同一个
+# 用户可见症状的另一半）。现在冷启动改请模型自拟，这组三轴退居**解析兜底**——
+# 模型返回残缺时仍有确定性的安全网。
 _FALLBACK_AXES = [
     VOICE_AXIS_TAGS[18],  # cold_short
     VOICE_AXIS_TAGS[19],  # hot_banter
     VOICE_AXIS_TAGS[6],  # soft_selfdeprec
 ]
+
+#: 系统提示词里那句"别把通用三轴当默认答案"。
+#:
+#: 单列成常量是为了能被测试钉住：它点名的三条必须与 `VOICE_AXIS_TAGS` 的 label 逐字一致。
+#: 过去这里写的是「软自嘲**留白**」，而标签池里叫「软自嘲」（"留白"只在 hint 里），
+#: 连名字都对不上，模型未必认得出这是同一条轴。
+#:
+#: 这句和冷启动不再冲突：冷启动现在**不再**下令使用这三条，所以"禁止默认套用"就只是
+#: 一条纯粹的反偷懒约束（也是对冷启动"自拟"的有效约束——别又拟回这三条）。
+_AXIS_NO_DEFAULT_RULE = (
+    "轴必须贴合该角色，禁止默认套用「冷短回避 / 热吐槽防护 / 软自嘲」除非角色卡确实如此。"
+)
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
 
@@ -357,7 +374,7 @@ async def generate_voice_variants(
         "- 每组含：axisId, axisLabel, hypothesis（一句本组人设假设）, lines（2～5 条）。\n"
         "- lines 每项：speaker（self=本角色，other=对手）, text（中文台词，像能演的 VN 对白）。\n"
         "- 三组必须分别对齐本轮三条差异轴，禁止只是同义改写。\n"
-        "- 轴必须贴合该角色，禁止默认套用「冷短回避 / 热吐槽防护 / 软自嘲留白」除非角色卡确实如此。\n"
+        f"- {_AXIS_NO_DEFAULT_RULE}\n"
         "- 若有已确认方向，在其邻近气质空间拉开，而不是每轮重置成无关三极。\n"
         "- 优先对齐【偏好】与高权重正例（金句/剧本）；与【忌讳】冲突时服从忌讳。\n"
         "- 有【剧本锚点】时对齐用词习惯与人设，禁止照抄原文；情节服从当前场景压力。\n"
@@ -428,9 +445,20 @@ def _build_axes_brief(
         )
 
     if not _card_signal(char):
+        # 角色卡没有任何信号。**不要把固定三轴下给模型**——那会让"再点一次生成"这个动作
+        # 永远拿不到新东西（用户反馈的症状）。改成请模型为这一轮自拟三条对比明显的轴；
+        # `_FALLBACK_AXES` 作为 seed 返回，只在模型返回残缺时才出现在结果里。
+        #
+        # 这里也不再与系统提示词的"禁止默认套用「冷短回避 / 热吐槽防护 / 软自嘲」"打架：
+        # 那条禁令现在只针对偷懒，不针对本路径。
         axes = [dict(a) for a in _FALLBACK_AXES]
-        desc = "\n".join(f"- {a['id']} / {a['label']}: {a['hint']}" for a in axes)
-        return axes, f"角色卡信号不足，使用冷启动兜底三轴（一一对应）：\n{desc}"
+        return (
+            axes,
+            "角色卡还没有可用的口吻信号（语气 / 简介 / 关系 / 正例都为空）。"
+            "请为这一轮**自拟三条彼此对比明显**的轴，让作者能看出方向差别；"
+            "不要沿用任何固定三轴，也不要三条同义改写。\n"
+            "每条轴含 id（英文蛇形）、label（中文短名）、hint（一句）。",
+        )
 
     converge = ""
     if confirmed:

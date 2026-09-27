@@ -22,7 +22,14 @@ type Props = {
   onScenarioPromptChange: (value: string) => void;
   onCustomLabelChange: (value: string) => void;
   onConstraintsChange: (value: string) => void;
-  onGenerate: () => void;
+  /**
+   * `pinTags = true` 只由「按标签重开」传。
+   *
+   * 这里必须是**显式**参数：过去两个按钮调的是同一个无参回调，而下游无条件把
+   * 勾选的标签当成本轮轴发出去，后端一收到 3 个 pinned 轴就命令模型"勿改名"——
+   * 于是勾过一次之后方向永远是那三个（用户反馈）。见 `lib/voiceAxisPin.ts`。
+   */
+  onGenerate: (pinTags?: boolean) => void;
   onRejectAll: () => void;
   onSameSceneRetry: () => void;
 };
@@ -122,6 +129,7 @@ export function VoiceScenarioControls({
       </label>
       {showGenerate && (
         <div className={styles.actions}>
+          {/* 主按钮：按角色卡出本轮三轴，**不**钉勾选的标签（勾了也一样）。 */}
           <button
             type="button"
             className={styles.primary}
@@ -135,11 +143,12 @@ export function VoiceScenarioControls({
               都不像…
             </button>
           )}
+          {/* 只有这一个按钮把勾选的标签当轴（`pinTags = true`）。 */}
           {shapeMode === "preference" && selectedTagCount > 0 && (
             <button
               type="button"
               disabled={!!busy || !hasCharacter}
-              onClick={() => onGenerate()}
+              onClick={() => onGenerate(true)}
               title="按已勾标签重开三组"
             >
               按标签重开

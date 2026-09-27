@@ -1,5 +1,9 @@
 import type { VoiceAxisTag, VoiceScenario, VoiceVariant } from "../api/client";
 import type { VoiceCorpusSample } from "../types/vn";
+import {
+  pinnedTagsNote,
+  tagSelectionHint,
+} from "../lib/voiceAxisPin";
 import { VoiceAxisTagPanel } from "./VoiceAxisTagPanel";
 import { VoiceCorpusDrawer, type ExtractRow } from "./VoiceCorpusDrawer";
 import { VoiceInterviewPanel } from "./VoiceInterviewPanel";
@@ -26,6 +30,8 @@ type Props = {
   uniqueCount: number;
   axisTags: VoiceAxisTag[];
   selectedTagIds: string[];
+  /** 上一次生成真正用到的标签（后端回的 `pinnedTags`）；用来告诉作者"这三组是被钉住的"。 */
+  lastPinnedTags: string[];
   sampleCount: number;
   ready: boolean;
   readinessInfo: ReadinessInfo;
@@ -51,7 +57,8 @@ type Props = {
   onScenarioPromptChange: (value: string) => void;
   onCustomLabelChange: (value: string) => void;
   onConstraintsChange: (value: string) => void;
-  onGenerate: () => void;
+  /** `pinTags = true` 只由「按标签重开」传（见 `lib/voiceAxisPin.ts`）。 */
+  onGenerate: (pinTags?: boolean) => void;
   onRejectAll: () => void;
   onSameSceneRetry: () => void;
   onAcceptVariant: (
@@ -110,6 +117,7 @@ export function VoiceShapeZone({
   uniqueCount,
   axisTags,
   selectedTagIds,
+  lastPinnedTags,
   sampleCount,
   ready,
   readinessInfo,
@@ -163,6 +171,16 @@ export function VoiceShapeZone({
   onToggleRow,
   onAcceptExtract,
 }: Props) {
+  /**
+   * 标签与"这一轮用没用它们"的说明。
+   *
+   * 优先说"这次是被你自己钉住的"；没钉但勾了标签时，说清"勾了不等于生效"——
+   * 这两个状态不说破，作者就只会看到"方向永远是那三个"而不知道为什么。
+   */
+  const pinNotice =
+    pinnedTagsNote(lastPinnedTags, axisTags) ||
+    tagSelectionHint(selectedTagIds, lastPinnedTags);
+
   function renderScenarioControls(showGenerate = true) {
     const list = ensureCustomScenario(
       scenarios.length
@@ -249,6 +267,10 @@ export function VoiceShapeZone({
             onClear={onClearTags}
           />
         )}
+
+      {(shapeMode === "preference" || shapeMode === "interview") && pinNotice && (
+        <p className={styles.shapeTip}>{pinNotice}</p>
+      )}
 
       {shapeMode === "preference" && sampleCount > 0 && !ready && (
         <div className={styles.readyBannerCompact}>
