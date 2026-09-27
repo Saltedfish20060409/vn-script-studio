@@ -226,6 +226,21 @@ export function importCharacterVoiceMind(
   );
 }
 
+/**
+ * 删除思维包（**只删思维包**，示例库保留）。
+ *
+ * 为什么要有：`voiceMind` 此前只写不清——合成或导入一份不满意的包之后只能再导入一份
+ * 覆盖，否则它会一直参与写作与审稿（`format_mind_for_prompt` / `dialogue_write_policy`）。
+ */
+export function deleteCharacterVoiceMind(
+  projectId: string,
+  characterId: string
+): Promise<VoiceCorpusStats & { voiceMind?: string; project: VnProject }> {
+  return apiFetch(`/projects/${projectId}/characters/${characterId}/voice/mind`, {
+    method: "DELETE",
+  });
+}
+
 export function workshopChat(
   projectId: string,
   characterId: string,

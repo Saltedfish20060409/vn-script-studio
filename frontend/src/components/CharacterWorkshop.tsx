@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   acceptCharacterVoiceSample,
   acceptExtractedCharacterVoice,
+  deleteCharacterVoiceMind,
   deleteCharacterVoiceSample,
   exportCharacterVoicePack,
   extractCharacterVoice,
@@ -22,6 +23,7 @@ import { VoicePackZone } from "./VoicePackZone";
 import { VoiceProgressRail } from "./VoiceProgressRail";
 import { VoiceRail } from "./VoiceRail";
 import { ensureCustomScenario, promptSlug, type ShapeMode } from "../lib/voiceScenarios";
+import { useConfirm } from "../lib/confirmDialog";
 import { axisTagsForGeneration } from "../lib/voiceAxisPin";
 import { VoiceShapeZone } from "./VoiceShapeZone";
 import { VoiceWorkshopEmpty } from "./VoiceWorkshopEmpty";
@@ -176,6 +178,7 @@ function readinessPaths(opts: {
 }
 
 export function CharacterWorkshop({ project, onProjectChange }: Props) {
+  const confirm = useConfirm();
   // Stable reference: `|| []` alone would create a new array every render,
   // churning useMemo/useEffect deps below.
   const characters = useMemo(() => project.characters || [], [project.characters]);
@@ -817,6 +820,46 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
     }
   }
 
+  /**
+   * 删除思维包。
+   *
+   * 只删思维包（`voiceMind`），**示例库一条不动**——确认弹窗里必须写清楚，否则作者会
+   * 以为辛苦攒的对白例句也会一起没了。删完这个角色的写作/审稿立刻回到"没有思维包"，
+   * 随时可以重新合成或导入。
+   */
+  async function onDeleteMind() {
+    if (!character) return;
+    const ok = await confirm({
+      title: "删除思维包？",
+      body:
+        `将删除「${character.displayName}」的思维包（AI 总结出的口吻说明）。\n` +
+        "示例库里的对白例句**全部保留**，之后可以随时重新「合成思维包」或导入一份新的。",
+      confirmLabel: "删除思维包",
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy("mind-del");
+    setError("");
+    try {
+      const res = await deleteCharacterVoiceMind(project.id, character.id);
+      applyProject(res.project);
+      setMind("");
+      setHasMindPack(false);
+      // 示例库没动，但统计口径一起回填，避免界面上留下过期数字
+      setSampleCount(res.sampleCount);
+      setCoverage(res.scenarioCoverage);
+      setReady(res.readyForMind);
+      setShortCount(res.shortCount ?? 0);
+      setSceneCount(res.sceneCount ?? 0);
+      setInterviewCount(res.interviewCount ?? 0);
+      setVolumeChars(res.volumeChars ?? 0);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "删除思维包失败");
+    } finally {
+      setBusy("");
+    }
+  }
+
   function chatHistoryPayload(msgs: ChatMsg[]) {
     return msgs.map((m) => ({
       role: m.role === "user" ? "user" : "assistant",
@@ -1239,6 +1282,7 @@ export function CharacterWorkshop({ project, onProjectChange }: Props) {
               onToggleImport={() => setShowImport((v) => !v)}
               onImportMdChange={setImportMd}
               onImportMind={() => void onImportMind()}
+              onDeleteMind={() => void onDeleteMind()}
             />
           )}
           {zone === "chat" && (

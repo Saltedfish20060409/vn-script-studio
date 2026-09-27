@@ -15,6 +15,8 @@ type Props = {
   onToggleImport: () => void;
   onImportMdChange: (value: string) => void;
   onImportMind: () => void;
+  /** 删除思维包（只删思维包，示例库保留）。 */
+  onDeleteMind: () => void;
 };
 
 export function VoicePackZone({
@@ -31,6 +33,7 @@ export function VoicePackZone({
   onToggleImport,
   onImportMdChange,
   onImportMind,
+  onDeleteMind,
 }: Props) {
   return (
     <div className={styles.packZone}>
@@ -61,6 +64,16 @@ export function VoicePackZone({
         </button>
         <button type="button" disabled={!!busy} onClick={onToggleImport}>
           导入思维包
+        </button>
+        {/* 只删思维包，不碰示例库——按钮 title 与确认弹窗都要说清这一点，
+            否则作者会以为会连辛苦攒的对白例句一起删掉 */}
+        <button
+          type="button"
+          disabled={!!busy || !mind}
+          title={mind ? "只删思维包，示例库保留" : "还没有思维包"}
+          onClick={onDeleteMind}
+        >
+          删除思维包
         </button>
       </div>
       {!ready && sampleCount >= 1 && (

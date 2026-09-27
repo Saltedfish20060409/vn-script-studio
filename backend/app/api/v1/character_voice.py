@@ -562,3 +562,37 @@ async def import_character_voice_mind(
         "voiceMind": find_character(out, character_id).voiceMind,
         "project": project_to_dict(out),
     }
+
+
+@router.delete("/projects/{project_id}/characters/{character_id}/voice/mind")
+async def delete_character_voice_mind(
+    project_id: str,
+    character_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除思维包——**只删思维包**，示例库（`voiceCorpus`）与其它字段一律不动。
+
+    为什么需要它：思维包此前只有"写入"两条路（合成 / 导入），没有任何清空方式。
+    于是作者一旦合成或导入了一份不满意的包，只能靠再导入一份覆盖，或者干脆放弃这个角色——
+    而那份包会一直参与写作与审稿（`format_mind_for_prompt`、`dialogue_write_policy`）。
+    删除后这些立刻回到"没有思维包"的状态，随时可以重新合成。
+
+    没有思维包时返回 404（而不是静默成功）：静默成功会让界面以为删掉了。
+    """
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    char = _char_or_404(vn, character_id)
+    if not (char.voiceMind or "").strip():
+        raise HTTPException(status_code=404, detail="这个角色还没有思维包")
+    vn = patch_character(vn, character_id, voiceMind="")
+    vn = touch_project(vn)
+    sync_row_from_vn(row, vn)
+    await db.commit()
+    await db.refresh(row)
+    out = row_to_vn(row)
+    c = find_character(out, character_id)
+    return {
+        **_stats_payload(c),
+        "project": project_to_dict(out),
+    }
