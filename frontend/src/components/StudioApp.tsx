@@ -517,7 +517,7 @@ export function StudioApp() {
       return next;
     });
   }, []);
-  /** 视图抽屉铺满：藏左大纲，抽屉吃满工作区（保留 Ribbon）。 */
+  /** 视图抽屉铺满：藏左大纲与顶栏，抽屉吃满壳层（退出靠抽屉「收窄/关闭」）。 */
   const viewWorkspaceFull = isViewDrawerWorkspaceFull(overlay, viewSizeOverrides);
   const [focusSetupOpen, setFocusSetupOpen] = useState(false);
   const [focusPrefs, setFocusPrefs] = useState<FocusTimerPrefs | null>(null);
@@ -3048,7 +3048,7 @@ export function StudioApp() {
           menuStage ? styles.menuStage : ""
         } ${shellUnderDesktopHidden ? styles.shellHidden : ""} ${
           desktopWindowOpen ? styles.shellUnderDesktop : ""
-        }`}
+        } ${viewWorkspaceFull ? styles.viewWorkspaceFull : ""}`}
         aria-hidden={shellUnderDesktopHidden ? true : undefined}
       >
         <FocusChrome
@@ -3069,6 +3069,7 @@ export function StudioApp() {
             onDismiss={dismissToast}
           />
         ) : null}
+        {!viewWorkspaceFull ? (
         <StudioRibbon
           copy={copy}
           title={project.title}
@@ -3156,6 +3157,7 @@ export function StudioApp() {
                 : null
           }
         />
+        ) : null}
 
         <div className={styles.layout}>
           <main className={styles.main}>

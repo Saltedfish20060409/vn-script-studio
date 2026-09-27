@@ -617,6 +617,19 @@
   width: 100%;
 }
 
+/* 铺满时顶栏也不挂载：layout 吃满壳层高度，抽屉能顶到最上 */
+.viewWorkspaceFull .layout {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.viewWorkspaceFull .main,
+.viewWorkspaceFull .docLayout,
+.viewWorkspaceFull .docMain {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
 /* 窄屏：ChapterOutline 折成顶部横条，稿纸在下 */
 @media (max-width: 720px) {
   .docLayout:not(.docLayoutFull) {

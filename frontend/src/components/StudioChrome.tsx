@@ -50,7 +50,7 @@ type DrawerProps = {
  * 用户的原话是"不如前版看着详细易懂"。所以宽度按面板给默认档，
  * 并在标题栏给一个开关让作者自己决定"瞥一眼"还是"专心改"。
  *
- * 「铺满」= 工作区全宽（壳层藏左大纲，本抽屉 width:100%），不是浏览器全屏。
+ * 「铺满」= 工作区沉浸（壳层藏左大纲与顶栏，本抽屉 width:100%），不是浏览器全屏。
  * 底板用 shell-overlay-surface：与壳层底景连续，不用实心纸色切断氛围。
  */
 export function StudioViewDrawer({
@@ -79,8 +79,8 @@ export function StudioViewDrawer({
             aria-pressed={size === "full"}
             title={
               size === "full"
-                ? "收窄，让出大纲与稿纸"
-                : "铺满工作区（藏大纲，保留顶栏）"
+                ? "收窄，恢复顶栏与大纲"
+                : "铺满工作区（藏顶栏与大纲）"
             }
             onClick={onToggleSize}
           >

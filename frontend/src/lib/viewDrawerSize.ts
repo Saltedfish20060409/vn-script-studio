@@ -10,11 +10,11 @@
  * 所以这里把"哪个面板默认多宽"变成**一处可读的规则**（而不是散在 JSX 里的三元表达式），
  * 并允许作者用抽屉标题栏的「铺满 / 收窄」开关覆盖它。
  *
- * 「铺满」(full) = **工作区全宽**：壳层藏左大纲，抽屉吃满稿纸列；保留 Ribbon 顶栏。
- * 不是浏览器 Fullscreen，也不是专注写作模式。
+ * 「铺满」(full) = **工作区沉浸**：壳层藏左大纲与顶栏 Ribbon，抽屉吃满剩余视口；
+ * 退出用抽屉上的「收窄 / 关闭」。不是浏览器 Fullscreen，也不是专注写作模式。
  *
  * 为什么不是一律 wide：写作时多数时候只是"瞥一眼设定"，
- * 一上来就占 92vw 会把稿纸整个挤走——那是另一个方向的退步。
+ * 一上来就占满屏会把稿纸整个挤走——那是另一个方向的退步。
  */
 
 export type ViewSize = "narrow" | "wide" | "full";
@@ -83,8 +83,8 @@ export function nextViewSize(panel: ViewPanelId, current: ViewSize): ViewSize {
 /**
  * 当前视图抽屉是否处于「工作区全宽」（铺满）档。
  *
- * 壳层用它决定是否藏左大纲：full = 藏大纲，保留顶栏；不是浏览器全屏。
- * `analysis` 与 `view` 共用同一套尺寸记忆，所以两种 overlay 都要认。
+ * 壳层用它决定是否藏左大纲与顶栏 Ribbon：full = 沉浸进面板，退出靠抽屉「收窄/关闭」。
+ * 不是浏览器 Fullscreen API。`analysis` 与 `view` 共用同一套尺寸记忆。
  */
 export function isViewDrawerWorkspaceFull(
   overlay:
