@@ -1113,7 +1113,11 @@ export function chapterRevise(
     note?: string;
     conversation_id?: string;
     attachments?: AgentAttachment[];
-    mode?: "cut_lecture" | "human_warmth" | "light_touch";
+    /**
+     * 改稿方向。`follow_note` = 不注入固定方向、以 `note`（作者自己的说明）为准
+     * —— 见 `lib/chapterRevisePrefs.ts` 的说明。
+     */
+    mode?: "cut_lecture" | "human_warmth" | "light_touch" | "follow_note";
     preferences?: {
       lockedNames?: string[];
       preferKeepOriginal?: boolean;

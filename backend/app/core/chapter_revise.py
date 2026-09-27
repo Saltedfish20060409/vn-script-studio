@@ -389,6 +389,14 @@ class ChapterReviseResult:
     elapsed_ms: int = 0
 
 
+#: 作者用自己的话说要改什么时走这一档：**不注入固定方向**。
+#:
+#: 为什么需要它：三选一那三条（只去说明书 / 加强人味 / 轻润不改结构）是"作者没细说时的
+#: 省事方向"，但真实需求常常不落在这三类里——作者反馈原话是"很多时候并不符合说的这三种
+#: 情况，所以不太有用，更多时候看 Agent 理解"。而改稿提示词里「回炉指引」是**无条件**拼进
+#: 去的，于是作者说了 A、指引却在推 B，两者打架。这一档把话语权交回「用户说明」。
+FOLLOW_NOTE_MODE = "follow_note"
+
 _MODE_HINTS = {
     "cut_lecture": (
         "模式【只去说明书】：优先删除问答课、导览、内心OS、假选择；"
@@ -401,7 +409,24 @@ _MODE_HINTS = {
     "light_touch": (
         "模式【轻润不改结构】：只动硬伤与假选择；节拍、大段旁白、人物口吻尽量原样。"
     ),
+    FOLLOW_NOTE_MODE: (
+        "模式【按作者说明改】：以「用户说明」为准，只做他要求的那一类改动；"
+        "说明没覆盖到的部分尽量原样保留（不要顺手加强人味，也不要顺手删段或改写）。"
+    ),
 }
+
+
+def resolve_mode_hint(mode: Optional[str]) -> str:
+    """把 `mode` 解析成"回炉指引"。
+
+    - 三档固定方向 → 各自那句；
+    - `follow_note` → 交给作者自己的说明（前端在他选「就照我说的改」时用这一档）；
+    - **缺省 / 未知仍回落到 `human_warmth`**（既有调用方——不用选模式的入口——行为不变）。
+    """
+    mode_key = (mode or "").strip() or "human_warmth"
+    if mode_key not in _MODE_HINTS:
+        mode_key = "human_warmth"
+    return _MODE_HINTS[mode_key]
 
 
 def _prefs_hint(preferences: Optional[Dict[str, Any]]) -> str:
@@ -854,10 +879,7 @@ async def run_chapter_revise(
     )
     brief = project_brief(project)
     note_bit = (note or "").strip() or "按固化改稿协议回炉：砍问答课与内心OS，留相处与毛边。"
-    mode_key = (mode or "").strip() or "human_warmth"
-    if mode_key not in _MODE_HINTS:
-        mode_key = "human_warmth"
-    mode_hint = _MODE_HINTS[mode_key]
+    mode_hint = resolve_mode_hint(mode)
     pref_hint = _prefs_hint(preferences)
     guidance = "\n\n".join(x for x in (mode_hint, pref_hint) if x)
     critic_cfg = critic_config or config

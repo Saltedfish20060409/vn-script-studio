@@ -42,6 +42,7 @@ import { inferAgentIntent } from "../lib/agentIntent";
 import {
   getChapterRevisePrefs,
   prefsToNoteSuffix,
+  resolveRevisePlan,
   setChapterRevisePrefs,
   type ReviseMode,
 } from "../lib/chapterRevisePrefs";
@@ -1134,10 +1135,9 @@ export function AgentChat({
       return;
     }
     if (intent.kind === "chapter_revise") {
-      await runChapterReviseFlow(intent.note || trimmed, {
-        mode: intent.mode,
-        skipModePicker: Boolean(intent.mode),
-      });
+      // 只传识别出的方向：要不要跳过弹窗由 resolveRevisePlan 一处决定
+      // （以前这里还要再算一遍 `skipModePicker: Boolean(intent.mode)`，两处规则容易分叉）
+      await runChapterReviseFlow(intent.note || trimmed, { mode: intent.mode });
       return;
     }
     if (intent.kind === "settings_ingest") {
@@ -1769,18 +1769,35 @@ export function AgentChat({
 
   async function runChapterReviseFlow(
     note?: string,
-    opts?: { mode?: ReviseMode; skipModePicker?: boolean }
+    opts?: {
+      mode?: ReviseMode;
+      skipModePicker?: boolean;
+      /** 作者在弹窗里用自己的话写的改法（走「就照我说的改」）。 */
+      customNote?: string;
+      /** 勾了「以后直接照我说的改，不再问」。 */
+      rememberNoAsk?: boolean;
+    }
   ) {
     if (!conversationId || busy) return;
-    // 用户主动改章时再弹模式选择；话里已点明模式（或「再润」）则跳过
-    if (!opts?.skipModePicker) {
+    const prefs = getChapterRevisePrefs(projectId, chapterId);
+    const plan = resolveRevisePlan({
+      modeFromSpeech: opts?.mode,
+      customNote: opts?.customNote,
+      skipModePicker: opts?.skipModePicker,
+      prefs,
+    });
+    // 用户主动改章时再弹模式选择；话里已点明模式（或「再润」）则跳过；
+    // 勾过「以后直接照我说的改」也不再问（规则见 resolveRevisePlan 的说明）
+    if (plan.openPicker) {
       revisePendingArgs.current = { note, mode: opts?.mode };
       setReviseModeOpen(true);
       return;
     }
-    const prefs = getChapterRevisePrefs(projectId, chapterId);
-    const resolvedMode: ReviseMode = opts?.mode || prefs.mode || "human_warmth";
-    setChapterRevisePrefs(projectId, chapterId, { mode: resolvedMode });
+    const resolvedMode: ReviseMode = plan.mode;
+    setChapterRevisePrefs(projectId, chapterId, {
+      mode: resolvedMode,
+      ...(opts?.rememberNoAsk ? { askMode: false } : {}),
+    });
 
     const pending = [...attachments];
     setError("");
@@ -1788,14 +1805,17 @@ export function AgentChat({
     setThinking("正在准备改稿预览…");
     setAttachments([]);
     const prefNote = prefsToNoteSuffix({ ...prefs, mode: resolvedMode });
-    const noteCombined = [note?.trim(), prefNote].filter(Boolean).join("\n");
+    // 作者自己写的改法排在最前：提示词里「用户说明」是模型的**首要依据**，
+    // 排在【本章偏好】之前，免得偏好里的旧话把他的新要求压下去
+    const authorNote = opts?.customNote?.trim() || note?.trim() || "";
+    const noteCombined = [authorNote, prefNote].filter(Boolean).join("\n");
     const userMsg: AgentChatMessage = {
       role: "user",
       content: pending.length
-        ? `【改稿】${note?.trim() || "请改一版"}\n\n📎 ${pending
+        ? `【改稿】${authorNote || "请改一版"}\n\n📎 ${pending
             .map((a) => `${a.filename}（${a.chars ?? a.text.length} 字）`)
             .join("、")}`
-        : `【改稿】${note?.trim() || "请改当前章"}`,
+        : `【改稿】${authorNote || "请改当前章"}`,
     };
     const withUser = [...messagesRef.current, userMsg].slice(-120);
     setMessages(withUser);
@@ -2379,13 +2399,15 @@ export function AgentChat({
                 setReviseModeOpen(false);
                 revisePendingArgs.current = null;
               }}
-              onPick={(mode) => {
+              onPick={(mode, pickOpts) => {
                 const args = revisePendingArgs.current;
                 revisePendingArgs.current = null;
                 setReviseModeOpen(false);
                 void runChapterReviseFlow(args?.note, {
                   mode,
                   skipModePicker: true,
+                  customNote: pickOpts?.customNote,
+                  rememberNoAsk: pickOpts?.rememberNoAsk,
                 });
               }}
             />
