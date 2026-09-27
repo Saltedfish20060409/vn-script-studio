@@ -93,6 +93,82 @@ def _clip(text: str, n: int) -> str:
     return t[:n].rstrip() + "…"
 
 
+def _step_message(parsed: Dict[str, Any]) -> str:
+    """这一步模型写给用户的文字说明；**没有就是空串**。
+
+    刻意**不**调 `_parse_agent_json` 的空消息兜底来"补一句"：那句
+    「我这一轮没产出可用的文字说明。请换个问法再试…」是给单轮老路径用的**失败提示**，
+    在这里当 message 用会撞上两件事（用户反馈刚好两件都撞了）：
+    1. **工具步本来就不写 message**（协议只要求 `done=false`，见 `_LOOP_PROTOCOL`），
+       于是每个工具步都被"补"上这句道歉，混进思考流，作者看到一句莫名其妙的话；
+    2. 最后一步若同样没有 message，它会**直接变成给作者的最终答复**——而这一轮明明
+       已经取回了工具证据、本该给出审查意见。
+
+    真正的收尾由 `_agent_steps` 末尾的 `_force_final_message` 负责：那才是"再问一次"，
+    而不是"编一句"。
+    """
+    msg = parsed.get("message")
+    if isinstance(msg, str) and msg.strip():
+        return msg.strip()
+    return ""
+
+
+#: 收尾补写时追加的那条指令。它只做一件事：要文字，不要工具。
+#: 单列成常量是为了能被测试直接断言（这段文案是"用户反馈的修复"的一部分）。
+_FORCE_FINAL_NUDGE = (
+    "你上一轮没有在 message 里写给作者任何文字。现在**不要再调用任何工具**，"
+    "直接基于以上已有信息给出你的分析与结论：说清你依据了什么，并给出可执行的下一步。"
+    '只输出 JSON：{"message":"…","tool_calls":[],"actions":[],"done":true}'
+)
+
+
+async def _force_final_message(
+    provider: LlmProvider,
+    *,
+    messages: List[Dict[str, str]],
+    temperature: float,
+    trace: List[Dict[str, Any]],
+) -> str:
+    """再要一次最终答复；只在模型一个字的分析都没给时调用。
+
+    为什么需要它：工具步不写 message 是**正常**的（协议只要求 `done=false`），但最后
+    一步不写就是失败——过去那种情况作者只会收到一句"请换个问法"，而这一轮明明已经取回
+    了工具证据。所以这里不是"编一句"（那正是被修掉的 bug），而是"再问一次"。
+
+    刻意自己解析、**不**经过 `_parse_agent_json`：那条路径的空消息兜底会返回一句
+    "给用户看的失败提示"，拿它当答复就等于把这次补写也白白浪费掉。
+    解析失败或模型又没给 message 时返回空串——调用方会回落到一句准确的话。
+    """
+    nudge = list(messages) + [{"role": "user", "content": _FORCE_FINAL_NUDGE}]
+    try:
+        content = await _chat_json(provider, temperature=temperature, messages=nudge)
+    except Exception:  # noqa: BLE001 — 收尾失败不该把整轮变成异常
+        return ""
+
+    text = (content or "").strip()
+    fence = _FENCE_RE.search(text)
+    if fence:
+        text = fence.group(1).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        text = text[start : end + 1]
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        # 补写这轮模型直接说了人话（没给 JSON）：那就是它的答复，照收——
+        # 与正常路径"纯文本当回复"同一口径，绝不把 JSONDecodeError 抛给作者。
+        from app.core.llm_text import normalize_model_text
+
+        return normalize_model_text(text).strip()
+    if not isinstance(parsed, dict):
+        return ""
+    msg = _step_message(parsed)
+    if msg:
+        trace.append({"type": "thought", "text": f"收尾补写：{msg[:200]}"})
+    return msg
+
+
 def _is_echo_of_tool_result(final_message: str, tool_text: str) -> bool:
     """检测模型把工具结果（如章节正文）原样复述当回复的失败模式。
 
@@ -187,6 +263,7 @@ async def _agent_steps(
     每步结束后若提供 on_checkpoint，则回调可序列化的执行快照——
     断点续跑（run_state 持久化）的数据来源。
     """
+    hit_step_cap = False
     for step in range(start_step, steps):
         content = await _chat_json(
             provider,
@@ -194,14 +271,9 @@ async def _agent_steps(
             messages=messages,
         )
         parsed = _parse_loop_json(content)
-        message = parsed.get("message")
-        if not isinstance(message, str) or not message.strip():
-            # fallback to legacy empty-message handling
-            msg2, acts2 = _parse_agent_json(content)
-            message = msg2
-            if not parsed.get("actions"):
-                parsed["actions"] = acts2
-        message = message.strip()
+        # 这一步的文字说明：没有就是空（工具步正常就不写 message）。
+        # 绝不能拿 `_parse_agent_json` 的空消息兜底来填——见 `_step_message` 的说明。
+        message = _step_message(parsed)
         final_message = message or final_message
         if message:
             trace.append({"type": "thought", "text": message[:2000]})
@@ -232,7 +304,7 @@ async def _agent_steps(
                 }
             )
 
-        if tool_calls and not done_flag:
+        if tool_calls:
             result_chunks: List[str] = []
             for tc in tool_calls:
                 name = tc["name"]
@@ -316,6 +388,12 @@ async def _agent_steps(
                     )
                 except Exception:  # noqa: BLE001 - checkpoint must never break the loop
                     pass
+            if done_flag:
+                # 模型自相矛盾：done=true 又给了 tool_calls。**不能静默丢掉工具调用**——
+                # 作者会只收到一句"没产出可用说明"，而要读的那章根本没读（用户反馈里
+                # 的症状之一）。证据已经取回并写进 messages 了，按 done 收工；这一步没有
+                # message 时由循环末尾的 `_force_final_message` 补写。
+                break
             continue
 
         # No more tools → finish
@@ -340,8 +418,25 @@ async def _agent_steps(
                 pass
         break
     else:
-        if not final_message:
-            final_message = "已达本轮最大工具步数，以下为目前进展。"
+        hit_step_cap = True
+
+    # 收尾补写：模型跑了工具（或干脆什么都不说）却没给作者一个字的分析。
+    # 工具步不写 message 是正常的，**最后一步**不写就是失败——用户反馈在这里只收到一句
+    # "请换个问法"。有证据时再明确要一次收尾，一次调用的代价换掉一句道歉。
+    if not final_message:
+        final_message = await _force_final_message(
+            provider,
+            messages=messages,
+            temperature=temperature,
+            trace=trace,
+        )
+    if not final_message:
+        # 补写也没拿到：给一句**准确**的话，而不是把失败说成"换个问法就好"。
+        final_message = (
+            "已达本轮最大工具步数，以下为目前进展。"
+            if hit_step_cap
+            else "本轮没有产出可用说明，请换个问法再试。"
+        )
 
     return working, accumulated, trace, final_message, messages, last_tool_text
 
