@@ -48,10 +48,15 @@ COMPOSE = REPO / "ops" / "docker-compose.server.yml"
 TRIAL = REPO / "frontend" / "nginx.conf"
 #: 私有运维脚本：不入库，只能在这台维护者机器上看到
 SETUP = REPO / "deploy" / "setup_server.sh"
+PUSH = REPO / "deploy" / "push.py"
 
 needs_setup = pytest.mark.skipif(
     not SETUP.exists(),
     reason="deploy/setup_server.sh 是私有运维脚本（不入库），只在维护者机器上",
+)
+needs_push = pytest.mark.skipif(
+    not PUSH.exists(),
+    reason="deploy/push.py 是私有运维脚本（不入库），只在维护者机器上",
 )
 
 
@@ -291,3 +296,32 @@ def test_setup_script_tells_the_user_to_place_certificates():
         "装机说明要写清证书文件名（配置里就是这两个）"
     )
     assert "nginx -t" in script, "改完配置要先自检"
+
+
+# ---- 私有部署脚本自身的守卫（有它才跑） --------------------------------------
+
+
+@needs_push
+def test_push_compares_drift_against_both_ops_files():
+    """漂移检查必须同时盯着 nginx.conf 与 server compose——少一个就等于没查。"""
+    src = _read(PUSH)
+    # 注意要截到**外层**元组的收尾（`\n)`），按第一个 `)` 截只会拿到第一条
+    block = src.split("DRIFT_FILES = (", 1)[1].split("\n)", 1)[0]
+    assert "ops/nginx.conf" in block, "漂移检查没有比对 ops/nginx.conf"
+    assert "ops/docker-compose.server.yml" in block, "漂移检查没有比对 ops/docker-compose.server.yml"
+
+
+@needs_push
+def test_push_refuses_to_deploy_a_stale_frontend_artifact():
+    """`--frontend` 发的是 `deploy/artifacts/dist.tar.gz` 这个**打包件**，它不会自己重新打包。
+
+    2026-09-27 踩过一次：改完前端忘了 `pack.py`，于是**静默发了上一版**，而部署输出一路
+    `HASH OK`（它比的是"服务器上的 dist"与"公网"，两边都是同一份旧的，当然一致）。
+    所以 push.py 必须在前端分支里先校验打包件是否过期。
+    """
+    src = _read(PUSH)
+    assert "def _assert_dist_tar_is_fresh" in src, "缺少打包件过期检查函数"
+    assert re.search(r"_assert_dist_tar_is_fresh\(dist_tar\)", src), (
+        "前端分支没有调用打包件过期检查——会回到'静默发上一版'"
+    )
+    assert "pack.py" in src, "提示里要写清先跑 deploy/pack.py"
