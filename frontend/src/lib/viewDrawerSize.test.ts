@@ -50,7 +50,7 @@ describe("视图抽屉宽度策略", () => {
 
   it("壳层用 isViewDrawerWorkspaceFull 判断是否藏左大纲", () => {
     expect(isViewDrawerWorkspaceFull(null, {})).toBe(false);
-    expect(isViewDrawerWorkspaceFull({ type: "file", page: "export" }, {})).toBe(false);
+    expect(isViewDrawerWorkspaceFull({ type: "file" }, {})).toBe(false);
     expect(
       isViewDrawerWorkspaceFull({ type: "view", panel: "map" }, { map: "wide" })
     ).toBe(false);
