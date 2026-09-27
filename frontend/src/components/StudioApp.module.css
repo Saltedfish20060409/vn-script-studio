@@ -1644,6 +1644,16 @@
   font-size: 0.84rem;
 }
 
+/* 字段超长时就地警告（例如「类型 / 题材」超过数据库列宽）：
+   用警示色 + 说清差多少字——不能等一次失败的保存才让用户知道。 */
+.fieldWarn {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--warn, #c9821c);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
 @media (max-width: 820px) {
   .hintInline {
     display: none;

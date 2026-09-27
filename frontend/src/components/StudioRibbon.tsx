@@ -3,6 +3,7 @@ import { copyFor, type GenreCopy } from "../lib/genreCopy";
 import type { ProjectSub, ViewPanel } from "../lib/studioOverlay";
 import { openNotice } from "../lib/notice";
 import { formatClock } from "../lib/desktopView";
+import { TITLE_MAX } from "../lib/fieldLimits";
 import {
   MENU_MNEMONICS,
   menuKeys,
@@ -18,6 +19,8 @@ type Props = {
   title: string;
   username?: string;
   saveBadge?: "saving" | "error" | null;
+  /** 最近一次保存失败的原因（服务端给的话）。有值就挂在「保存失败」的悬浮提示上。 */
+  saveError?: string;
   /** 最近一次成功保存的时刻（毫秒）。有值就显示「已保存 · HH:MM」。 */
   savedAt?: number | null;
   showFocusToggle: boolean;
@@ -108,6 +111,7 @@ export function StudioRibbon({
   title,
   username,
   saveBadge = null,
+  saveError,
   savedAt = null,
   showFocusToggle,
   writeMode,
@@ -253,9 +257,11 @@ export function StudioRibbon({
           <input
             className={styles.titleInput}
             value={title}
+            maxLength={TITLE_MAX}
             onChange={(e) => onTitleChange(e.target.value)}
             aria-label="作品标题"
             placeholder="作品标题"
+            title={`作品标题（最多 ${TITLE_MAX} 字）`}
           />
           {saveBadge === "saving" ? (
             <span
@@ -274,7 +280,13 @@ export function StudioRibbon({
               data-kind="error"
               role="status"
               aria-live="assertive"
-              title="自动保存失败，可用「文件 → 保存章节」手动保存"
+              /* 把服务端给的原因带上：只写"保存失败"的话，用户不知道是网络、
+                 还是某个字段超长，也就无从下手（实盘见过连续 15 次失败而没人知道为什么）。 */
+              title={
+                saveError
+                  ? `自动保存失败：${saveError}（可用「文件 → 保存章节」重试）`
+                  : "自动保存失败，可用「文件 → 保存章节」手动保存"
+              }
             >
               保存失败
             </span>

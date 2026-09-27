@@ -5,6 +5,7 @@ import { LoreEntriesPanel } from "./LoreEntriesPanel";
 import type { Character, LoreEntry, StoryBible } from "../types/vn";
 import type { LoreLinkOption } from "../lib/loreEntries";
 import { genreOptions } from "../lib/genreCopy";
+import { GENRE_MAX, isOverLimit, overLimitHint } from "../lib/fieldLimits";
 import { ConstraintAuditCard } from "./ConstraintAuditCard";
 import styles from "./StudioApp.module.css";
 
@@ -249,7 +250,20 @@ export function WorldPanel({
             </label>
             <label>
               类型 / 题材
-              <input value={genre} onChange={(e) => onGenreChange(e.target.value)} />
+              {/* maxLength 是"别让用户白打一遍字"的第一道门；上限与后端
+                  varchar(128) 一致（见 lib/fieldLimits.ts 的注释）。
+                  存量超长值（上次粘贴留下的）靠下面那条就地提醒——不能等一次失败的保存
+                  才告诉用户（那次故障里用户连"哪一项"都不知道）。 */}
+              <input
+                value={genre}
+                maxLength={GENRE_MAX}
+                onChange={(e) => onGenreChange(e.target.value)}
+              />
+              {isOverLimit(genre, GENRE_MAX) ? (
+                <span className={styles.fieldWarn} role="status">
+                  {overLimitHint("类型 / 题材", genre, GENRE_MAX)}
+                </span>
+              ) : null}
             </label>
             {onWritingGenreChange ? (
               <label

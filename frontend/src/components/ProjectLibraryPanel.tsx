@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import type { ProjectSummary } from "../api/client";
 import { copyFor, type GenreCopy } from "../lib/genreCopy";
+import { TITLE_MAX } from "../lib/fieldLimits";
 import { TemplatePicker } from "./TemplatePicker";
 import styles from "./StudioApp.module.css";
 
@@ -84,6 +85,7 @@ export function ProjectLibraryPanel({
                 ref={renameInputRef}
                 className={styles.libraryRename}
                 value={renameDraft}
+                maxLength={TITLE_MAX}
                 onChange={(e) => onRenameDraftChange(e.target.value)}
                 onBlur={() => void onCommitRename()}
                 onKeyDown={(e) => {

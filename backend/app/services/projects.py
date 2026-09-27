@@ -16,6 +16,7 @@ from app.core import (
     uid,
 )
 from app.core.chapter_digest import refresh_chapter_index
+from app.core.field_limits import GENRE_MAX, TITLE_MAX, clamp
 from app.core.voice_reports import mark_voice_reports_stale
 from app.domain.types import VnProject
 from app.llm_models import DEFAULT_LLM_MODEL
@@ -47,9 +48,14 @@ def sync_row_from_vn(row: Project, vn: VnProject) -> None:
     touched = auto_digest_ledger(touched)
     touched = mark_voice_reports_stale(touched)
     payload = project_to_dict(touched)
-    row.title = touched.title
+    # 长度上限的最后一道网（见 core/field_limits.py 的 docstring）：
+    # 用户直连的保存路径已经在前端 maxLength + 服务端 400 那里拦住了，能走到这里的
+    # 超长值只可能来自内部产生方（Agent 改写 / 导入 / 模板 / 缓存着的旧前端）。
+    # 那些路径**不该因为一个标签超长就让整次保存 500** —— 保存里的正文远比标签重要，
+    # 所以这里夹取。取舍写清楚：列宽是硬的，截的是这一列；读回来以列为准。
+    row.title = clamp(touched.title, TITLE_MAX)
     row.logline = touched.logline
-    row.genre = touched.genre
+    row.genre = clamp(touched.genre, GENRE_MAX)
     row.data = payload
     row.updated_at = datetime.now(timezone.utc)
     # 乐观锁版本号：任何写路径都自增（见 Project.row_version 注释）

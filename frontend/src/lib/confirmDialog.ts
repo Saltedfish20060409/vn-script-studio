@@ -18,6 +18,14 @@ export type PromptOptions = {
   confirmLabel?: string;
   cancelLabel?: string;
   placeholder?: string;
+  /**
+   * 输入框的字符上限（可选）。
+   *
+   * 为什么需要：新建 / 重命名作品走的都是这个弹窗，而作品标题在数据库里是
+   * `varchar(255)` —— 不设上限时，粘一大段文字进去会在保存那一刻被服务端拒绝
+   * （线上曾经是 500）。第一道门放在这里最省事。
+   */
+  maxLength?: number;
   /** Override mascot caption */
   line?: string;
 };

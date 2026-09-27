@@ -109,6 +109,7 @@ import {
   loadDesktopScriptOpen,
   saveDesktopScriptOpen,
 } from "../lib/desktopView";
+import { TITLE_MAX } from "../lib/fieldLimits";
 import { openNotice } from "../lib/notice";
 import { WriteToolbar, type WriteMode } from "./WriteToolbar";
 import { ScriptCommandBar } from "./ScriptCommandBar";
@@ -1738,6 +1739,8 @@ export function StudioApp() {
       title: "新剧本标题",
       defaultValue: "未命名剧本",
       confirmLabel: "创建",
+      // 作品标题在库里是 varchar(255)：超长会在保存时被拒，第一道门放在输入框上
+      maxLength: TITLE_MAX,
     });
     if (title === null) return;
     try {
@@ -2965,6 +2968,7 @@ export function StudioApp() {
               title: "重命名剧本",
               defaultValue: target?.title ?? "",
               confirmLabel: "保存",
+              maxLength: TITLE_MAX,
             }).then((next) => {
               if (next !== null) void renameProjectById(id, next);
             });
@@ -3108,6 +3112,7 @@ export function StudioApp() {
           }}
           onLogout={handleLogout}
           saveBadge={saveBadge === "idle" ? null : saveBadge}
+          saveError={saveBadge === "error" ? error : undefined}
           savedAt={savedAt}
           onOpenFilePage={(page) => applyOverlay({ type: "file", page })}
           onOpenViewPanel={(panel) => applyOverlay({ type: "view", panel })}

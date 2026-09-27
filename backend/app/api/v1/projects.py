@@ -38,6 +38,7 @@ from app.core.consistency_scan import (
     DEFAULT_WINDOW_OVERLAP,
     DEFAULT_WINDOW_SIZE,
 )
+from app.core.field_limits import limit_error
 from app.core.rate_limit import check_rate
 from app.core.snapshots import decode_snapshot_payload
 from app.core.voice_reports import persist_voice_report
@@ -105,6 +106,31 @@ from app.services.snapshots import (
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
+def _reject_overlong_fields(*, title: str | None = None, genre: str | None = None) -> None:
+    """超长字段 → 400（说清是哪一项、超了多少），而不是让它变成 500。
+
+    为什么放在 API 层而不是写库前：写库前抛异常时事务已经开了一半，
+    而且用户拿到的是"Internal Server Error"这种没有任何线索的话。
+    这里在**动手之前**问一句：**能不能写**（见 core/field_limits.py 的实盘记录）。
+    """
+    err = limit_error(title=title, genre=genre)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+
+
+def _declared_sections(body: ProjectPutIn) -> set[str]:
+    """这次保存真正会写进去的顶层字段。
+
+    分章保存（`chapter_ids` / `sections`）只合并声明过的顶层字段，其余的保留服务端版本；
+    对**没声明**的字段做长度校验，会把一次本来能成功的保存拦下来（假 400）。
+    """
+    sections = set(body.sections or [])
+    if not body.chapter_ids and not sections:
+        # 全量保存：顶层字段整份写入
+        return {"title", "genre", *sections}
+    return sections
+
+
 @router.get("", response_model=List[ProjectSummary])
 async def list_projects(
     user: User = Depends(get_current_user),
@@ -168,6 +194,8 @@ async def create_project(
         window=3600,
     ):
         raise HTTPException(status_code=429, detail="新建过于频繁，请稍后再试")
+    # 新建时也校验标题：标题太长会在插入时撞 varchar(255) → 以前是 500
+    _reject_overlong_fields(title=body.title)
     if body.template_id:
         from app.core.templates import TEMPLATES
 
@@ -358,6 +386,13 @@ async def put_project(
 ):
     row = await get_owned_project(db, user, project_id)
     tz_offset = _tz_offset_minutes(x_tz_offset)
+    # 长度上限：只校验这次真的会写进去的字段（见 _declared_sections）——
+    # 否则一次"只改正文"的保存会因为客户端里存着的旧超长字段被误拒。
+    declared = _declared_sections(body)
+    _reject_overlong_fields(
+        title=body.data.get("title") if "title" in declared else None,
+        genre=body.data.get("genre") if "genre" in declared else None,
+    )
     # 并发写保护：在当前事务内锁定项目行直到 commit，使
     # 「锁断言 → 合并 → 保存」成为临界区（此前锁只断言不持有，存在 TOCTOU）。
     await db.refresh(row, with_for_update=True)
@@ -443,6 +478,7 @@ async def patch_project(
 ):
     row = await get_owned_project(db, user, project_id)
     tz_offset = _tz_offset_minutes(x_tz_offset)
+    _reject_overlong_fields(title=body.title, genre=body.genre)
     # 与 put_project 相同：事务内行锁，防并发 patch 丢更新
     await db.refresh(row, with_for_update=True)
     vn = row_to_vn(row)

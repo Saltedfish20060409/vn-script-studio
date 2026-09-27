@@ -208,6 +208,27 @@ test.describe("键盘提示条", () => {
 });
 
 /**
+ * 顶栏作品标题的字符上限。
+ *
+ * 起因和「类型 / 题材」是同一次线上故障（2026-09-26）：`projects.title` 是
+ * `varchar(255)`，而输入框没有上限 —— 粘一大段文字进去，保存会在数据库层被拒
+ * （当时是 500 + 一句 "Internal Server Error"），用户完全不知道该改哪里。
+ * 这里钉住第一道门：输入框自带 maxLength，打不进去就不会走到服务端。
+ */
+test.describe("字段上限（别让用户白打一遍字）", () => {
+  test("顶栏作品标题有 maxLength，打不进超长文本", async ({ page }) => {
+    await page.goto("/e2e/writeShell.html?genre=vn");
+    const title = page.getByLabel("作品标题");
+    await expect(title).toBeVisible();
+    expect(await title.getAttribute("maxlength")).toBe("255");
+
+    await title.click();
+    await page.keyboard.insertText("长".repeat(300));
+    expect((await title.inputValue()).length).toBeLessThanOrEqual(255);
+  });
+});
+
+/**
  * 抽屉（设定 / 角色工坊 / 地图 / 剧情状态 / 结构分析）被**整宽的工具条**横着压住。
  *
  * 这是用户实测报的问题，成因是 z-index 排错了：抽屉 45 / 文件二级页 40，

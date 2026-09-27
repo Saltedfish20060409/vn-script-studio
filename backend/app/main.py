@@ -7,10 +7,12 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import DataError
 
 from app.api.v1 import api_router
 from app.config import get_settings
 from app.core.app_logging import app_logger, configure_app_loggers
+from app.core.db_errors import data_error_handler
 from app.db import Base, engine
 from app.models import (  # noqa: F401
     AgentSession,
@@ -203,6 +205,22 @@ def create_app() -> FastAPI:
             access_logger.info(json.dumps(record, ensure_ascii=False))
 
     app.include_router(api_router)
+
+    # ---------------------------------------------------------------------
+    # 数据库拒绝写入 → 400，而不是 500
+    #
+    # 实盘（2026-09-26）：用户在「类型 / 题材」里贴了一段长文本，Postgres 报
+    # `value too long for type character varying(128)`，SQLAlchemy 抛 DataError，
+    # 没有人接 → Starlette 兜底 500，响应体只有一句 `Internal Server Error`。
+    # 界面显示「保存失败」，用户既不知道哪一项有问题，也永远修不好
+    # （每一次自动保存都会继续失败，改动一直没落盘）。
+    #
+    # 这一层是"兜底"，不是唯一防线：用户直连的写路径已在 API 层按字段给 400
+    # （见 app/core/field_limits.py）。这里保证**其它任何**撞上列宽/取值范围的写入
+    # 也返回能读懂的话，并把真正的异常照旧打进日志（排查不能少东西）。
+    # 处理器本体在 app/core/db_errors.py（纯函数 + 同一个 logger），那边有离线用例。
+    # ---------------------------------------------------------------------
+    app.add_exception_handler(DataError, data_error_handler)
 
     @app.get("/health")
     async def health():

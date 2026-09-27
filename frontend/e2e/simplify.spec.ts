@@ -158,3 +158,31 @@ test("设定抽屉：写作参考卡不再和设定条目并列，但入口还�
     await expect(card.first()).toBeVisible();
   }
 });
+
+/**
+ * 「类型 / 题材」必须打不进超长文本。
+ *
+ * 起因是一次线上故障（2026-09-26）：这一栏没有 maxLength，用户贴了一段长文本，
+ * Postgres 报 `value too long for type character varying(128)`，接口给了 500，
+ * 界面只说"保存失败"——**从那以后每次自动保存都继续失败**，那个项目的改动一直没落盘。
+ * 所以这条在真机上量：输入框带 maxLength，而且打进去的字数真的被截住。
+ */
+test("类型 / 题材：输入框挡住了超长文本（那次 500 的第一道门）", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await registerAndLogin(page, randomName("e2e_genre_"));
+  await openViewPanel(page, "设定");
+
+  // 「类型 / 题材」在设定的「世界观 / 大纲」子页里（默认落在角色卡）
+  const drawer = page.getByTestId("view-drawer");
+  await drawer.getByRole("button", { name: "世界观 / 大纲" }).first().click();
+
+  const genre = drawer.locator("label", { hasText: "类型 / 题材" }).locator("input").first();
+  await expect(genre).toBeVisible({ timeout: 15_000 });
+  expect(await genre.getAttribute("maxlength")).toBe("128");
+
+  // 真打一遍：浏览器会自己截到 128，不会再把超长值发给服务端
+  await genre.click();
+  await page.keyboard.insertText("科幻".repeat(80)); // 160 字
+  const typed = (await genre.inputValue()).length;
+  expect(typed).toBeLessThanOrEqual(128);
+});

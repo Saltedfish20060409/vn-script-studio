@@ -196,6 +196,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                     className={styles.promptInput}
                     value={promptValue}
                     placeholder={promptPending.placeholder}
+                    maxLength={promptPending.maxLength}
                     onChange={(e) => setPromptValue(e.target.value)}
                     aria-label={promptPending.title}
                   />
