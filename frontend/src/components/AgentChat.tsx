@@ -42,7 +42,7 @@ import { inferAgentIntent } from "../lib/agentIntent";
 import {
   getChapterRevisePrefs,
   prefsToNoteSuffix,
-  resolveRevisePlan,
+  resolveReviseMode,
   setChapterRevisePrefs,
   type ReviseMode,
 } from "../lib/chapterRevisePrefs";
@@ -218,10 +218,10 @@ export function AgentChat({
       if (cid) clearChapterReviseDraft(projectId, cid);
     }
   }
+  /** 「选个方向」时先把待改的说明记在这里，等作者在面板里选完再真正开跑。 */
   const revisePendingArgs = useRef<{
     note?: string;
     mode?: ReviseMode;
-    skipModePicker?: boolean;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -1130,13 +1130,17 @@ export function AgentChat({
     if (intent.kind === "chapter_polish") {
       await runChapterReviseFlow(intent.note || "再润一版，轻润不改结构", {
         mode: "light_touch",
-        skipModePicker: true,
       });
       return;
     }
+    if (intent.kind === "revise_pick") {
+      // 显式要求"选个方向"：这是打开方向面板的唯一入口（平时改章不再弹窗）
+      revisePendingArgs.current = { note: intent.note || trimmed };
+      setReviseModeOpen(true);
+      return;
+    }
     if (intent.kind === "chapter_revise") {
-      // 只传识别出的方向：要不要跳过弹窗由 resolveRevisePlan 一处决定
-      // （以前这里还要再算一遍 `skipModePicker: Boolean(intent.mode)`，两处规则容易分叉）
+      // 只传识别出的方向：要不要用固定方向由 resolveReviseMode 一处决定
       await runChapterReviseFlow(intent.note || trimmed, { mode: intent.mode });
       return;
     }
@@ -1770,34 +1774,18 @@ export function AgentChat({
   async function runChapterReviseFlow(
     note?: string,
     opts?: {
+      /** 话里点过的方向，或作者在方向面板里点的那个。 */
       mode?: ReviseMode;
-      skipModePicker?: boolean;
-      /** 作者在弹窗里用自己的话写的改法（走「就照我说的改」）。 */
+      /** 作者在方向面板里用自己的话写的改法（走「就照我说的改」）。 */
       customNote?: string;
-      /** 勾了「以后直接照我说的改，不再问」。 */
-      rememberNoAsk?: boolean;
     }
   ) {
     if (!conversationId || busy) return;
     const prefs = getChapterRevisePrefs(projectId, chapterId);
-    const plan = resolveRevisePlan({
-      modeFromSpeech: opts?.mode,
-      customNote: opts?.customNote,
-      skipModePicker: opts?.skipModePicker,
-      prefs,
-    });
-    // 用户主动改章时再弹模式选择；话里已点明模式（或「再润」）则跳过；
-    // 勾过「以后直接照我说的改」也不再问（规则见 resolveRevisePlan 的说明）
-    if (plan.openPicker) {
-      revisePendingArgs.current = { note, mode: opts?.mode };
-      setReviseModeOpen(true);
-      return;
-    }
-    const resolvedMode: ReviseMode = plan.mode;
-    setChapterRevisePrefs(projectId, chapterId, {
-      mode: resolvedMode,
-      ...(opts?.rememberNoAsk ? { askMode: false } : {}),
-    });
+    // 不再弹窗拦人：话里点过方向就用那个，否则一律照作者的说明改（规则见 resolveReviseMode）。
+    // 方向选择器改成**按需打开**——只有说「选个方向」才会进（见 revise_pick 分支）。
+    const resolvedMode: ReviseMode = resolveReviseMode(opts?.mode);
+    setChapterRevisePrefs(projectId, chapterId, { mode: resolvedMode });
 
     const pending = [...attachments];
     setError("");
@@ -2405,9 +2393,7 @@ export function AgentChat({
                 setReviseModeOpen(false);
                 void runChapterReviseFlow(args?.note, {
                   mode,
-                  skipModePicker: true,
                   customNote: pickOpts?.customNote,
-                  rememberNoAsk: pickOpts?.rememberNoAsk,
                 });
               }}
             />

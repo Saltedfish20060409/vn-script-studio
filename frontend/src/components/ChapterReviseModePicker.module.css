@@ -138,15 +138,6 @@
   cursor: not-allowed;
 }
 
-.noAsk {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.78rem;
-  color: var(--ink-soft);
-  cursor: pointer;
-}
-
 .divider {
   display: flex;
   align-items: center;

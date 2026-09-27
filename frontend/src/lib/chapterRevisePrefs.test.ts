@@ -1,84 +1,70 @@
 /**
- * 改章方向：「什么时候问、用什么方向」这条规则。
+ * 改章方向：**不再弹窗拦人**，话里点过方向就用那个，否则照作者的说明改。
  *
- * 为什么专门测它（用户反馈原话）："那三种方向很多时候并不符合我想改的，更多时候看 Agent
- * 理解"。所以这次把**用自己的话说**提成主路径，并让"作者说的话"优先于记着的旧方向。
- * 下面每一条都对应一个真实会踩的坑。
+ * 用户反馈原话（两轮）："那三种方向很多时候并不符合我想改的，更多时候看 Agent 理解"、
+ * "为什么不能不弹窗直接回答呢？我感觉这个弹窗很多余"。所以：
+ * - 方向选择器不再自动弹，改成按需打开（说「选个方向」）；
+ * - 三档固定方向仍然可用——但靠**话里说**（「轻润」「只去说明书」「人味」），
+ *   由 `agentIntent` 识别，不需要弹窗；
+ * - `prefs.mode` 降级为"记录"，**不再参与判断**（否则又把作者钉回某个固定方向）。
  */
 import { describe, expect, it } from "vitest";
 
 import {
   FOLLOW_NOTE_MODE,
   getChapterRevisePrefs,
-  resolveRevisePlan,
-  type ChapterRevisePrefs,
+  prefsToNoteSuffix,
+  resolveReviseMode,
 } from "./chapterRevisePrefs";
 
-function prefs(p: ChapterRevisePrefs = {}): ChapterRevisePrefs {
-  return p;
-}
-
-describe("resolveRevisePlan —— 要不要问", () => {
-  it("没表态过、话里也没点方向 → 问一次（保留既有行为）", () => {
-    expect(resolveRevisePlan({ prefs: prefs() }).openPicker).toBe(true);
+describe("resolveReviseMode", () => {
+  it("话里没点方向 → follow_note（照作者自己的说明改）", () => {
+    expect(resolveReviseMode()).toBe(FOLLOW_NOTE_MODE);
   });
 
-  it("话里已点明方向（如「人味」）→ 不问，用他点的那个", () => {
-    const plan = resolveRevisePlan({ modeFromSpeech: "human_warmth", prefs: prefs() });
-    expect(plan.openPicker).toBe(false);
-    expect(plan.mode).toBe("human_warmth");
+  it("话里点过方向 → 用他点的那个（「轻润」「只去说明书」「人味」都走这条路）", () => {
+    expect(resolveReviseMode("light_touch")).toBe("light_touch");
+    expect(resolveReviseMode("cut_lecture")).toBe("cut_lecture");
+    expect(resolveReviseMode("human_warmth")).toBe("human_warmth");
   });
 
-  it("调用方已决定不问（「再润」走 polish 分支）→ 不问", () => {
-    const plan = resolveRevisePlan({ skipModePicker: true, prefs: prefs() });
-    expect(plan.openPicker).toBe(false);
+  it("作者在方向面板里挑了「就照我说的改」→ 仍是 follow_note", () => {
+    expect(resolveReviseMode(FOLLOW_NOTE_MODE)).toBe(FOLLOW_NOTE_MODE);
   });
 
-  it("勾过「以后直接照我说的改」→ 不再问", () => {
-    const plan = resolveRevisePlan({ prefs: prefs({ askMode: false }) });
-    expect(plan.openPicker).toBe(false);
-  });
-
-  it("上次选过固定方向、但没勾不再问 → 仍然问（确认一次是有意保留的）", () => {
-    const plan = resolveRevisePlan({ prefs: prefs({ mode: "light_touch" }) });
-    expect(plan.openPicker).toBe(true);
+  it("**不再回落 human_warmth**：没点方向时必须把话语权交给作者的说明", () => {
+    // 旧行为是 `prefs.mode || "human_warmth"`，会把"加强人味"那套指引无条件塞给模型，
+    // 跟作者真正想改的东西打架——那正是"三选一不太有用"的根因。
+    expect(resolveReviseMode()).not.toBe("human_warmth");
   });
 });
 
-describe("resolveRevisePlan —— 用什么方向", () => {
-  it("弹窗里「就照我说的改」→ follow_note（不注入固定方向）", () => {
-    const plan = resolveRevisePlan({
-      customNote: "把后面那段展开重写，别动前面的雨夜戏",
-      prefs: prefs(),
+describe("prefs 里记着的方向不再影响判断", () => {
+  it("上次点过 cut_lecture，这次没点方向 → 仍按作者的说明改（不是 cut_lecture）", () => {
+    // 纯函数已经不接受 prefs，所以这里直接从"记录"那一侧钉住语义：
+    // 记录只是记录，取值不参与 resolveReviseMode
+    expect(resolveReviseMode()).toBe(FOLLOW_NOTE_MODE);
+    const recorded = { mode: "cut_lecture" as const };
+    expect(recorded.mode).toBe("cut_lecture"); // 记录还在……
+    expect(resolveReviseMode(undefined)).toBe(FOLLOW_NOTE_MODE); // ……但不影响这次
+  });
+
+  it("【本章偏好】后缀里不带 mode，免得旧方向从提示词另一头溜进去", () => {
+    const suffix = prefsToNoteSuffix({
+      mode: "cut_lecture",
+      lockedNames: ["林夏"],
+      preferKeepOriginal: true,
+      notes: ["别动雨夜那段"],
     });
-    expect(plan.openPicker).toBe(false);
-    expect(plan.mode).toBe(FOLLOW_NOTE_MODE);
-  });
-
-  it("**关键**：勾了不再问时，不能被记着的旧方向压住作者这次说的话", () => {
-    // 上次他选过「加强人味」，这次想改的完全不是那回事——若沿用旧方向，
-    // 提示词里那条「回炉指引」就会跟他自己的说明打架
-    const plan = resolveRevisePlan({ prefs: prefs({ mode: "human_warmth", askMode: false }) });
-    expect(plan.mode).toBe(FOLLOW_NOTE_MODE);
-  });
-
-  it("但话里明确点过方向时，仍然以他点的为准（优先级最高）", () => {
-    const plan = resolveRevisePlan({
-      modeFromSpeech: "cut_lecture",
-      prefs: prefs({ mode: "human_warmth", askMode: false }),
-    });
-    expect(plan.mode).toBe("cut_lecture");
-  });
-
-  it("自定义说明为空串时不算「用自己的话」", () => {
-    const plan = resolveRevisePlan({ customNote: "   ", skipModePicker: true, prefs: prefs() });
-    expect(plan.mode).toBe("human_warmth");
+    expect(suffix).toContain("林夏");
+    expect(suffix).toContain("别动雨夜那段");
+    expect(suffix).not.toContain("cut_lecture");
+    expect(suffix).not.toContain("只去说明书");
   });
 });
 
-describe("prefs 存取", () => {
-  it("askMode 能存能读（未设置 = 还没表态过）", () => {
-    // node 环境没有 localStorage：这个用例只钉类型与默认值语义
-    expect(getChapterRevisePrefs("p", "c").askMode).toBeUndefined();
+describe("prefs 读写", () => {
+  it("node 环境没有 localStorage 也不炸（读取回落空对象）", () => {
+    expect(getChapterRevisePrefs("p", "c")).toEqual({});
   });
 });

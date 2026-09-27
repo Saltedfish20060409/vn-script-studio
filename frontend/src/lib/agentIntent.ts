@@ -5,6 +5,7 @@
 
 type AgentIntentKind =
   | "chapter_revise"
+  | "revise_pick"
   | "chapter_polish"
   | "chapter_lock_name"
   | "chapter_open_review"
@@ -107,6 +108,13 @@ export function inferAgentIntent(text: string, attachmentCount = 0): AgentIntent
         return { kind: "chapter_lock_name", lockName: name, note: t };
       }
     }
+  }
+
+  // 显式要求"选方向"——这是打开方向选择器的**唯一入口**。
+  // 以前它会在每次改章前自动弹出，逼作者在三选一里挑；但那三种方向本来就能用话说
+  // （下面 mode 那几行认这些词），作者反馈"弹窗很多余"，所以改成按需打开。
+  if (/^(选|挑)(个|一个)?(方向|改法|模式)|^按方向改|^选方向改|^选个方向/.test(t)) {
+    return { kind: "revise_pick", note: t };
   }
 
   // Mode hints inside natural revise asks

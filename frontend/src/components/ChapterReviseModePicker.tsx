@@ -6,8 +6,6 @@ import { FOLLOW_NOTE_MODE, REVISE_MODE_OPTIONS, type ReviseMode } from "../lib/c
 type PickOpts = {
   /** 作者自己写的改法（走「就照我说的改」时带上）。 */
   customNote?: string;
-  /** 勾了「以后直接照我说的改」→ 记住，下次不再问。 */
-  rememberNoAsk?: boolean;
 };
 
 type Props = {
@@ -18,12 +16,13 @@ type Props = {
 };
 
 /**
- * 改章方向选择。
+ * 改章方向选择（**按需打开**）。
  *
- * 为什么长这样：原先只有三张固定方向的卡片（只去说明书 / 加强人味 / 轻润不改结构），
- * 而实测反馈是"那三种很多时候并不符合我想改的，更多时候看 Agent 理解"。所以把**用自己的
- * 话说**提成主路径（输入框 + 主按钮），三张卡片降为分隔线下的备选；
- * 并且给了「以后直接照我说的改」——勾上就不再每次都拦你一下。
+ * 它过去会在每次"改这一章"前自动弹出，逼作者在三选一里挑一个。作者反馈那三种方向
+ * "很多时候并不符合我想改的"，弹窗"很多余"——而那三种方向本来就能用话说出来
+ * （「只去说明书 / 轻润 / 人味」由 `agentIntent` 认），所以自动弹窗只是多余的一层。
+ * 现在只有作者显式说「选个方向」才会打开（见 `agentIntent` 的 `revise_pick`），
+ * 平时改章直接照他的话改。
  */
 export function ChapterReviseModePicker({
   defaultMode = "human_warmth",
@@ -32,7 +31,6 @@ export function ChapterReviseModePicker({
   onCancel,
 }: Props) {
   const [custom, setCustom] = useState("");
-  const [noAsk, setNoAsk] = useState(false);
   const trimmed = custom.trim();
 
   return createPortal(
@@ -47,8 +45,8 @@ export function ChapterReviseModePicker({
         <p className={styles.stamp}>REVISE · MODE</p>
         <h2 id="revise-mode-title">这次想怎么改？</h2>
         <p className={styles.sub}>
-          直接用你自己的话说最准（例如「把后面那段展开重写，别动前面的雨夜戏」）。
-          下面三个固定方向只是不想细说时的省事选项。
+          平时不用进这里——直接说就行（「轻润一下」「只去说明书」「写得更有人味」都认）。
+          你主动打开了这个面板，那就挑一个方向，或者用自己的话写清楚。
         </p>
 
         <div className={styles.custom}>
@@ -63,10 +61,7 @@ export function ChapterReviseModePicker({
               // Ctrl/Cmd+Enter 提交，跟聊天框的习惯一致
               if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && trimmed && !busy) {
                 e.preventDefault();
-                onPick(FOLLOW_NOTE_MODE, {
-                  customNote: trimmed,
-                  rememberNoAsk: noAsk,
-                });
+                onPick(FOLLOW_NOTE_MODE, { customNote: trimmed });
               }
             }}
           />
@@ -77,24 +72,10 @@ export function ChapterReviseModePicker({
               disabled={busy || !trimmed}
               data-testid="revise-custom-go"
               title={trimmed ? undefined : "写一句再点，或者从下面选一个固定方向"}
-              onClick={() =>
-                onPick(FOLLOW_NOTE_MODE, {
-                  customNote: trimmed,
-                  rememberNoAsk: noAsk,
-                })
-              }
+              onClick={() => onPick(FOLLOW_NOTE_MODE, { customNote: trimmed })}
             >
               就照我说的改
             </button>
-            <label className={styles.noAsk}>
-              <input
-                type="checkbox"
-                checked={noAsk}
-                disabled={busy}
-                onChange={(e) => setNoAsk(e.target.checked)}
-              />
-              以后直接照我说的改，不再问
-            </label>
           </div>
         </div>
 
@@ -108,7 +89,7 @@ export function ChapterReviseModePicker({
               className={styles.card}
               data-default={opt.id === defaultMode ? "1" : undefined}
               disabled={busy}
-              onClick={() => onPick(opt.id, { rememberNoAsk: noAsk })}
+              onClick={() => onPick(opt.id)}
             >
               <span className={styles.title}>{opt.title}</span>
               <span className={styles.blurb}>{opt.blurb}</span>

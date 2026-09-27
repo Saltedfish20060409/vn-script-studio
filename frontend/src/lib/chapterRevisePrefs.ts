@@ -14,6 +14,7 @@ export type ReviseMode = "cut_lecture" | "human_warmth" | "light_touch" | "follo
 export const FOLLOW_NOTE_MODE: ReviseMode = "follow_note";
 
 export type ChapterRevisePrefs = {
+  /** 作者在方向选择器里点过的方向（**只作记录**，不再参与"这次用什么方向"的判断）。 */
   mode?: ReviseMode;
   /** Names / phrases the user asked not to touch */
   lockedNames?: string[];
@@ -21,11 +22,6 @@ export type ChapterRevisePrefs = {
   preferKeepOriginal?: boolean;
   /** Free-form notes from short commands */
   notes?: string[];
-  /**
-   * 作者选了「以后直接照我说的改，不再问」→ `false`。
-   * 未设置（`undefined`）表示还没表态过，仍然问一次。
-   */
-  askMode?: boolean;
   updatedAt?: number;
 };
 
@@ -132,38 +128,21 @@ export function prefsToNoteSuffix(prefs: ChapterRevisePrefs): string {
 }
 
 /**
- * 这次改章：**要不要问方向、以及用什么方向**。
+ * 这次改章用什么方向。
  *
- * 抽成纯函数是因为这条规则最容易写歪，而本仓没有组件测试可用（`vitest` 只跑
- * `src/**` 下的纯函数，见 vitest.config.ts）。规则：**四个"不用问"的信号有一个成立就不问**
- * —— 调用方明确要求不问 / 作者勾过「不再问」/ 作者已在弹窗里写了说明 / 话里已点明方向；
- * 都不成立时才问一次（保留既有的"主动改章时确认一下"）。
+ * **规则只有一条：话里点过方向就听他的，否则一律 `follow_note`（以他的说明为准）。**
  *
- * 方向按优先级取：话里点的 > 作者自己写的说明（或已勾不再问 → `follow_note`）> 记着的旧方向
- * > `human_warmth`。**不能拿旧方向去压他这次说的话**——那正是"三选一不太有用"的根因。
+ * 为什么这么简：改章方向选择器过去会在每次改章前自动弹出，逼作者在三选一里挑一个。
+ * 作者的原话是"那三种很多时候并不符合我想改的，弹窗很多余"——而且那三种方向**本来就能
+ * 用话直接说出来**（`agentIntent` 认「只去说明书 / 轻润 / 人味」这些词），所以弹窗只是
+ * 多余的一层。现在选择器改由「选个方向」这类**显式**说法打开（见 `agentIntent` 的
+ * `revise_pick`），平时不再拦人。
+ *
+ * 刻意**不**参与判断的两样东西（都是这次删掉的，写在注释里免得被加回来）：
+ * - `prefs.mode`（上次点过的方向）：拿它当默认会把作者重新钉在某个固定方向上，
+ *   而他这次想改的往往不是那一类；
+ * - 「以后不再问」开关：既然默认就不问了，这个开关没有意义。
  */
-export function resolveRevisePlan(input: {
-  /** 从自然语言里识别出的方向（`agentIntent` 给的）。 */
-  modeFromSpeech?: ReviseMode;
-  /** 弹窗里作者自己写的改法。 */
-  customNote?: string;
-  /** 调用方已决定不问（例如「再润」走 polish 分支）。 */
-  skipModePicker?: boolean;
-  prefs: ChapterRevisePrefs;
-}): { openPicker: boolean; mode: ReviseMode } {
-  const { prefs } = input;
-  const optedOut = prefs.askMode === false;
-  const hasCustom = Boolean(input.customNote?.trim());
-  const modeFromSpeech = input.modeFromSpeech;
-
-  const skip =
-    Boolean(input.skipModePicker) || optedOut || hasCustom || Boolean(modeFromSpeech);
-  if (!skip) {
-    // 问的时候 mode 用不上（由弹窗决定），这里给一个稳定值
-    return { openPicker: true, mode: prefs.mode ?? "human_warmth" };
-  }
-  const wantsFollowNote = hasCustom || optedOut;
-  const mode =
-    modeFromSpeech ?? (wantsFollowNote ? FOLLOW_NOTE_MODE : prefs.mode || "human_warmth");
-  return { openPicker: false, mode };
+export function resolveReviseMode(modeFromSpeech?: ReviseMode): ReviseMode {
+  return modeFromSpeech ?? FOLLOW_NOTE_MODE;
 }

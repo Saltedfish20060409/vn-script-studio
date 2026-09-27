@@ -112,6 +112,26 @@ describe("inferAgentIntent：自然语言改稿与 mode", () => {
     expect(inferAgentIntent("这章回炉重写吧").kind).toBe("chapter_revise");
   });
 
+  it("普通改章请求**不带**选方向意图（弹窗不再自动弹）", () => {
+    // 用户反馈"弹窗很多余"，所以默认路径必须走 chapter_revise 直接改，
+    // 只有下面那几句显式说法才进方向面板
+    for (const t of ["帮我改这一章", "这章回炉重写吧", "改写第一章", "据此修改第一章"]) {
+      expect(inferAgentIntent(t).kind).not.toBe("revise_pick");
+    }
+  });
+
+  it("显式说「选个方向」→ revise_pick（方向面板的唯一入口）", () => {
+    for (const t of ["选个方向", "选个方向改这一章", "按方向改", "选一个改法", "挑个模式"]) {
+      expect(inferAgentIntent(t).kind).toBe("revise_pick");
+    }
+  });
+
+  it("「选个方向改这一章」不会被 broad 的改章规则抢走", () => {
+    // 这条顺序很关键：revise_pick 必须在 chapter_revise 之前判断，
+    // 否则含"改这一章"的句子会被后者先接住，面板永远打不开
+    expect(inferAgentIntent("选个方向改这一章").kind).toBe("revise_pick");
+  });
+
   it("长文本含改稿词（>500 字符）→ chapter_revise", () => {
     const long = "请帮我改稿。" + "这是一段很长的话。".repeat(60);
     expect(long.length).toBeGreaterThan(500);
