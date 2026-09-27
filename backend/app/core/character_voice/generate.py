@@ -180,8 +180,6 @@ _AXIS_NO_DEFAULT_RULE = (
     "轴必须贴合该角色，禁止默认套用「冷短回避 / 热吐槽防护 / 软自嘲」除非角色卡确实如此。"
 )
 
-_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
-
 # Sentinel used to mark variants the model failed to produce. Such variants are
 # never acceptable as corpus samples (frontend hides them, API rejects them).
 _PLACEHOLDER_MARKER = "（请重新生成）"
@@ -594,16 +592,13 @@ async def _post_json_with_model(
         timeout=llm_budget.CHAT,
     )
     content, model_name = content_from_response(res)
-    content = (content or "{}").strip()
-    m = _FENCE_RE.search(content)
-    if m:
-        content = m.group(1).strip()
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("模型未返回有效 JSON") from exc
-    if not isinstance(parsed, dict):
-        raise RuntimeError("模型返回非对象 JSON")
+    from app.core.llm_text import extract_json_object
+
+    # 不再"先找围栏"：模型常在字符串值里嵌示例对白，先找围栏会把示例当成整份输出，
+    # JSON 里真正的内容全丢（见 llm_text.extract_json_object）。
+    parsed = extract_json_object(content)
+    if parsed is None:
+        raise RuntimeError("模型未返回有效 JSON")
     model_name = model_name or (cfg.model or DEFAULT_LLM_MODEL)
     parsed["_model"] = model_name
     return parsed, model_name

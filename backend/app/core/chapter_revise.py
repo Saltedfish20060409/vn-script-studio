@@ -490,16 +490,19 @@ def _soft_critic_needed(
 
 
 def _parse_json_obj(raw: str) -> Dict[str, Any]:
-    text = (raw or "").strip()
-    fence = _FENCE_RE.search(text)
-    if fence:
-        text = fence.group(1).strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        text = text[start : end + 1]
-    data = json.loads(text)
-    return data if isinstance(data, dict) else {}
+    """解析一小段 JSON 对象。
+
+    走 `llm_text.extract_json_object`（整段 JSON → 配平括号 → 整段围栏），**不是**先找围栏：
+    模型常在字符串值里嵌 ```` ```renpy ```` 示例，先找围栏会把那段示例当成整份输出，
+    JSON 里真正的内容全被丢掉（与 Agent 那条链路的线上 bug 同源）。
+    """
+    from app.core.llm_text import extract_json_object
+
+    data = extract_json_object(raw)
+    if data is None:
+        # 与旧行为一致：解不出来就抛 JSONDecodeError，调用方按异常走兜底
+        raise json.JSONDecodeError("模型未返回 JSON 对象", (raw or "").strip(), 0)
+    return data
 
 
 _ANTIPATTERN_LABELS = {
@@ -752,10 +755,16 @@ async def _chat_text(
 
 
 def _strip_rewrite_wrapper(text: str) -> str:
+    """剥掉改写稿外面的那层壳（围栏 / `### 改写稿` 标记）。
+
+    取**最长**的那段围栏，不是第一段：改写稿一定比它在文中引用的示例长，而"第一个围栏"
+    很容易是引用的示例——那会拿一段示例去替换整章（同 JSON 解析被围栏劫持的那类错误）。
+    """
     t = (text or "").strip()
-    fence = _FENCE_RE.search(t)
-    if fence and len(fence.group(1).strip()) > 200:
-        return fence.group(1).strip()
+    blocks = [m.group(1).strip() for m in _FENCE_RE.finditer(t)]
+    longest = max(blocks, key=len) if blocks else ""
+    if len(longest) > 200:
+        return longest
     for marker in ("### 改写稿", "## 改写稿", "【改写稿】"):
         if marker in t:
             t = t.split(marker, 1)[-1].strip()

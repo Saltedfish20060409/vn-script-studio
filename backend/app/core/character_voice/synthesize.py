@@ -100,10 +100,12 @@ async def synthesize_voice_mind(
     )
     content, used_model = content_from_response(res)
     content = (content or "").strip()
-    m = _FENCE_RE.search(content)
-    if m and "视角" not in content[:80]:
-        inner = m.group(1).strip()
-        if inner.startswith("#") or "视角" in inner:
+    if "视角" not in content[:80]:
+        # 模型把整份思维包包在围栏里时才剥壳。取**最长**的那段：短围栏多半是它引用的示例，
+        # 拿示例当思维包比不剥壳更糟（同 JSON 解析被围栏劫持的那类错误）。
+        blocks = [m.group(1).strip() for m in _FENCE_RE.finditer(content)]
+        inner = max(blocks, key=len) if blocks else ""
+        if inner and (inner.startswith("#") or "视角" in inner):
             content = inner
 
     if not content or len(content) < 40:

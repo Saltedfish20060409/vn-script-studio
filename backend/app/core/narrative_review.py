@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -94,20 +93,22 @@ def extract_script_from_actions(actions: List[AgentAction]) -> ScriptExtraction:
     return ScriptExtraction(op=None, text="", index=-1)
 
 
-_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
-
-
 def _parse_review_json(raw: str) -> NarrativeReviewResult:
-    text = raw.strip()
-    fence = _FENCE_RE.search(text)
-    if fence:
-        text = fence.group(1).strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        text = text[start : end + 1]
+    """解析自检结果（顺序见 `llm_text.extract_json_object`）。
+
+    不再"先找围栏"：自检的 `revised_text` 里常常就带一段围栏正文，先找围栏会把那段正文
+    当成整份输出，于是 `ok/issues/note` 全部丢失——本条自检直接判失败。
+    """
+    from app.core.llm_text import extract_json_object
+
+    parsed = extract_json_object(raw)
+    if parsed is None:
+        return NarrativeReviewResult(
+            ok=False,
+            issues=["critic_parse_failed"],
+            note="自检 JSON 解析失败，不得静默放行；请重试或人工改稿",
+        )
     try:
-        parsed = json.loads(text)
         issues_raw = parsed.get("issues")
         issues = [str(x) for x in issues_raw if str(x)] if isinstance(issues_raw, list) else []
         revised_raw = parsed.get("revised_text")

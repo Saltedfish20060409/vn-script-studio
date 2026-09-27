@@ -18,7 +18,6 @@ from .project import (
     uid,
 )
 
-_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
 _KNOWN_KINDS = {p["kind"] for p in MAP_ELEMENT_PRESETS}
 _VALID_RELATIONS = {
     "adjacent",
@@ -285,17 +284,14 @@ def _infer_kind(text: str, fallback: str = "landmark") -> str:
 
 
 def _parse_llm_json(raw: str) -> Dict[str, Any]:
-    text = (raw or "").strip()
-    m = _FENCE_RE.search(text)
-    if m:
-        text = m.group(1).strip()
-    # tolerate leading junk
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        text = text[start : end + 1]
-    data = json.loads(text)
-    if not isinstance(data, dict):
+    """解析地图提取结果（顺序见 `llm_text.extract_json_object`）。
+
+    不再"先找围栏"：模型会在字符串值里嵌地点描述片段，先找围栏会把那段当成整份输出。
+    """
+    from app.core.llm_text import extract_json_object
+
+    data = extract_json_object(raw)
+    if data is None:
         raise ValueError("模型未返回 JSON 对象")
     return data
 

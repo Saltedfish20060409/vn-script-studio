@@ -5,8 +5,6 @@ Mark stale when chapter fingerprint drifts; never write characterLinks/timeline.
 """
 from __future__ import annotations
 
-import json
-import re
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -35,8 +33,6 @@ class VoiceReport:
     issues: List[VoiceIssue]
     model: str
 
-
-_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
 
 
 async def run_voice_check(
@@ -82,14 +78,12 @@ async def run_voice_check(
     )
 
     raw, used_model = content_from_response(res)
-    raw = (raw or "{}").strip() or "{}"
-    fence = _FENCE_RE.search(raw)
-    if fence:
-        raw = fence.group(1).strip()
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"声线检查 JSON 解析失败：{exc}") from exc
+    from app.core.llm_text import extract_json_object
+
+    # 不再"先找围栏"：模型常在字符串值里嵌示例对白，先找围栏会把示例当成整份输出。
+    parsed = extract_json_object(raw)
+    if parsed is None:
+        raise RuntimeError("声线检查 JSON 解析失败：模型未返回 JSON 对象")
     issues_raw = parsed.get("issues")
     issues = (
         [

@@ -16,7 +16,6 @@ results are never lost and the flow never raises.
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -27,8 +26,6 @@ from app.domain.types import VnProject
 from .agent_context import _blocks_to_plain
 from .fact_extract import FactCandidate, link_dedupe_key, timeline_dedupe_key
 from .llm_http import chat_completions, content_from_response
-
-_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
 
 # Token budget: only the first N candidates are sent to the LLM.
 _DEFAULT_MAX_CANDIDATES = 40
@@ -198,13 +195,14 @@ def _build_messages(
 
 
 def _parse_llm_json(content: str) -> Dict[str, Any]:
-    """Strict JSON object parse with optional markdown-fence stripping."""
-    raw = (content or "").strip() or "{}"
-    fence = _FENCE_RE.search(raw)
-    if fence:
-        raw = fence.group(1).strip()
-    data = json.loads(raw)
-    if not isinstance(data, dict):
+    """Strict JSON object parse（顺序见 `llm_text.extract_json_object`）。
+
+    不再"先找围栏"：模型会在字符串值里嵌引文/示例，先找围栏会把示例当成整份输出。
+    """
+    from app.core.llm_text import extract_json_object
+
+    data = extract_json_object(content)
+    if data is None:
         raise ValueError("模型未返回 JSON 对象")
     return data
 

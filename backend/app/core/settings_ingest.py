@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -13,8 +12,6 @@ from .agent import _normalize_bible_patch, apply_agent_actions
 from .ai import DeepSeekConfig
 from .file_text import format_attachment_block
 from .llm_http import chat_completions, content_from_response
-
-_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
 
 INGEST_SYSTEM = """你是视觉小说设定编辑。根据用户上传资料与当前工程摘要，产出要写入工程的结构化 JSON（不要 markdown 围栏）。
 
@@ -59,16 +56,17 @@ class SettingsIngestResult:
 
 
 def _parse_json_obj(raw: str) -> Dict[str, Any]:
-    text = (raw or "").strip()
-    fence = _FENCE_RE.search(text)
-    if fence:
-        text = fence.group(1).strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        text = text[start : end + 1]
-    data = json.loads(text)
-    return data if isinstance(data, dict) else {}
+    """解析设定整理方案（顺序见 `llm_text.extract_json_object`）。
+
+    不再"先找围栏"：模型会在字符串值里嵌示例/正文档块，先找围栏会把那段当成整份输出。
+    """
+    from app.core.llm_text import extract_json_object
+
+    data = extract_json_object(raw)
+    if data is None:
+        # 与旧行为一致：解不出来抛 JSONDecodeError（调用方按异常兜底）
+        raise json.JSONDecodeError("模型未返回 JSON 对象", (raw or "").strip(), 0)
+    return data
 
 
 def _char_index(project: VnProject) -> Dict[str, Character]:

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import re
 from typing import Any, Dict, List, Optional
 
 from app.core import llm_budget
@@ -17,8 +15,6 @@ from app.core.llm_http import content_from_response
 from app.core.llm_provider import provider_from_config
 from app.domain.types import Character, VnProject
 from app.llm_models import DEFAULT_LLM_MODEL
-
-_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
 
 
 def _require_mind(c: Character) -> None:
@@ -127,14 +123,12 @@ async def workshop_chat(
         timeout=llm_budget.CHAT,
     )
     content, used_model = content_from_response(res)
-    content = (content or "{}").strip()
-    m = _FENCE_RE.search(content)
-    if m:
-        content = m.group(1).strip()
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("模型未返回有效 JSON") from exc
+    from app.core.llm_text import extract_json_object
+
+    # 不再"先找围栏"：模型常在字符串值里嵌示例对白，先找围栏会把示例当成整份输出。
+    parsed = extract_json_object(content)
+    if parsed is None:
+        raise RuntimeError("模型未返回有效 JSON")
 
     if mode == "duo":
         lines_out: List[Dict[str, str]] = []

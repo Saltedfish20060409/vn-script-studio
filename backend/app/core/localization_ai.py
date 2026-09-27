@@ -90,8 +90,6 @@ def build_user_prompt(
     return "\n\n".join(parts)
 
 
-_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
-
 # 逐行兜底扫描。为什么需要它：实测 glm-4-flash 有两种"看着没问题但会整批丢"的输出——
 #   A. 同一个 "译文" 键出现两次（`{"译文":[前16条],"译文":[后9条]}`）：JSON 允许重复键，
 #      json.loads 只保留**最后一个**，于是 25 条里静默丢掉 16 条；
@@ -156,26 +154,14 @@ def _scan_rows(text: str, allowed: set) -> Dict[str, str]:
 
 
 def _extract_json(text: str) -> Optional[Any]:
-    """从模型输出里抠出 JSON（容忍代码块、前后解释文字）。"""
-    raw = (text or "").strip()
-    if not raw:
-        return None
-    fenced = _CODE_FENCE_RE.search(raw)
-    if fenced:
-        raw = fenced.group(1).strip()
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        pass
-    # 退而求其次：取第一个 { 到最后一个 } 之间
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start >= 0 and end > start:
-        try:
-            return json.loads(raw[start : end + 1])
-        except json.JSONDecodeError:
-            return None
-    return None
+    """从模型输出里抠出 JSON（容忍代码块、前后解释文字）。
+
+    走 `llm_text.extract_json_value`（整段 JSON → 配平括号 → 整段围栏）：**不是**先找围栏，
+    因为译文本身就可能带围栏（模型把带 ``` 的原文照抄进译文），先找围栏会拿那段当整份输出。
+    """
+    from app.core.llm_text import extract_json_value
+
+    return extract_json_value(text)
 
 
 def parse_translation_response(text: str, allowed_keys: List[str]) -> Dict[str, str]:

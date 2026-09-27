@@ -13,7 +13,6 @@ project state is never corrupted.
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -23,8 +22,6 @@ from app.core.llm_http import chat_completions, content_from_response
 from app.domain.types import VnProject
 
 from .agent_context import _blocks_to_plain
-
-_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
 
 _CHAPTER_TEXT_CAP = 2200
 _MAX_CHAPTER_TEXTS = 12
@@ -91,16 +88,14 @@ def _build_messages(project: VnProject) -> List[Dict[str, str]]:
 
 
 def _parse(content: str) -> StyleMemoryResult:
-    raw = (content or "").strip() or "{}"
-    fence = _FENCE_RE.search(raw)
-    if fence:
-        raw = fence.group(1).strip()
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start >= 0 and end > start:
-        raw = raw[start : end + 1]
-    data = json.loads(raw)
-    if not isinstance(data, dict):
+    """解析文风学习结果（顺序见 `llm_text.extract_json_object`）。
+
+    不再"先找围栏"：模型引用例句时常把围栏放进字符串值里，先找围栏会把示例当成整份输出。
+    """
+    from app.core.llm_text import extract_json_object
+
+    data = extract_json_object(content)
+    if data is None:
         raise ValueError("模型未返回 JSON 对象")
     guide = str(data.get("guide") or "").strip()[:_GUIDE_CAP]
     if not guide:

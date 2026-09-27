@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Optional
+from typing import Any, Optional
 
 # 语言标记：只有"整行就一个这类词"才当成围栏标签剥掉
 _LANG_TOKENS = {
@@ -108,12 +108,14 @@ _WHOLE_FENCE_RE = re.compile(
 )
 
 
-def _balanced_json_object(text: str) -> Optional[str]:
-    """从第一个 `{` 起配平花括号切出一个对象；字符串里的括号不算数。"""
-    start = text.find("{")
-    if start < 0:
+def _balanced_json_container(text: str) -> Optional[str]:
+    """从第一个 `{` / `[` 起配平括号切出这一段；字符串里的括号不算数。"""
+    braces = [i for i in (text.find("{"), text.find("[")) if i >= 0]
+    if not braces:
         return None
-    depth = 0
+    start = min(braces)
+    pairs = {"{": "}", "[": "]"}
+    stack: list[str] = []
     in_string = False
     escaped = False
     for i in range(start, len(text)):
@@ -128,12 +130,41 @@ def _balanced_json_object(text: str) -> Optional[str]:
             continue
         if ch == '"':
             in_string = True
-        elif ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
+        elif ch in pairs:
+            stack.append(pairs[ch])
+        elif ch in ("}", "]"):
+            if not stack or stack.pop() != ch:
+                return None
+            if not stack:
                 return text[start : i + 1]
+    return None
+
+
+def _json_candidates(text: str):
+    """按优先级给出"可能就是那段 JSON"的候选片段（顺序即优先级）。"""
+    raw = (text or "").strip()
+    if not raw:
+        return
+    yield raw
+    sliced = _balanced_json_container(raw)
+    if sliced and sliced != raw:
+        yield sliced
+    match = _WHOLE_FENCE_RE.match(raw)
+    body = match.group("body").strip() if match else ""
+    if body:
+        yield body
+        inner = _balanced_json_container(body)
+        if inner and inner != body:
+            yield inner
+
+
+def extract_json_value(text: str) -> Optional[Any]:
+    """取出模型输出里的 JSON 值（对象或数组都认）；取不到返回 None。"""
+    for candidate in _json_candidates(text):
+        try:
+            return json.loads(candidate)
+        except (json.JSONDecodeError, ValueError):
+            continue
     return None
 
 
@@ -160,24 +191,7 @@ def extract_json_object(text: str) -> Optional[dict]:
     2. 配平括号切出对象（前后夹着解释文字也能救回来）；
     3. **整段被一层围栏包着**才剥围栏，再按 1/2 试一次。
     """
-    raw = (text or "").strip()
-    if not raw:
-        return None
-
-    candidates: list[str] = [raw]
-    sliced = _balanced_json_object(raw)
-    if sliced and sliced != raw:
-        candidates.append(sliced)
-
-    match = _WHOLE_FENCE_RE.match(raw)
-    body = match.group("body").strip() if match else ""
-    if body:
-        candidates.append(body)
-        inner = _balanced_json_object(body)
-        if inner and inner != body:
-            candidates.append(inner)
-
-    for candidate in candidates:
+    for candidate in _json_candidates(text):
         try:
             parsed = json.loads(candidate)
         except (json.JSONDecodeError, ValueError):
