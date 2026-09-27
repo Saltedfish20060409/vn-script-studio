@@ -17,6 +17,13 @@ import {
   type UsageTotals,
 } from "../api/misc";
 import { t } from "../lib/i18n";
+import {
+  autoCompressedNote,
+  bgImageNote,
+  compressImageFile,
+  stillTooLargeNote,
+  unreadableImageNote,
+} from "../lib/imageCompress";
 import { jsonModeWarning } from "../lib/modelCapabilities";
 import { parseWindowK, readDeclaredK, windowHintText } from "../lib/modelWindow";
 import {
@@ -712,6 +719,12 @@ function BgPanPreview({  image,
 
 export function SettingsModal({ open, onClose, settings, onChange, view, onViewChange, embedded = false }: Props) {
   const [pane, setPane] = useState<Pane>("theme");
+  /** 背景图导入的结果提示（自动压缩 / 压完仍过大 / 解码失败）。 */
+  const [bgNotice, setBgNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(
+    null
+  );
+  /** 连续选图时用来丢弃先返回的那次压缩结果。 */
+  const bgSeq = useRef(0);
   const deskPetOn = useSyncExternalStore(
     subscribeDeskPet,
     () => getDeskPetState().enabled,
@@ -753,13 +766,24 @@ export function SettingsModal({ open, onClose, settings, onChange, view, onViewC
     patch({ theme });
   }
 
+  /**
+   * 导入背景图：**先压再存**。
+   *
+   * 背景图是以 base64 data URL 存进设置 JSON 的，而每次保存设置都会把整张图重发一遍。
+   * 线上事故：一张 11.8 MB 手机照 → 请求体 15.7 MB → 被 nginx `client_max_body_size 3m`
+   * 413（后端都没到，作者看到的是 nginx 那张原始 HTML），而且本地挂着巨图时**每次**改
+   * 设置都会失败。所以这里不提示"请换小图"，直接自动压到能存下的体积（见 lib/imageCompress）。
+   */
   async function onBgFile(file: File) {
     if (!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const data = String(reader.result || "");
+    const seq = ++bgSeq.current;
+    setBgNotice(null);
+    try {
+      const out = await compressImageFile(file);
+      // 连着选了两张图时，丢弃先返回的那次，别让它覆盖后选的
+      if (seq !== bgSeq.current) return;
       patch({
-        bgImage: data,
+        bgImage: out.dataUrl,
         bgPanX: 0,
         bgPanY: 0,
         // Deep artworks read better with a bit more presence + scrim
@@ -767,8 +791,19 @@ export function SettingsModal({ open, onClose, settings, onChange, view, onViewC
         bgScrim: Math.max(settings.bgScrim ?? 0.42, 0.45),
         // Keep current glass preference (do not force back to auto)
       });
-    };
-    reader.readAsDataURL(file);
+      if (out.overBudget) {
+        setBgNotice({ kind: "error", text: stillTooLargeNote(out.bytes) });
+      } else if (out.compressed) {
+        setBgNotice({
+          kind: "ok",
+          text: autoCompressedNote(out.originalBytes, out.bytes),
+        });
+      }
+    } catch {
+      if (seq === bgSeq.current) {
+        setBgNotice({ kind: "error", text: unreadableImageNote() });
+      }
+    }
   }
 
   const body = (
@@ -988,6 +1023,15 @@ export function SettingsModal({ open, onClose, settings, onChange, view, onViewC
                     清除背景
                   </button>
                 </div>
+                {/* 当前背景多大 + 这次导入发生了什么（自动压缩过就要说，静默压缩会让人以为图被弄糊了） */}
+                {settings.bgImage ? (
+                  <p className={styles.note}>{bgImageNote(settings.bgImage)}</p>
+                ) : null}
+                {bgNotice ? (
+                  <p className={bgNotice.kind === "ok" ? styles.okNote : styles.error}>
+                    {bgNotice.text}
+                  </p>
+                ) : null}
                 {settings.bgImage ? (
                   <BgPanPreview
                     image={settings.bgImage}
