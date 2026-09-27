@@ -1,4 +1,4 @@
-﻿"""续写写后廉价闸：确定性体检，不调模型。
+"""续写写后廉价闸：确定性体检，不调模型。
 
 定位（与提示词 / 责编分工）：
 - 本闸只做**可证伪**检查（narrative lint + 说明书硬伤），失败就标红。
@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from app.core.chapter_revise import _hard_fail_snippets
+from app.core.harness.audit_codes import AUDIT_CODE_MISSING
 from app.core.harness.audit_full import full_audit_draft
 from app.core.narrative_lint import NarrativeLintIssue, lint_has_blockers
 
@@ -53,6 +54,9 @@ class WriteGateResult:
     warnings: List[str] = field(default_factory=list)
     #: 可送进标记批改的失败段（不全章重写）
     markHints: List[Dict[str, str]] = field(default_factory=list)
+    #: 上游体检问题里**没有 code** 的条数。正常应为 0；不为 0 说明 linter 漏传了 code，
+    #: 那是 bug，不该被静默重贴成一个看起来正常的码（见 `harness/audit_codes.py`）。
+    missingCodeCount: int = 0
 
     def as_meta(self) -> Dict[str, Any]:
         return {
@@ -61,6 +65,7 @@ class WriteGateResult:
             "issues": self.issues[:12],
             "warnings": self.warnings[:6],
             "markHints": self.markHints[:4],
+            "missingCodeCount": self.missingCodeCount,
         }
 
 
@@ -199,6 +204,7 @@ def gate_continue_draft(
     issues: List[Dict[str, str]] = []
     warnings: List[str] = []
     mark_hints: List[Dict[str, str]] = []
+    missing_codes = 0
 
     audit = full_audit_draft(text)
     lint_issues: List[NarrativeLintIssue] = []
@@ -209,7 +215,13 @@ def gate_continue_draft(
         if not msg:
             continue
         sev = str(raw.get("severity") or "warn")
-        code = str(raw.get("code") or "harness")
+        code = str(raw.get("code") or "").strip()
+        if not code:
+            # 上游漏传 code：如实标成"码缺失"并计数，**不要**重贴成 `"harness"`——
+            # 那看起来像一条正常规则，于是没人会去查上游的 bug。
+            # （纪律同 `docs/references.md`："缺的信号是 None（未测量），不是 0"。）
+            code = AUDIT_CODE_MISSING
+            missing_codes += 1
         issues.append({"severity": sev, "code": code, "message": msg})
         lint_issues.append(NarrativeLintIssue(severity=sev, code=code, message=msg))
 
@@ -226,7 +238,11 @@ def gate_continue_draft(
     if project is not None:
         from app.core.write_precheck import precheck_before_continue
 
-        pre = precheck_before_continue(project, chapter_id=chapter_id, draft=text)
+        # 关掉焦点章的文风体检：上面已经对**产出稿**跑过同一次 `full_audit_draft`，
+        # 这里再报一遍焦点章是重复劳动；而且那边报的是"这一段新正文"，语义不同。
+        pre = precheck_before_continue(
+            project, chapter_id=chapter_id, draft=text, prose_audit=False
+        )
         for i in pre.issues:
             if i.code != "dead_character_present":
                 # 伏笔陈旧在写后只作提醒，不挡闸
@@ -290,6 +306,7 @@ def gate_continue_draft(
         issues=issues,
         warnings=warnings[:6],
         markHints=dedup[:4],
+        missingCodeCount=missing_codes,
     )
 
 

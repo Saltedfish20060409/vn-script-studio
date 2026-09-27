@@ -365,8 +365,15 @@ text[-keep_tail:]` 拼回去）。两件事叠加之后，位置就不只是"读
 8. **声线硬约束**：`dialogue_write_policy`——有思维包/足量正例则强制样例对照；
    不足则长场次只给建议不代写；角色卡注入【声线硬对照】/【声线降级】；
    续写尾部另附短「口吻对照」。
-9. **续写前对账**：账本已故角色、陈旧伏笔、废弃地点、焦点章场景图无认领 /
-   死人说话（continuity 子集）→ `write_precheck` 进上下文头部。
+9. **续写前对账**：`write_precheck` 进上下文头部。刻意分两组——
+   ① **事实级**：账本已故角色、陈旧伏笔、废弃地点、焦点章场景图无认领 /
+   死人说话（continuity 子集）。进 `ok`，占 8 条配额。
+   ② **文风级**：焦点章**已有正文**自身的 `full_audit_draft` 硬伤（AI 味 / 套话 /
+   神谕腔 / 说明书腔）。独立列表、独立 4 条配额、独立表头，`ok` 里没有它、
+   也不挡任何东西，且消息截断进头部。
+   拆开是必须的：文风条目多、每次都不同，混进同一个列表会把 `dead_character_present`
+   挤出配额——与第 2 条那个"参考文档挤掉角色/关系"是同一形态的回归。
+   守卫：`tests/test_precheck_prose_audit.py`（12 项，含"文风级不许挤走事实级"这条不变量）。
 10. **体裁硬路径**：`genre_write.resolve_writing_genre` 与前端同口径；
     novel / vn 分任务叠硬规则与输出契约（continue/scene/branch）。
 11. **写路径材料预取**：上下文被裁时服务端先跑 `get_chapter` / `search_lore` /
@@ -376,5 +383,13 @@ text[-keep_tail:]` 拼回去）。两件事叠加之后，位置就不只是"读
     界面标「证据优先」而非「文学最佳」；`diffTags` 进 ranking。
 14. **写后声线指纹**：画像就绪且本段对白 `level=drift` 时，`write_gate` 出 warn +
     `markHints`（只改跑偏句），不挡落地；样本不足静默跳过。
+15. **audit 码注册表**：确定性体检报出的每个 `code` 都登记在
+    `core/harness/audit_codes.py`，且分成**章属性码**（随章内容变化 → 可以做跨轮次状态）
+    与**稿属性码**（随每句新正文变化 → **不要**给它做状态）。
+    两条纪律：① 依据必须指向可核对的源码位置（照 `_RULE_BASIS` 的写法）；
+    ② **缺码不许重贴成一个看起来正常的码**——`write_gate` 过去写
+    `code or "harness"`，那是个正常来源标签，于是没人会去查上游的 bug；
+    现在记为自曝其短的 `code_missing` 并在 `missingCodeCount` 里计数。
+    守卫：`tests/test_audit_codes.py`（10 项，扫源码字面量比对表，新增码必须显式登记）。
 
 想「再高一点」时优先扩大硬门与量具，而不是加长 system prompt。
