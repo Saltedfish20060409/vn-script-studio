@@ -5,9 +5,18 @@ import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
-from app.core.harness.ai_flavor import HarnessIssue
+if TYPE_CHECKING:  # 只给类型检查用；运行时在函数里导入（见下面那段说明）
+    from app.core.harness.ai_flavor import HarnessIssue
+
+# 为什么 `HarnessIssue` 不在模块顶层导入（2026-09-28 修）：
+#   `style_skill` ← `harness/__init__` → `harness.audit_full` → `style_skill`，是一个**循环导入**。
+#   谁先被导入决定成败：`app.core.harness.*` 先加载时正常，而**先导入 `style_skill` 就直接
+#   ImportError**。而调用方 `build_writing_craft_prompt` 用的是
+#   `try: ... load_style_skill() ... except Exception: pass`——于是这条最硬的约束
+#   （`style_guide.md` 约 2k 字的禁用词与自检清单）会**静默消失**，提示词看着正常、
+#   实际少了规则。改到函数内部导入即断环：那时 harness 已经加载完了。
 
 _STYLE_PATH = Path(__file__).with_name("style_guide.md")
 
@@ -184,6 +193,8 @@ def load_style_skill() -> StyleSkill:
 
 def lint_style_skill(draft: str) -> List[HarnessIssue]:
     """Deterministic checks against banned phrase list."""
+    from app.core.harness.ai_flavor import HarnessIssue  # 见文件头：断循环导入
+
     skill = load_style_skill()
     text = draft or ""
     issues: List[HarnessIssue] = []

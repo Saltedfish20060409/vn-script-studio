@@ -618,8 +618,16 @@ async def run_agent_loop(
         mentor_packs = resolve_project_mentors(
             request.project, override_ids=request.mentorIds
         )
-        mentor_block = build_mentor_prompt_for_project(
-            request.project, task=task, override_ids=request.mentorIds
+        # 「写作导师方法论」是一块 1.6k 字的固定文本，线上**每轮都注入且此前无法关闭**。
+        # 作者可以在「⚙ 资料」里摘掉它（走同一个 exclude_sections，key = "mentor"）：
+        # 这一块是"方法论建议"，不是事实来源，摘掉不会让模型编造工程内容。
+        mentor_excluded = "mentor" in (request.excludeSections or [])
+        mentor_block = (
+            ""
+            if mentor_excluded
+            else build_mentor_prompt_for_project(
+                request.project, task=task, override_ids=request.mentorIds
+            )
         )
         mentor_ids = [p.id for p in mentor_packs]
         lens_intent = infer_lens_intent(last_user or "")
@@ -697,6 +705,7 @@ async def run_agent_loop(
             "craftMode": craft.mode,
             "craftReason": craft.reason,
             "mentorIds": mentor_ids,
+            "mentorExcluded": mentor_excluded,
             "lensIds": lens_ids,
             "blocks": {
                 "agentSystem": len(AGENT_SYSTEM),

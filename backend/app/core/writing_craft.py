@@ -512,13 +512,19 @@ PRIORITY_IDS: List[str] = [
 
 
 def build_writing_craft_prompt(
-    task: str, mode: str = "full", *, include_style: bool = True
+    task: str,
+    mode: str = "full",
+    *,
+    include_style: bool = True,
+    detail_max: Optional[int] = None,
 ) -> str:
     """Build craft prompt for the selected mode.
 
     `include_style=False` 只服务消融评测（`eval --ab --arms ...,no_style`）：工艺 Skills 照给，
     只是不附那段「写作风格 Skill 硬约束」（`style_guide.md`，约 2k 字）。线上没有这个开关——
     线上只要 craft 开着就一定带它，否则没法回答"这段值不值 2k 字"。
+
+    detail_max 限制**详述**条数（其余只进简表标题），默认 None = 现状不变。
     """
     if mode == "off":
         return "—— 写作工艺：本轮关闭（追求短拍自然；仍禁止把人设条目念进对白）——"
@@ -537,7 +543,15 @@ def build_writing_craft_prompt(
 
     priority = [s for s in skills if s.id in PRIORITY_IDS]
     rest = [s for s in skills if s.id not in PRIORITY_IDS]
-    primary = [s.body for s in (priority if priority else skills[:8])]
+    detailed = priority if priority else skills[:8]
+    # `detail_max`：只把前 N 条铺开，其余降级进简表。
+    # full 档默认把 17 条优先级技能全文铺开（≈2.5k 字），而一次写作真正用得上的通常只有几条；
+    # 默认 None 表示现状不变，消融臂 `craft_lean`(6) 用来量"精简会不会掉分"——先量再改默认。
+    if detail_max is not None and detail_max > 0:
+        demoted = detailed[detail_max:]
+        detailed = detailed[:detail_max]
+        rest = [*rest, *demoted]
+    primary = [s.body for s in detailed]
     checklist = (
         f"【亦须遵守（简表）】{'、'.join(s.title for s in rest)}。冲突时以反设定倾倒与叙事接续为准。"
         if rest

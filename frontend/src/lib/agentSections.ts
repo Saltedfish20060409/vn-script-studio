@@ -26,6 +26,10 @@ export const AGENT_SECTIONS: AgentSection[] = [
   { key: "sprites", label: "立绘" },
   { key: "otherChapters", label: "其他章节摘录" },
   { key: "style", label: "文风记忆" },
+  // 「写作导师方法论」是一块约 1.6k 字的固定文本，此前**关不掉**（线上每轮都注入）。
+  // 它不是事实来源、只是写法建议（摘掉不会让模型编造工程内容），所以放进可摘清单：
+  // 想省上下文、或觉得它的建议跑偏时，作者可以自己关。
+  { key: "mentor", label: "写作导师方法论" },
 ];
 
 const STORE_KEY = "vnss-agent-exclude-v1";
