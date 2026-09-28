@@ -63,6 +63,7 @@ docs/*
 !docs/long-context-policy.md
 !docs/writing-surface.md
 !docs/references.md
+!docs/ablation-2026-09-28.md
 
 # react-bits 临时导出文件(不入库)
 _rb/
