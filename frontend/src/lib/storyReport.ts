@@ -29,7 +29,7 @@ export const EMOTION_NO_EVIDENCE_NOTE = "后端没有给出证据句，这条只
 
 /** 自适应计数的导出开关：作者最容易误解的一点，必须写在最显眼的地方。 */
 export const ADAPTIVE_EXPORT_NOTE =
-  "导出默认不开自适应：只有导出时带上 adaptive_reader=True，这些计数语句（$ persistent.xxx += 1）与 default 声明块才会被写进 .rpy。不加这个开关导出，产物里没有任何自适应逻辑——下面这份只是「可以怎么写」的方案。当前的导出入口还没有暴露这个开关，所以下面的条件与声明块要手工加进 .rpy。";
+  "导出默认不开自适应：只有在「项目 → 导出」里勾上「自适应读者倾向」，这些计数语句（$ persistent.xxx += 1）与 default 声明块才会被写进 .rpy。不勾就导出，产物里没有任何自适应逻辑——下面这份只是「可以怎么写」的方案。勾上之后请重新点一次「生成 .rpy」：预览是在旧开关下生成的，会用新的产物替换它。";
 
 /** 条件示例的用法。 */
 export const RECIPE_COPY_HINT =

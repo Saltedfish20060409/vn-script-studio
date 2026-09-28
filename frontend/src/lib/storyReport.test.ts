@@ -547,7 +547,11 @@ describe("自适应：prelude 与导出开关", () => {
   });
 
   it("导出开关的说明必须写出来（否则作者会以为导出就有了）", () => {
-    expect(ADAPTIVE_EXPORT_NOTE).toContain("adaptive_reader=True");
+    // 这条断言的是**说明必须指向真实存在的入口**：原来这里钉的是
+    // "adaptive_reader=True"（把后端参数名写给作者看），而那时导出界面根本没有
+    // 这个开关——说明再准确也没有任何地方可以点。现在入口做出来了（导出页的
+    // 「自适应读者倾向」勾选框），所以断言改成指向**界面上的那个开关**。
+    expect(ADAPTIVE_EXPORT_NOTE).toContain("自适应读者倾向");
     expect(ADAPTIVE_EXPORT_NOTE).toContain("默认不开");
     expect(ADAPTIVE_EXPORT_NOTE).toContain(".rpy");
   });

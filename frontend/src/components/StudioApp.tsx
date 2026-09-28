@@ -492,6 +492,15 @@ export function StudioApp() {
    * "跳转到不存在的 label""台词里没转义的方括号"这类缺陷要等玩家卡住才发现。
    */
   const [rpyFindings, setRpyFindings] = useState<RpyFinding[] | null>(null);
+  /**
+   * 自适应读者倾向计数器（导出开关，服务端 `?adaptive_reader=true`）。
+   *
+   * 默认关：它会改变产物语义——给会改 `affection` 的选项追加
+   * `$ persistent.reader_tendency_x += 1`，于是"同一份剧本两次导出结果不同"。
+   * 后端两个导出端点早就支持它，而前端此前**连参数位都没有**，这个功能做完了
+   * 却没有任何入口（`lib/storyReport.ts` 甚至只好叫作者手工往 .rpy 里加）。
+   */
+  const [adaptiveReader, setAdaptiveReader] = useState(false);
   const [bundleBusy, setBundleBusy] = useState(false);
   /** 投稿包导出（单篇 / 分章包）进行中 */
   const [submissionBusy, setSubmissionBusy] = useState(false);
@@ -1708,10 +1717,18 @@ export function StudioApp() {
    */
   async function loadRpyFindings(id: string): Promise<RpyFinding[] | null> {
     try {
-      return (await validateRpy(id)).findings;
+      // 体检必须与**下载到的那份文件**同源，所以 adaptive_reader 要一起带上：
+      // 服务端两处都调 export_script_rpy，开关不一致就会对着 A 文件报 B 文件的结论。
+      return (await validateRpy(id, { adaptiveReader })).findings;
     } catch {
       return null;
     }
+  }
+
+  /** 切换自适应导出：预览是在旧开关下生成的，所以一并标成过期。 */
+  function changeAdaptiveReader(next: boolean) {
+    setAdaptiveReader(next);
+    if (rpyPreview) setRpyStale(true);
   }
 
   async function exportCurrentView() {
@@ -1726,7 +1743,7 @@ export function StudioApp() {
     try {
       await persistProject(latest);
       if (writeModeRef.current === "rpy") {
-        const text = await exportRpy(latest.id);
+        const text = await exportRpy(latest.id, { adaptiveReader });
         // 下载前把这份文件的问题说出来：跳转目标不存在、台词里有没转义的方括号
         // 都要等玩家卡住才暴露，而端点本身只有"文件下载了"这一个反馈。
         const findings = await loadRpyFindings(latest.id);
@@ -1755,7 +1772,7 @@ export function StudioApp() {
       const saved = await putProject(latest.id, latest, latest.updatedAt);
       skipNextProjectSave.current = true;
       setProject(saved);
-      const text = await exportRpy(saved.id);
+      const text = await exportRpy(saved.id, { adaptiveReader });
       setRpyPreview(text);
       setRpyStale(false);
       const findings = await loadRpyFindings(saved.id);
@@ -2485,7 +2502,7 @@ export function StudioApp() {
     try {
       setStatus("打包 Ren'Py 项目…");
       setError("");
-      const blob = await exportRenpyBundle(project.id);
+      const blob = await exportRenpyBundle(project.id, { adaptiveReader });
       downloadBlob(`${project.title || "vn"}-renpy.zip`, blob);
       setStatus("已下载 Ren'Py 项目包");
     } catch (e) {
@@ -2783,6 +2800,8 @@ export function StudioApp() {
             onDownloadDocx={() => void downloadDocxFile()}
             onDownloadBundle={() => void downloadRenpyBundle()}
             bundleBusy={bundleBusy}
+            adaptiveReader={adaptiveReader}
+            onAdaptiveReaderChange={changeAdaptiveReader}
             onDownloadSubmission={(opts) => void downloadSubmission(opts)}
             submissionBusy={submissionBusy}
           />

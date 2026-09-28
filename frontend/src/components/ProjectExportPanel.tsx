@@ -27,6 +27,12 @@ type Props = {
   onDownloadDocx: () => void;
   onDownloadBundle: () => void;
   bundleBusy: boolean;
+  /**
+   * 自适应读者倾向计数器（导出开关）。开着时导出会给"会改变量的选项"追加
+   * `$ persistent.reader_tendency_x += 1`，作者就能在后续条件里写自适应分支。
+   */
+  adaptiveReader: boolean;
+  onAdaptiveReaderChange: (next: boolean) => void;
   /** 投稿包导出（单篇或分章包）；父组件负责取 blob 与下载 */
   onDownloadSubmission: (opts: SubmissionOptions) => void;
   submissionBusy: boolean;
@@ -49,6 +55,8 @@ export function ProjectExportPanel({
   onDownloadDocx,
   onDownloadBundle,
   bundleBusy,
+  adaptiveReader,
+  onAdaptiveReaderChange,
   onDownloadSubmission,
   submissionBusy,
 }: Props) {
@@ -133,6 +141,21 @@ export function ProjectExportPanel({
           >
             {bundleBusy ? "打包中…" : "下载 Ren'Py 项目包"}
           </button>
+          {/* 自适应开关：默认关，因为它会改变**产物的语义**——同一份剧本两次导出
+              结果不同会让作者困惑。开着时导出里会多出读者倾向计数器，
+              作者可以在后续选项的条件里用它做"老是心软的人更容易看到某条支线"。 */}
+          <label
+            className={styles.inlineLabel}
+            data-testid="adaptive-reader-toggle"
+            title="开启后导出会给会改变量的选项追加读者倾向计数器（$ persistent.reader_tendency_x += 1），你就能在后续选项条件里写自适应分支。默认关闭：同一份剧本两次导出的产物会不一样。"
+          >
+            <input
+              type="checkbox"
+              checked={adaptiveReader}
+              onChange={(e) => onAdaptiveReaderChange(e.target.checked)}
+            />
+            自适应读者倾向
+          </label>
         </div>
       </div>
       {/* 投稿包：与上面「下载 Word」的区别是它按投稿方的格式要求来。

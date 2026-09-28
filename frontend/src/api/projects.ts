@@ -267,8 +267,22 @@ export function importProjectFile(file: File, title?: string): Promise<VnProject
   });
 }
 
-export async function exportRpy(id: string): Promise<string> {
-  const res = await authedRawFetch(`/projects/${id}/export/rpy`);
+/**
+ * 下载 .rpy。
+ *
+ * ``adaptiveReader``：服务端的**自适应读者倾向计数器**开关（`GET …/export/rpy?adaptive_reader=true`）。
+ * 默认 false——它会改变产物语义（给会改 `affection` 的选项追加
+ * `$ persistent.reader_tendency_x += 1`），所以"同一份剧本两次导出结果不同"必须是
+ * 作者显式选择的。此前后端两个导出端点都支持它，而**前端连参数位都没有**，
+ * 于是这个功能做完了却没有任何入口（`lib/storyReport.ts` 甚至只好告诉作者
+ * "当前导出入口还没暴露这个开关，请手工加进 .rpy"）。
+ */
+export async function exportRpy(
+  id: string,
+  opts?: { adaptiveReader?: boolean }
+): Promise<string> {
+  const query = opts?.adaptiveReader ? "?adaptive_reader=true" : "";
+  const res = await authedRawFetch(`/projects/${id}/export/rpy${query}`);
   return res.text();
 }
 
@@ -918,9 +932,18 @@ export function consistencyScan(
   );
 }
 
-/** Full Ren'Py project skeleton (script/options/gui/README) as a zip blob. */
-export async function exportRenpyBundle(id: string): Promise<Blob> {
-  const res = await authedRawFetch(`/projects/${id}/export/bundle`);
+/**
+ * Full Ren'Py project skeleton (script/options/gui/README) as a zip blob.
+ *
+ * ``adaptiveReader`` 与 `exportRpy` 是同一个开关：两边都走 `export_script_rpy`，
+ * 不一致会让"单文件下载"和"整包下载"产出语义不同的两份东西。
+ */
+export async function exportRenpyBundle(
+  id: string,
+  opts?: { adaptiveReader?: boolean }
+): Promise<Blob> {
+  const query = opts?.adaptiveReader ? "?adaptive_reader=true" : "";
+  const res = await authedRawFetch(`/projects/${id}/export/bundle${query}`);
   return res.blob();
 }
 
