@@ -33,6 +33,9 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "json_mode": True,
         # logprobs 只在**确认支持**的档位上打开（见 supports_logprobs 的非对称理由）
         "logprobs": True,
+        # 流式用量回传：DeepSeek 官方 API 与 OpenAI 同形，最后一块 SSE 会带 usage。
+        # 不标它的档位只损失"流式调用的记账"，不影响生成（见 supports_stream_usage）
+        "stream_usage": True,
         "context_k": 1000,
         "note": "官方正式名 deepseek-flash，服务端即 DeepSeek-V4.1-Flash（2026-09-10 发布，新架构、原生多模态）。默认非思考。",
     },
@@ -45,6 +48,9 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "json_mode": False,
         # 思考档 + logprobs 的组合未经验证：宁可"未测量"，也不拿主功能去试
         "logprobs": False,
+        # 与 logprobs 不同：stream_options 是**端点（传输层）**能力，同一个官方 API，
+        # 与"模型 + 思考模式"这个组合无关，所以这里照标
+        "stream_usage": True,
         "context_k": 1000,
         "note": "思考模式（等价旧 deepseek-reasoner）。请求改写为官方 Flash + thinking；不支持 JSON 模式。",
     },
@@ -56,6 +62,7 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "model": "deepseek-v4-pro",
         "json_mode": True,
         "logprobs": True,
+        "stream_usage": True,
         "context_k": 1000,
         "note": "上代旗舰，仍可用；官方公告：2026-09-14 12:00 起至 V4.1 Pro 发布前，其请求会路由到 V4.1 Flash 并按 V4.1 计费。",
     },
@@ -67,6 +74,7 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "model": "deepseek-v4-flash",
         "json_mode": True,
         "logprobs": True,
+        "stream_usage": True,
         "context_k": 1000,
         "note": "旧模型名。V4 Flash 已退役，官方保留此名做兼容：请求实际由 V4.1 Flash 承接。建议直接用上面的 deepseek-flash。",
     },
@@ -297,6 +305,36 @@ def supports_logprobs(model: str) -> bool:
         preset_model = str(p.get("model") or "").strip().lower()
         if preset_model and (name.startswith(preset_model) or preset_model.startswith(name)):
             return bool(p.get("logprobs", False))
+    return False
+
+
+def supports_stream_usage(model: str) -> bool:
+    """该模型名是否接受 `stream_options={"include_usage": true}`。
+
+    **为什么需要它**：流式调用此前完全不记账——`record_usage_later` 只在非流式的
+    `chat_completions` 里被调用过。而流式恰恰是主路径（`AgentChat` 走
+    `/agent/stream`，流式章节写作也走它），于是每日额度只被**检查**、从不被**累加**，
+    共享免费档的 cap 形同虚设。上游只有在收到这个参数时才会在最后一块 SSE 里回传
+    usage，所以想拿到准确数字就必须发它。
+
+    **默认与 `supports_logprobs` 同样保守（认不出来返回 False）**，理由也一样：
+    未知**参数**会把整个请求打成 400，那是"为了一个可选信号把主功能弄挂"。
+    不同的是这里的取舍代价小得多——不标只是少记账，生成完全不受影响。
+
+    **而且标错也不会挂**：`llm_http.stream_chat_completions` 带了一道自愈兜底——
+    上游若因为这个参数报 400，会自动摘掉它重试一次，并把该模型记进进程内的
+    "不支持"集合。所以这里的表只是"少一次白跑"，不是正确性的前提。
+    """
+    name = (model or "").strip().lower()
+    if not name:
+        return False
+    for p in MODEL_PRESETS:
+        if str(p.get("model") or "").strip().lower() == name:
+            return bool(p.get("stream_usage", False))
+    for p in MODEL_PRESETS:
+        preset_model = str(p.get("model") or "").strip().lower()
+        if preset_model and (name.startswith(preset_model) or preset_model.startswith(name)):
+            return bool(p.get("stream_usage", False))
     return False
 
 

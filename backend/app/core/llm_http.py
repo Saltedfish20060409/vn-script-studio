@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import random
 import time
 from typing import Any, AsyncIterator, Dict, List, Optional
@@ -12,8 +13,14 @@ import httpx
 from app.core import latency_stats, llm_budget
 from app.core.ai import DeepSeekConfig
 from app.core.disconnect import model_call_watch
-from app.core.model_presets import supports_json_mode, supports_logprobs
+from app.core.model_presets import (
+    supports_json_mode,
+    supports_logprobs,
+    supports_stream_usage,
+)
 from app.llm_models import DEFAULT_LLM_MODEL, resolve_chat_model
+
+logger = logging.getLogger(__name__)
 
 #: 默认取前几个候选分布（`top_logprobs`）。5 是"够算峰度、响应体不至于膨胀"的折中：
 #: 每个 token 多 5 条记录，一次局部改写（几百 token）大约多几十 KB。
@@ -42,6 +49,23 @@ _CONNECT_TIMEOUT_CAP = 10.0
 # Stream 重连只覆盖这些状态（无 Retry-After 时等 1s，最多重试 1 次）
 _STREAM_RETRY_STATUSES = {429, 500, 502, 503, 504}
 
+#: 上游明确拒绝 `stream_options` 的模型名（进程内记忆）。见 `_stream_rejects_stream_options`
+#: 与 `stream_chat_completions` 里的自愈分支：`model_presets.supports_stream_usage` 只是
+#: 一张"猜得比较准"的表，猜错时不能让流式整个挂掉，所以留了这条运行时纠错。
+_STREAM_OPTIONS_REJECTED: set[str] = set()
+
+#: 上游把"不认识某个参数"时的措辞。只用于 `_looks_like_unknown_param`。
+_UNKNOWN_PARAM_HINTS = (
+    "stream_options",
+    "include_usage",
+    "unknown parameter",
+    "unrecognized",
+    "unsupported parameter",
+    "invalid parameter",
+    "extra fields not permitted",
+    "unexpected keyword",
+)
+
 # 进程内并发闸：限制同时进行的上游 LLM 请求数（共享服务器 key 防打爆）。
 _LLM_SEMAPHORE = asyncio.Semaphore(16)
 
@@ -53,6 +77,16 @@ _SECRET_PATTERNS = (
     "authorization",
     "bearer ",
 )
+
+
+def _looks_like_unknown_param(body: str) -> bool:
+    """这个 400 是不是"上游不认识我们多发的参数"造成的。
+
+    只在敢确认时返回 True：把别的 400（内容审核拒绝、请求体超限……）误判成参数问题、
+    摘掉参数再发一遍，是在错误的路上浪费一次调用，还可能掩盖真实原因。
+    """
+    text = (body or "").lower()
+    return any(hint in text for hint in _UNKNOWN_PARAM_HINTS)
 
 
 def _summarize_upstream_error(body: str) -> str:
@@ -215,23 +249,11 @@ async def chat_completions(
                     # Best-effort per-user usage accounting (fire-and-forget).
                     # kind 取当前上下文（中间件按路径判定），这样报表能区分
                     # "审稿/回炉/一致性检查/地图抽取"各花了多少——此前写死 "llm"。
-                    try:
-                        from app.core.usage import (
-                            current_usage_kind,
-                            current_usage_user,
-                            record_usage_later,
-                        )
-
-                        uid = current_usage_user()
-                        if uid:
-                            record_usage_later(
-                                user_id=uid,
-                                kind=current_usage_kind(),
-                                model=model,
-                                usage=usage_from_response(res),
-                            )
-                    except Exception:  # noqa: BLE001 - accounting never breaks calls
-                        pass
+                    _record_usage_best_effort(usage_from_response(res), model)
+                    # 输出撞上限时别静默当成正常完成（此前全仓没有 finish_reason 检查）。
+                    _warn_if_truncated(
+                        finish_reason_from_response(res), model, streamed=False
+                    )
                     # 成功的调用也要记耗时：p50/p95/p99 是"要不要 hedge / 要不要加预算"
                     # 的唯一依据（The Tail at Scale 的操作结论，见 core/latency_stats.py）；
                     # promptChars 则回答"上下文预算有没有被用满"（long-context-policy.md）
@@ -306,6 +328,22 @@ def _chat_body(
         body["top_logprobs"] = max(2, min(20, int(top_logprobs)))
     if max_tokens:
         body["max_tokens"] = max_tokens
+    # 流式用量回传：上游只有收到这个参数才会在最后一块 SSE 里带 usage，
+    # 而不带 usage 的流式调用此前是**完全不记账**的（见 `_record_usage_best_effort`）。
+    # 与 logprobs 一样"两个名字都要看"：别名会被 resolve_chat_model 改写。
+    #
+    # 保守方向与 logprobs 相同（未知模型不发），但**后果不同**：不发只是少记账，
+    # 生成不受影响；而且真发错了也有兜底——`stream_chat_completions` 遇到上游
+    # 400 会摘掉它重试一次，并把该模型记进 `_STREAM_OPTIONS_REJECTED`。
+    names = {(model or "").strip().lower(), (raw_model or "").strip().lower()}
+    names.discard("")
+    if (
+        stream
+        and names
+        and all(n not in _STREAM_OPTIONS_REJECTED for n in names)
+        and all(supports_stream_usage(n) for n in names)
+    ):
+        body["stream_options"] = {"include_usage": True}
     return model, body
 
 
@@ -411,6 +449,12 @@ async def stream_chat_completions(
 
     received_any = False
     attempts = 0
+    #: 这次流式调用上游回传的用量（最后一块 SSE 里的 usage）。None = 上游没给。
+    stream_usage: Optional[Dict[str, int]] = None
+    #: 流式结束原因（`choices[0].finish_reason`）：撞上限时是 "length"。
+    stream_finish_reason = ""
+    #: 是否已经因为"上游不认 stream_options"摘掉参数重试过（每个模型只白跑一次）。
+    dropped_stream_options = False
     thinking = _is_thinking_body(body)
     # 流式：timeout 是"多久没有新字节"的空闲上限，不是整段生成的预算，
     # 所以慢模型不会因为总时长而失败；思考档仍要加时（reasoning 期间无增量），
@@ -424,7 +468,7 @@ async def stream_chat_completions(
     first_token_at: Optional[float] = None
 
     async def _stream_once() -> AsyncIterator[str]:
-        nonlocal received_any, first_token_at
+        nonlocal received_any, first_token_at, stream_usage, stream_finish_reason
         async with _LLM_SEMAPHORE:
             async with httpx.AsyncClient(timeout=_client_timeout(budget)) as client:
                 # 整个流式请求都在"客户端还在吗"的窗口内：断开就把当前任务取消掉，
@@ -448,8 +492,18 @@ async def stream_chat_completions(
                                 continue
                             choices = data.get("choices") or []
                             if not choices:
+                                # 最后一块是"只有 usage、choices 为空"的那种；
+                                # 之前的实现 `if not choices: continue` 会连它一起跳过，
+                                # 于是流式用量永远读不到（即使上游回传了）。
+                                got = usage_from_payload(data)
+                                if got is not None:
+                                    stream_usage = got
                                 continue
                             delta = ((choices[0] or {}).get("delta") or {}).get("content")
+                            reason = (choices[0] or {}).get("finish_reason")
+                            if reason:
+                                # 流式的结束原因也在最后一块上；"length" = 撞了输出上限。
+                                stream_finish_reason = str(reason)
                             if delta:
                                 if first_token_at is None:
                                     first_token_at = time.monotonic() - started
@@ -471,6 +525,21 @@ async def stream_chat_completions(
                 first_token=first_token_at,
                 prompt_chars=_prompt_chars(messages),
             )
+            # 用量记账：与非流式走同一个出口（此前流式一条都不记）。
+            _warn_if_truncated(stream_finish_reason, model, streamed=True)
+            if stream_usage is not None:
+                _record_usage_best_effort(stream_usage, model)
+            else:
+                # 上游没回传用量 → 这次调用不计账。**必须说出来**：静默少记会让
+                # 每日额度慢慢失真，而"额度没生效"这种问题平时看不出来。
+                # 只对"我们发了参数、上游仍不给"的情况告警（预设没标 stream_usage 的
+                # 档位属于已知情形，不发参数自然收不到，不算异常）。
+                if "stream_options" in body:
+                    logger.warning(
+                        "流式调用没有回传 usage，本次不计入额度（model=%s）。"
+                        "若该端点确实支持 stream_options.include_usage，请检查上游版本。",
+                        model,
+                    )
             return
         except (httpx.ReadTimeout, httpx.WriteTimeout) as exc:
             # 流式中途空闲超时：不再重连（已产出的内容无法回滚），如实报"模型卡住"。
@@ -492,6 +561,30 @@ async def stream_chat_completions(
                 prompt_chars=_prompt_chars(messages),
             ) from exc
         except _StreamUpstreamError as exc:
+            # 自愈：上游不认 `stream_options` 时报的是 400（不是 429/5xx），原来的
+            # 分支会直接抛错——等于"为了一个可选的记账信号把流式弄挂"，绝不可以。
+            # 这里摘掉参数重试一次，并把这个模型记进进程内的"不支持"集合，
+            # 后续请求不再白跑。`model_presets.supports_stream_usage` 是张猜出来的表，
+            # 猜错时靠这条兜住。
+            if (
+                not dropped_stream_options
+                and not received_any
+                and "stream_options" in body
+                and exc.status == 400
+                and _looks_like_unknown_param(exc.body)
+            ):
+                dropped_stream_options = True
+                body.pop("stream_options", None)
+                for name in {model.strip().lower(), (config.model or "").strip().lower()}:
+                    if name:
+                        _STREAM_OPTIONS_REJECTED.add(name)
+                logger.warning(
+                    "上游拒绝 stream_options，已摘掉它重试（model=%s）：本次仍会生成，"
+                    "但该模型的流式调用不计账。",
+                    model,
+                )
+                continue
+
             if (
                 attempts >= 1
                 or received_any
@@ -535,6 +628,41 @@ def response_logprobs(res: httpx.Response) -> Any:
     return (choices[0] or {}).get("logprobs")
 
 
+def finish_reason_from_response(res: httpx.Response) -> str:
+    """`choices[0].finish_reason`（取不到就返回空串）。
+
+    为什么需要它：此前全仓 grep `finish_reason` 命中 0 次，也就是说**输出被上游
+    截断时，我们把它当成正常完成**。对写作工具尤其糟——用户看到的是"AI 只写了一小段"，
+    而系统日志里一切正常（commit 历史里"修 Agent 只回一小段正文"就是这个症状）。
+    上游用 `finish_reason == "length"` 明确表示"撞到 max_tokens 了"，读一下就知道。
+    """
+    try:
+        data = res.json()
+    except Exception:  # noqa: BLE001 - 响应体不是 JSON 时不该因此炸掉
+        return ""
+    choices = data.get("choices") or []
+    if not choices:
+        return ""
+    return str((choices[0] or {}).get("finish_reason") or "")
+
+
+def _warn_if_truncated(finish_reason: str, model: str, *, streamed: bool) -> None:
+    """撞上输出上限时说一句，不让它静默过去。
+
+    只告警、不改行为：截断的正文**确实**被写进了章节（回滚是另一件事），
+    这里要的是"这件事在日志里看得见"，而不是替调用方决定要不要丢弃。
+    文案指向可执行的下一步（放宽 max_tokens 或让它继续写）。
+    """
+    if (finish_reason or "").lower() != "length":
+        return
+    logger.warning(
+        "模型输出撞到上限被截断（model=%s，%s）：调用方若仍按「完整输出」处理，"
+        "会得到半截正文或截断的 JSON。可放宽 max_tokens，或让模型继续写完。",
+        model,
+        "流式" if streamed else "非流式",
+    )
+
+
 def usage_from_response(res: httpx.Response) -> Dict[str, int]:
     data = res.json()
     usage = data.get("usage") or {}
@@ -543,3 +671,47 @@ def usage_from_response(res: httpx.Response) -> Dict[str, int]:
         "completion": int(usage.get("completion_tokens") or 0),
         "total": int(usage.get("total_tokens") or 0),
     }
+
+
+def usage_from_payload(data: Dict[str, Any]) -> Optional[Dict[str, int]]:
+    """从一条 SSE 数据块里取 usage；没有就返回 None。
+
+    流式响应把 usage 放在**最后一块**（choices 为空、usage 有值），所以它不能跟
+    delta 一样只看 `choices[0]`。返回 None 而不是零值：调用方靠它区分
+    "上游这次没回传用量"与"回传了但确实是 0"，前者要能被发现，不能伪装成后者。
+    """
+    usage = data.get("usage")
+    if not isinstance(usage, dict) or not usage:
+        return None
+    return {
+        "prompt": int(usage.get("prompt_tokens") or 0),
+        "completion": int(usage.get("completion_tokens") or 0),
+        "total": int(usage.get("total_tokens") or 0),
+    }
+
+
+def _record_usage_best_effort(usage: Optional[Dict[str, int]], model: str) -> None:
+    """把一次调用的用量丢进记账队列（fire-and-forget，绝不打断调用）。
+
+    抽成一个函数是因为**两条路径都要用**：非流式的 `chat_completions` 与流式的
+    `stream_chat_completions`。此前这段只写在非流式那条分支里，于是走流式的调用
+    （AI 责编聊天、流式章节写作）**完全不进账**——而 `ensure_under_quota` 只读
+    `llm_usage`，所以每日额度与共享免费档的 cap 只被检查、从不累加，等于形同虚设。
+    """
+    try:
+        from app.core.usage import (
+            current_usage_kind,
+            current_usage_user,
+            record_usage_later,
+        )
+
+        uid = current_usage_user()
+        if uid:
+            record_usage_later(
+                user_id=uid,
+                kind=current_usage_kind(),
+                model=model,
+                usage=usage,
+            )
+    except Exception:  # noqa: BLE001 - accounting never breaks calls
+        pass
