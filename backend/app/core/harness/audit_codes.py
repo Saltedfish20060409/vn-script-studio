@@ -250,6 +250,11 @@ OUT_OF_SCOPE_SOURCES: Dict[str, str] = {
     "app/core/constraints.py": (
         "码只出现在按需计算的作者硬规则体检里，不按 code 归档"
     ),
+    "app/core/narrative_state.py": (
+        "码只出现在按需计算的因果对账结论里（当前接在基准的确定性检测器上），"
+        "不按 code 归档。哪天把这层接进 `write_precheck` 的对账报告，"
+        "就应当移进 IN_SCOPE_SOURCES 并把两个码登记进 AUDIT_CODE_BASIS"
+    ),
 }
 
 

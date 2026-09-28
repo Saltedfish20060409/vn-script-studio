@@ -665,6 +665,62 @@ def build_synthetic_novel(
             )
         )
 
+    # ---------- C 层的**诱导项**：形似因果、其实是正常写法 ----------
+    #
+    # 为什么必须有：C 层埋点与因果检测器是同一轮里写出来的，"4/4 全中"只证明两者
+    # 自洽，不证明检测器有用。这三条专门卡住最容易误报的地方——**有中介的**知情转变、
+    # **已满足**的前提条款、以及**代词主题**。检测器只要在其中任意一条上报，
+    # 就会以误报的形式打在 precision 上（诱导项不参与召回，只参与误报）。
+    #
+    # 每条只占**两章**：到这个阶段全书已经快被埋点占满（60 章实测只剩 6–10 章自由），
+    # 所以"中介"与"结果"必须同章——这也正好是真实稿子里常见的写法。
+    causal_distractors = [
+        (
+            "有中介的知情转变",
+            "林夏还不知道那个名字的来历。",
+            ["陈默告诉了她那个名字的来历。", "林夏已经知道了那个名字的来历。"],
+            "同一章里明写交代了，所以「不知道→知道」成立，不该报",
+        ),
+        (
+            "条款已满足",
+            "只有她碰那枚硬币，门才会开。",
+            ["她碰了那枚硬币，门开了。"],
+            "前提动作明写发生了，条款被满足，不该报",
+        ),
+        (
+            "代词主题",
+            "林夏还不知道这些。",
+            ["林夏知道了这些。"],
+            "主题是指代（「这些」），纯文本层面判不了所指，不该报",
+        ),
+    ]
+    free_pool = [i for i in range(chapters) if ch_ids[i] not in used_chapters]
+    causal_distractor_skipped: List[str] = []
+    for k, (name, setup, conflict_blocks, why) in enumerate(causal_distractors):
+        if len(free_pool) < 2:
+            # 装不下就**记下来**，不静默少一条（本文件反复强调的那条规矩）
+            causal_distractor_skipped.append(name)
+            continue
+        est = free_pool.pop(0)
+        conflict = free_pool.pop(0)
+        if est > conflict:
+            est, conflict = conflict, est
+        blocks_by_chapter[ch_ids[est]].insert(3, _narr(setup))
+        for offset, text in enumerate(conflict_blocks):
+            blocks_by_chapter[ch_ids[conflict]].insert(3 + offset, _narr(text))
+        used_chapters.add(ch_ids[est])
+        used_chapters.add(ch_ids[conflict])
+        distractor_rows.append(
+            Distractor(
+                id=f"causal-dist-{k}",
+                chapter=ch_ids[conflict],
+                kind=name,
+                quote=" → ".join([setup, *conflict_blocks]),
+                why=why,
+                tier="causal",
+            )
+        )
+
     project = normalize_project(
         {
             "id": "bench-longrange",
@@ -693,6 +749,8 @@ def build_synthetic_novel(
             "causal": sum(1 for p in planted if p.tier == "causal"),
             #: 因果层**没抢到章**因而没有读数的分桶。空列表才是"五个桶都量到了"。
             "causalSkippedBuckets": causal_skipped,
+            #: 因果诱导项里没能摆下的（章不够）。它必须为空才对得上"三条都量了"。
+            "causalDistractorSkipped": causal_distractor_skipped,
             "byCategory": _count_by(planted, "category"),
             "byBucket": _count_by(planted, "bucket"),
         },
@@ -1015,6 +1073,10 @@ def detect_deterministic(project: VnProject) -> List[Dict[str, Any]]:
         # 故事层两类（来自 core/story_metrics.py）：都带 chapterId，因此能按章归因
         "foreshadow_unresolved": "plot",
         "emotion_arc_break": "character",
+        # 因果层两类（来自 core/narrative_state.py）：靠"按新章的断言索引历史断言"
+        # 绕开窗口，所以章距多远都能对上（见 docs/longrange-consistency-and-eval.md 第八节）
+        "unenabled_event": "plot",
+        "payoff_terms_mismatch": "plot",
     }
 
     def _push(code: Any, chapter: Any, message: Any) -> None:
@@ -1071,6 +1133,18 @@ def detect_deterministic(project: VnProject) -> List[Dict[str, Any]]:
             if isinstance(f, Mapping):
                 _push(f.get("code"), f.get("chapterId"), f.get("message"))
     except Exception:  # noqa: BLE001 — 故事层不可用时跳过
+        pass
+    try:
+        # 因果层：明写"不知道→知道"而无中介、明写前提动作未发生而结果已发生。
+        # 这一层是唯一不靠窗口的：它按新章自己的断言去索引历史断言，
+        # 所以远端章距不影响能不能对上（这正是它存在的理由）。
+        from app.core.narrative_state import analyze_narrative_state
+
+        causal = analyze_narrative_state(project)
+        for f in causal.get("findings") or []:
+            if isinstance(f, Mapping):
+                _push(f.get("code"), f.get("chapterId"), f.get("message"))
+    except Exception:  # noqa: BLE001 — 因果层不可用时跳过
         pass
     return out
 

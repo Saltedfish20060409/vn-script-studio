@@ -201,17 +201,20 @@ def test_window_pair_ceiling_follows_the_overlap_constant():
     assert wide["sameWindowRecall"] == 1.0, "一个窗口装下全书后不该还有不同窗的对"
 
 
-def test_causal_items_are_scoreable_but_currently_missed():
-    """现状读数：因果层可被评分，而现有确定性检测器**一条也抓不到**。
+def test_causal_items_are_now_actually_detected():
+    """C 层的**翻转闸**：立基准那一轮这条断言的是"因果类召回 0"。
 
-    这就是要补的缺口本身。它同时也是一致性闸：哪天因果层真做出来了，
-    这条会红，提醒把它改成"应当被抓到"的正向断言。
+    当时就写明了它的用途——"哪天因果层真做出来了这条会红，提醒把它改成
+    '应当被抓到'的正向断言"。`core/narrative_state.py` 落地后它如期红了，
+    于是按约定翻转。它保留下来还有第二个作用：因果层被改坏时这里会红。
     """
     project, gt = build_synthetic_novel(chapters=60, seed=20260409)
     causal = [it for it in gt["planted"] if it["tier"] == "causal"]
     assert causal
     out = evaluate_detections(gt, detect_deterministic(project))
-    assert out["byTier"]["causal"]["recall"] == 0.0, "现有检测器不该已经能抓因果矛盾"
+    assert out["byTier"]["causal"]["recall"] == 1.0, out["byTier"]
+    # 而"必须上模型"的那一层仍然抓不到——这条差异是分层的证据，不能一起变绿
+    assert out["byTier"]["semantic"]["recall"] == 0.0, out["byTier"]
 
 
 def test_planned_causal_detector_scores_hits_when_fed_the_right_kind():
@@ -370,8 +373,20 @@ def test_generation_is_reproducible():
 
 
 def test_distractors_are_marked_and_not_counted_as_planted():
+    """诱导项分两批：语义层 3 条（由 `distractors` 参数控制）+ 因果层 3 条固定。
+
+    因果那一批是 C 层自己的**精度闸**（形似因果、写法正常），所以不跟着
+    `distractors` 参数走：把它调小不该顺手把精度闸关掉一半。
+    """
     _, gt = build_synthetic_novel(chapters=40, seed=2, distractors=3)
-    assert len(gt["distractors"]) == 3
+    semantic = [d for d in gt["distractors"] if d.get("tier") == "semantic"]
+    causal = [d for d in gt["distractors"] if d.get("tier") == "causal"]
+    skipped = gt["counts"].get("causalDistractorSkipped") or []
+    assert len(semantic) == 3
+    # 因果那一批**能摆下几条取决于还剩多少自由章**（40 章实测只够 1 条），
+    # 所以这里钉的是不变量"摆下的 + 如实跳过 = 3"，而不是具体条数——
+    # 钉条数会在换个章数时变成假失败，而"少了一条却没人说"才是真问题。
+    assert len(causal) + len(skipped) == 3, (causal, skipped)
     planted_ids = {it["id"] for it in gt["planted"]}
     for d in gt["distractors"]:
         assert d["id"] not in planted_ids
@@ -615,9 +630,15 @@ def test_planted_death_gap_keeps_the_declared_distance_meaningful():
 
 
 def test_deterministic_detector_returns_scorable_shape():
+    """形状闸：每条检测都要带基准能用的 category / chapterIds。
+
+    category 集合随层数增长：A 层是 character/timeline/location，故事层与因果层
+    都归 **plot**。这里必须跟着一起列全——漏一个就会把"新层能不能被记分"
+    误判成形状错误。
+    """
     project, _ = build_synthetic_novel(chapters=30, seed=15)
     for d in detect_deterministic(project):
-        assert d["category"] in {"character", "timeline", "location"}
+        assert d["category"] in {"character", "timeline", "location", "plot"}
         assert isinstance(d["chapterIds"], list)
 
 
