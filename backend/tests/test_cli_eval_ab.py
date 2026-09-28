@@ -180,7 +180,10 @@ def test_summary_reports_retention_and_boundary(tmp_path, monkeypatch, fake_llm)
             agg = report["summary"][kind][arm]
             assert agg["n"] >= 1
             assert isinstance(agg["rubricAvg"], float)
-    assert "差值（工具 − 裸聊）" in output
+    # 汇总行：从"两臂差值"改成通用的「配对读数 {臂} − {基准}」——
+    # 默认两臂时基准是 tool，读作"bare 比 tool 差多少"；加 --arms 后同一行
+    # 也是消融读数（摘掉某块后分掉多少），口径一致才不用记两套读法。
+    assert "配对读数 bare − tool" in output
     # 边界集的 lint 命中率会被"照写问题写法"这个指令混淆，必须把读法印出来
     assert "不作为优劣指标" in output
     assert "不作为优劣指标" in report["summaryNote"]
@@ -264,3 +267,89 @@ def test_repeats_aggregate_instead_of_overwriting(tmp_path, monkeypatch, fake_ll
     # 3 例 × 2 臂 × 3 重复 = 6 次写作调用（本题 1 个用例）
     writes = [c for c in fake_llm if not c["json"]]
     assert len(writes) == 6
+
+
+# ---------------------------------------------------------------- 单块消融（--arms）
+# 为什么需要这一节：原来只有 tool vs bare 两臂，两臂差的是一整套流程，于是
+# 「craft 3.3k token / 导师 1.2k token / 风格清单 2k token 谁在起作用」一个字都答不了。
+# 线上实测：60 条真发出的 system 提示词里 craft 有 92% 的运行是关的，
+# 导师块 100% 注入却从没单独测过——所以必须能逐个摘掉再比。
+
+
+def _run_arms(tmp_path, monkeypatch, arms: str, *, cases=1, seed=20260409):
+    monkeypatch.chdir(tmp_path)
+    out = tmp_path / f"ab-{arms.replace(',', '_')}.json"
+    result = runner.invoke(
+        cli,
+        [
+            "eval", "--ab", "--cases", str(cases), "--seed", str(seed),
+            "--api-key", "test-key", "--arms", arms, "--out", str(out),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    return json.loads(out.read_text(encoding="utf-8")), result.output
+
+
+def test_ablation_arms_run_and_report_against_the_baseline(tmp_path, monkeypatch, fake_llm):
+    # cases=4 → 前两个是保留集、后两个是边界集，两个集合都要出汇总
+    report, output = _run_arms(tmp_path, monkeypatch, "tool,no_craft,no_mentor,bare", cases=4)
+    case = report["cases"][0]
+    for arm in ("tool", "no_craft", "no_mentor", "bare"):
+        assert "error" not in case[arm], (arm, case[arm])
+    # 报告要能自证"这一轮到底跑了哪些臂、基准是谁"
+    assert report["method"]["arms"] == ["tool", "no_craft", "no_mentor", "bare"]
+    assert report["baselineArm"] == "tool"
+    assert set(report["arms"]) == {"tool", "no_craft", "no_mentor", "bare"}
+    # 每条消融臂都要有"相对基准"的配对读数（均值差 + 区间 + 符号检验）
+    for kind in ("retention", "boundary"):
+        cell = report["summary"][kind]
+        for arm in ("no_craft", "no_mentor", "bare"):
+            assert arm in cell["comparisons"], (kind, arm)
+            st = cell["comparisons"][arm]
+            assert st["base"] == "tool"
+            assert "meanDiff" in st and "p" in st["signTest"]
+    assert "配对读数 no_craft − tool" in output
+    # 盲评文件仍只覆盖 tool vs bare：三稿以上人肉盲评没法读
+    assert report["method"]["blindArms"] == ["tool", "bare"]
+
+
+def test_no_craft_arm_really_drops_the_craft_block(tmp_path, monkeypatch, fake_llm):
+    """三臂各摘一块，看 system 里到底少了什么。
+
+    按"能区分三者的特征串"认臂，不要按顺序猜：
+      tool      = 工艺 Skills 正文 + 导师块
+      no_craft  = 「写作工艺：本轮关闭」占位 + 导师块
+      no_mentor = 工艺 Skills 正文，但没有导师块
+    """
+    _run_arms(tmp_path, monkeypatch, "tool,no_craft,no_mentor")
+    writes = [c for c in fake_llm if not c["json"]]
+    assert len(writes) == 3, f"三臂应各一次写作调用，实际 {len(writes)}"
+
+    has_skills = [c for c in writes if "写作工艺 Skills" in c["system"]]
+    craft_off = [c for c in writes if "写作工艺：本轮关闭" in c["system"]]
+    no_mentor = [c for c in has_skills if "写作导师" not in c["system"]]
+
+    assert len(has_skills) == 2, "tool 与 no_mentor 该带工艺 Skills 正文"
+    assert len(craft_off) == 1, "no_craft 该用「本轮关闭」那句占位（与线上 chat 任务一致）"
+    assert len(no_mentor) == 1, "no_mentor 该带工艺但去掉导师块"
+    assert "写作导师" in craft_off[0]["system"], "no_craft 只是摘工艺，导师块要留着"
+
+
+def test_no_style_arm_keeps_skills_but_drops_the_style_guide(tmp_path, monkeypatch, fake_llm):
+    _run_arms(tmp_path, monkeypatch, "tool,no_style")
+    writes = [c for c in fake_llm if not c["json"]]
+    with_style = next(c for c in writes if "写作风格 Skill" in c["system"])
+    without = next(c for c in writes if c is not with_style)
+    assert "写作工艺 Skills" in without["system"], "只是去掉风格硬约束，工艺 Skills 要留着"
+    assert "写作风格 Skill" not in without["system"]
+
+
+def test_unknown_arm_name_fails_loudly(tmp_path, monkeypatch, fake_llm):
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(
+        cli,
+        ["eval", "--ab", "--cases", "1", "--api-key", "test-key", "--arms", "tool,nope"],
+    )
+    assert result.exit_code != 0
+    combined = result.output + str(result.exception)
+    assert "nope" in combined and "no_craft" in combined, combined

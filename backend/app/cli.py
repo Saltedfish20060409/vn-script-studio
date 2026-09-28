@@ -5,8 +5,9 @@ import asyncio
 import json
 import random
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import typer
 
@@ -18,6 +19,7 @@ from app.core.eval_stats import (
     summarize_binary_paired,
     summarize_paired,
 )
+from app.core.mentors import build_mentor_prompt_for_project
 from app.domain.types import AiRequest
 
 cli = typer.Typer(help="VN Script Studio CLI")
@@ -140,6 +142,15 @@ def eval(
         "--ab",
         help="对照盲评：同一模型同一任务跑「工具流程」与「裸聊」两臂，并输出随机标签的盲评文件",
     ),
+    arms: str = typer.Option(
+        "tool,bare",
+        "--arms",
+        help=(
+            "要跑哪些臂（逗号分隔）。tool=线上等价流程；bare=一句话人设；"
+            "消融臂：no_craft / no_style / no_mentor / no_review / no_context。"
+            "默认 tool,bare（与旧报告口径一致）"
+        ),
+    ),
     repeats: int = typer.Option(
         1, "--repeats", help="每个用例每臂重复采样次数（>1 时报告离散度）"
     ),
@@ -190,6 +201,7 @@ def eval(
       python -m app eval -m qwen2.5:7b --base-url http://localhost:11434 --api-key ollama
       python -m app eval --ab --cases 13 -o ab.json  # 对照盲评：工具流程 vs 裸聊
       python -m app eval --ab --repeats 3 --judge-model gpt-4o   # 重复采样 + 独立裁判
+      python -m app eval --ab --arms tool,no_craft,no_mentor,bare -o ablate.json  # 单块消融
       python -m app eval --longrange               # 长程一致性基准（无需 key）
       python -m app eval --context-ab              # 上下文政策 A/B（无需 key）
     """
@@ -365,12 +377,67 @@ def eval(
     # ——— 对照盲评两臂（--ab） ———
     # 争议点：「软件是不是还不如直接跟聊天框说一句」。要回答它，就不能拿我们
     # 精心写的单条系统提示去比对方的随手一问，必须让两臂**只差流程**：
-    #   tool 臂 = 线上真实链路（检索拼装上下文 + 工艺卡 + 输出契约 + 作者硬规则
-    #             + 任务分档温度 + 第二遍自检修订）
+    #   tool 臂 = 线上真实链路（检索拼装上下文 + 工艺卡 + 写作导师块 + 输出契约
+    #             + 作者硬规则 + 任务分档温度 + 第二遍自检修订）
     #   bare 臂 = 同一个模型、同一句任务，只有一句通用「写作助手」人设，
     #             不给项目上下文、不给工艺卡、不给契约、不做自检
     # 两臂产出后用**完全相同**的确定性 lint + 同一份 Rubric Judge 打分。
+    #
+    # 2026-09-27 补：`--arms` 单块消融。上面那个对照只能回答"整条流程有没有用"——
+    # 两臂差的是一整套，craft 3.3k token / 导师 1.2k token / 风格清单 2k token 到底谁
+    # 在起作用，它一个字都答不了。线上实测（60 条真发出的 system 提示词）里 craft 有
+    # 92% 的运行是关的、导师块 100% 注入却从没单独测过，所以逐个摘掉再比才有意义。
     BARE_SYSTEM = "你是一个乐于助人的写作助手，请按用户要求完成写作。"
+
+    @dataclass(frozen=True)
+    class ArmSpec:
+        """一条臂要打开哪些块。字段名对应线上 `compose_agent_system` 的入参。"""
+
+        label: str
+        composed: bool = True  # False = 裸聊臂
+        craft: bool = True  # 工艺 Skills（含档位判定）
+        style: bool = True  # 工艺块里那段「写作风格 Skill 硬约束」
+        mentor: bool = True  # 写作导师块（线上恒开）
+        context: bool = True  # 作品上下文（检索拼装）
+        self_review: bool = True  # 第二遍自检修订（线上只在有写动作时跑）
+
+    AB_ARMS: Dict[str, ArmSpec] = {
+        "tool": ArmSpec(
+            label=(
+                "工具流程（线上等价：检索上下文+工艺卡+写作导师块+输出契约+作者硬规则"
+                "+任务分档温度+第二遍自检）"
+            )
+        ),
+        "no_craft": ArmSpec(label="消融：去掉工艺 Skills（连风格硬约束一起）", craft=False),
+        "no_style": ArmSpec(label="消融：保留工艺 Skills，去掉「写作风格 Skill」硬约束正文", style=False),
+        "no_mentor": ArmSpec(label="消融：去掉写作导师块（1.6k 字，线上关不掉）", mentor=False),
+        "no_context": ArmSpec(label="消融：去掉作品上下文（只留提示词骨架）", context=False),
+        "no_review": ArmSpec(label="消融：去掉第二遍自检修订", self_review=False),
+        "bare": ArmSpec(
+            label="裸聊（同模型，仅一句通用写作助人人设，无上下文/无工艺/无契约/无自检）",
+            composed=False,
+        ),
+    }
+
+    # 要跑哪些臂：默认 tool,bare 与旧报告口径一致（旧测试与 docs/ab-report.json 都按这个口径）。
+    arm_names = [a.strip() for a in str(arms or "").split(",") if a.strip()]
+    if not arm_names:
+        arm_names = ["tool", "bare"]
+    unknown = [a for a in arm_names if a not in AB_ARMS]
+    if unknown:
+        raise typer.BadParameter(
+            f"未知的臂：{', '.join(unknown)}；可选：{', '.join(sorted(AB_ARMS))}"
+        )
+    if len(set(arm_names)) != len(arm_names):
+        raise typer.BadParameter("--arms 里有重复的臂名")
+    # 盲评文件（甲/乙）只覆盖两臂：人肉盲评两稿可读，三稿以上会退化成投票表。
+    # 优先取 tool vs bare（那是最有意义的对照），没有 bare 时才退到前两条。
+    if "tool" in arm_names and "bare" in arm_names:
+        blind_arms = ["tool", "bare"]
+    elif len(arm_names) >= 2:
+        blind_arms = arm_names[:2]
+    else:
+        blind_arms = []
 
     # 评测用例名（trap-xxx 是"抓毛病"的边界用例，不是产品的任务档）要映射到产品里
     # 真实存在的 task 档位；映射规则写在用例边上，不靠对用例文案的猜测——
@@ -395,15 +462,18 @@ def eval(
     def _agent_task_for(label: str) -> str:
         return AB_AGENT_TASK.get(label, "scene")
 
-    async def _arm_tool(task: str, instruction: str, agent_task: str) -> dict:
-        """工具流程臂：走产品真实链路，任务档位等价于用户在界面上选的那个模式。
+    async def _arm_composed(task: str, instruction: str, agent_task: str, spec: ArmSpec) -> dict:
+        """产品链路臂：按 spec 决定拼哪几块，任务档位等价于用户在界面上选的那个模式。
 
-        用户的原始话术两臂完全一致（不额外加「【任务：x】」标记），
+        用户的原始话术各臂完全一致（不额外加「【任务：x】」标记），
         任务档位只通过 system 里的任务提示 / 输出契约 / 工艺卡生效——
-        这样两臂的差别确实来自流程，而不是来自我们多写了一句提示词。
+        这样各臂的差别确实来自流程，而不是来自我们多写了一句提示词。
         """
         craft = select_craft_mode(
-            task=agent_task, user_message=instruction, project=project, preference="auto"
+            task=agent_task,
+            user_message=instruction,
+            project=project,
+            preference="auto" if spec.craft else "off",
         )
         ctx_obj = build_agent_context(
             project,
@@ -411,11 +481,19 @@ def eval(
             userMessage=instruction,
             task=agent_task,
         )
+        # 导师块：线上 `run_agent_loop` 恒拼（`agent_loop.py:608`），这里对齐，
+        # 否则这个"评测臂"评的不是线上真身（旧版漏了它，报告口径因此偏窄）。
+        mentor_block = (
+            build_mentor_prompt_for_project(project, task=agent_task) if spec.mentor else ""
+        )
         system = compose_agent_system(
             identity_block=agent_identity_block([], []),
             task=agent_task,
-            craft_block=build_writing_craft_prompt(agent_task, craft.mode),
-            context_text=ctx_obj.text,
+            craft_block=build_writing_craft_prompt(
+                agent_task, craft.mode, include_style=spec.style
+            ),
+            mentor_block=mentor_block,
+            context_text=ctx_obj.text if spec.context else "",
         )
         temp = task_temperature(agent_task, craft.mode)
         res = await chat_completions(
@@ -443,28 +521,33 @@ def eval(
         ]
         review_note = ""
         revised = False
-        try:
-            review = await run_narrative_self_review(
-                cfg,
-                draft=text,
-                task=agent_task,
-                project=project,
-                lintIssues=lint_issues,
-            )
-            review_note = review.note or ""
-            if not review.ok and review.revisedText:
-                text = review.revisedText.strip()
-                revised = True
-            elif lint_has_blockers(lint_issues) and not review.revisedText:
-                review_note = review_note or "规则未过但责编未给出改写"
-        except Exception as exc:  # noqa: BLE001 — 自检失败不拖垮评测，但要留痕
-            review_note = f"self_review_failed:{type(exc).__name__}"
+        if spec.self_review:
+            try:
+                review = await run_narrative_self_review(
+                    cfg,
+                    draft=text,
+                    task=agent_task,
+                    project=project,
+                    lintIssues=lint_issues,
+                )
+                review_note = review.note or ""
+                if not review.ok and review.revisedText:
+                    text = review.revisedText.strip()
+                    revised = True
+                elif lint_has_blockers(lint_issues) and not review.revisedText:
+                    review_note = review_note or "规则未过但责编未给出改写"
+            except Exception as exc:  # noqa: BLE001 — 自检失败不拖垮评测，但要留痕
+                review_note = f"self_review_failed:{type(exc).__name__}"
+        else:
+            review_note = "skipped（消融：不带第二遍自检）"
         return {
             "text": text,
             "model": used_model,
             "temperature": temp,
             "craftMode": craft.mode,
-            "contextChars": ctx_obj.charsUsed,
+            "contextChars": ctx_obj.charsUsed if spec.context else 0,
+            "mentorChars": len(mentor_block),
+            "promptChars": len(system),
             "selfReview": review_note,
             "selfRevised": revised,
         }
@@ -486,9 +569,17 @@ def eval(
             "temperature": 0.75,
             "craftMode": "off",
             "contextChars": 0,
+            "mentorChars": 0,
+            "promptChars": len(BARE_SYSTEM),
             "selfReview": "",
             "selfRevised": False,
         }
+
+    async def _run_arm(arm: str, task: str, instruction: str, agent_task: str) -> dict:
+        spec = AB_ARMS[arm]
+        if not spec.composed:
+            return await _arm_bare(task, instruction)
+        return await _arm_composed(task, instruction, agent_task, spec)
 
     # LLM-as-a-Judge（《深入理解 AI Agent》第7/9章）：Rubric 逐维打分+引用证据
     # +一票否决。与确定性 lint 互补：lint 查规则，Judge 查质量。
@@ -639,7 +730,7 @@ def eval(
         }
 
     async def _run_ab(blind_path: Path):
-        """对照盲评：每个任务跑两臂，输出内部报告 + 随机标签的盲评文件 + 拆封密钥。"""
+        """对照盲评：每个用例跑指定各臂，输出内部报告 + 随机标签的盲评文件 + 拆封密钥。"""
         rng = random.Random(seed)
         report = {
             "mode": "ab",
@@ -647,10 +738,7 @@ def eval(
             "baseUrl": cfg.baseUrl,
             "provider": cfg.provider,
             "seed": seed,
-            "arms": {
-                "tool": "工具流程（线上真实链路：检索上下文+工艺卡+输出契约+作者硬规则+任务分档温度+第二遍自检）",
-                "bare": "裸聊（同模型，仅一句通用写作助人人设，无上下文/无工艺/无契约/无自检）",
-            },
+            "arms": {name: AB_ARMS[name].label for name in arm_names},
             "cases": [],
             "summary": {},
         }
@@ -668,14 +756,11 @@ def eval(
                 "kind": kind,
             }
             texts: dict = {}
-            for arm, runner in (("tool", _arm_tool), ("bare", _arm_bare)):
+            for arm in arm_names:
                 runs: List[dict] = []
                 for _rep in range(repeats_n):
                     try:
-                        if arm == "tool":
-                            r = await runner(task, instruction, agent_task)
-                        else:
-                            r = await runner(task, instruction)
+                        r = await _run_arm(arm, task, instruction, agent_task)
                     except Exception as exc:  # noqa: BLE001
                         runs.append({"error": f"{type(exc).__name__}:{str(exc)[:200]}"})
                         continue
@@ -686,23 +771,23 @@ def eval(
                     texts[arm] = str(entry[arm]["text"])
 
             # 随机标签：谁叫「甲」谁叫「乙」每例独立随机（同 seed 可复现）
-            labels = ["甲", "乙"]
-            rng.shuffle(labels)
-            mapping = {"tool": labels[0], "bare": labels[1]}
-            entry["blindLabels"] = mapping
-            if len(texts) == 2:
-                tool_label = mapping["tool"]
-                bare_label = mapping["bare"]
-                blind_items.append(
-                    {
-                        "id": case_id,
-                        "task": task,
-                        "instruction": instruction,
-                        tool_label: texts["tool"],
-                        bare_label: texts["bare"],
-                    }
-                )
-                key[case_id] = {tool_label: "tool", bare_label: "bare"}
+            if len(blind_arms) == 2:
+                labels = ["甲", "乙"]
+                rng.shuffle(labels)
+                mapping = {blind_arms[0]: labels[0], blind_arms[1]: labels[1]}
+                entry["blindLabels"] = mapping
+                first, second = blind_arms
+                if first in texts and second in texts:
+                    blind_items.append(
+                        {
+                            "id": case_id,
+                            "task": task,
+                            "instruction": instruction,
+                            mapping[first]: texts[first],
+                            mapping[second]: texts[second],
+                        }
+                    )
+                    key[case_id] = {mapping[first]: first, mapping[second]: second}
             report["cases"].append(entry)
 
             def _fmt(a: str) -> str:
@@ -717,7 +802,7 @@ def eval(
                     + ("·自检改写" if c.get("selfRevised") else "")
                 )
 
-            typer.echo(f"[{task}] {_fmt('tool')} | {_fmt('bare')}")
+            typer.echo(f"[{task}] " + " | ".join(_fmt(a) for a in arm_names))
 
         # 汇总：保留集看 lint 通过率与 Rubric 均分；边界集看检出率与 veto
         def _agg(arm: str, group: List[dict]) -> dict:
@@ -756,13 +841,17 @@ def eval(
         )
         report["method"] = {
             "repeats": repeats_n,
+            "arms": list(arm_names),
+            "blindArms": list(blind_arms),
+            "baselineArm": "tool" if "tool" in arm_names else arm_names[0],
             "judgeModel": judge_cfg.model,
             "judgeBaseUrl": judge_cfg.baseUrl,
             "judgeIndependent": judge_independent,
             "judgeSawTestHints": False,
             "note": (
                 "裁判提示里已剔除用例的评测元信息（如「（测试：…判定不合格）」），"
-                "避免把参考答案发给判卷人。"
+                "避免把参考答案发给判卷人。消融臂的读数是「与基准臂的配对差」，"
+                "不是绝对值——n 很小时区间会跨 0，那种情况不要当结论。"
             ),
         }
         if not judge_independent:
@@ -771,55 +860,71 @@ def eval(
                 "请配置 CRITIC_API_MODEL / --judge-model 用独立裁判复跑。"
             )
         stats_rng = random.Random(seed)
+        # 基准臂：有 tool 就拿 tool 当基准（消融臂都是"从 tool 上摘掉一块"，
+        # 这样每条差值读起来就是"这块值多少分"）；没有 tool 就拿第一条臂。
+        baseline = "tool" if "tool" in arm_names else arm_names[0]
+        report["baselineArm"] = baseline
         for kind, title in (("retention", "retention 保留集"), ("boundary", "boundary 边界集")):
             group = [c for c in report["cases"] if c["kind"] == kind]
             if not group:
                 continue
-            a, b = _agg("tool", group), _agg("bare", group)
-            paired = summarize_paired(
-                [(c.get("tool") or {}).get("rubricAvg") for c in group],
-                [(c.get("bare") or {}).get("rubricAvg") for c in group],
-                rng=stats_rng,
-            )
-            paired["vetoMcNemar"] = summarize_binary_paired(
-                [bool((c.get("tool") or {}).get("veto")) for c in group],
-                [bool((c.get("bare") or {}).get("veto")) for c in group],
-            )
-            report["summary"][kind] = {"tool": a, "bare": b, "stats": paired}
-            typer.echo(f"  {title}: n={a.get('n', 0)}")
-            for arm, agg in (("工具流程", a), ("裸聊", b)):
+            aggs = {name: _agg(name, group) for name in arm_names}
+            cell: dict = dict(aggs)
+            # 每条非基准臂 vs 基准臂：均值差 + 配对 bootstrap + 符号检验 + veto McNemar。
+            # 这是消融的读数（"摘掉这一块，分掉多少"），也是 n 小的时候唯一诚实的说法。
+            comparisons: dict = {}
+            base_vals = [(c.get(baseline) or {}).get("rubricAvg") for c in group]
+            for name in arm_names:
+                if name == baseline:
+                    continue
+                vals = [(c.get(name) or {}).get("rubricAvg") for c in group]
+                paired = summarize_paired(vals, base_vals, rng=stats_rng)
+                paired["vetoMcNemar"] = summarize_binary_paired(
+                    [bool((c.get(name) or {}).get("veto")) for c in group],
+                    [bool((c.get(baseline) or {}).get("veto")) for c in group],
+                )
+                paired["base"] = baseline
+                comparisons[name] = paired
+            cell["comparisons"] = comparisons
+            # 旧口径（tool vs bare）保留原样，docs/ab-report.json 与旧脚本按它读
+            if "tool" in arm_names and "bare" in arm_names:
+                cell["stats"] = comparisons.get("bare") or {}
+            report["summary"][kind] = cell
+
+            typer.echo(f"  {title}: n={aggs[baseline].get('n', 0)}")
+            for name, agg in aggs.items():
                 if not agg.get("n"):
                     continue
+                mark = "（基准）" if name == baseline else ""
                 typer.echo(
-                    f"    {arm}: lint通过 {agg['lintPass']:.0%} · Rubric {agg['rubricAvg']} · "
+                    f"    {name}{mark}: lint通过 {agg['lintPass']:.0%} · Rubric {agg['rubricAvg']} · "
                     f"veto {agg['veto']} · error {agg['errors']} / warn {agg['warns']}"
                 )
-            if a.get("n") and b.get("n"):
-                d_lint = a["lintPass"] - b["lintPass"]
-                d_rub = (a["rubricAvg"] or 0) - (b["rubricAvg"] or 0)
-                extra = (
-                    f" · veto {b['veto'] - a['veto']:+d}（工具−裸聊，越负越好）"
-                    if kind == "boundary"
-                    else ""
-                )
-                typer.echo(
-                    f"    差值（工具 − 裸聊）: lint通过 {d_lint:+.0%} · Rubric {d_rub:+.2f}{extra}"
-                )
+            for name, paired in comparisons.items():
+                base_agg = aggs[baseline]
+                agg = aggs[name]
+                if not agg.get("n") or not base_agg.get("n"):
+                    continue
+                d_rub = (agg["rubricAvg"] or 0) - (base_agg["rubricAvg"] or 0)
                 st = paired
                 typer.echo(
-                    f"    Rubric 差 {format_ci(st['ci'])} · 符号检验 "
-                    f"{st['signTest']['positive']}胜/"
-                    f"{st['signTest']['negative']}负/"
+                    f"    配对读数 {name} − {baseline}: Rubric {d_rub:+.2f} · "
+                    f"veto {agg['veto'] - base_agg['veto']:+d} · "
+                    f"差 {format_ci(st['ci'])} · 符号检验 "
+                    f"{st['signTest']['positive']}胜/{st['signTest']['negative']}负/"
                     f"{st['signTest']['ties']}平 p={st['signTest']['p']}"
                 )
-                mc = paired["vetoMcNemar"]
+                mc = st["vetoMcNemar"]
                 if mc["discordant"]:
                     typer.echo(
-                        f"    veto McNemar: 工具独有 {mc['b']} / 裸聊独有 {mc['c']} "
-                        f"p={mc['p']}（不一致例数 {mc['discordant']}）"
+                        f"      veto McNemar（{name} 独有 {mc['b']} / {baseline} 独有 {mc['c']}）"
+                        f"p={mc['p']}"
                     )
                 if st["ci"].get("crossesZero"):
-                    typer.echo("    ⚠ 区间跨 0：在这个样本量下两臂差异**未达显著**，别当结论用。")
+                    typer.echo(
+                        f"      ⚠ {name} 与 {baseline} 的区间跨 0：在这个样本量下"
+                        "「这块有没有用」**未达显著**，别当结论用。"
+                    )
             if not judge_independent:
                 typer.echo("    ⚠ 裁判与选手同模型，结论只能内部参考。")
         if report["summary"].get("boundary"):

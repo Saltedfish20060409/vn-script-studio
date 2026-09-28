@@ -472,14 +472,6 @@ def select_craft_mode(
     return CraftDecision(mode="full", reason="默认续写启用全套工艺")
 
 
-def get_writing_skill(id_: str) -> WritingSkill:
-    return SKILLS[id_]
-
-
-def list_writing_skills() -> List[WritingSkill]:
-    return [SKILLS[id_] for id_ in ALL_WRITING_SKILL_IDS]
-
-
 def skills_for_task(task: str, mode: str = "full") -> List[WritingSkill]:
     if mode == "off":
         return []
@@ -519,8 +511,15 @@ PRIORITY_IDS: List[str] = [
 ]
 
 
-def build_writing_craft_prompt(task: str, mode: str = "full") -> str:
-    """Build craft prompt for the selected mode."""
+def build_writing_craft_prompt(
+    task: str, mode: str = "full", *, include_style: bool = True
+) -> str:
+    """Build craft prompt for the selected mode.
+
+    `include_style=False` 只服务消融评测（`eval --ab --arms ...,no_style`）：工艺 Skills 照给，
+    只是不附那段「写作风格 Skill 硬约束」（`style_guide.md`，约 2k 字）。线上没有这个开关——
+    线上只要 craft 开着就一定带它，否则没法回答"这段值不值 2k 字"。
+    """
     if mode == "off":
         return "—— 写作工艺：本轮关闭（追求短拍自然；仍禁止把人设条目念进对白）——"
     skills = skills_for_task(task, mode)
@@ -552,14 +551,11 @@ def build_writing_craft_prompt(task: str, mode: str = "full") -> str:
         SELF_CHECK if need_check else "",
     ]
     text = "\n\n".join(p for p in parts if p)
-    try:
-        from app.core.pipeline.style_skill import load_style_skill
+    if include_style:
+        try:
+            from app.core.pipeline.style_skill import load_style_skill
 
-        text += "\n\n" + load_style_skill().prompt_block(max_chars=2000)
-    except Exception:
-        pass
+            text += "\n\n" + load_style_skill().prompt_block(max_chars=2000)
+        except Exception:
+            pass
     return text
-
-
-def writing_skill_titles(task: str, mode: str = "full") -> List[str]:
-    return [s.title for s in skills_for_task(task, mode)]

@@ -242,12 +242,19 @@ async def _agent_steps(
     temperature: float,
     emit,
     on_checkpoint=None,
+    prompt_meta: Optional[Dict[str, Any]] = None,
 ):
     """多步工具循环主体（可从 start_step 续跑）。
 
     每步结束后若提供 on_checkpoint，则回调可序列化的执行快照——
     断点续跑（run_state 持久化）的数据来源。
+
+    `prompt_meta` 是这一轮提示词的构成（craft 档位、各块字符数、导师/透镜 id），
+    一并写进检查点：**它同时修掉一个静默错误**——续跑分支读
+    `resume.get("craftMode") or "off"`，而检查点以前从不存这个键，
+    于是任何续跑都被报成「工艺关」。
     """
+    prompt_meta = dict(prompt_meta or {})
     hit_step_cap = False
     for step in range(start_step, steps):
         content = await _chat_json(
@@ -369,6 +376,9 @@ async def _agent_steps(
                             "trace": trace,
                             "final_message": final_message,
                             "last_tool_text": last_tool_text,
+                            # 提示词构成（craft 档位 + 各块字符数）：见 上方 run_agent_loop
+                            "craftMode": prompt_meta.get("craftMode", ""),
+                            "promptMeta": prompt_meta,
                         }
                     )
                 except Exception:  # noqa: BLE001 - checkpoint must never break the loop
@@ -397,6 +407,9 @@ async def _agent_steps(
                         "trace": trace,
                         "final_message": final_message,
                         "last_tool_text": last_tool_text,
+                        # 提示词构成（craft 档位 + 各块字符数）：见 上方 run_agent_loop
+                        "craftMode": prompt_meta.get("craftMode", ""),
+                        "promptMeta": prompt_meta,
                     }
                 )
             except Exception:  # noqa: BLE001
@@ -674,6 +687,32 @@ async def run_agent_loop(
         start_step = 0
 
     prefetch_report: Optional[PrefetchReport] = None
+    # 本轮提示词构成（各块的**实测字符数**）：以前这些只在代码里，线上跑过什么无从查证——
+    # 想回答"craft / 导师 / 透镜到底有没有被用上"只能靠语料里搜字符串，而且检查点里
+    # 压根没记 craftMode（resume 分支 `resume.get("craftMode") or "off"` 因此恒为 off）。
+    # 现在统一由这里产出，进检查点也进 contextMeta。
+    prompt_meta: Dict[str, Any] = {}
+    if not resume:
+        prompt_meta = {
+            "craftMode": craft.mode,
+            "craftReason": craft.reason,
+            "mentorIds": mentor_ids,
+            "lensIds": lens_ids,
+            "blocks": {
+                "agentSystem": len(AGENT_SYSTEM),
+                "identity": len(identity_block),
+                "taskHint": len(task_hint(task)),
+                "craft": len(craft_block),
+                "mentor": len(mentor_block),
+                "lens": len(lens_block),
+                "loopProtocol": len(_LOOP_PROTOCOL),
+                "toolCatalog": len(tool_catalog_for_prompt()),
+                "chatMemory": len(chat_memory_block),
+                "context": len(ctx.text),
+            },
+            "systemChars": len(system_content),
+            "contextChars": ctx.charsUsed,
+        }
     if should_prefetch(task, ctx):
         prefetch_report = run_write_prefetch(
             working,
@@ -711,6 +750,7 @@ async def run_agent_loop(
             temperature=temperature,
             emit=emit,
             on_checkpoint=on_checkpoint,
+            prompt_meta=prompt_meta or None,
         )
     )
 
