@@ -108,6 +108,18 @@ const WIRINGS: Wiring[] = [
       pattern: /analysis\/consistency-scan/,
     },
   },
+  {
+    // 组件层的**最薄接线测试**。审计的结论是"React 层 0 单测，而上面那三起事故
+    // 全都发生在组件层"，所以这里不铺渲染测试，只针对最容易断的那根线做源码级断言。
+    name: "AI 责编聊天必须走流式端点",
+    backend: { file: "backend/app/api/v1/projects.py", needle: "/agent/stream" },
+    frontend: {
+      files: ["frontend/src/components/AgentChat.tsx"],
+      // 钉"组件里真的调了流式那个函数"：改回非流式不会有类型错误，
+      // 但用户会在长回答上盯着空白页等（并且流式与同步两档的超时预算不一样）。
+      pattern: /await runAgentStream\(/,
+    },
+  },
 ];
 
 describe("接线守卫：后端有的开关，前端必须真的接上", () => {
