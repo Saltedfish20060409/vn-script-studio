@@ -35,6 +35,29 @@ class PrefetchCall:
     reason: str
 
 
+#: 章节类材料的注入上限：**两头都留**（前 2000 + 后 2000）。
+#:
+#: 为什么不是只取前 4000（2026-09-27 修）：`get_chapter` 内部用 `_clip()` 做**头部截断**
+#: （默认取回 12000 字），而预取只在"上下文被裁/焦点章被截"时才触发——那时续写最需要的
+#: **章末**恰好落在被丢掉的那一半，补料补成了"上下文里本来就有的一段"。
+#: 非章节材料（设定/条目检索）保持头部切片：它们的相关信息通常集中在最相关的头几条。
+_CHAPTER_PREVIEW_LIMIT = 4000
+_CHAPTER_PREVIEW_HEAD = 2000
+_CHAPTER_PREVIEW_TOOLS = frozenset({"get_chapter", "search_script"})
+
+
+def _preview_for_prompt(name: str, preview: Any) -> str:
+    """把预取到的材料切进提示词：章节类两头留，其余留头部。"""
+    text = str(preview or "")
+    if name not in _CHAPTER_PREVIEW_TOOLS or len(text) <= _CHAPTER_PREVIEW_LIMIT:
+        return text[:_CHAPTER_PREVIEW_LIMIT]
+    head = text[:_CHAPTER_PREVIEW_HEAD]
+    tail_len = _CHAPTER_PREVIEW_LIMIT - _CHAPTER_PREVIEW_HEAD
+    tail = text[-tail_len:]
+    skipped = len(text) - _CHAPTER_PREVIEW_LIMIT
+    return f"{head}\n…（中间省略 {skipped} 字，章末保留）…\n{tail}"
+
+
 @dataclass
 class PrefetchReport:
     calls: List[PrefetchCall] = field(default_factory=list)
@@ -60,8 +83,7 @@ class PrefetchReport:
         for r in self.results[:4]:
             name = str(r.get("name") or "tool")
             ok = "ok" if r.get("ok") else "fail"
-            preview = str(r.get("preview") or "")[:4000]
-            parts.append(f"\n### {name} ({ok})\n{preview}")
+            parts.append(f"\n### {name} ({ok})\n{_preview_for_prompt(name, r.get('preview'))}")
         return [{"role": "user", "content": "\n".join(parts)}]
 
 
