@@ -1718,6 +1718,9 @@ def build_agent_context(
         pre = precheck_before_continue(
             project,
             chapter_id=str(getattr(focus_chapter, "id", "") or "") or None,
+            # 把已经记忆化的焦点章正文交出去：对账内部不必再转一遍
+            # （`write_precheck` 会自己算，但那是同一章的第二次 O(blocks) 转换）。
+            focus_plain=plain_of(focus_chapter),
         )
         precheck_block = pre.as_context_block()
         if pre.issues:

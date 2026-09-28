@@ -247,6 +247,7 @@ def precheck_before_continue(
     chapter_id: Optional[str] = None,
     draft: str = "",
     prose_audit: bool = True,
+    focus_plain: Optional[str] = None,
 ) -> PrecheckReport:
     """续写前 / 写后均可调用。
 
@@ -269,12 +270,15 @@ def precheck_before_continue(
     focus_id = (
         str(getattr(focus, "id", "") or "") if focus is not None else (chapter_id or "")
     )
-    focus_plain = ""
-    if focus is not None:
+    # 焦点章纯文本：调用方（`agent_context`）手里通常已经有，而且它按章做了记忆化。
+    # 有就传进来——这里再转一次等于同一章被重复转一遍（O(blocks)，且在续写热路径上）。
+    # 回归闸见 `tests/test_agent_context_perf.py`。
+    focus_text = focus_plain
+    if focus is not None and focus_text is None:
         from app.core.agent_context import chapter_plain
 
-        focus_plain = chapter_plain(focus, project.characters)
-    haystack = f"{focus_plain}\n{draft or ''}"
+        focus_text = chapter_plain(focus, project.characters)
+    haystack = f"{focus_text or ''}\n{draft or ''}"
 
     for name, state in _latest_states_by_name(ledger).items():
         if not _looks_dead(state):
@@ -320,5 +324,5 @@ def precheck_before_continue(
 
     report = PrecheckReport(issues=issues[:_MAX_WARNINGS])
     if prose_audit:
-        report.prose = _prose_focus_issues(focus_plain)
+        report.prose = _prose_focus_issues(focus_text or "")
     return report

@@ -163,12 +163,24 @@ def test_hard_rules_are_reported_as_included():
 
 
 def test_task_key_rules_exist_for_every_agent_task():
+    """硬规则必须**短**——但"短"原先是用"条数 ≤ 5"来近似的，而这个代理量在
+    commit `cfb0fba` 之后就不成立了：它给 `continue` 加了两条**确实很短**的规则
+    （声线硬对照、默认只写短拍），于是条数变成 6，测试红了，但被它保护的意图
+    （规则要一眼看得完）并没有被违反。
+
+    所以这里把断言换成直接量它真正在意的东西：每条足够短、整组不会长成一篇文档。
+    保留一个宽松的条数上限（8）只为兜住"有人往里堆二十条"——
+    把规则硬合并回 5 条是迎合测试，不是守住意图。
+    """
     from app.core.agent_context import AGENT_TASKS
 
     for task in AGENT_TASKS:
         rules = task_key_rules(task)
         assert rules, task
-        assert len(rules) <= 5, task  # 硬规则必须短，否则等于没写
+        assert len(rules) <= 8, f"{task}: 硬规则条数失控（{len(rules)} 条）"
+        assert all(len(r) <= 64 for r in rules), f"{task}: 有条规则长到读不完"
+        total = sum(len(r) for r in rules)
+        assert total <= 240, f"{task}: 硬规则整组太长（{total} 字），等于没写"
 
 
 def test_task_key_rules_are_task_specific_not_fallen_back_to_chat():
