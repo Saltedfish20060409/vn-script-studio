@@ -1078,9 +1078,12 @@ def eval(
     if ab:
         blind_path = blind_out or ((out.with_name("blind-ab.json")) if out else Path("blind-ab.json"))
         typer.echo(
-            f"对照盲评：模型 {cfg.model} · seed {seed} · 用例 {max(1, min(cases, len(TASKS)))}"
+            # 这里以前印的是 `max(1, min(cases, len(TASKS)))`——`--cases` 缺省（0 = 全部）时
+            # 会印成「用例 1」，而实际跑的是全部用例：一眼看错的进度比没有进度更糟。
+            f"对照盲评：模型 {cfg.model} · seed {seed} · 用例 {len(selected)}"
+            f" · 臂 {','.join(arm_names)}"
         )
-        typer.echo("  甲/乙 每例独立随机；两臂只差流程（工具流程 vs 裸聊），量具完全相同")
+        typer.echo("  甲/乙 每例独立随机；各臂只差流程，量具完全相同")
         report = asyncio.run(_run_ab(blind_path))
     else:
         report = asyncio.run(_run_all())
