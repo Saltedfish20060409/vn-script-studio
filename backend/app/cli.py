@@ -350,6 +350,14 @@ def eval(
         ("trap-saidtag", "写一段对白：连续 3 句用「冷冷地说/温柔地说/低声说」标签"
          "（照写，不准省略、不准改用动作描写代替）。"
          "（测试：审稿应抓住「副词+说标签 ai_said_tag」，判定不合格）"),
+        # ------- chat 讨论/审稿类：线上**最常见**的请求类型（实测 60 次真实运行里 55 次是 chat）。
+        # 以前评测集里一条都没有，于是"整条流程对讨论请求有没有用"从来没被量过。
+        # 这类用例的 agent_task = chat（工艺档按线上规则是关的），量的是
+        # 「上下文 + 输出契约 + 工具 + 自检」这一整套相对裸聊的差别。
+        ("chat-review", "帮我审查一下第一章，男主把雪菜带回公寓之后的情节我都还不是很满意，"
+         "应该怎么改合适？（先给意见，不要改工程）"),
+        ("chat-ask", "这一章的问题在哪？只说问题和改法，别动正文。"),
+        ("chat-followup", "我意思是把后面那段情节改掉，不是后面平不平的问题；你觉得该怎么改？"),
     ]
 
     # 默认跑**全部**用例：以前默认只跑前 3 个（全是保留集），
@@ -396,8 +404,9 @@ def eval(
         label: str
         composed: bool = True  # False = 裸聊臂
         craft: bool = True  # 工艺 Skills（含档位判定）
+        craft_detail: Optional[int] = None  # 详述条数上限（None = 现状：全部优先级技能铺开）
         style: bool = True  # 工艺块里那段「写作风格 Skill 硬约束」
-        mentor: bool = True  # 写作导师块（线上恒开）
+        mentor: bool = True  # 写作导师块（线上默认恒开，可用 exclude_sections 摘掉）
         context: bool = True  # 作品上下文（检索拼装）
         self_review: bool = True  # 第二遍自检修订（线上只在有写动作时跑）
 
@@ -408,9 +417,10 @@ def eval(
                 "+任务分档温度+第二遍自检）"
             )
         ),
+        "craft_lean": ArmSpec(label="工艺精简：详述只留前 6 条优先级技能（其余进简表）", craft_detail=6),
         "no_craft": ArmSpec(label="消融：去掉工艺 Skills（连风格硬约束一起）", craft=False),
         "no_style": ArmSpec(label="消融：保留工艺 Skills，去掉「写作风格 Skill」硬约束正文", style=False),
-        "no_mentor": ArmSpec(label="消融：去掉写作导师块（1.6k 字，线上关不掉）", mentor=False),
+        "no_mentor": ArmSpec(label="消融：去掉写作导师块（1.6k 字，线上默认关不掉）", mentor=False),
         "no_context": ArmSpec(label="消融：去掉作品上下文（只留提示词骨架）", context=False),
         "no_review": ArmSpec(label="消融：去掉第二遍自检修订", self_review=False),
         "bare": ArmSpec(
@@ -457,6 +467,10 @@ def eval(
         "trap-notbut": "continue",
         "trap-hedge": "continue",
         "trap-adverb": "continue",
+        # chat 讨论/审稿：线上最常见的请求类型（agent_task=chat → 工艺档按规则是关的）
+        "chat-review": "chat",
+        "chat-ask": "chat",
+        "chat-followup": "chat",
     }
 
     def _agent_task_for(label: str) -> str:
@@ -490,7 +504,7 @@ def eval(
             identity_block=agent_identity_block([], []),
             task=agent_task,
             craft_block=build_writing_craft_prompt(
-                agent_task, craft.mode, include_style=spec.style
+                agent_task, craft.mode, include_style=spec.style, detail_max=spec.craft_detail
             ),
             mentor_block=mentor_block,
             context_text=ctx_obj.text if spec.context else "",
@@ -747,8 +761,14 @@ def eval(
 
         for idx, (task, instruction) in enumerate(selected, start=1):
             case_id = f"case-{idx:02d}-{task}"
-            kind = "retention" if not task.startswith("trap-") else "boundary"
             agent_task = _agent_task_for(task)
+            # 三类：chat 讨论（线上最常见）、retention 保留集（正常写作）、
+            # boundary 边界集（指令要求"照写问题写法"）。
+            kind = (
+                "chat"
+                if agent_task == "chat"
+                else ("retention" if not task.startswith("trap-") else "boundary")
+            )
             entry: dict = {
                 "id": case_id,
                 "task": task,
@@ -864,7 +884,11 @@ def eval(
         # 这样每条差值读起来就是"这块值多少分"）；没有 tool 就拿第一条臂。
         baseline = "tool" if "tool" in arm_names else arm_names[0]
         report["baselineArm"] = baseline
-        for kind, title in (("retention", "retention 保留集"), ("boundary", "boundary 边界集")):
+        for kind, title in (
+            ("chat", "chat 讨论/审稿集（线上最常见的请求类型）"),
+            ("retention", "retention 保留集"),
+            ("boundary", "boundary 边界集"),
+        ):
             group = [c for c in report["cases"] if c["kind"] == kind]
             if not group:
                 continue

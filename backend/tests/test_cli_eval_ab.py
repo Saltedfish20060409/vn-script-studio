@@ -353,3 +353,38 @@ def test_unknown_arm_name_fails_loudly(tmp_path, monkeypatch, fake_llm):
     assert result.exit_code != 0
     combined = result.output + str(result.exception)
     assert "nope" in combined and "no_craft" in combined, combined
+
+
+# ---------------------------------------------------------------- chat 用例集
+# 为什么要单独量 chat：线上 60 次真实 Agent 运行里 55 次是 chat（讨论/审稿/追问），
+# 而评测集以前一条 chat 用例都没有——"整条流程对讨论请求有没有用"从来没被量过。
+# chat 用例走 agent_task=chat（工艺档按线上规则是关的），单独成一类，不污染
+# retention/boundary 上的 craft/导师消融读数。
+
+
+def test_chat_cases_form_their_own_section(tmp_path, monkeypatch, fake_llm):
+    monkeypatch.chdir(tmp_path)
+    out = tmp_path / "ab-chat.json"
+    result = runner.invoke(
+        cli,
+        ["eval", "--ab", "--api-key", "test-key", "--out", str(out)],
+    )
+    assert result.exit_code == 0, result.output
+    report = json.loads(out.read_text(encoding="utf-8"))
+
+    kinds = {c["kind"] for c in report["cases"]}
+    assert {"chat", "retention", "boundary"} <= kinds
+    chat_cases = [c for c in report["cases"] if c["kind"] == "chat"]
+    assert len(chat_cases) >= 3
+    assert all(c["agentTask"] == "chat" for c in chat_cases)
+    # 三类都要有汇总，chat 那一类里 tool 与 bare 都要有数
+    assert set(report["summary"]) == {"chat", "retention", "boundary"}
+    chat_summary = report["summary"]["chat"]
+    for arm in ("tool", "bare"):
+        assert chat_summary[arm]["n"] >= 3
+        assert isinstance(chat_summary[arm]["rubricAvg"], float)
+    # chat 用例里工艺档是关的：tool 与 no_craft 应该完全同分（同为 off）
+    if "no_craft" in report["arms"]:
+        d = chat_summary["comparisons"]["no_craft"]["meanDiff"]
+        assert d == 0, f"chat 用例上工艺本来就关着，两者不该有差：{d}"
+    assert "chat 讨论/审稿集" in result.output
