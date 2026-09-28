@@ -8,10 +8,31 @@ import { openViewPanel } from "./nav";
  * ① 「资料」开关：取消勾选后，请求体里真的带上 exclude_sections（少喂资料）；
  * ② 标记批改的快捷反馈：点一下就把要求写进指令并发起新的处理请求（而不是让用户打字）；
  * ③ 「给我 3 版」走 candidates=3（多候选挑一版）。
+ *
+ * ⚠️ 其中两条**需要真实模型 Key**（见下面 `NEEDS_MODEL_KEY`）：它们断言的是
+ * "回复里有什么"（免费档提示 / 本次依据的资料），没有模型就无从谈起。
+ * e2e 现在是自动跑的，而 CI 按设计不带任何 Key，所以那两条在 CI 上会**跳过**。
  */
 
 const PASSWORD = "e2e-secret-123";
 const NEEDLE = "末班车";
+
+/**
+ * 这两条要真模型：无 Key 时服务端 `/agent/stream` 直接 503，
+ * "回复里带了什么"这个断言根本无从成立。
+ *
+ * 判据就是后端实际拿到的值——`playwright.config.ts` 把
+ * `process.env.DEEPSEEK_API_KEY || ""` 原样传给 uvicorn，所以这里读同一个变量是准的。
+ *
+ * 为什么是**跳过**而不是删除：它们是真实存在的产品行为（免费档提示、"证明它记得"），
+ * 删掉就再也没人守。跳过时 Playwright 会连理由一起列出来，不做静默跳过——
+ * 这个仓库对"看起来绿其实没跑"有明确纪律。
+ *
+ * 本地想跑这两条：`$env:DEEPSEEK_API_KEY="sk-..."; npx playwright test e2e/agentQuality.spec.ts`
+ */
+const NEEDS_MODEL_KEY = !process.env.DEEPSEEK_API_KEY?.trim();
+const SKIP_NEEDS_KEY =
+  "需要真实模型 Key（DEEPSEEK_API_KEY）：这条断言的是回复内容，无 Key 时服务端直接 503";
 
 function randomName(prefix: string): string {
   return `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
@@ -121,6 +142,7 @@ test("约束体检：设定里写了互相冲突的要求就会被指出来", as
 });
 
 test("免费档提示：用站内免费档时提示长任务建议配 Key", async ({ page }) => {
+  test.skip(NEEDS_MODEL_KEY, SKIP_NEEDS_KEY);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await registerAndLogin(page, randomName("e2e_tier_"));
 
@@ -146,6 +168,7 @@ test("免费档提示：用站内免费档时提示长任务建议配 Key", asyn
 });
 
 test("「证明它记得」：回复里带上本次依据的资料与摘录", async ({ page }) => {
+  test.skip(NEEDS_MODEL_KEY, SKIP_NEEDS_KEY);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await registerAndLogin(page, randomName("e2e_evidence_"));
 

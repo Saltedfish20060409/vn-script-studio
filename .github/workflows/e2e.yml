@@ -16,6 +16,11 @@ name: e2e
 #
 # 只在前端改动时跑：后端改动由 ci.yml / integration.yml 覆盖，跑 e2e 只是白烧几分钟。
 #
+# 需要**真实模型 Key** 的 2 条（`agentQuality.spec.ts` 的「免费档提示」与
+# 「证明它记得」）在无 Key 时会**明确跳过**并打出理由——CI 按设计不带任何 Key
+# （下面 `DEEPSEEK_API_KEY: ""` 是刻意的：让生成 RPY 走规则转换、不产生外部调用）。
+# 想在本地跑全：`$env:DEEPSEEK_API_KEY="sk-..."; npm run test:e2e`。
+#
 # 用法：自动；也可在 Actions → e2e → Run workflow 手动指定。
 
 concurrency:
