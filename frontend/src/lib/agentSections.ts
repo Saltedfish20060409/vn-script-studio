@@ -5,8 +5,10 @@
  * 聊天里用户只贴相关的那一段，工具却把 bible、台账、立绘、变量一起灌进去。这里让作者
  * 一眼看到有哪些块、并且能当场摘掉（只影响这一次会话，不改工程数据）。
  *
- * key 与后端 `core/agent_context.EXCLUDABLE_SECTIONS` 一一对应；后端会忽略未知 key，
- * 所以这里多一个少一个也不会报错（只是那个勾没用）。
+ * key 与后端 `core/agent_context.EXCLUDABLE_SECTIONS` 一一对应（外加一个由
+ * `core/agent_loop.py` 单独处理的 `mentor`）；后端会忽略未知 key，
+ * 所以这里多一个少一个也不会报错（只是那个勾没用）——正因为**不会报错**，
+ * 才需要 `agentSections.test.ts` 读后端源码把它们对上。
  */
 
 export type AgentSection = { key: string; label: string };
@@ -15,6 +17,10 @@ export const AGENT_SECTIONS: AgentSection[] = [
   { key: "bible", label: "设定 bible（世界观 / 大纲 / 背景）" },
   { key: "lore", label: "设定条目" },
   { key: "longMemory", label: "长程章节记忆" },
+  // 后端 EXCLUDABLE_SECTIONS 里一直有它，而界面**从来没有这个勾**——
+  // 于是"整本书骨架 + 未回收伏笔"这一层（写到几十章时最占地方的一块）
+  // 作者根本关不掉。补上它，两边才算对上。
+  { key: "globalMemory", label: "全局记忆（全书骨架 / 未回收伏笔）" },
   { key: "craft", label: "ACG 工艺卡" },
   { key: "referenceDocs", label: "上传的参考资料" },
   { key: "chatMemory", label: "对话滚动记忆" },

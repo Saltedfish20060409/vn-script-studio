@@ -26,10 +26,12 @@ from scripts.run_db_tests import (
     maintenance_url,
     target_db_name,
 )
-from tests.db_gate import TEST_DB_URL
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
+#: 读**源码**而不是 import：`db_gate.TEST_DB_URL` 是环境变量解析后的值，
+#: 而这里要守住的是"两处**默认值**不许分叉"（理由见 `test_default_url_matches_the_test_gate`）。
+DB_GATE = BACKEND_ROOT / "tests" / "db_gate.py"
 
 
 def test_asyncpg_url_strips_the_driver_marker():
@@ -53,10 +55,20 @@ def test_target_db_name_is_read_from_the_url():
 
 
 def test_default_url_matches_the_test_gate():
-    """脚本替 `db_gate` 建库，两者必须指向同一个库——否则脚本白建、用例照样 skip。"""
-    assert DEFAULT_TEST_URL == TEST_DB_URL, (
+    """脚本替 `db_gate` 建库，两者的**默认值**必须一致——否则脚本白建、用例照样 skip。
+
+    这里读的是 `db_gate.py` 里的**字面量**，而不是 `db_gate.TEST_DB_URL`：
+    后者是 `os.environ.get("DATABASE_URL_TEST") or <默认>`，CI 里那个环境变量被设成
+    另一个端口（15432），于是拿运行时值来比就会拿"环境覆盖值"去比"本机默认值"，
+    必然不等——这条守卫第一版就是这么写的，CI 上直接红了。
+    要守住的不变量是"两个默认值不许分叉"，而默认值只存在于源码里。
+    """
+    src = DB_GATE.read_text(encoding="utf-8")
+    m = re.search(r'DATABASE_URL_TEST"\s*\)\s*or\s*\(\s*"([^"]+)"', src, re.S)
+    assert m, "db_gate.py 里找不到默认测试库字面量（结构变了？那就同步改这条守卫）"
+    assert DEFAULT_TEST_URL == m.group(1), (
         "scripts/run_db_tests.py 与 tests/db_gate.py 的默认测试库不一致："
-        f"{DEFAULT_TEST_URL!r} vs {TEST_DB_URL!r}"
+        f"{DEFAULT_TEST_URL!r} vs {m.group(1)!r}"
     )
 
 
