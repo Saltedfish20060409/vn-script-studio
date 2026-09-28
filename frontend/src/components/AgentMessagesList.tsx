@@ -102,6 +102,11 @@ type Props = {
   helpOpen: boolean;
   selection: string;
   lastContext: string;
+  /** 同一份元信息的折叠态摘要（只留短标签，清单压成项数）——见 lib/agentRunInfo.ts */
+  lastContextCompact?: string;
+  /** 「本次运行」详情是否展开（默认收起；展开态才显示完整清单） */
+  runInfoOpen?: boolean;
+  onToggleRunInfo?: () => void;
   error: string;
   undoCount: number;
   scrollerRef: RefObject<HTMLDivElement | null>;
@@ -136,6 +141,9 @@ export function AgentMessagesList({
   helpOpen,
   selection,
   lastContext,
+  lastContextCompact = "",
+  runInfoOpen = false,
+  onToggleRunInfo,
   error,
   undoCount,
   scrollerRef,
@@ -279,11 +287,32 @@ export function AgentMessagesList({
         {footer}
       </div>
 
-      {(selection || lastContext) && (
+      {(selection || lastContext || lastContextCompact) && (
         <p className={styles.statusLine} title={lastContext || undefined}>
           {selection ? `选区 ${selection.length} 字` : null}
-          {selection && lastContext ? " · " : null}
-          {lastContext || null}
+          {selection && (runInfoOpen ? lastContext || lastContextCompact : lastContextCompact || lastContext)
+            ? " · "
+            : null}
+          {/* 收起时只给"改变了这次行为的短标签"，展开才摆全部清单：
+              这些是凭据，不是每轮都要读的东西（作者反馈过占满对话区）。 */}
+          {runInfoOpen ? lastContext || lastContextCompact : lastContextCompact || lastContext}
+          {lastContext ? (
+            <button
+              type="button"
+              className={styles.statusToggle}
+              data-testid="agent-runinfo-toggle"
+              aria-expanded={runInfoOpen}
+              onClick={onToggleRunInfo}
+              title={
+                runInfoOpen
+                  ? "收起本次运行详情（读了哪些资料、上下文用量、依据摘录）"
+                  : "展开本次运行详情（读了哪些资料、上下文用量、依据摘录）"
+              }
+            >
+              {runInfoOpen ? "收起" : "详情"}
+              <span aria-hidden="true">{runInfoOpen ? " ▴" : " ▾"}</span>
+            </button>
+          ) : null}
         </p>
       )}
       {undoCount > 0 && (

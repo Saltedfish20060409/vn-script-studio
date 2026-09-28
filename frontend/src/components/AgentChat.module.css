@@ -531,6 +531,27 @@ html[data-panel-glass="ink"] .stageOverlay {
   letter-spacing: 0.02em;
 }
 
+/* 「本次运行」详情的展开/收起按钮，贴在状态行末尾。
+   折叠态那一行只留"改变了这次行为的短标签"，展开才摆全量清单与摘录——作者反馈过
+   这些文字说明占满了对话的可见范围。按钮沿用同一套"自带浅底 + 主墨色"的写法
+   （见上面对 .statusLine 的说明），别再用 opacity 把它调淡。 */
+.statusToggle {
+  margin-left: 0.4rem;
+  padding: 0.04rem 0.34rem;
+  border: 1px solid color-mix(in srgb, var(--ink) 24%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.statusToggle:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
 /* 免费档提示：一行、不打扰、可忽略（长任务建议配自己的 Key） */
 .tierHint {
   flex-shrink: 0;

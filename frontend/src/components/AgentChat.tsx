@@ -40,6 +40,11 @@ import {
 } from "../api/client";
 import { inferAgentIntent } from "../lib/agentIntent";
 import {
+  compactRunInfo,
+  readRunInfoOpen,
+  writeRunInfoOpen,
+} from "../lib/agentRunInfo";
+import {
   getChapterRevisePrefs,
   prefsToNoteSuffix,
   resolveReviseMode,
@@ -287,6 +292,9 @@ export function AgentChat({
     !busy && input.trim() === "" && !messages.some((m) => m.role === "user");
   const [error, setError] = useState("");
   const [lastContext, setLastContext] = useState<string>("");
+  /** 同一份元信息的折叠态摘要（见 lib/agentRunInfo.ts）——默认收起，落盘记住 */
+  const [lastContextCompact, setLastContextCompact] = useState<string>("");
+  const [runInfoOpen, setRunInfoOpen] = useState<boolean>(() => readRunInfoOpen());
   const [gateMarkHints, setGateMarkHints] = useState<
     Array<{ quote?: string; reason?: string; instruction?: string; code?: string }>
   >([]);
@@ -316,6 +324,11 @@ export function AgentChat({
   useEffect(() => {
     saveExcludedSections(excluded);
   }, [excluded]);
+  /** 「本次运行」详情是不是展开的（默认收起，落盘记住——见 lib/agentRunInfo.ts） */
+  const toggleRunInfo = useCallback(() => setRunInfoOpen((v) => !v), []);
+  useEffect(() => {
+    writeRunInfoOpen(runInfoOpen);
+  }, [runInfoOpen]);
   const [undoCount, setUndoCount] = useState(0);
   const [thinking, setThinking] = useState("编辑正在检索设定 / 读当前章…");
   const [liveStream, setLiveStream] = useState<{
@@ -966,23 +979,42 @@ export function AgentChat({
       // 用后端给的结构化清单（`budgetReport.includedSections`），不再用正则去猜
       // `included` 里的中文串——那种写法每加一个资料块都得同步改正则，漏了就不显示。
       const refShort = includedSummary(meta?.budgetReport);
+      const usage = contextUsage(meta);
+      const evidenceRows = Array.isArray(meta?.includedDetails)
+        ? meta.includedDetails
+            .filter((d) => d && (d.label || d.preview))
+            .map((d) => ({ label: String(d.label ?? ""), preview: String(d.preview ?? "") }))
+        : [];
       setLastContext(
         [taskName, resultBit, craftShort, reviewShort, gateShort, prefetchShort, lensShort, refShort]
           .filter(Boolean)
           .join(" · ")
       );
+      // 同一份信息的折叠态：只留"改变了这次行为"的短标签，清单类压成项数。
+      // 告警（被裁 / 写后闸未过 / 主动摘掉资料）在折叠态也出现——它们要作者当场看见。
+      setLastContextCompact(
+        compactRunInfo({
+          taskName,
+          resultBit,
+          craftShort,
+          reviewShort,
+          gateShort,
+          prefetchShort,
+          lensShort,
+          refCount: meta?.budgetReport?.includedSections?.length ?? 0,
+          contextText: usage.text,
+          contextTruncated: usage.truncated,
+          contextNearLimit: usage.nearLimit,
+          evidenceCount: evidenceRows.length,
+          excludedCount: excluded.length,
+        })
+      );
       // 「证明它记得」：把这次真正读到的资料摆出来（可展开看摘录）
       // 用的是谁的钱：免费档下提示"长任务建议配 Key"（长任务最吃模型能力，也最容易撞限流）
       setCredentialsMode(typeof meta?.credentialsMode === "string" ? meta.credentialsMode : "");
-      setEvidence(
-        Array.isArray(meta?.includedDetails)
-          ? meta.includedDetails
-              .filter((d) => d && (d.label || d.preview))
-              .map((d) => ({ label: String(d.label ?? ""), preview: String(d.preview ?? "") }))
-          : []
-      );
+      setEvidence(evidenceRows);
       // 这次它读了多少、够不够、有没有被裁（作者据此判断"是不是它没看到前情"）
-      setContextInfo(contextUsage(meta));
+      setContextInfo(usage);
       setBudgetInfo(budgetNotice(meta?.budgetReport));
 
       const warnings = res.warnings ?? [];
@@ -2036,6 +2068,9 @@ export function AgentChat({
             helpOpen={helpOpen}
             selection={selection}
             lastContext={lastContext}
+            lastContextCompact={lastContextCompact}
+            runInfoOpen={runInfoOpen}
+            onToggleRunInfo={toggleRunInfo}
             error={error}
             undoCount={undoCount}
             scrollerRef={scroller}
@@ -2173,7 +2208,10 @@ export function AgentChat({
           {/* 「证明它记得」：本次依据了什么，可展开看摘录——聊天永远给不了这个 */}
           {/* 上面那行「用量」先说清"读了多少、够不够、有没有被裁"：
               AI 没读到整章时会写出前后矛盾的东西，作者只会以为"它怎么忘了" */}
-          {contextInfo.text ? (
+          {/* 这些文字是**凭据**不是每条都要读的话，所以默认收起（折叠态摘要见 statusLine 的
+              「本次运行」按钮）：作者反馈过它们占满了对话区。但**告警一律不折**——
+              被裁过 / 没装下的那些块照样直接可见，见下面 budgetInfo。 */}
+          {runInfoOpen && contextInfo.text ? (
             <p
               className={contextInfo.truncated ? styles.contextWarn : styles.contextLine}
               data-testid="agent-context-usage"
@@ -2230,7 +2268,7 @@ export function AgentChat({
               ) : null}
             </details>
           ) : null}
-          {evidence.length > 0 ? (
+          {runInfoOpen && evidence.length > 0 ? (
             <details className={styles.evidence} data-testid="agent-evidence">
               <summary>
                 依据 {evidence.length} 项（点开看它读到的原文摘录）
@@ -2258,9 +2296,11 @@ export function AgentChat({
               ⚙ 资料
             </button>
             <span className={styles.sectionHint} data-testid="agent-sections-summary">
-              {excluded.length === 0
-                ? "AI 会参考你的设定与资料（点开可以少给它一些）"
-                : `本次不带 ${excluded.length} 项`}
+              {excluded.length > 0
+                ? `本次不带 ${excluded.length} 项`
+                : runInfoOpen
+                  ? "AI 会参考你的设定与资料（点开可以少给它一些）"
+                  : ""}
             </span>
             {sectionsOpen ? (
               <div className={styles.sectionMenu} data-testid="agent-sections-menu">
