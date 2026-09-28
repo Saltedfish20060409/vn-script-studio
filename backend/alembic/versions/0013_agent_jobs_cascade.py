@@ -8,6 +8,7 @@ databases already stamped 0012 need this follow-up to fix the one FK.
 from __future__ import annotations
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0013_agent_jobs_cascade"

@@ -9,6 +9,7 @@ acquire_lock closes the race.
 from __future__ import annotations
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0014_chapter_locks_unique"

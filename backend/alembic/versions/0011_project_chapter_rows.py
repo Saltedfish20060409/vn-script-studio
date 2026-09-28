@@ -7,8 +7,9 @@ table is the write path. Existing projects are backfilled on migration.
 from __future__ import annotations
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
+
+from alembic import op
 
 revision = "0011_project_chapter_rows"
 down_revision = "0010_chunk_embeddings"

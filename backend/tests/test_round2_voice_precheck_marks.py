@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import asyncio
 
-from app.core.ai import DeepSeekConfig
 from app.core.agent_context import build_agent_context
-from app.core.character_voice.corpus import dialogue_write_policy, make_sample
+from app.core.ai import DeepSeekConfig
+from app.core.character_voice.corpus import dialogue_write_policy
 from app.core.character_voice.generate import generate_long_scene
 from app.core.demo import create_demo_project
 from app.core.project import normalize_project

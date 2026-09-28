@@ -10,6 +10,7 @@ This migration rewrites every FK referencing projects.id with CASCADE so
 from __future__ import annotations
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0012_project_cascade"
