@@ -176,6 +176,23 @@ def _clip(text: str, max_chars: int) -> str:
     return text[: max_chars - 12] + "\n…(截断)"
 
 
+def _clip_chapter(text: str, max_chars: int, *, head_ratio: float = 0.5) -> str:
+    """章节正文的截断：**两头都留**（默认前一半 + 后一半，中间标注省略）。
+
+    为什么与 `_clip` 不同（2026-09-27 排查发现）：`_clip` 只留开头，于是
+    `get_chapter` 在长章上永远是"章首 N 字"——而续写/写戏要接的是**章末**那一拍，
+    审稿也要看收束。两头都留，读的人至少能看到"这一章从哪起、到哪落"。
+    短章（不超上限）原样返回，一个字不改。
+    """
+    text = text or ""
+    if len(text) <= max_chars or max_chars < 80:
+        return text
+    head_len = max(40, int(max_chars * head_ratio) - 24)
+    tail_len = max(40, max_chars - head_len - 24)
+    skipped = len(text) - head_len - tail_len
+    return f"{text[:head_len]}\n…(中间省略 {skipped} 字，章末已保留)\n{text[-tail_len:]}"
+
+
 def _entry_keywords_of(entry: Any) -> List[str]:
     raw = getattr(entry, "keywords", None)
     if not isinstance(raw, (list, tuple)):
@@ -260,7 +277,8 @@ def run_agent_tool(
             if not ch:
                 return False, "未找到章节"
             plain = chapter_plain(ch, project.characters)
-            return True, f"#{ch.title or ch.id}\n{_clip(plain, max_c)}"
+            # 长章用"两头都留"（见 `_clip_chapter`）：续写要接的是章末那一拍
+            return True, f"#{ch.title or ch.id}\n{_clip_chapter(plain, max_c)}"
 
         if name == "search_script":
             q = str(args.get("query") or "").strip()
