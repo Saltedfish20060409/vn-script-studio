@@ -61,3 +61,47 @@ def test_export_markdown_and_docx():
             assert len(r.content) > 1000
 
     _run(_scenario())
+
+
+def test_export_rpy_has_entry_point_and_validate_endpoint_agrees():
+    """下载的 .rpy 必须带 `label start`，且体检端点对同一份产物给结论。
+
+    本机没有测试库时整个模块会 skip（db_gate），所以另有一条**不依赖 DB** 的守卫
+    （`tests/test_renpy_export_integration.py` 里直接调处理函数的那两条）——
+    "跳过等于没测到"正是这条缺陷当年溜过去的原因之一。
+    """
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "exportrpy1")
+
+            r = await client.post(
+                "/api/v1/projects",
+                json={"title": "导出体检", "from_demo": True},
+                headers=headers,
+            )
+            assert r.status_code == 200, r.text
+            pid = r.json()["id"]
+
+            r = await client.get(
+                f"/api/v1/projects/{pid}/export/rpy", headers=headers
+            )
+            assert r.status_code == 200, r.text
+            assert "label start:" in r.text
+
+            r = await client.get(
+                f"/api/v1/projects/{pid}/export/rpy/validate", headers=headers
+            )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["ok"] is True
+            assert body["findings"] == []
+
+            # 非成员一律 404（不泄露工程是否存在）
+            outsider = await db_gate.register_headers(client, "exportrpy2")
+            r = await client.get(
+                f"/api/v1/projects/{pid}/export/rpy/validate", headers=outsider
+            )
+            assert r.status_code == 404
+
+    _run(_scenario())

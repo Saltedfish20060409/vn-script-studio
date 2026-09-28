@@ -156,6 +156,23 @@ def _rpy_has_structural_flaws(rpy: str) -> Optional[str]:
     return None
 
 
+def _validation_flaw(rpy: str) -> Optional[str]:
+    """导出体检里的 **error** 级结论 → "这条 LLM 输出不能原样发出去"的理由。
+
+    为什么这条 gate 必须存在：模型给的 .rpy 是通过 `_rpy_has_structural_flaws`
+    的 9 条正则之后**逐字**发出去的，那 9 条只认"语法长得不对"，不认
+    "`jump 不存在的 label`""台词里有没转义的 `[`"——后者在 Ren'Py 里是运行期故障
+    （玩家卡住 / 文本被当变量替换），比语法错更难查。
+
+    只认 error：warn/info（本章片段没有 `label start`、说话人 define 在别的文件里、
+    疑似 `%s`）是提示不是故障，为它们回退到确定性解析反而会把模型写得更好的正文丢掉。
+    """
+    from app.core.rpy_validate import first_error, validate_script_rpy
+
+    err = first_error(validate_script_rpy(rpy))
+    return err.message if err else None
+
+
 async def generate_rpy_from_prose(
     project: VnProject,
     prose: str,
@@ -175,7 +192,9 @@ async def generate_rpy_from_prose(
         # with free models), fall back to the deterministic prose parser which
         # always yields structurally sound blocks — worse fidelity, but never
         # a dead loop or a bare `scene bg`.
-        flaw = _rpy_has_structural_flaws(rpy)
+        # 第二条闸是"导出体检的 error 级结论"（悬空跳转、没转义的 `[`）：模型输出
+        # 绕过了块级导出器的安全化，所以必须在这里补上同一套检查。
+        flaw = _rpy_has_structural_flaws(rpy) or _validation_flaw(rpy)
         if flaw:
             fallback = parse_prose_to_blocks(text, project.characters)
             if fallback:

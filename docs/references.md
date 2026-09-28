@@ -278,6 +278,27 @@ text[-keep_tail:]` 拼回去）。两件事叠加之后，位置就不只是"读
       `w:ruby` 取成 `基准词（注音）`（导入→导出往返有测试）
 - [ ] W3C Ruby 剩余：Ren'Py 内联注音标签（未能确证语法，
       不往用户脚本里写未经验证的标签）
+- [x] Ren'Py 导出链路复审（四项已确认的真实缺陷）：
+      ① **入口点**——单文件下载（`GET /export/rpy`）过去调 `export_to_renpy`（只是剧本正文，
+      没有 `label start`），于是"工程自己没有 start label"时下载到的是一个 Ren'Py 拒绝启动的
+      文件，而 zip 里的 script.rpy 是好的；现在三条单文件路径（网页下载 / CLI / zip）统一走
+      `export_script_rpy`；
+      ② **define 与台词不同名**——define 走 `_safe_ident(defineName)`、台词却直接用
+      `ch.defineName`，中文 defineName 会定义成 `character` 而说话写成「林夏」（运行期
+      NameError）；两处现在共用 `character_ident`（defineName → 收敛过的 id → 固定兜底），
+      未登记的 `characterId` **明确按旁白输出**并在产物里留 `# [VNSS]` 痕迹；
+      ③ **方括号**——Ren'Py 里 `[...]` 是变量替换，过去只转义 `\ " { }`，正文写 `[重点]`
+      会被当变量取值；现在 `[` 按 `[[` 转义（`]` 不转：Ren'Py 没有 `]]` 转义序列）；
+      ④ **导出体检**——新增 `core/rpy_validate.py`（纯函数：悬空跳转 / 重名 label /
+      未转义方括号 / 缺 start / 说话人没定义 / 导出器标记）+ `GET /export/rpy/validate`
+      + 导出面板显示结论，**下载字节一个都不改**；"悬空"的判定与块级体检共用
+      `branch_analysis.missing_targets`（避免第二套更差的实现）；LLM 那条路
+      （`prose_rpy`）也接上了同一个闸，error 级结论会回退到确定性解析。
+      **`%` 刻意不转义**：`%%`→`%` 只在 `config.old_substitutions` 打开时发生，
+      本机离线未能确证该开关的默认值——赌错方向会让**所有人**的「50%」变成「50%%」，
+      所以改成体检报一条 info 让作者自己决定。
+      **未做**：`core/localization._escape` 同样只转义 `\` 与 `"`，但译文 `old` 串必须与
+      脚本串逐字一致，改它需要单独做一轮"译文→脚本→运行时"往返验证，不在本次范围。
 - [ ] JTF 样式指南：日文注音/送假名（日文稿子真正落地时）
 - [x] 目标设定理论：核对现有设计 + 补"反馈及时"（连载页与写作辅助每 30 秒自动刷新）
       + 补目标难度校准（`calibrateDailyGoal`，日历日均对照，差得远就建议调低）

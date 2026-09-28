@@ -976,6 +976,29 @@ def _finding(
     }
 
 
+def missing_targets(labels: Iterable[str], targets: Iterable[str]) -> List[str]:
+    """一组跳转目标里，在已定义的 label 里找不到的那些（保序、去重）。
+
+    为什么抽成公共函数：这条判定有两个消费方——块级分支体检（``analyze_branches``，
+    知道每条边来自哪一章哪个 label）和**导出后的文本体检**
+    （``core/rpy_validate.py``，手里只有一段 .rpy 文本）。两处各写一份"什么算悬空"
+    迟早会分叉（一处改了、另一处没改，于是"体检说没问题、导出却跑不起来"）。
+    这里只留**判定**，上下文（章节/label/行号）由各自的调用方补。
+
+    空目标与空 label 名不计入：调用方通常已经在别处把它们当"没有跳转"处理了。
+    """
+    known = {str(x) for x in labels if str(x).strip()}
+    out: List[str] = []
+    seen: Set[str] = set()
+    for raw in targets:
+        t = str(raw or "").strip()
+        if not t or t in known or t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+    return out
+
+
 def analyze_branches(project: VnProject) -> Dict[str, Any]:
     """分支结构全面体检（纯本地静态分析）。"""
     graph = build_graph(project)
@@ -1047,10 +1070,14 @@ def analyze_branches(project: VnProject) -> Dict[str, Any]:
         )
 
     # 悬空跳转 / 重名 label
+    # 「什么算悬空」由 `missing_targets` 说了算——导出后的文本体检走的是同一个判定
+    missing = set(
+        missing_targets(graph.labels, (str(e.dst) for e in graph.edges if e.dst))
+    )
     dangling = [
         {"chapterId": e.chapterId, "label": e.label, "target": e.dst}
         for e in graph.edges
-        if e.dst and e.dst not in graph.labels
+        if e.dst and e.dst in missing
     ]
     for d in dangling:
         findings.append(

@@ -18,13 +18,30 @@ from app.domain.types import Character, ScriptBlock, VnProject
 def _escape_renpy_string(text: str) -> str:
     """Ren'Py 字符串字面量的转义。
 
-    ``\\`` 与 ``"`` 是字面量层面的（Python 字符串），``{`` ``}`` 是**文本标签层面**的：
-    Ren'Py 把 `{...}` 当标签，正文里写了 `{汉字|注音}` 或任何花括号都会变成
-    "未知文本标签"（脚本能导出但运行时报错）。所以：
-    1. 先把注音标记渲染成 rp 形态（`漢字（かんじ）`），别让它的花括号进到脚本里；
-    2. 再把剩余的花括号按 Ren'Py 的写法转义成 `{{` `}}`。
+    ``\\`` 与 ``"`` 是字面量层面的（Python 字符串），``{`` ``}`` 与 ``[`` 是
+    **Ren'Py 文本层面**的：
 
-    依据：W3C Ruby（注音形态）+ Ren'Py 文本标签的转义规则；见 `app/core/ruby_render.py`。
+    1. 先把注音标记渲染成 rp 形态（`漢字（かんじ）`），别让它的花括号进到脚本里；
+    2. 花括号是**文本标签**：Ren'Py 把 `{...}` 当标签，正文里写了 `{汉字|注音}`
+       或任何花括号都会变成"未知文本标签"（脚本能导出但运行时报错）。
+       按 Ren'Py 的写法转义成 `{{` `}}`。
+    3. 方括号是**变量替换**：正文里写 `[重点]` 这种方括号，Ren'Py 会把它当变量名
+       去取值（作者写的"提示框"就此消失，或者直接报错）。转义成 `[[`。
+
+    **为什么只转 `[` 不转 `]`**：Ren'Py 只定义了 `[[` 这一个转义序列，没有 `]]`——
+    `]` 只有在配对的 `[...]` 里才有意义，把 `]` 也转成 `]]` 只会让玩家在屏幕上
+    看到多出来的方括号。所以 `[重点]` 导出成 `[[重点]` 才对（`[[` 是一个字面 `[`，
+    后面的 `]` 是普通字符）。
+
+    **为什么不转 `%`**（与上面两条相反，这是刻意不做的）：`%s` 那套替换归
+    `config.old_substitutions` 管，而把 `%%` 还原成一个 `%` 的**也是同一趟替换**；
+    本项目未能在此环境确证该开关在目标 Ren'Py 版本上的默认值（离线，只查到它属于
+    6.13 的 incompatible 变更）。两个方向的代价不对称：不转 `%`，最坏是"作者显式
+    开了那个开关、且正文里恰好写了 `%s`"；转 `%`，则是**默认配置下所有**「50%」
+    都变成「50%%」。所以这里明确不转，改由导出体检（`core/rpy_validate.py`）对
+    "看起来就是 `%s` 替换"的文本单独报一条 info，让作者自己决定。
+
+    依据：W3C Ruby（注音形态）+ Ren'Py 文本标签/替换的转义规则；见 `app/core/ruby_render.py`。
     """
     from app.core.ruby_render import to_rp_text
 
@@ -34,6 +51,7 @@ def _escape_renpy_string(text: str) -> str:
         .replace('"', '\\"')
         .replace("{", "{{")
         .replace("}", "}}")
+        .replace("[", "[[")
     )
 
 
@@ -42,7 +60,21 @@ def _escape_renpy_string(text: str) -> str:
 # A prompt-injected or malicious collaborator value there becomes executable
 # statements in the exported .rpy. Sanitize everything that lands in a code
 # position.
+#: 安全化兜底名：值不合规时写进代码位置的固定标识符。
+#: 导出体检（`core/rpy_validate.py`）靠这两个常量认出"名字被安全化改写过"，
+#: 所以它们是模块级常量，不是散落在 f-string 里的字面量。
+IDENT_FALLBACK = "unnamed"
+CHARACTER_FALLBACK = "character"
+
+#: 导出器"跳过/降级了什么"的标记前缀。作者在 .rpy 里能直接看到，
+#: 导出体检（`rpy_validate.py`）也按这个前缀把它们收成 findings。
+MARKER_PREFIX = "# [VNSS]"
+
 _IDENT_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]*$")
+# 角色代码名（`define <名> = Character(...)` 与 `<名> "台词"`）比 label 名严：
+# 两处都是 **Python 代码位置**。`.` 在 define 里是命名空间、在说话位置却是属性访问，
+# `-` `/` 两边都不合法，所以只认纯标识符。
+_CHARACTER_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # Image names legitimately contain spaces in Ren'Py (e.g. `bg overpass_rain`,
 # `linxia neutral`) — they are an image lookup, not Python. Still reject
 # quotes / newlines / brackets / $ so a value can never escape into code.
@@ -53,7 +85,7 @@ _COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 _VAR_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
-def _safe_ident(value: Optional[str], fallback: str = "unnamed") -> str:
+def _safe_ident(value: Optional[str], fallback: str = IDENT_FALLBACK) -> str:
     """Whitelist identifiers used in code positions (label/jump/menu/at)."""
     v = (value or "").strip()
     if v and _IDENT_RE.match(v):
@@ -63,6 +95,56 @@ def _safe_ident(value: Optional[str], fallback: str = "unnamed") -> str:
         # still return the sanitized fallback but never echo the raw value
         return fallback
     return fallback
+
+
+def character_ident(c: Character) -> str:
+    """角色在脚本里的**代码名**（define 与台词必须用同一个）。
+
+    为什么必须共用一个函数：`define <名> = Character(...)` 与 `<名> "台词"` 是两处
+    **Python 代码位置**。过去 define 走 `_safe_ident(defineName, "character")`，
+    台词却直接用 `ch.defineName`——`defineName` 是「林夏」这类非 ASCII 名字时，
+    define 落地成 `character`、台词却写成 `林夏`：脚本照常导出，一跑就 NameError
+    （Ren'Py 把 `林夏` 当 Python 标识符去求值）。同一份数据在两个位置被两套规则处理，
+    就是这类缺陷的温床，所以收敛成一个函数。
+
+    回退顺序：`defineName` → `id` → 固定兜底。退回 `id` 而不是直接落回 `character`，
+    是因为 id 是工程内唯一的（形如 `char-l4k2-9xq1`，含 `-` 不是合法 Python 名，
+    所以还得把非法字符收敛成下划线）；全落回 `character` 会让**所有**这类角色共用
+    一个定义，第二个人悄悄覆盖第一个人——那是比"名字变成下划线"更坏的缺陷。
+    """
+    define = (getattr(c, "defineName", None) or "").strip()
+    if define and _CHARACTER_IDENT_RE.match(define):
+        return define
+    cid = re.sub(r"[^0-9A-Za-z_]", "_", (getattr(c, "id", None) or "").strip())
+    if cid and not cid[0].isdigit():
+        return cid
+    return CHARACTER_FALLBACK
+
+
+def _safe_comment(value: Any, limit: int = 60) -> str:
+    """把作者/AI 的原文放进 `#` 注释时的安全化。
+
+    注释里 `#`、引号、花括号、方括号都无害，唯一的注入面是**换行**：目标名里塞一个
+    `\\njump evil`，多出来的那一行就是可执行语句。所以这里只压平空白（顺带限长，
+    免得一行注释比正文还长）。别用 `_escape_renpy_string` 代替它——那个函数不管换行。
+    """
+    return " ".join(str(value if value is not None else "").split())[:limit]
+
+
+def _ident_note(raw: Optional[str], safe: str, kind: str) -> Optional[str]:
+    """名字在安全化过程中被改写时，留一行能被作者和体检看到的注释。
+
+    只用在 **label / jump** 这类控制流位置：作者必须知道"跳转网"被改写了
+    （否则只会拿到一个能打开、跑起来找不到 label 的脚本）。image / transform / menu
+    名的安全化仍按原样静默降级，不在本次范围内。
+
+    返回 None 表示没改写（大多数工程），调用方据此决定要不要插这一行——
+    合法工程因此一个字节都不会变。
+    """
+    v = (raw or "").strip()
+    if not v or v == safe:
+        return None
+    return f"{MARKER_PREFIX} {kind}「{_safe_comment(v)}」不是合法标识符，已改写为 {safe}"
 
 
 def _safe_image(value: Optional[str]) -> str:
@@ -189,7 +271,7 @@ def _effect_line(block: ScriptBlock) -> str:
         return f'with Fade({half}, 0.0, {half}, color="#ffffff")'
     if kind == "fade_black" or kind == "fade":
         return f"with Fade({half}, 0.0, {half}, color=\"#000000\")"
-    return f"# [VNSS] 未知特效，已跳过：{kind[:40]}"
+    return f"{MARKER_PREFIX} 未知特效，已跳过：{_safe_comment(kind, 40)}"
 
 
 def _iter_blocks(blocks: List[Any]):
@@ -223,7 +305,11 @@ def _emit_block(
     lines: List[str] = []
     btype = block.get("type")
     if btype == "label":
-        lines.append(f"{indent}label {_safe_ident(block.get('name'))}:")
+        name = _safe_ident(block.get("name"))
+        note = _ident_note(block.get("name"), name, "label 名")
+        if note:
+            lines.append(f"{indent}{note}")
+        lines.append(f"{indent}label {name}:")
     elif btype == "scene":
         transition = block.get("transition")
         lines.append(
@@ -241,8 +327,21 @@ def _emit_block(
     elif btype == "narration":
         lines.append(f'{indent}"{_escape_renpy_string(block["text"])}"')
     elif btype == "dialogue":
-        ch = chars.get(block.get("characterId"))
-        who = ch.defineName if ch else "narrator"
+        cid = block.get("characterId")
+        ch = chars.get(cid)
+        if ch is None:
+            # 未登记的 characterId：**明确按旁白输出**。Ren'Py 一定定义了 narrator，
+            # 所以这是安全的降级（脚本照常能跑），比让 `lx "台词"` 去引用一个不存在的
+            # 变量（NameError）好。但必须留一行痕迹——静默变旁白是作者最难自己发现的
+            # 缺陷之一（`core/continuity_graph.py` 的 unknown_speaker 也报它，只是那要
+            # 作者主动去体检，而这里是导出产物自己的记录）。
+            lines.append(
+                f"{indent}{MARKER_PREFIX} 未找到角色"
+                f"（characterId={_safe_comment(cid)}），该句已按旁白输出"
+            )
+            who = "narrator"
+        else:
+            who = character_ident(ch)
         lines.append(f'{indent}{who} "{_escape_renpy_string(block["text"])}"')
     elif btype == "menu":
         menu_id = block.get("id")
@@ -262,8 +361,8 @@ def _emit_block(
                 except ConditionError as exc:
                     # 条件写错时不能静默当成恒真（会把分支发错），显式注释掉该选项
                     lines.append(
-                        f"{indent}    # [VNSS] 选项条件无法解析，已跳过："
-                        f"{_escape_renpy_string(cond_text)}（{exc}）"
+                        f"{indent}    {MARKER_PREFIX} 选项条件无法解析，已跳过："
+                        f"{_safe_comment(cond_text)}（{exc}）"
                     )
                     continue
             lines.append(f'{indent}    "{_escape_renpy_string(choice["text"])}"{cond}:')
@@ -276,14 +375,22 @@ def _emit_block(
             jump = choice.get("jump")
             child_blocks = choice.get("blocks")
             if jump:
-                lines.append(f"{indent}        jump {_safe_ident(jump)}")
+                target = _safe_ident(jump)
+                note = _ident_note(jump, target, "选项跳转目标")
+                if note:
+                    lines.append(f"{indent}        {note}")
+                lines.append(f"{indent}        jump {target}")
             elif child_blocks:
                 for child in child_blocks:
                     lines.extend(_emit_block(child, chars, indent + "        ", adaptive))
             elif not increments:
                 lines.append(f"{indent}        pass")
     elif btype == "jump":
-        lines.append(f"{indent}jump {_safe_ident(block.get('target'))}")
+        target = _safe_ident(block.get("target"))
+        note = _ident_note(block.get("target"), target, "跳转目标")
+        if note:
+            lines.append(f"{indent}{note}")
+        lines.append(f"{indent}jump {target}")
     elif btype == "return":
         lines.append(f"{indent}return")
     elif btype == "comment":
@@ -328,7 +435,7 @@ def _emit_block(
     elif btype == "set":
         key = (block.get("key") or "").strip()
         if not _VAR_IDENT_RE.match(key):
-            lines.append(f"{indent}# [VNSS] 变量名不合法，已跳过：{key[:40]}")
+            lines.append(f"{indent}{MARKER_PREFIX} 变量名不合法，已跳过：{_safe_comment(key, 40)}")
         else:
             op = block.get("op") or "="
             if op not in ("=", "+=", "-="):
@@ -356,8 +463,8 @@ def _emit_block(
                 cond = condition_source(raw_cond)
             except ConditionError as exc:
                 lines.append(
-                    f"{indent}# [VNSS] 分支条件无法解析，已跳过："
-                    f"{_escape_renpy_string(raw_cond)}（{exc}）"
+                    f"{indent}{MARKER_PREFIX} 分支条件无法解析，已跳过："
+                    f"{_safe_comment(raw_cond)}（{exc}）"
                 )
                 continue
             lines.append(f"{indent}{keyword} {cond}:")
@@ -374,25 +481,39 @@ def _emit_block(
         for raw_line in block.get("code", "").split("\n"):
             stripped = raw_line.lstrip()
             if stripped.startswith("$"):
-                lines.append(f"{indent}# [VNSS] 已跳过 Python 执行行: {raw_line.strip()}")
+                lines.append(f"{indent}{MARKER_PREFIX} 已跳过 Python 执行行: {raw_line.strip()}")
             else:
                 lines.append(f"{indent}{raw_line}")
     return lines
 
 
 def export_character_defines(project: VnProject) -> str:
-    """Export character define lines for script.rpy header"""
+    """Export character define lines for script.rpy header
+
+    名字一律走 `character_ident`——它和台词（`_emit_block` 的 dialogue 分支）用的是
+    同一个函数，两处必须给出同一个代码名（见 `character_ident` 的 docstring）。
+    """
     lines = ["# Characters — generated by VN Script Studio", ""]
     for c in project.characters:
         color = _safe_color(c.color)
+        name = character_ident(c)
+        note = _ident_note(c.defineName, name, "角色代码名")
+        if note:
+            lines.append(note)
         lines.append(
-            f'define {_safe_ident(c.defineName, "character")} = Character("{_escape_renpy_string(c.displayName)}", color="{color}")'
+            f'define {name} = Character("{_escape_renpy_string(c.displayName)}", color="{color}")'
         )
     return "\n".join(lines) + "\n"
 
 
 def export_to_renpy(project: VnProject, *, adaptive_reader: bool = False) -> str:
     """Export full project to a single .rpy string
+
+    **这里没有 `label start` 入口**：本函数只产出"剧本正文"，入口桥由
+    `export_script_rpy` 负责（它先看工程自己有没有 start，再决定要不要补一条
+    `start → 第一个 label`）。给用户的下载产物（`GET /export/rpy` 与 zip 里的
+    script.rpy）**必须走 `export_script_rpy`**：少了桥，工程就可能是一份 Ren'Py
+    拒绝启动的文件——两个导出路径不一致正是过去真实的缺陷。
 
     ``adaptive_reader``（默认关）：开启后在每个"会改变量的选项"体内插入
     ``$ persistent.reader_tendency_<key> += 1``，并声明对应 persistent 初值——
@@ -488,7 +609,12 @@ define gui.insensitive_color = "#88888888"
 
 
 def export_script_rpy(project: VnProject, *, adaptive_reader: bool = False) -> str:
-    """script.rpy — story + a start label bridging to the first chapter."""
+    """script.rpy — story + a start label bridging to the first chapter.
+
+    **这是给用户的下载产物**（`GET /export/rpy` 与 zip 里的 script.rpy 都走它）。
+    只产出正文的 `export_to_renpy` 不能拿来下载：工程自己没有 `start` label 时，
+    那份文件在 Ren'Py 里根本启动不了。
+    """
     body = export_to_renpy(project, adaptive_reader=adaptive_reader)
     # Only inject a `start → first-label` bridge when the project does NOT
     # already define `start` itself (otherwise we'd emit a duplicate label
@@ -502,11 +628,14 @@ def export_script_rpy(project: VnProject, *, adaptive_reader: bool = False) -> s
         return body
     first = _first_chapter_label(project)
     if first:
+        target = _safe_ident(first)
+        note = _ident_note(first, target, "首章 label 名")
         body = (
             "label start:\n"
-            f"    jump {_safe_ident(first)}\n\n"
-            "# The actual story chapters follow below.\n\n"
-            f"{body}"
+            + (f"    {note}\n" if note else "")
+            + f"    jump {target}\n\n"
+            + "# The actual story chapters follow below.\n\n"
+            + f"{body}"
         )
     else:
         # No label at all in the story → give it a start that says so

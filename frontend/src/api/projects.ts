@@ -272,6 +272,36 @@ export async function exportRpy(id: string): Promise<string> {
   return res.text();
 }
 
+/** 一条 .rpy 体检结论（服务端 `GET /export/rpy/validate`）。 */
+export type RpyFinding = {
+  code: string;
+  severity: "error" | "warn" | "info";
+  message: string;
+  /** 1 起的行号；0 = 整份文件级别 */
+  line: number;
+};
+
+export type RpyValidation = {
+  /** false = 有 error 级结论（下载下来的脚本在 Ren'Py 里会报错/卡住） */
+  ok: boolean;
+  counts: Record<string, number>;
+  findings: RpyFinding[];
+};
+
+/**
+ * 下载前的 .rpy 体检：纯离线（不调模型、不改产物字节）。
+ *
+ * 与 `exportRpy` **同源**——服务端两边都调 `export_script_rpy`，
+ * 所以这些结论对应的就是点「下载 .rpy」拿到的那份文件（`adaptiveReader` 也要一致）。
+ */
+export function validateRpy(
+  id: string,
+  opts?: { adaptiveReader?: boolean }
+): Promise<RpyValidation> {
+  const query = opts?.adaptiveReader ? "?adaptive_reader=true" : "";
+  return apiFetch<RpyValidation>(`/projects/${id}/export/rpy/validate${query}`);
+}
+
 export async function exportJson(id: string): Promise<Blob> {
   const res = await authedRawFetch(`/projects/${id}/export/json`);
   return res.blob();

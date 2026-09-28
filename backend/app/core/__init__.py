@@ -80,7 +80,12 @@ from .project import (
     touch_project,
     uid,
 )
-from .renpy import export_character_defines, export_to_renpy, project_to_context
+from .renpy import (
+    export_character_defines,
+    export_script_rpy,
+    export_to_renpy,
+    project_to_context,
+)
 from .voice_check import VoiceIssue, VoiceReport, run_voice_check
 from .writing_craft import (
     ALL_WRITING_SKILL_IDS,
@@ -104,6 +109,7 @@ __all__ = [
     "preset_by_kind",
     "normalize_map_style",
     "export_to_renpy",
+    "export_script_rpy",
     "export_character_defines",
     "project_to_context",
     "run_ai",

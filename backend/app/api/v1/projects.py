@@ -21,7 +21,7 @@ from app.core import (
     build_branch_tree,
     build_map_extract_proposal,
     execution_profile,
-    export_to_renpy,
+    export_script_rpy,
     extract_map_from_script,
     extract_map_smart,
     lint_narrative_draft,
@@ -552,10 +552,36 @@ async def export_rpy(
     `$ persistent.reader_tendency_x += 1`，作者就能在后续条件里写自适应分支。
 
     默认 false：这是会改变产物语义的开关，同一份剧本两次导出结果不同会让作者困惑。
+
+    **产物必须走 `export_script_rpy`**（含 `label start` 入口桥）：它与 zip 里的
+    script.rpy 是同一个函数。此前这里调的是 `export_to_renpy`——那条路径不注入入口，
+    于是"工程自己没有 start label"时，单文件下载是一份 Ren'Py 拒绝启动的脚本，
+    而整包导出却是好的（同一份作品两个导出结果不一致）。
     """
     row = await get_project_readable(db, user, project_id)
-    text = export_to_renpy(row_to_vn(row), adaptive_reader=adaptive_reader)
+    text = export_script_rpy(row_to_vn(row), adaptive_reader=adaptive_reader)
     return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
+
+
+@router.get("/{project_id}/export/rpy/validate")
+async def validate_rpy(
+    project_id: str,
+    adaptive_reader: bool = False,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """下载前的 .rpy 体检（纯本地、不调模型、**不改产物字节**）。
+
+    为什么需要单独一个端点：`export/rpy` 是 PlainTextResponse，除了"文件下载了"
+    之外没有任何反馈通道，而"跳转目标不存在""台词里有没转义的方括号"这类缺陷
+    要等玩家卡住或 Ren'Py 报错才暴露。这里返回的就是**同一份导出产物**的体检结论
+    （`validate_project_rpy` 内部同样调 `export_script_rpy`，含 adaptive_reader）。
+    """
+    from app.core.rpy_validate import summarize, validate_project_rpy
+
+    row = await get_project_readable(db, user, project_id)
+    findings = validate_project_rpy(row_to_vn(row), adaptive_reader=adaptive_reader)
+    return summarize(findings)
 
 
 @router.get("/{project_id}/export/bundle")

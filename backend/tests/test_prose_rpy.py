@@ -243,6 +243,90 @@ def test_gate_rejects_manuscript_markers():
     assert _rpy_has_structural_flaws("- 追问他为何熟悉动线") is not None
 
 
+def test_gate_rejects_llm_output_with_a_dangling_jump(monkeypatch):
+    """模型的 .rpy 语法没错、但 `jump` 指向不存在的 label → 必须回退。
+
+    这正是 9 条正则拦不住的那类缺陷：Ren'Py 能加载，玩家走到那里卡死。
+    模型输出是**逐字**发出去的，所以这条闸只能建在导出体检（rpy_validate）上。
+    """
+    import app.core.prose_rpy as pr
+
+    bad = (
+        'define lx = Character("林夏")\n\n'
+        "label start:\n"
+        "    scene bg_street\n"
+        '    lx "往东走就是那家便利店。"\n'
+        "    jump ghost_scene\n"
+        "    return\n"
+    )
+
+    async def fake_llm(project, prose, config):
+        return bad
+
+    monkeypatch.setattr(pr, "llm_prose_to_rpy", fake_llm)
+    cfg = types.SimpleNamespace(apiKey="k", baseUrl="", model="m")
+    rpy, blocks = asyncio.run(
+        generate_rpy_from_prose(_proj(), "林夏：往东走就是那家便利店。", cfg)
+    )
+    assert rpy != bad
+    assert "ghost_scene" not in rpy
+    assert blocks
+
+
+def test_gate_rejects_llm_output_with_unescaped_brackets(monkeypatch):
+    """台词里的 `[重点]` 会被 Ren'Py 当变量替换：模型输出不能绕过这条检查。"""
+    import app.core.prose_rpy as pr
+
+    bad = (
+        'define lx = Character("林夏")\n\n'
+        "label start:\n"
+        "    scene bg_street\n"
+        '    lx "她说：[重点] 是那扇门。"\n'
+        "    return\n"
+    )
+
+    async def fake_llm(project, prose, config):
+        return bad
+
+    monkeypatch.setattr(pr, "llm_prose_to_rpy", fake_llm)
+    cfg = types.SimpleNamespace(apiKey="k", baseUrl="", model="m")
+    rpy, blocks = asyncio.run(
+        generate_rpy_from_prose(_proj(), "林夏：那扇门就是重点。", cfg)
+    )
+    assert rpy != bad
+    assert "[重点]" not in rpy
+    # 返工后的产物必须是干净的（这条闸的目的不是"换个错法"）
+    from app.core.rpy_validate import has_errors, validate_script_rpy
+
+    assert not has_errors(validate_script_rpy(rpy))
+    assert blocks
+
+
+def test_gate_keeps_llm_output_that_only_has_warnings(monkeypatch):
+    """只有 warn 级结论时不许回退。
+
+    本章片段通常没有 `label start`（入口由整部作品导出时补），说话人也可能 define
+    在别处——这些是提示不是故障，为它们回退会把模型写得更好的正文丢掉。
+    """
+    import app.core.prose_rpy as pr
+
+    warn_only = (
+        'define lx = Character("林夏")\n\n'
+        "label 第二章:\n"
+        "    scene bg_street\n"
+        '    lx "你好"\n'
+        "    return\n"
+    )
+
+    async def fake_llm(project, prose, config):
+        return warn_only
+
+    monkeypatch.setattr(pr, "llm_prose_to_rpy", fake_llm)
+    cfg = types.SimpleNamespace(apiKey="k", baseUrl="", model="m")
+    rpy, _ = asyncio.run(generate_rpy_from_prose(_proj(), "林夏：你好。", cfg))
+    assert rpy == warn_only
+
+
 def test_export_keeps_spaced_image_names():
     """Ren'Py 图片名可含空格（bg overpass_rain / linxia neutral），
     导出不得降级成 unnamed。"""

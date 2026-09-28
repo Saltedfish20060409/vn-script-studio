@@ -8,7 +8,9 @@ import {
   type PreflightReport,
 } from "../lib/submissionPreflight";
 import type { SubmissionOptions } from "../api/projects";
+import type { RpyFinding } from "../api/projects";
 import type { VnProject } from "../types/vn";
+import { summarizeRpyFindings } from "../lib/rpyFindings";
 import styles from "./StudioApp.module.css";
 
 type Props = {
@@ -16,6 +18,8 @@ type Props = {
   project: VnProject;
   rpyPreview: string | null;
   rpyStale: boolean;
+  /** 导出体检结论（与「下载 .rpy」拿到的那份文件同源；null = 还没查/查询失败） */
+  rpyFindings: RpyFinding[] | null;
   onGenerateRpy: () => void;
   onDownloadRpy: () => void;
   onDownloadJson: () => void;
@@ -37,6 +41,7 @@ export function ProjectExportPanel({
   project,
   rpyPreview,
   rpyStale,
+  rpyFindings,
   onGenerateRpy,
   onDownloadRpy,
   onDownloadJson,
@@ -59,6 +64,7 @@ export function ProjectExportPanel({
   const [preflight, setPreflight] = useState<PreflightReport | null>(null);
   const [preflightBusy, setPreflightBusy] = useState(false);
   const [preflightError, setPreflightError] = useState("");
+  const rpySummary = summarizeRpyFindings(rpyFindings);
 
   async function runPreflight() {
     setPreflightBusy(true);
@@ -280,6 +286,27 @@ export function ProjectExportPanel({
           剧本已修改，预览已过期 — 请重新点击「生成 .rpy」。
         </p>
       )}
+      {/* 导出体检：查的是 **.rpy 产物自身**（跳转目标、入口 label、台词里的方括号），
+          不是稿件质量——所以它和上面那份"投稿前自检"是两回事。
+          **不拦下载**：作者可能就是要先拿文件去引擎里试；但"会让玩家卡住"必须在他
+          点下载之前说出来。结论与下载产物同源（服务端两边都调同一个导出函数）。 */}
+      {rpySummary.lines.length > 0 ? (
+        <div className={styles.toolbar} data-testid="rpy-findings">
+          <div>
+            <strong>{rpySummary.headline}</strong>
+            <ul className={styles.hint}>
+              {rpySummary.lines.map((l, i) => (
+                <li key={`${l.level}-${i}`}>{l.text}</li>
+              ))}
+            </ul>
+            <p className={styles.hint}>
+              {rpySummary.errors > 0
+                ? "带 ⛔ 的几条会让 Ren'Py 报错或让玩家卡住，建议修好再拿去运行。"
+                : "这些是提示：多数情况下脚本能正常跑。"}
+            </p>
+          </div>
+        </div>
+      ) : null}
       {!rpyPreview ? (
         <EmptyStage stamp="EXP" title="尚无导出预览" line={mascotLine("emptyExport")}>
           <button type="button" className={styles.primary} onClick={onGenerateRpy}>

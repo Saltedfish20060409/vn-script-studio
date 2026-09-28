@@ -12,7 +12,13 @@ from typing import Dict, List, Optional
 import typer
 
 from app.config import get_settings
-from app.core import create_demo_project, export_to_renpy, llm_budget, normalize_project, run_ai
+from app.core import (
+    create_demo_project,
+    export_script_rpy,
+    llm_budget,
+    normalize_project,
+    run_ai,
+)
 from app.core.ai import DeepSeekConfig
 from app.core.eval_stats import (
     format_ci,
@@ -55,7 +61,9 @@ def export_cmd(
 ):
     """Export project JSON to Ren'Py script."""
     raw = json.loads(project_path.read_text(encoding="utf-8"))
-    text = export_to_renpy(normalize_project(raw))
+    # 与网页下载（`GET /export/rpy`）走同一个函数：都必须是**能启动**的脚本
+    # （`export_to_renpy` 只是剧本正文，工程自己没有 start label 时它开不了）。
+    text = export_script_rpy(normalize_project(raw))
     out.write_text(text, encoding="utf-8")
     typer.echo(f"Wrote {out}")
 

@@ -28,6 +28,7 @@ import {
   exportRenpyBundle,
   exportRpy,
   generateRpyFromProse,
+  validateRpy,
   getChapterMemoryArchive,
   getLatestMemory,
   getProject,
@@ -49,6 +50,7 @@ import {
   type MemoryArchiveDetail,
   type MemoryArchiveSummary,
   type ProjectSummary,
+  type RpyFinding,
   type SnapshotDiffResult,
   type SnapshotSummary,
 } from "../api/client";
@@ -154,6 +156,7 @@ import type { MarkRange } from "../lib/markHighlight";
 import { blockTextRange, blocksToEditable, editableToBlocks } from "../lib/scriptCodec";
 import { insertCommandAtLine } from "../lib/insertCommand";
 import { chapterProse, proseFingerprint, rpyIsStale } from "../lib/scriptProse";
+import { summarizeRpyFindings } from "../lib/rpyFindings";
 import { normalizeProject } from "../lib/vnLocal";
 import { loreLinkOptions } from "../lib/loreEntries";
 import { diffProjectAgainst } from "../lib/projectDiff";
@@ -482,6 +485,13 @@ export function StudioApp() {
   /** 导出页：先生成预览，再允许下载 */
   const [rpyPreview, setRpyPreview] = useState<string | null>(null);
   const [rpyStale, setRpyStale] = useState(false);
+  /**
+   * 导出体检结论（服务端 `GET /export/rpy/validate`，与下载产物同源）。
+   *
+   * 为什么要有：下载端点返回的是 PlainTextResponse，除了"文件下载了"什么反馈都没有——
+   * "跳转到不存在的 label""台词里没转义的方括号"这类缺陷要等玩家卡住才发现。
+   */
+  const [rpyFindings, setRpyFindings] = useState<RpyFinding[] | null>(null);
   const [bundleBusy, setBundleBusy] = useState(false);
   /** 投稿包导出（单篇 / 分章包）进行中 */
   const [submissionBusy, setSubmissionBusy] = useState(false);
@@ -858,7 +868,12 @@ export function StudioApp() {
   function applyEditorText(next: string) {
     editorRef.current = next;
     setEditor(next);
-    if (rpyPreview) setRpyStale(true);
+    if (rpyPreview) {
+      setRpyStale(true);
+      // 体检结论描述的是**上一次导出**的那份文件；正文一改它就过期了，
+      // 留着会让作者以为"现在下载也没问题"。
+      setRpyFindings(null);
+    }
     // 人一动手写，"上次停在这里"就没意义了，收起来
     setCaretHint(null);
     // 正文一变就重新校验标记：被标记的那段没了 → 标成"已失效"
@@ -1028,7 +1043,10 @@ export function StudioApp() {
     }
     editorRef.current = result.text;
     setEditor(result.text);
-    if (rpyPreview) setRpyStale(true);
+    if (rpyPreview) {
+      setRpyStale(true);
+      setRpyFindings(null); // 同上：体检结论随正文改动一起作废
+    }
     scheduleEditorCommit();
     setMarks((prev) =>
       refreshMarks(result.text, prev).map((m) =>
@@ -1668,13 +1686,31 @@ export function StudioApp() {
       persistWriteMode("rpy");
       const updated = next.chapters.find((c) => c.id === chapter.id);
       if (updated) loadEditorFromChapter(updated, next.characters, "rpy");
+      // out.rpy 只是**本章片段**（没有角色 define、没有 label start），而面板上的
+      // 「下载 .rpy」下的是服务端整部作品的导出——两者不是同一份文件。所以这里把它
+      // 标记为"已过期"：片段仍然显示（作者想看看模型写出了什么），但下载按钮会要求
+      // 重新点「生成 .rpy」拿真正的产物，不会让作者以为下载到的就是这段预览。
       setRpyPreview(out.rpy);
-      setRpyStale(false);
+      setRpyStale(true);
       setStatus(out.usedLlm ? "已把正文转换成可试玩的 Ren'Py 脚本" : "已把正文转换成可试玩的 Ren'Py 脚本（本次为直接转换，未使用 AI）");
     } catch (e) {
       setError(e instanceof Error ? e.message : "生成 RPY 失败");
     } finally {
       setGeneratingRpy(false);
+    }
+  }
+
+  /**
+   * 取一份 .rpy 体检结论（服务端离线只读，不调模型、不改产物）。
+   *
+   * 失败一律吞掉：体检是**附加**信息，它挂了不该让"生成/导出成功"看起来像失败。
+   * 返回 null 时界面按"没有结论"渲染——不吓唬作者。
+   */
+  async function loadRpyFindings(id: string): Promise<RpyFinding[] | null> {
+    try {
+      return (await validateRpy(id)).findings;
+    } catch {
+      return null;
     }
   }
 
@@ -1691,8 +1727,13 @@ export function StudioApp() {
       await persistProject(latest);
       if (writeModeRef.current === "rpy") {
         const text = await exportRpy(latest.id);
+        // 下载前把这份文件的问题说出来：跳转目标不存在、台词里有没转义的方括号
+        // 都要等玩家卡住才暴露，而端点本身只有"文件下载了"这一个反馈。
+        const findings = await loadRpyFindings(latest.id);
+        setRpyFindings(findings);
         downloadText(`${latest.title || "script"}.rpy`, text, "text/plain;charset=utf-8");
         trackOncePerUser(EVENTS.exportDone, { kind: "rpy" });
+        setStatus(`已下载 .rpy。${summarizeRpyFindings(findings).headline}`);
       } else {
         const blob = await exportDocx(latest.id);
         downloadBlob(`${latest.title || "script"}.docx`, blob);
@@ -1717,7 +1758,9 @@ export function StudioApp() {
       const text = await exportRpy(saved.id);
       setRpyPreview(text);
       setRpyStale(false);
-      setStatus("已根据当前剧本生成 .rpy，可预览后下载");
+      const findings = await loadRpyFindings(saved.id);
+      setRpyFindings(findings);
+      setStatus(`已根据当前剧本生成 .rpy，可预览后下载。${summarizeRpyFindings(findings).headline}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "生成失败");
       setStatus("");
@@ -2732,6 +2775,7 @@ export function StudioApp() {
             project={project}
             rpyPreview={rpyPreview}
             rpyStale={rpyStale}
+            rpyFindings={rpyFindings}
             onGenerateRpy={() => void generateRpy()}
             onDownloadRpy={downloadRpy}
             onDownloadJson={() => void downloadJson()}
@@ -3492,7 +3536,10 @@ export function StudioApp() {
                             );
                             editorRef.current = next;
                             setEditor(next);
-                            if (rpyPreview) setRpyStale(true);
+                            if (rpyPreview) {
+                              setRpyStale(true);
+                              setRpyFindings(null); // 插入演出指令也算改稿：体检结论作废
+                            }
                             scheduleEditorCommit();
                             window.requestAnimationFrame(() => {
                               const el = editorTaRef.current;

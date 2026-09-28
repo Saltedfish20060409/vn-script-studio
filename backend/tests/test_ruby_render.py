@@ -78,6 +78,40 @@ def test_renpy_escapes_braces_so_scripts_do_not_break():
     assert to_renpy_text("x { y } z") == "x {{ y }} z"
 
 
+def test_renpy_escapes_brackets_so_text_is_not_substituted():
+    """回归：方括号在 Ren'Py 里是**变量替换**，`[重点]` 会被当变量名取值。"""
+    assert to_renpy_text("她说：[重点]") == "她说：[[重点]"
+
+
+def test_renpy_does_not_escape_the_closing_bracket_and_doubles_every_opening_one():
+    """两个方向的守卫：
+    - `]` **不**转义（Ren'Py 没有 `]]` 转义序列，转了玩家会看到多余的括号）；
+    - 每一个字面 `[` 都翻一倍：作者写 `[[` 是想让玩家看到两个方括号，
+      所以产物是 `[[[[`（Ren'Py 解出两个 `[`）——不是"只翻一次"。
+    """
+    assert to_renpy_text("]") == "]"
+    assert to_renpy_text("[[已转义]") == "[[[[已转义]"
+
+
+def test_renpy_leaves_percent_alone():
+    """`%` 刻意不转：`%%` 只在 `config.old_substitutions` 打开时才会还原成 `%`，
+    默认配置下转义它会把「50%」印成「50%%」。所以走体检提示这条路（见 rpy_validate）。"""
+    assert to_renpy_text("胜率 50%") == "胜率 50%"
+
+
+def test_renpy_text_escaping_does_not_diverge_between_the_two_helpers():
+    """防分叉守卫：`ruby_render.to_renpy_text` 与 `renpy._escape_renpy_string` 都在做
+    "Ren'Py 文本转义"。花括号那次已经分叉过一次（导出器漏了、ruby_render 有），
+    所以这里钉住两边对同一段文本给出同一个结果（`_escape_renpy_string` 额外做
+    字符串字面量层面的 `\\` `"`，样例里不含它们）。
+    """
+    from app.core.renpy import _escape_renpy_string
+
+    sample = "她说：{b}[重点]{/b} ｜漢字《かんじ》 胜率 50%"
+    assert to_renpy_text(sample) == _escape_renpy_string(sample)
+    assert to_renpy_text(sample) == "她说：{{b}}[[重点]{{/b}} 漢字（かんじ） 胜率 50%"
+
+
 def test_renpy_renders_ruby_as_rp_not_as_tags():
     out = to_renpy_text("｜漢字《かんじ》")
     assert out == "漢字（かんじ）"
