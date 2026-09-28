@@ -124,7 +124,6 @@ class AgentRunIn(BaseModel):
     conversation_id: Optional[str] = None
     apply_actions: bool = True
     lens_ids: Optional[List[str]] = None
-    lens_intent: Optional[str] = None
     # Pre-extracted attachment texts from /agent/attachments or client
     attachments: Optional[List[Dict[str, Any]]] = None
     # 断点续跑：true 时从会话 run_state 的检查点继续上次中断/失败的多步运行

@@ -19,7 +19,6 @@ from app.core.mentors import (
 )
 
 PACKS_DIR = Path(__file__).resolve().parent / "authors"
-CRAFT_DIR = Path(__file__).resolve().parent / "craft"
 
 _PRIORITY_SECTIONS = (
     "视角一句话",

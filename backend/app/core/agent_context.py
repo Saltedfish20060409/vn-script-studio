@@ -195,25 +195,6 @@ def _effective_window_k(model: Optional[str]) -> Optional[int]:
 
 
 @dataclass
-class AgentContextOptions:
-    chapterId: Optional[str] = None
-    selection: Optional[str] = None
-    # Latest user utterance — used for keyword retrieval
-    userMessage: Optional[str] = None
-    task: Optional[str] = None
-    # Soft budget for the assembled context string
-    maxChars: Optional[int] = None
-    # Rolling chat memory (extractive, from client)
-    chatMemory: Optional[str] = None
-    # NovelMaster-style long chapter archive (from PostgreSQL)
-    longChapterMemory: Optional[str] = None
-    # Distilled ACG craft cards (萌百启发)
-    loreCraft: Optional[str] = None
-    # User-uploaded reference documents (plain text block)
-    referenceDocs: Optional[str] = None
-
-
-@dataclass
 class AgentContextResult:
     text: str
     # Human-readable list of what was injected (for UI transparency)

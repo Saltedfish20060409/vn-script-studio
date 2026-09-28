@@ -147,8 +147,6 @@ class UserSettings(Base):
     )
     theme: Mapped[str] = mapped_column(String(16), default="day")
     font_scale: Mapped[float] = mapped_column(Float, default=1.0)
-    craft_mode: Mapped[str] = mapped_column(String(16), default="auto")
-    self_review: Mapped[str] = mapped_column(String(16), default="auto")
     api_key_enc: Mapped[str] = mapped_column(Text, default="")
     api_base_url: Mapped[str] = mapped_column(String(255), default="https://api.deepseek.com")
     api_model: Mapped[str] = mapped_column(String(128), default="deepseek-v4-flash")

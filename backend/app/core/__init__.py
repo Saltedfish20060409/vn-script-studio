@@ -7,7 +7,6 @@ from app.domain.types import (
 from .agent import ApplyAgentResult, apply_agent_actions, run_agent
 from .agent_context import (
     AGENT_TASKS,
-    AgentContextOptions,
     AgentContextResult,
     build_agent_context,
     infer_agent_task,
@@ -91,11 +90,8 @@ from .writing_craft import (
     WritingSkill,
     WritingSkillId,
     build_writing_craft_prompt,
-    get_writing_skill,
-    list_writing_skills,
     select_craft_mode,
     skills_for_task,
-    writing_skill_titles,
 )
 
 __all__ = [
@@ -120,13 +116,9 @@ __all__ = [
     "is_agent_task",
     "task_hint",
     "AGENT_TASKS",
-    "AgentContextOptions",
     "AgentContextResult",
     "build_writing_craft_prompt",
     "skills_for_task",
-    "writing_skill_titles",
-    "list_writing_skills",
-    "get_writing_skill",
     "select_craft_mode",
     "ALL_WRITING_SKILL_IDS",
     "WritingSkill",

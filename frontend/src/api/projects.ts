@@ -1027,7 +1027,6 @@ export interface AgentRunInBody {
   conversation_id?: string;
   apply_actions?: boolean;
   lens_ids?: string[];
-  lens_intent?: string;
   attachments?: AgentAttachment[];
   /** 断点续跑：从该会话 run_state 检查点继续上次中断/失败的多步运行 */
   resume?: boolean;

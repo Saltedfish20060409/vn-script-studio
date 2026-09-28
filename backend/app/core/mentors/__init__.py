@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 PACKS_DIR = Path(__file__).resolve().parent / "packs"
-TEMPLATE_PATH = Path(__file__).resolve().parent / "template.md"
 
 _FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n(.*)\Z", re.DOTALL)
 _SECTION_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
@@ -389,23 +388,6 @@ def build_mentor_prompt_for_project(
         return ""
     st = stage or stage_for_agent_task(task)
     return mentors_prompt_block(packs, stage=st, total_budget=total_budget)
-
-
-# 旧别名一律指向统一写作导师（兼容历史话术）
-MENTOR_ALIASES: Dict[str, str] = {
-    "写作导师": "ln-vn-editor",
-    "文学编辑": "ln-vn-editor",
-    "编辑": "ln-vn-editor",
-    "导师": "ln-vn-editor",
-    "舞台": "ln-vn-editor",
-    "舞台导师": "ln-vn-editor",
-    "钩子": "ln-vn-editor",
-    "热度": "ln-vn-editor",
-    "钩子导师": "ln-vn-editor",
-    "ln-vn-editor": "ln-vn-editor",
-    "ln-vn-stagecraft": "ln-vn-editor",
-    "ln-hook-and-heat": "ln-vn-editor",
-}
 
 
 def match_mentor_ids_from_text(text: str) -> List[str]:

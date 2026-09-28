@@ -19,6 +19,7 @@ from typing import Dict, List, Optional
 from app.core import llm_budget
 from app.core.ai import DeepSeekConfig
 from app.core.llm_http import chat_completions, content_from_response
+from app.core.llm_params import RECAP_TEMPERATURE
 from app.domain.types import VnProject
 
 # 输入上限：控制成本，也避免"要回述的东西太多"导致模型开始编
@@ -191,7 +192,7 @@ async def run_recap(
         res = await chat_completions(
             config,
             messages=messages,
-            temperature=0.4,
+            temperature=RECAP_TEMPERATURE,
             timeout=llm_budget.WRITE,
         )
         content, used_model = content_from_response(res)
