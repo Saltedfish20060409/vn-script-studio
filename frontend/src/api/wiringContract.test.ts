@@ -20,10 +20,12 @@ import { dirname, resolve } from "node:path";
  * 三次都是同一个形状：**能力在后端齐了，前端少传一个参数或少接一根线**，
  * 而所有单测、类型检查、构建都是绿的——因为它们各自只看自己那一半。
  *
- * 本项目的既有做法是"用守卫测试把两半钉在一起"（见 `settingsPutContract.test.ts`
- * 读 TS 源码断言键名、`scanDefaults.test.ts` 读后端源码保证默认值不分叉、
- * `timeouts.test.ts` 读后端常量保证前端阶梯不更紧）。这个文件把那三处的思路
- * **收敛成一张可扩展的注册表**：以后新加一个产品开关，只要往 `WIRINGS` 里加一行。
+ * 本项目的既有做法是"用守卫测试把两半钉在一起"——注意它们分散在**两侧**：
+ * `backend/tests/test_settings_put_contract.py`（解析 TS 里 `putSettings({...})` 的
+ * 顶层键，断言它们都是后端 schema 的字段）、`scanDefaults.test.ts`（读后端源码保证
+ * 两处默认值不分叉）、`timeouts.test.ts`（读后端常量保证前端阶梯不更紧）、
+ * `fieldLimits.test.ts`。这个文件把那几处的思路**收敛成一张可扩展的注册表**：
+ * 以后新加一个产品开关，只要往 `WIRINGS` 里加一行。
  *
  * 怎么加一条
  * ----------
