@@ -77,15 +77,6 @@
   width: min(92vw, 1100px);
 }
 
-/* 自定义壁纸模式下，抽屉的底色必须是**实色**。
-   全局 `.shell-overlay-surface` 在壁纸模式下会 `color-mix(--panel-bg 82%, transparent)`
-   ——那是为了文件二级页的底景连续，对"小面积、临时"的浮层没问题；
-   但抽屉是大块**阅读面**：半透明底会把壁纸纹路透到正文下面，对比度随壁纸变化，
-   几百字一屏的长段落根本读不下去（实测 mist 档 alpha 只有 0.43）。
-   所以这里显式盖成各玻璃档的实色底（`--panel-solid`），不是覆盖全局规则。 */
-:global(html[data-custom-bg="1"]) .drawer {
-  background: var(--panel-solid, var(--paper));
-}
 
 /* 铺满：抽屉占满工作区（壳层已藏左大纲与顶栏）。不是浏览器全屏。 */
 .drawerFull {

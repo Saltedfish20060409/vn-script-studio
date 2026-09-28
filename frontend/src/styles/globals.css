@@ -924,6 +924,22 @@ html[data-custom-bg="1"] .shell-overlay-surface {
   background: color-mix(in srgb, var(--panel-bg) 82%, transparent);
 }
 
+/**
+ * 但**抽屉**例外：它是大块阅读面，壁纸模式下底色必须实心。
+ *
+ * 上面那条混出来的 alpha 只有 0.4264（mist 的 `--panel-bg` 本来就是
+ * `color-mix(#f0f3fa 52%, transparent)`，再按 82% 混一次：0.52 × 0.82）。
+ * 对"小面积、临时"的浮层（菜单下拉）透一点没问题，那是设计要的玻璃感；
+ * 但抽屉里是几百字一屏的正文，壁纸纹路透上来会让对比度随壁纸变化、长段落读不下去。
+ *
+ * **必须写在这里而不是 StudioChrome.module.css**：两条规则的特异性同为 (0,2,1)，
+ * 由**来源顺序**决定胜负，而 CSS module 与全局样式表的先后在打包后并不直观
+ * （实测写进 module 里没生效，抽屉仍是 0.4264）。写在同一张表的后面就没有歧义。
+ */
+html[data-custom-bg="1"] [data-testid="view-drawer"] {
+  background: var(--panel-solid, var(--paper));
+}
+
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .shell-overlay-surface {
     background-color: var(--paper);
