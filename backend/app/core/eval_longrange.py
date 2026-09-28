@@ -166,6 +166,7 @@ def build_synthetic_novel(
     deterministic_per_kind: int = 2,
     semantic_per_kind: int = 2,
     distractors: int = 3,
+    causal_buckets: int = 5,
 ) -> Tuple[VnProject, Dict[str, Any]]:
     """造一部 N 章的合成长篇 + 标准答案（planted 矛盾 + 诱导项）。
 
@@ -602,6 +603,68 @@ def build_synthetic_novel(
             Distractor(id=f"dist-{k}", chapter=ch_ids[c], kind=kind_name, quote=quote, why=why)
         )
 
+    # ---------- C 层：因果矛盾（需要"叙事状态 + 情节转移"，目前没有任何检测器） ----------
+    #
+    # 为什么要单独一层：A 层（死亡后出场、时间线乱序…）问的是"**实体状态**对不对"，
+    # 而作者抱怨的"情节前后不对应甚至矛盾"多数不是实体状态，是**因果**：
+    #   - 事件没有它的**使能前提**（第 20 章揭底，但全书没交代她怎么知道的）；
+    #   - 回收与埋设的**条款不符**（说好"她亲口叫出名字"钟才停，结果她一声没吭钟就停了）。
+    # 这两类都不能靠"状态谓词"抓住——那正是它只做几个谓词就被叫停的原因。
+    #
+    # 构造原则（与 A/B 层一致，且刻意与它们**不共用角色**）：
+    #   - 只用**旁白**，不写台词：台词会进声线指纹与情感弧线的统计，新埋点会把
+    #     "干净基线"污染掉，而那些量具的召回数字就不再可比；
+    #   - 插在章内**靠前**（位置 2），不落在章末：`chapter_digest` 的 closeHook 取章末，
+    #     插在末尾会凭空造出一条"未回收伏笔"，污染伏笔回收率。
+    #
+    # tier 记为 "causal"：它既不是现有确定性检测器能抓的，也不等同于"语义矛盾
+    # 必须上模型"那一类——它需要一种**目前还不存在**的表示（带前提/结果的转移），
+    # 所以单列一档，免得和 B 层的召回数字混在一起读。
+    causal_specs = [
+        (
+            "unenabled_event",
+            "林夏还不知道那扇门后面是什么。",
+            "林夏径直走向那扇门，她已经知道了门后的一切。",
+            "第 {conflict} 章让她用上了从未获得的知情：全书没有任何一章交代她怎么知道的",
+        ),
+        (
+            "payoff_terms_mismatch",
+            "售票员说过，只有她亲口叫出那个名字，钟才会停。",
+            "钟停了。她始终没有开口。",
+            "第 {conflict} 章的收束违反了第 {est} 章给出的解除条款（条款要求她开口）",
+        ),
+    ]
+    causal_skipped: List[str] = []
+    for i, bucket in enumerate(bucket_cycle[: max(0, causal_buckets)]):
+        # 每个分桶各埋一条（而不是像 A/B 层那样按 kind 轮转）：因果类要量的是
+        # "**同窗**随章距怎么衰减"，所以必须让埋点铺满 1-3 一直到 31+，
+        # 否则远端那几桶没有读数，"窗口法在远端结构性失效"就只能靠嘴说。
+        kind, setup, conflict_text, desc = causal_specs[i % len(causal_specs)]
+        pair = pick_free(bucket)
+        if pair is None:
+            # 装不下就**记下这个桶没读数**：静默跳过会让报告看起来"五个桶都量了"，
+            # 而实际上远端根本没有样本——这正是本文件反复强调不许犯的那类错。
+            causal_skipped.append(bucket)
+            continue
+        est, conflict = pair
+        blocks_by_chapter[ch_ids[est]].insert(2, _narr(setup))
+        blocks_by_chapter[ch_ids[conflict]].insert(2, _narr(conflict_text))
+        planted.append(
+            Planted(
+                id=f"causal-{kind}-{i}",
+                category="plot",
+                kind=kind,
+                tier="causal",
+                establishedChapter=ch_ids[est],
+                conflictChapter=ch_ids[conflict],
+                distance=conflict - est,
+                establishedQuote=setup,
+                conflictQuote=conflict_text,
+                description=desc.format(conflict=conflict + 1, est=est + 1),
+                subject="lin",
+            )
+        )
+
     project = normalize_project(
         {
             "id": "bench-longrange",
@@ -627,6 +690,9 @@ def build_synthetic_novel(
             "total": len(planted),
             "deterministic": sum(1 for p in planted if p.tier == "deterministic"),
             "semantic": sum(1 for p in planted if p.tier == "semantic"),
+            "causal": sum(1 for p in planted if p.tier == "causal"),
+            #: 因果层**没抢到章**因而没有读数的分桶。空列表才是"五个桶都量到了"。
+            "causalSkippedBuckets": causal_skipped,
             "byCategory": _count_by(planted, "category"),
             "byBucket": _count_by(planted, "bucket"),
         },
@@ -761,6 +827,59 @@ def evaluate_exposure(
         "total": len(items),
         "byBucket": _ordered_buckets(per_bucket),
         "missedItems": missed,
+    }
+
+
+def evaluate_pair_cooccurrence(
+    ground_truth: Dict[str, Any], windows: Sequence[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """**同窗率**：建立章与冲突章有没有落在**同一个窗口**里（不需要模型）。
+
+    为什么单列这一条，而不是复用 `evaluate_exposure`
+    --------------------------------------------------
+    `exposure` 量的是"**冲突章**有没有被扫到"，分片方案下它恒为 1.00——
+    听上去全都在视野里，读起来像"覆盖已解决"。但"被扫到"与"能对照"是两件事：
+
+    - **实体状态矛盾**（第 3 章写"已故"、第 8 章他开口）只要**冲突章**被扫到就够，
+      因为权威事实（角色卡/时间线）是每窗全量带的；
+    - **因果矛盾**（第 2 章埋的条款 vs 第 40 章的收束；第 5 章她不知道 vs 第 40 章她知道了）
+      要求**两张章同时在场**才能对照，于是它受窗口几何限制：
+
+      * ``d ≤ overlap``：**保证**同窗（窗口起点是 stride = size − overlap 的倍数，
+        取 ≤ i 的最大起点 s，则 j = i + d ≤ s + stride − 1 + d，要 j 同窗只需 d ≤ overlap）；
+      * ``d ≥ size``：**不可能**同窗（一个窗口只有 size 章，两头最多差 size − 1）；
+      * 两者之间：取决于对齐，可能同窗也可能不。
+
+      所以埋得越远越查不出，且这与模型强弱无关。这条指标就是这个上界本身，
+      必须和 exposure 分开报，否则会被 1.00 的 exposure 掩盖成"没问题"。
+
+    只统计 `tier == "causal"` 的埋点：其余层不要求同窗（权威设定每窗都在），
+    把它们混进来会把这条上界算虚高。
+    """
+    items = [it for it in (ground_truth.get("planted") or []) if it.get("tier") == "causal"]
+    per_bucket: Dict[str, Dict[str, int]] = {}
+    same_window = 0
+    for it in items:
+        b = str(it.get("bucket"))
+        row = per_bucket.setdefault(b, {"together": 0, "total": 0})
+        row["total"] += 1
+        est = str(it.get("establishedChapter"))
+        conflict = str(it.get("conflictChapter"))
+        hit = any(
+            est in {str(x) for x in (w.get("chapterIds") or [])}
+            and conflict in {str(x) for x in (w.get("chapterIds") or [])}
+            for w in windows
+        )
+        if hit:
+            same_window += 1
+            row["together"] += 1
+    for row in per_bucket.values():
+        row["recall"] = round(row["together"] / row["total"], 3) if row["total"] else 0.0
+    return {
+        "sameWindowRecall": round(same_window / len(items), 3) if items else 0.0,
+        "together": same_window,
+        "total": len(items),
+        "byBucket": _ordered_buckets(per_bucket),
     }
 
 
@@ -984,6 +1103,12 @@ def run_benchmark(
             "legacy": evaluate_exposure(ground_truth, legacy),
             "chunked": evaluate_exposure(ground_truth, chunked),
         },
+        # 同窗率是"因果类能不能被这套切窗法看见"的**结构性上界**（与模型无关），
+        # 必须与 exposure 并列显示，否则会被 exposure 的 1.00 读成"覆盖已解决"。
+        "pairCooccurrence": {
+            "legacy": evaluate_pair_cooccurrence(ground_truth, legacy),
+            "chunked": evaluate_pair_cooccurrence(ground_truth, chunked),
+        },
     }
     det = detector(project) if detector is not None else None
     if det is not None:
@@ -997,7 +1122,7 @@ def format_report(report: Dict[str, Any]) -> str:
     gt = report["groundTruth"]
     lines = [
         f"长程一致性基准：{report['chapters']} 章 · 埋点 {gt['total']} 条"
-        f"（确定性 {gt['deterministic']} / 语义 {gt['semantic']}）"
+        f"（确定性 {gt['deterministic']} / 语义 {gt['semantic']} / 因果 {gt.get('causal', 0)}）"
         f" · 诱导项 {len(report['distractors'])} 条",
         "",
         f"{'方案':<12}{'可见章数':>10}{'暴露率':>10}   分桶暴露率",
@@ -1010,6 +1135,19 @@ def format_report(report: Dict[str, Any]) -> str:
         lines.append(
             f"{label:<12}{ex['chaptersVisible']:>10}{ex['exposureRecall']:>10.2f}   {buckets}"
         )
+    pair = report.get("pairCooccurrence") or {}
+    if pair.get("chunked", {}).get("total"):
+        p = pair["chunked"]
+        pb = "  ".join(f"{b}:{row['recall']:.2f}" for b, row in p["byBucket"].items())
+        lines += [
+            "",
+            "因果类同窗率（establish 与 conflict 落在同一窗口，窗口法的结构上界；"
+            f"overlap={report['windowOverlap']}）：",
+            f"  分片方案 {p['together']}/{p['total']} = {p['sameWindowRecall']:.2f}   {pb}",
+        ]
+    skipped = gt.get("causalSkippedBuckets") or []
+    if skipped:
+        lines.append(f"  （因果层没抢到章、没有读数的分桶：{'、'.join(skipped)}）")
     det = report.get("detection")
     if det:
         lines += [

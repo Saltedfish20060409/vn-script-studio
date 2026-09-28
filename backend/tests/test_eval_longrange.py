@@ -17,6 +17,7 @@ from app.core.eval_longrange import (
     detect_deterministic,
     evaluate_detections,
     evaluate_exposure,
+    evaluate_pair_cooccurrence,
     format_report,
     legacy_plan,
     run_benchmark,
@@ -65,9 +66,203 @@ def test_both_tiers_are_planted():
     assert all(it["subject"] for it in gt["planted"]), "每个埋点都要标明主语"
 
 
+# ------------------------------------------------- 因果层（C 层）与同窗率
+#
+# 这一层回答的是作者那句抱怨："AI 缺乏对情节前后关系的推理，会写出前后不对应
+# 甚至矛盾的情节"。A 层问的是"实体状态对不对"，回答不了它——所以单列一档、
+# 并且配一条**结构上界**指标（同窗率），免得被 exposure 的 1.00 读成"已覆盖"。
+
+
+def test_causal_layer_is_planted_across_buckets():
+    _, gt = build_synthetic_novel(chapters=60, seed=7)
+    causal = [it for it in gt["planted"] if it["tier"] == "causal"]
+    assert len(causal) >= 3, causal
+    assert gt["counts"]["causal"] == len(causal)
+    kinds = {it["kind"] for it in causal}
+    assert kinds == {"unenabled_event", "payoff_terms_mismatch"}, kinds
+    # 因果类必须铺到远端：近端同窗很容易，不能证明任何事
+    assert len({it["bucket"] for it in causal}) >= 3, [it["bucket"] for it in causal]
+
+
+def test_causal_plantings_do_not_touch_dialogue_or_chapter_end():
+    """构造纪律：只写旁白、且插在章内靠前。
+
+    写台词会进声线指纹与情感弧线的统计，插在章末会变成一条"章末钩子"进而
+    凭空造出未回收伏笔——两条都会污染**别的**量具的召回，"干净基线"就不再干净。
+    """
+    project, gt = build_synthetic_novel(chapters=60, seed=7)
+    causal = [it for it in gt["planted"] if it["tier"] == "causal"]
+    assert causal
+    chapters = {str(c.id): c for c in project.chapters}
+    for it in causal:
+        for key in ("establishedChapter", "conflictChapter"):
+            ch = chapters[str(it[key])]
+            blocks = list(ch.blocks or [])
+            # 章末仍是 return（没有被我的插入顶掉）
+            assert (blocks[-1] or {}).get("type") == "return", it["id"]
+            # 章末前一块不是因果句本身（即因果旁白没有落在钩子位置）
+            last_text = str((blocks[-2] or {}).get("text") or "")
+            assert last_text not in {it["establishedQuote"], it["conflictQuote"]}, it["id"]
+
+
+def test_pair_cooccurrence_is_one_only_when_both_chapters_share_a_window():
+    """纯函数，两个方向都要钉：同窗算 1，不同窗算 0。"""
+    gt = {
+        "planted": [
+            {
+                "id": "c1",
+                "tier": "causal",
+                "bucket": "1-3",
+                "establishedChapter": "ch1",
+                "conflictChapter": "ch3",
+            },
+            {
+                "id": "c2",
+                "tier": "causal",
+                "bucket": "31+",
+                "establishedChapter": "ch1",
+                "conflictChapter": "ch40",
+            },
+        ]
+    }
+    same = [{"chapterIds": ["ch1", "ch2", "ch3"]}, {"chapterIds": ["ch39", "ch40"]}]
+    out = evaluate_pair_cooccurrence(gt, same)
+    assert out["total"] == 2
+    assert out["together"] == 1, "只有 c1 的两章同窗"
+    assert out["sameWindowRecall"] == 0.5
+    assert out["byBucket"]["1-3"]["recall"] == 1.0
+    assert out["byBucket"]["31+"]["recall"] == 0.0
+
+    # 两张章同处一个窗口 → 两条都算
+    both = [{"chapterIds": ["ch1", "ch3", "ch40"]}]
+    assert evaluate_pair_cooccurrence(gt, both)["sameWindowRecall"] == 1.0
+
+
+def test_pair_cooccurrence_ignores_non_causal_tiers():
+    """只统计因果层：别的层的权威设定每窗全量都在，不要求同窗。
+
+    混进来会把这条上界算虚高，而它存在的意义恰恰是**低**。
+    """
+    gt = {
+        "planted": [
+            {
+                "id": "d1",
+                "tier": "deterministic",
+                "bucket": "31+",
+                "establishedChapter": "ch1",
+                "conflictChapter": "ch40",
+            }
+        ]
+    }
+    out = evaluate_pair_cooccurrence(gt, [{"chapterIds": ["ch1"]}])
+    assert out["total"] == 0
+    assert out["sameWindowRecall"] == 0.0, "没有因果埋点时应为 0 而不是 1"
+
+
+def test_window_pair_ceiling_follows_the_overlap_constant():
+    """结构性上界：``d ≤ overlap`` 保证同窗，``d ≥ size`` 不可能同窗。
+
+    这条把"窗口法在远端查不出因果矛盾"从说法变成可复算的事实。
+    注意别把 overlap 当成"同窗距离上限"：把 overlap 拉过 size 并不会让窗口变宽
+    （窗口仍是 size 章长），真正决定远端能不能同窗的是 **size**——
+    这一点我第一次写这条测试时就搞错过，它现在被钉在这里。
+    """
+    project, gt = build_synthetic_novel(chapters=60, seed=20260409)
+    causal = [it for it in gt["planted"] if it["tier"] == "causal"]
+    assert causal
+
+    tight = chunked_plan(project, size=12, overlap=4)
+    inside = [
+        it for it in causal if it["distance"] <= 4
+    ]
+    beyond_size = [it for it in causal if it["distance"] >= 12]
+    assert inside, "用例本身要有一条 d ≤ overlap 的埋点，否则这条闸门没意义"
+    assert beyond_size, "用例本身要有一条 d ≥ size 的埋点，否则这条闸门没意义"
+
+    tight_out = evaluate_pair_cooccurrence(gt, tight)
+    # 保证方向：d ≤ overlap 的一条都不能漏
+    for it in inside:
+        assert any(
+            str(it["establishedChapter"]) in w["chapterIds"]
+            and str(it["conflictChapter"]) in w["chapterIds"]
+            for w in tight
+        ), it["id"]
+    assert tight_out["sameWindowRecall"] < 1.0, "d ≥ size 的那些不可能同窗"
+    # 不可能方向：d ≥ size 的一条都不该同窗
+    for it in beyond_size:
+        assert not any(
+            str(it["establishedChapter"]) in w["chapterIds"]
+            and str(it["conflictChapter"]) in w["chapterIds"]
+            for w in tight
+        ), it["id"]
+
+    # 把窗口放大到覆盖全书（size = 章数）→ 所有埋点同窗
+    wide = evaluate_pair_cooccurrence(gt, chunked_plan(project, size=60, overlap=4))
+    assert wide["sameWindowRecall"] == 1.0, "一个窗口装下全书后不该还有不同窗的对"
+
+
+def test_causal_items_are_scoreable_but_currently_missed():
+    """现状读数：因果层可被评分，而现有确定性检测器**一条也抓不到**。
+
+    这就是要补的缺口本身。它同时也是一致性闸：哪天因果层真做出来了，
+    这条会红，提醒把它改成"应当被抓到"的正向断言。
+    """
+    project, gt = build_synthetic_novel(chapters=60, seed=20260409)
+    causal = [it for it in gt["planted"] if it["tier"] == "causal"]
+    assert causal
+    out = evaluate_detections(gt, detect_deterministic(project))
+    assert out["byTier"]["causal"]["recall"] == 0.0, "现有检测器不该已经能抓因果矛盾"
+
+
+def test_planned_causal_detector_scores_hits_when_fed_the_right_kind():
+    """评分契约对因果类是通的：只要检测器按 kind + 冲突章报，就能算命中。
+
+    先钉住"口径能用"，再谈实现——否则做完了也不知道数字算得对不对。
+    """
+    _, gt = build_synthetic_novel(chapters=60, seed=20260409)
+    causal = [it for it in gt["planted"] if it["tier"] == "causal"]
+
+    def _ideal(_project):
+        return [
+            {
+                "code": it["kind"],
+                "kind": it["kind"],
+                "category": "plot",
+                "chapterIds": [it["conflictChapter"]],
+            }
+            for it in causal
+        ]
+
+    out = evaluate_detections(gt, _ideal(None))
+    assert out["byTier"]["causal"]["recall"] == 1.0, out.get("missedItems")
+    assert out["fp"] == 0
+
+
+def test_skipped_causal_buckets_are_reported_not_silently_dropped():
+    """装不下的分桶要如实记下来。
+
+    静默跳过会让报告看起来"五个桶都量了"，而远端根本没有样本——
+    这正是本文件反复强调不许犯的那类错。
+    """
+    _, gt = build_synthetic_novel(chapters=60, seed=20260409)
+    planted_buckets = {
+        it["bucket"] for it in gt["planted"] if it["tier"] == "causal"
+    }
+    skipped = set(gt["counts"]["causalSkippedBuckets"])
+    assert not (planted_buckets & skipped), "同一个桶不能既埋了又算跳过"
+    assert gt["counts"]["causal"] + len(skipped) == 5, (
+        "五个分桶的去向必须能对上：要么埋了，要么如实记为跳过"
+    )
+
+
+def test_causal_layer_can_be_switched_off():
+    _, gt = build_synthetic_novel(chapters=36, seed=13, causal_buckets=0)
+    assert gt["counts"]["causal"] == 0
+    assert not [it for it in gt["planted"] if it["tier"] == "causal"]
+
+
 def test_planted_items_occupy_disjoint_chapters():
     """回归闸：埋点之间不能共用章节。
-
     共用的后果不是"数字难看一点"，而是**判定变得含糊**：一个埋点的建立章正好是另一个
     的冲突章时，检测器只报一条就同时落在两个跨度里，基准把它算给其中一个，
     另一个变成凭空漏检——实测正是这条把确定性层召回从 1.00 压到了 0.90。
@@ -359,7 +554,14 @@ def test_clean_baseline_has_no_factual_findings():
     对基线报警，它们被 evaluate_detections 归到 outOfScope，不参与 precision。
     """
     project, _gt = build_synthetic_novel(
-        chapters=36, seed=13, deterministic_per_kind=0, semantic_per_kind=0, distractors=0
+        chapters=36,
+        seed=13,
+        deterministic_per_kind=0,
+        semantic_per_kind=0,
+        distractors=0,
+        # 因果层的旁白也要一并关掉：不然"干净基线"里就埋着 5 条计划外的因果矛盾，
+        # 这个闸门的含义（没注入矛盾的稿子不该被乱报）就被稀释了。
+        causal_buckets=0,
     )
     factual = [
         d
