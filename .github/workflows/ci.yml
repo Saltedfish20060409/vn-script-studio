@@ -46,7 +46,10 @@ jobs:
         run: |
           python -m pip install -U pip
           pip install -r requirements.txt
-          pip install pytest httpx ruff==0.16.3
+          # pytest-cov 装上但**不设阈值**：这个仓库此前没有任何覆盖率基线，
+          # 凭空定一个百分比只会逼人凑数字。它的用途是让"覆盖了多少"变成
+          # 一个可以随时问出来的数（`pytest --cov=app --cov-report=term-missing`）。
+          pip install pytest httpx ruff==0.16.3 pytest-cov
       - name: Verify imports (fail fast on install issues)
         run: |
           python -c "import fastapi, sqlalchemy, asyncpg, pytest, httpx, ruff; print('imports OK')"

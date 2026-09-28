@@ -380,6 +380,11 @@ pytest tests/ -q
 > 想知道这一层到底有没有跑，用上面的脚本：连不上它会直接以退出码 2 报错，
 > 不会退化成"跑了一遍全 skip 的绿"。
 > CI 的 `integration.yml` 自带 Postgres service，会真跑这一层。
+>
+> **覆盖率**（两边都能问出来，但都不设阈值——此前没有基线，定阈值只会逼人凑数字）：
+> 后端 `pytest --cov=app --cov-report=term-missing`；前端 `npm run test:coverage`。
+> 组件层目前是 0 覆盖（vitest 只 include `src/**/*.test.ts`），所以看全局数字时
+> 请连着这一点一起读。
 > 前端：`cd frontend && npm test`（vitest，纯函数单测）。
 > 前端 e2e：`cd frontend && npm run build && npm run test:e2e`（需本地 PG 可达，见 playwright.config.ts）。
 
