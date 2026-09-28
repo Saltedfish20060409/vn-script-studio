@@ -500,6 +500,9 @@ html[data-custom-bg="1"][data-panel-glass="mist"] {
   --ring: #002fa7;
   --on-accent: #f8fafc;
   --panel-bg: color-mix(in srgb, #f0f3fa 52%, transparent);
+  /* 同一块面板的**实色**版本，给"必须不透底"的大块阅读面用（见 StudioChrome 的 .drawer）：
+     `--panel-bg` 本身是半透明的，拿它当底色会让壁纸纹理透到正文下面。 */
+  --panel-solid: #f0f3fa;
   --field-bg: color-mix(in srgb, #d8e0f0 32%, transparent);
   --paper-deep: rgba(230, 235, 244, 0.42);
   --input-bg: color-mix(in srgb, #dce4f4 36%, transparent);
@@ -535,6 +538,8 @@ html[data-custom-bg="1"][data-panel-glass="ink"] {
   --ring: #e11d48;
   --on-accent: #fff5f7;
   --panel-bg: rgba(18, 8, 12, 0.55);
+  /* 实色版本：理由同 mist 档（大块阅读面不能透底） */
+  --panel-solid: #12080c;
   --field-bg: rgba(12, 6, 8, 0.28);
   --paper-deep: rgba(10, 4, 6, 0.48);
   --input-bg: rgba(18, 8, 12, 0.32);

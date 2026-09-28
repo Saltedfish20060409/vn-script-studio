@@ -189,6 +189,21 @@ export function StudioRibbon({
       MENU_MNEMONICS.map((m) => [m.letter, m.id])
     );
     const onKey = (e: KeyboardEvent) => {
+      // `Esc` 关闭：**不能只靠面板上的 React 处理器**。那个只在焦点落在面板内部时
+      // 才触发，而焦点是打开菜单之后用 `setTimeout(…, 0)` 异步送进去的——
+      // 那一次没落地（或用户中途点了别处）时，Esc 就什么也不做，菜单一直开着，
+      // 而菜单标题上明明写着 Esc 能关（e2e 的「助记键印在菜单标题上」那条就是这么红的）。
+      // 这里在 window 上补一条与焦点无关的兜底；没有菜单打开时直接返回，不抢别的 Esc。
+      if (e.key === "Escape") {
+        const open = menusRef.current?.querySelector<HTMLDetailsElement>("details[open]");
+        if (!open) return;
+        e.preventDefault();
+        open.removeAttribute("open");
+        setFileGroup(null);
+        setOpenMenu(null);
+        open.querySelector<HTMLElement>("summary")?.focus();
+        return;
+      }
       if (!e.altKey || e.ctrlKey || e.metaKey) return;
       const id = HOTKEY[e.key.toLowerCase()];
       if (!id) return;
