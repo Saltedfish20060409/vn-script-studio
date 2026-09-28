@@ -16,6 +16,10 @@ services:
       - "54102:5432"
     volumes:
       - vnss_pg_data:/var/lib/postgresql/data
+      # 额外建 vnss_test / vnss_e2e：没有它们，`pytest tests/` 里需要真库的那几百个
+      # 用例会**静默 skip**，用户看到全绿却从没跑过最有价值的那一层。
+      # 注意：initdb 脚本只在**数据卷为空**时执行；已有旧卷的人见该脚本里的手工命令。
+      - ./ops/postgres/init-test-dbs.sh:/docker-entrypoint-initdb.d/10-create-test-dbs.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U vnss -d vnss"]
       interval: 5s

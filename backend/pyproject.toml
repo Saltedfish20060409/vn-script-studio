@@ -1,6 +1,10 @@
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# ruff 的规则集会随版本变：CI 装的是 `ruff==0.16.3`（见 .github/workflows/ci.yml），
+# 本地如果是别的版本，就可能出现"本机绿、CI 红"（或反过来）而没人知道为什么。
+# 这里把版本钉死：对不上就**直接报错**，而不是用一套不同的规则悄悄给出结论。
+required-version = "0.16.3"
 exclude = [
     "alembic/versions/0001_initial.py",
     "alembic/versions/0002_analysis_inbox.py",

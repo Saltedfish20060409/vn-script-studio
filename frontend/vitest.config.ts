@@ -19,5 +19,14 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts"],
     pool: "threads",
+    // 覆盖率：只有 `npm run test:coverage` 才会用到，`npm test` 行为不变。
+    // **刻意不设阈值**：这个仓库此前完全没有覆盖率基线，凭空定一个百分比只会逼人凑数字。
+    // 先把数字变成可得的，再谈要不要设闸——尤其组件层目前是 0 覆盖，
+    // 一个看上去体面的全局数字反而会掩盖"UI 一行都没测"这件事。
+    coverage: {
+      provider: "v8",
+      include: ["src/**"],
+      reporter: ["text", "html"],
+    },
   },
 });

@@ -1,0 +1,10 @@
+# 让 shell 脚本在任何平台检出时都保持 LF。
+#
+# 为什么必须有这一条：`core.autocrlf=true` 的 Windows 检出会把 .sh 写成 CRLF，
+# 而 CRLF 的 `#!/bin/sh` 在 Linux 里连解释器都找不到（报 bad interpreter）。
+# 两个真实场景：
+#   1. `ops/postgres/init-test-dbs.sh` 是给 postgres 容器的
+#      /docker-entrypoint-initdb.d/ 用的，它在 Linux 容器里执行；
+#   2. `dev.sh` 是给 macOS/Linux 用户用的，但仓库也可能在 Windows 上被克隆后再拷过去。
+# 这类问题在 Windows 上看不出来、到了容器里才炸，所以用属性钉死而不是靠人记得。
+*.sh text eol=lf

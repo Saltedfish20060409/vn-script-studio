@@ -85,6 +85,30 @@ jobs:
 
           asyncio.run(main())
           PY
+      - name: Migrations apply cleanly to an empty database
+        # 为什么这一步必须有：测试库的 schema 是 `db_gate.create_all()` + ALTER 补丁
+        # 建出来的，而**生产库是 alembic 管的**。于是"测试建得起来"与"生产升级得上去"
+        # 是两条从未对过的路径——最容易在某次上线时才炸。这里在一个全新的空库上
+        # 从零跑一遍迁移，把它变成一次会失败的检查。
+        #
+        # 用独立库（vnss_migrations）而不是测试库：测试库会被 conftest TRUNCATE，
+        # 而且它本来就不是迁移建的；混在一起会得出错误结论。
+        env:
+          DATABASE_URL: postgresql+asyncpg://vnss:vnss@localhost:15432/vnss_migrations
+        run: |
+          python - <<'PY'
+          import asyncio, os, asyncpg
+          url = "postgresql://vnss:vnss@localhost:15432/postgres"
+          async def main() -> None:
+              conn = await asyncpg.connect(url)
+              exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname='vnss_migrations'")
+              if not exists:
+                  await conn.execute('CREATE DATABASE "vnss_migrations"')
+              await conn.close()
+          asyncio.run(main())
+          PY
+          alembic upgrade head
+          alembic current
       - name: Integration tests (real DB)
         env:
           MARKER: ${{ github.event.inputs.marker }}

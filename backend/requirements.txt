@@ -1,6 +1,15 @@
 # 运行时顶层依赖（精确锁定 → 可复现构建）。
-# 传递依赖由 pip 解析；如需完全冻结（含传递依赖），用 pip freeze > requirements-lock.txt
-# 并在 Dockerfile 里改 COPY requirements-lock.txt ./requirements.txt。
+#
+# **这里是唯一的依赖真源。** 曾经还有一个 `requirements-lock.txt`（全量冻结），
+# 但它既没有任何地方消费（Dockerfile 与两个 CI 工作流都装 requirements.txt），
+# 也没人验证，最后停在了 2026-08-24 那次冻结上并**与现实矛盾**：
+# 里面还留着已经换掉的 passlib / python-jose，却缺了替换后的 PyJWT，
+# bcrypt 与 cryptography 的版本也对不上。一个"看起来权威、实际是错的"文件
+# 比没有更危险——尤其这几条正是认证栈。所以它已被删除，不再假装有全量冻结。
+#
+# 如果将来真需要锁传递依赖：用 `pip freeze > requirements-lock.txt` 生成，
+# **并且**在 Dockerfile / CI 里改成装它、再加一条"lock 与 requirements.txt 一致"
+# 的守卫测试。没有这两步跟上，就别再放一个 lock 文件进仓库。
 fastapi==0.141.1
 uvicorn[standard]==0.52.3
 sqlalchemy[asyncio]==2.0.52

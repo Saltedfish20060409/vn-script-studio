@@ -5,9 +5,11 @@ name: ci
 # 刻意不做的事（避免出现"永远红"的伪失败）：
 # - 不连数据库：DB 集成测试在缺少 DATABASE_URL_TEST 时会自动 skip
 #   （见 backend/tests/db_gate.py），所以这里只保留纯单元测试；
-#   需要真库的用例走 .github/workflows/integration.yml（手动触发）。
+#   需要真库的用例走 .github/workflows/integration.yml——它**已经在 push 到 main
+#   以及改动 backend/** 的 PR 上自动跑**（此前仅手动，2026-09 改的；这段注释一度没跟上，
+#   两处说法不一致本身就是误导）。
 # - 不调外部服务：不注入任何 API Key / 邮件密钥，模型调用相关用例全部用 mock。
-# - 不跑 e2e：端到端需要完整前后端 + 注册链路，走 e2e.yml（手动触发）。
+# - 不跑 e2e：端到端需要完整前后端 + 注册链路，走 e2e.yml。
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

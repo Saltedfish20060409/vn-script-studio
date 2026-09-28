@@ -94,7 +94,9 @@ docker compose up -d        # 构建 api/web + 起 postgres/redis
 
 #### 方式 B：源码开发模式（改代码用）
 
-**前置**：Docker Desktop（跑 PostgreSQL / Redis）+ Node.js 20+ + Python 3.12+。
+**前置**：Docker Desktop（跑 PostgreSQL / Redis）+ Node.js 22 + Python 3.12。
+（版本口径以 `.nvmrc`（22）与 `backend/.python-version`（3.12）为准——
+CI 用的就是这两个，本地用更低/更高的版本会出现"本机绿、CI 红"这类难查的偏差。）
 
 日常开发可一键启动：
 
@@ -153,7 +155,10 @@ Postgres 用 Docker 常驻即可，不必每次重建；每次写代码通常只
 
 ### 生产构建（Docker）
 
-后端镜像依赖已锁定（`requirements.txt` 为精确版本；`requirements-lock.txt` 为全量冻结参考）：
+后端镜像依赖已锁定：`backend/requirements.txt` 是**唯一的依赖真源**，20 个顶层依赖全部
+`==` 精确钉版，Dockerfile 与 CI 装的都是它。（曾经还有一个 `requirements-lock.txt` 全量冻结，
+但无人消费也无人验证，最后与现实矛盾——还留着已换掉的 passlib / python-jose、缺了替换后的
+PyJWT，故已删除；理由与"要重新引入该怎么做"写在 `requirements.txt` 的文件头。）
 
 ```bash
 # 后端镜像
@@ -358,10 +363,23 @@ pytest tests/ -q
 
 > API/DB 集成测试（`tests/test_api_*.py`）需要测试库 `vnss_test`：连接串来自
 > `DATABASE_URL_TEST`（默认 `postgresql+asyncpg://vnss:vnss@localhost:54102/vnss_test`）。
-> 连不上时这些用例自动跳过，所以本地不配库也能跑（本机实测 350 passed / 76 skipped）；
-> CI 的 `integration.yml` 自带 Postgres service，会真跑这一层（≈450 用例）。
-> 想在**服务器上**用容器里的 Python 跑全量（比本地隧道稳且快）：
-> `python deploy/run_db_tests.py`（见 `deploy/`，不入库；需要线上有独立测试库）。
+>
+> **`docker compose up -d` 会把 `vnss_test` 与 `vnss_e2e` 一并建好**
+> （`ops/postgres/init-test-dbs.sh`，只在数据卷为空时执行一次；已有旧卷的人看该脚本里
+> 的两行 `createdb`）。
+>
+> 本地一键跑这一层（建库 + 跑全部用例）：
+>
+> ```bash
+> cd backend
+> python scripts/run_db_tests.py          # 需要 docker compose 的库已起
+> python scripts/run_db_tests.py -k test_api_   # 参数透传给 pytest
+> ```
+>
+> 连不上库时这一层会**跳过**（约 144 项）而不是失败——所以"全绿"不等于"跑过了"。
+> 想知道这一层到底有没有跑，用上面的脚本：连不上它会直接以退出码 2 报错，
+> 不会退化成"跑了一遍全 skip 的绿"。
+> CI 的 `integration.yml` 自带 Postgres service，会真跑这一层。
 > 前端：`cd frontend && npm test`（vitest，纯函数单测）。
 > 前端 e2e：`cd frontend && npm run build && npm run test:e2e`（需本地 PG 可达，见 playwright.config.ts）。
 
@@ -376,12 +394,17 @@ pytest tests/ -q
 
 | 工作流 | 触发 | 需要什么 |
 |---|---|---|
-| `integration.yml` | **自动（backend/** 变化）+ 可手动** | Postgres service（工作流自己起）+ 真库跑 `tests/`；第一步显式确认测试库可达，避免用例静默 skip |
-| `e2e.yml` | 手动 | Postgres + 后端 + 前端构建 + Playwright 浏览器（注册走 `AUTH_AUTO_VERIFY=true` 免发信） |
+| `integration.yml` | **自动（backend/** 变化）+ 可手动** | Postgres service（工作流自己起）+ 真库跑 `tests/`；第一步显式确认测试库可达，避免用例静默 skip；并在**全新空库**上跑一遍 `alembic upgrade head` |
+| `e2e.yml` | **自动（frontend/** 变化）+ 可手动** | Postgres + 后端 + 前端构建 + Playwright 浏览器（注册走 `AUTH_AUTO_VERIFY=true` 免发信） |
 
-> 2026-09 调整：`integration.yml` 从"仅手动"改为**后端改动时自动跑**。原因是本层用例才抓得住
-> 真实缺陷（jsonb 键序导致的指纹漂移、注册/重发邮件的静默失败、并发与行锁语义），而"手动"
-> 等于没人跑。它自带 Postgres service、不依赖任何密钥或外部服务，且容器内实测全量约 2.5 分钟。
+> 2026-09 调整（两条）：
+> ① `integration.yml` 从"仅手动"改为**后端改动时自动跑**——本层用例才抓得住真实缺陷
+> （jsonb 键序导致的指纹漂移、注册/重发邮件的静默失败、并发与行锁语义），而"手动"等于没人跑；
+> 它自带 Postgres service、不依赖任何密钥，容器内实测全量约 2.5 分钟。
+> ② `e2e.yml` 从"仅手动"改回**前端改动时自动跑**——此前它总在环境上失败的真因是注册链路
+> 缺 `AUTH_AUTO_VERIFY=true`（而不是这个工作流不可靠），那个开关现在已配好。
+> 代价是曾经有很长一段时间**没有任何自动化在跑"注册 → 写作 → 生成 RPY → 导出"**这条
+> 唯一验证导出产物的旅程，而导出恰是最容易"能下载、跑不起来"的地方。
 
 **加新检查时的原则**：先在本机把它跑绿，再放进自动 CI；凡是要密钥、要外部服务、要真数据的，
 放进独立工作流，并在文件头注明需要什么环境。
