@@ -132,10 +132,105 @@ describe("inferAgentIntent：自然语言改稿与 mode", () => {
     expect(inferAgentIntent("选个方向改这一章").kind).toBe("revise_pick");
   });
 
-  it("长文本含改稿词（>500 字符）→ chapter_revise", () => {
+  it("长文里明确说了「帮我改稿」→ 仍然是改稿（判据是说的内容，不是长度）", () => {
     const long = "请帮我改稿。" + "这是一段很长的话。".repeat(60);
     expect(long.length).toBeGreaterThan(500);
     expect(inferAgentIntent(long).kind).toBe("chapter_revise");
+  });
+
+  it("长文只是**聊到**改 → chat（旧版 >500 字带个改字就切改稿）", () => {
+    const long =
+      "这是编辑给我的反馈，我贴上来你看看。" +
+      "他说按这个方向改会更好，但我想先听听你的判断。".repeat(40);
+    expect(long.length).toBeGreaterThan(500);
+    expect(inferAgentIntent(long).kind).toBe("chat");
+  });
+});
+
+describe("inferAgentIntent：改稿模式必须由作者明确要求", () => {
+  it("说出动作 + 对象才进改稿", () => {
+    for (const t of [
+      "帮我改这一章",
+      "帮我改一下这一章",
+      "改写第一章",
+      "把这章的正文重写一遍",
+      "帮我润色这一章",
+      "据此修改第一章",
+      "麻烦按这份意见改一下第三章",
+    ]) {
+      expect(inferAgentIntent(t).kind).toBe("chapter_revise");
+    }
+  });
+
+  it("不带对象也成立的显式指令（改稿 / 回炉）→ chapter_revise", () => {
+    expect(inferAgentIntent("改稿").kind).toBe("chapter_revise");
+    expect(inferAgentIntent("帮我改稿").kind).toBe("chapter_revise");
+    expect(inferAgentIntent("这章回炉吧").kind).toBe("chapter_revise");
+  });
+
+  it("只是**聊到**这一章 → chat（不再自己切进改稿模式）", () => {
+    for (const t of [
+      "这一章有什么问题？",
+      "帮我看看这一章的分析",
+      "这一章的节奏我感觉有点慢",
+      "第三章的节奏有点慢",
+      "这一章写得怎么样",
+      "今天天气怎么样",
+    ]) {
+      expect(inferAgentIntent(t).kind).toBe("chat");
+    }
+  });
+
+  it("征询口气（怎么改 / 要不要改）→ chat，不是让谁动手", () => {
+    for (const t of [
+      "这一章怎么改？",
+      "这一章如何改写",
+      "这一章要不要改写",
+      "该不该重写这一章",
+      "这一章要不要按你的建议改写？",
+    ]) {
+      expect(inferAgentIntent(t).kind).toBe("chat");
+    }
+  });
+
+  it("明确不要动手 → 不切改稿", () => {
+    for (const t of [
+      "这一章先别改",
+      "不要重写这一章",
+      "这一章不用改",
+      "先别改这一章，只给意见",
+    ]) {
+      expect(inferAgentIntent(t).kind).not.toBe("chapter_revise");
+    }
+    // "只给意见" 走审稿意见路径，不生成改稿预览
+    expect(inferAgentIntent("先别改这一章，只给意见").kind).toBe("critique_only");
+  });
+
+  it("带附件只是聊到改稿 → chat（旧版带附件提到改写就切改稿）", () => {
+    expect(inferAgentIntent("这是编辑给的改稿意见，你先看看", 1).kind).toBe("chat");
+    expect(inferAgentIntent("这段改写自朋友的小说，你帮我看看", 1).kind).toBe("chat");
+  });
+
+  it("说了动作、同时限制范围（不要改对白）→ 仍然是改稿", () => {
+    expect(inferAgentIntent("帮我改这一章，不要改对白").kind).toBe("chapter_revise");
+  });
+
+  it("没有改稿动作的模糊说法 → chat；说出「润」才是润色", () => {
+    expect(inferAgentIntent("再软一点").kind).toBe("chat");
+    expect(inferAgentIntent("再轻一点").kind).toBe("chat");
+    expect(inferAgentIntent("再润一版。").kind).toBe("chapter_polish");
+  });
+
+  it("「不要改写第三章」不会被当成锁定角色", () => {
+    const r = inferAgentIntent("不要改写第三章");
+    expect(r.kind).not.toBe("chapter_lock_name");
+    expect(r.kind).not.toBe("chapter_revise");
+  });
+
+  it("「别动这个想法」这类指代不是角色名，不写进锁定偏好", () => {
+    for (const t of ["别动这个想法，我还没想好", "不要改我的思路", "先别动这些"]) {
+      expect(inferAgentIntent(t).kind).not.toBe("chapter_lock_name");
+    }
   });
 });
 
@@ -179,5 +274,52 @@ describe("inferAgentIntent：设定 / 事实 / 评审 / 附件", () => {
   it("无法识别 → chat 且无 note", () => {
     const r = inferAgentIntent("今天天气怎么样");
     expect(r).toEqual({ kind: "chat" });
+  });
+});
+
+describe("inferAgentIntent：提到名词 ≠ 下命令（写入设定 / 事实扫描 / 自动写作）", () => {
+  // 原样复现作者踩到的坑：带附件问"跟人物设定对得上吗、有没有矛盾"，
+  // 旧版因为句子里有"设定"两个字直接切进"写入设定页"——那是个真改工程的流程。
+  const ATTACHED_REVIEW_ASK =
+    "可以怎么续写？能不能提供一些方向？也请你先检查下前面这部分跟人物设定是否对的上、前后有没有矛盾、是否符合视觉小说的特点等等";
+
+  it("带附件问「跟人物设定对得上吗 / 有没有矛盾」→ chat，不进设定页", () => {
+    expect(inferAgentIntent(ATTACHED_REVIEW_ASK, 1)).toEqual({ kind: "chat" });
+  });
+
+  it("带附件提到设定对象但**没有写入动作** → chat", () => {
+    for (const t of [
+      "根据附件看看这段跟人物设定对不对",
+      "附件里的世界观跟正文冲突吗",
+      "帮我看看角色卡写的对不对",
+      "这些设定怎么整理进库里？",
+      "先别写进设定，先看看有没有矛盾",
+    ]) {
+      expect(inferAgentIntent(t, 1).kind).toBe("chat");
+    }
+  });
+
+  it("说出写入动作才算入库 → settings_ingest", () => {
+    for (const t of [
+      "按附件整理设定条目",
+      "根据附件更新设定",
+      "把附件里的资料录入设定库",
+      "帮我整理角色卡写进圣经",
+    ]) {
+      expect(inferAgentIntent(t, 1).kind).toBe("settings_ingest");
+    }
+  });
+
+  it("只是聊到人物关系 → chat；说出扫描动作才扫", () => {
+    expect(inferAgentIntent("这一章的人物关系有点乱，帮我看看").kind).toBe("chat");
+    expect(inferAgentIntent("人物关系要怎么整理？").kind).toBe("chat");
+    expect(inferAgentIntent("整理人物关系").kind).toBe("facts_scan");
+    expect(inferAgentIntent("扫描一下时间线").kind).toBe("facts_scan");
+    expect(inferAgentIntent("根据附件整理人物关系", 1).kind).toBe("facts_scan");
+  });
+
+  it("只是讨论写作计划 → chat；说「规划并生成」才是自动写作", () => {
+    expect(inferAgentIntent("请看看我的写作计划怎么写").kind).toBe("chat");
+    expect(inferAgentIntent("请帮我规划并生成第一章").kind).toBe("pipeline");
   });
 });

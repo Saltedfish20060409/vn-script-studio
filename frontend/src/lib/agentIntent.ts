@@ -34,16 +34,116 @@ function hasAttach(n: number): boolean {
   return n > 0;
 }
 
-/** True when user wants written revision, not just opinions. */
-function wantsRewrite(text: string): boolean {
-  return /(回炉|整章|重写|改写|改一版|改一章|改稿|据此.*改|按.*改|帮我改|进行修改|直接改|写入正文|落到工程)/.test(
-    text
-  );
+/**
+ * 改稿模式的**唯一开关**：作者自己把"改这一章 / 这份稿"这个动作说出来。
+ *
+ * 为什么收成白名单（作者反馈："我没提到改稿，Agent 却自己切进了改稿模式"）：
+ * 旧版除了显式说法，还挂着三条启发式——① 正文超过 500 字且句中带"改"字；
+ * ② 带附件且话里出现"改写/重写"；③「这一章 …… 修改」这类跨词搭配。
+ * 于是作者只是**聊到**改稿、贴一段分析、或者问一句"这一章怎么改"，
+ * 都会被判成"要动手改稿"，直接进改稿流程并生成改稿预览——而他并没有让谁动手。
+ *
+ * 现在的口径：动作词与对象词必须同时出现（或说出"改稿/回炉"这类不带对象也成立的指令）；
+ * 否定（先别改 / 不要改）与征询（怎么改 / 要不要改）一律留在普通对话。
+ */
+const REVISE_ACTION =
+  "帮我改|给我改|替我改|帮忙改|帮改|请改|改一下|改一版|改一遍|改改|改写|重写|回炉|润色|润一版|修订|修改|改稿";
+
+/** 改稿对象：哪一章 / 哪份稿。没有对象的模糊说法（"帮我改一下"）不算改稿。 */
+const REVISE_TARGET =
+  "这一?章|当前章|本章|这章|整章|全章|第[〇一二三四五六七八九十百零0-9]+章|正文|本文|剧本|本稿|这稿|这一稿|文稿|这一段|这一?节|本场|这一场";
+
+/** 动作与对象之间允许的间隔：同一句内、不隔太远（"帮我改，这一章"也算）。 */
+const SENTENCE_GAP = "[^。！？!?\\n]{0,12}";
+
+const REVISE_ASK_RE = new RegExp(
+  `(?:${REVISE_ACTION})${SENTENCE_GAP}(?:${REVISE_TARGET})|(?:${REVISE_TARGET})${SENTENCE_GAP}(?:${REVISE_ACTION})`
+);
+
+/** 不带对象也成立的显式改稿指令（默认就是"当前这一章"）。
+ *  `改稿` 后面跟"意见/建议/方向…"时是**名词**（在聊改稿这件事），不是在托付任务。 */
+const REVISE_STANDALONE_RE =
+  /(回炉|整章\s*(重写|改写|回炉)|全章\s*(重写|改写|回炉)|(重写|改写)\s*(一版|一遍|这一?章|当前章)|改稿(?!意见|建议|方向|方案|记录|日志|历史|清单))/;
+
+/**
+ * 写入设定页的唯一开关：**写入动作 + 设定对象同时出现**。
+ *
+ * 为什么（作者反馈：带着附件问"这段跟人物设定对得上吗、前后有没有矛盾"，
+ * 结果被送进设定页写入流程）：旧版只要带附件、句子里出现"设定"两个字就切入库，
+ * 于是"人物设定"这四个字成了开关——那是个**先写库、再回答**的流程，
+ * 方向反了，而且会真的改动工程。现在只提到设定（人物设定 / 世界观 / 大纲…）
+ * 一律留在普通对话，让责编先读先答；真要入库，得自己说出动作。
+ */
+const SETTINGS_ACTION =
+  "整理|归档|录入|写入|写进|写成|存进|存入|填进|填到|更新|补充|导入|收进|放进|加进|合并|拆成|提取|抽出|沉淀";
+
+/** 设定页里的东西。 */
+const SETTINGS_NOUN =
+  "设定|圣经|bible|世界观|大纲|角色卡|人设|设定条目|设定库|资料库|备忘";
+
+const SETTINGS_INGEST_RE = new RegExp(
+  `(?:${SETTINGS_ACTION})${SENTENCE_GAP}(?:${SETTINGS_NOUN})|(?:${SETTINGS_NOUN})${SENTENCE_GAP}(?:${SETTINGS_ACTION})`
+);
+
+/** 事实扫描（关系 / 时间线）的对象与动作：光提到"人物关系"不算要扫。 */
+const FACTS_NOUN = "关系图|人物关系|角色关系|关系|时间线|事实|伏笔";
+const FACTS_ACTION =
+  "扫|扫描|扫一扫|整理|梳理|提取|抽取|更新|补全|重建|录入|归档|核对|排查|登记";
+
+const FACTS_SCAN_RE = new RegExp(
+  `(?:${FACTS_ACTION})${SENTENCE_GAP}(?:${FACTS_NOUN})|(?:${FACTS_NOUN})${SENTENCE_GAP}(?:${FACTS_ACTION})`
+);
+
+/** 第一人称 / 敬语的明确托付。有它，句里的"不要改对白"是一条范围限制，
+ *  而不是"别动手"。 */
+const ENTRUST_RE = /(帮我|给我|替我|帮忙|请你|请帮|麻烦)/;
+
+/** 征询口气：怎么改 / 要怎么整理 / 能不能扫描——那是在问办法，不是让谁动手。
+ *  允许中间隔几个字："人物关系要怎么整理" 也是问句。 */
+const ASK_HOW_RE =
+  /(怎么|如何|怎样|为什么|要不要|该不该|可不可以|能不能|有没有必要)[^。！？!?\n]{0,10}(改|修|润|重写|改写|回炉|动|整理|梳理|扫描|录入|更新|补充|提取|生成|写)/;
+
+/** 明确不要动手：只给意见、先别改、不要写入。 */
+const REVISE_NEGATED_RE =
+  /(只要意见|只给意见|先别改|先不要改|不要改|别改|不用改|不需要改|不要重写|别重写|不要动|别动|不要写入|先别动)/;
+
+/** 明确不要入库 / 不要扫描。 */
+const WRITE_NEGATED_RE =
+  /(只要意见|只给意见|先别写|不要写|别写|不要写入|不用写|先别入库|先别扫|不要扫|别扫|不用扫|不要动|别动|先别动)/;
+
+/** 作者是否**明确**要求改稿——`chapter_revise` 的唯一入口。 */
+function explicitReviseAsk(text: string): boolean {
+  const explicit = REVISE_STANDALONE_RE.test(text) || REVISE_ASK_RE.test(text);
+  if (!explicit) return false;
+  // 说了"帮我改"同时在限制范围（"帮我改这一章，不要改对白"）仍是明确要求，
+  // 所以否定/征询只在**没有**托付口气时才把整句打回普通对话。
+  if (ENTRUST_RE.test(text)) return true;
+  if (REVISE_NEGATED_RE.test(text)) return false;
+  if (ASK_HOW_RE.test(text)) return false;
+  return true;
+}
+
+/** 作者是否**明确**要求把附件写进设定页——`settings_ingest` 的唯一入口。 */
+function settingsIngestAsk(text: string): boolean {
+  if (!SETTINGS_INGEST_RE.test(text)) return false;
+  // 问办法（"这些设定怎么整理进库里"）与"先别写"一律不上手。
+  if (ASK_HOW_RE.test(text)) return false;
+  if (WRITE_NEGATED_RE.test(text)) return false;
+  return true;
+}
+
+/** 作者是否**明确**要求扫关系 / 时间线——`facts_scan` 的唯一入口。
+ *  该流程会真的跑一遍扫描并改工程（候选进待审列表），所以同样只认说出口的动作。 */
+function factsScanAsk(text: string): boolean {
+  if (!FACTS_SCAN_RE.test(text)) return false;
+  if (ASK_HOW_RE.test(text)) return false;
+  if (WRITE_NEGATED_RE.test(text)) return false;
+  return true;
 }
 
 /** True when user explicitly wants discussion only. */
 function wantsCritiqueOnly(text: string): boolean {
-  if (wantsRewrite(text)) return false;
+  if (explicitReviseAsk(text)) return false;
   return /(只要意见|先别改|先不要改|不要写入|你觉得对吗|这个分析对吗|点评一下|审稿意见|修改意见(?!.*改))/u.test(
     text
   );
@@ -57,11 +157,14 @@ export function inferAgentIntent(text: string, attachmentCount = 0): AgentIntent
   const trimmed = (text || "").trim();
   const t = trimmed || (hasAttach(attachmentCount) ? "请阅读附件并协助整理" : "");
 
+  // 自动写作 / 流水线：只认**显式指令**——"跑流水线""自动写作：…""{规划|计划}并生成…"。
+  // 旧版还挂着 "请.*规划.*写" 这种松散搭配：作者把写作计划拿出来讨论
+  // （"请看看我的计划怎么写"）也会被切进整场自动写作（真的烧好几轮模型）。
   if (
     /^(跑|运行)?\s*(完整)?(流水线|自动写作)/.test(t) ||
     t.startsWith("【流水线】") ||
     t.startsWith("【自动写作】") ||
-    /请.*(规划|计划).*(写|生成|续写)/.test(t)
+    (!ASK_HOW_RE.test(t) && /(规划|计划)[^。！？!?\n]{0,8}(生成|写|续写)/.test(t))
   ) {
     const note = t
       .replace(/^【流水线】/, "")
@@ -88,10 +191,13 @@ export function inferAgentIntent(text: string, attachmentCount = 0): AgentIntent
     return { kind: "list_mentors" };
   }
 
-  // Short editorial commands (after a revise preview, or as prefs)
+  // 改稿后的追加指令：**必须自己说出"润"**（"再润一版""轻润一下"）。
+  // 「再软一点 / 再轻一点」这类没有改稿动作的说法不再算数——话里看不出要动手，
+  // 作者却会看到又生成了改稿预览，和"我没提改稿它自己切进去"是同一类问题。
   if (
-    /^(再润|再润一版|再软一点|再轻一点)([。！!？?\s]|$)/.test(t) ||
-    /^轻润一下/.test(t)
+    /^(再润一版|再润一次|再润一下|再润润|轻润一下|润色一下)([。！!？?\s，,、：:]|$)/.test(
+      t
+    )
   ) {
     return { kind: "chapter_polish", note: t, mode: "light_touch" };
   }
@@ -104,7 +210,20 @@ export function inferAgentIntent(text: string, attachmentCount = 0): AgentIntent
     );
     if (lock) {
       const name = (lock[1] || lock[2] || lock[3] || "").trim();
-      if (name && !/结构|原文|改稿|这一章|当前章/.test(name)) {
+      // 改稿动作词开头的不算角色名："不要改写第三章" 里的 `写第三章` 会被 `不要改`
+      // 吃掉一截，当成锁定角色是误判（它本来就该留在普通对话，或走明确改稿）。
+      // 指代词开头的也不算（"别动这个想法" 是在叫停，不是锁定某个角色）——那是条
+      // 会被写进偏好的指令，误判会把"这个想法"降成下一轮改稿的禁区。
+      // 明确要求改稿时也不在这里提前返回："帮我改这一章，不要改对白" 是**一句改稿要求**
+      // 加一条范围限制，该进改稿流程（限制留在 note 里交给模型），而不是只记偏好就结束。
+      if (
+        name &&
+        !/结构|原文|改稿|这一章|当前章/.test(name) &&
+        !/^(写|改|重|润|修|动|这个|那个|这些|那些|这|那|此|我|你|他|她|它)/.test(
+          name
+        ) &&
+        !explicitReviseAsk(t)
+      ) {
         return { kind: "chapter_lock_name", lockName: name, note: t };
       }
     }
@@ -123,27 +242,16 @@ export function inferAgentIntent(text: string, attachmentCount = 0): AgentIntent
   else if (/轻润|不改结构|少改/.test(t)) mode = "light_touch";
   else if (/人味|更有温度|毛边/.test(t)) mode = "human_warmth";
 
-  // Chapter revise — broad NL, including "据此修改第一章" style asks
-  if (
-    /回炉|整章\s*(改写|重写)|章节回炉/.test(t) ||
-    /(重写|改写|修改|回炉).{0,12}(第.|当前)?章/.test(t) ||
-    /(第.|当前|这一)章.{0,16}(重写|改写|修改|回炉|人味)/.test(t) ||
-    /改(这一章|当前章|第.章)/.test(t) ||
-    /帮我改.{0,10}章/.test(t) ||
-    (hasAttach(attachmentCount) &&
-      /(改写|回炉|重写|改一版|改稿|人味|审稿后)/.test(t)) ||
-    (t.length > 500 && wantsRewrite(t))
-  ) {
+  // Chapter revise —— 只认作者**明确说出口**的改稿要求（见 explicitReviseAsk 的口径）。
+  // 以前这里挂着"长文本带改字""带附件提到改写""这一章…修改"三条启发式，
+  // 作者只是在聊稿子就被切进改稿流程；现在没说出动作就一律留在普通对话。
+  if (explicitReviseAsk(t)) {
     return { kind: "chapter_revise", note: t, mode };
   }
 
-  // Settings ingest — especially with attachments
-  if (
-    hasAttach(attachmentCount) &&
-    /(设定|圣经|bible|世界观|大纲|角色卡|人设|背景|主题|备忘|写入设定|更新设定|整理进设定|填进设定)/.test(
-      t
-    )
-  ) {
+  // Settings ingest —— 真要把资料**写进**设定页：写入动作 + 设定对象同时出现（见 settingsIngestAsk）。
+  // 只提到"人物设定 / 世界观 / 大纲"不算——那多半是想让责编读一遍、对照着回答。
+  if (hasAttach(attachmentCount) && settingsIngestAsk(t)) {
     return { kind: "settings_ingest", note: t };
   }
   if (
@@ -154,29 +262,31 @@ export function inferAgentIntent(text: string, attachmentCount = 0): AgentIntent
     return { kind: "chat", note: t };
   }
 
-  // Fact / relationship / timeline scan
-  if (
-    /(关系图|人物关系|角色关系|时间线|扫(一扫)?事实|scan_facts|整理关系|整理时间线)/.test(
-      t
-    )
-  ) {
+  // Fact / relationship / timeline scan —— 同样要求"扫描动作 + 事实对象"（见 factsScanAsk）。
+  // 该流程会真跑一遍扫描并改动工程（候选进待审列表），只是聊到"人物关系"不该触发。
+  if (/scan_facts/.test(t) || factsScanAsk(t)) {
     return { kind: "facts_scan", note: t };
   }
 
   if (
     wantsCritiqueOnly(t) ||
-    (t.length > 800 && !wantsRewrite(t) && /对吗|意见|分析/.test(t))
+    (t.length > 800 && !explicitReviseAsk(t) && /对吗|意见|分析/.test(t))
   ) {
     return { kind: "critique_only", note: t };
   }
 
-  // Attachment with vague "整理/根据附件" — prefer settings if looks like lore, else chat
+  // 附件 + 模糊的"整理一下"：**写入动作本身**要出现（不再认"根据附件"这四个字，
+  // 那是"我附了份资料"的说明，不是"请写进库"的吩咐）。提到关系 / 时间线走事实扫描，
+  // 提到设定对象才入库。
   if (
     hasAttach(attachmentCount) &&
-    /(根据附件|整理进|写入|更新工程|帮我整理)/.test(t)
+    !ASK_HOW_RE.test(t) &&
+    !WRITE_NEGATED_RE.test(t) &&
+    /(整理进|写入|写进|录入|归档|存进|更新工程|帮我整理)/.test(t)
   ) {
     if (/(关系|时间线)/.test(t)) return { kind: "facts_scan", note: t };
-    if (/(设定|角色|世界观|大纲)/.test(t)) return { kind: "settings_ingest", note: t };
+    if (/(设定|角色|世界观|大纲|人设|圣经)/.test(t))
+      return { kind: "settings_ingest", note: t };
   }
 
   return { kind: "chat" };
