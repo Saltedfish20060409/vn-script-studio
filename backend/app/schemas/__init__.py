@@ -132,6 +132,18 @@ class AgentRunIn(BaseModel):
     exclude_sections: Optional[List[str]] = None
 
 
+class AgentApplyActionsIn(BaseModel):
+    """确认写入：把上一轮"方案"里的 actions 落到工程。
+
+    与 `AgentRunIn.apply_actions` 的分工：那条路是模型给动作就立刻写；这条路是
+    「先给方案 → 作者点确认 → 才写」，`actions` 原样来自方案阶段的响应。
+    """
+
+    actions: List[Dict[str, Any]]
+    chapter_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+
+
 class AgentRunOut(BaseModel):
     message: str
     actions: List[Dict[str, Any]]

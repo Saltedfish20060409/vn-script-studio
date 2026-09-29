@@ -46,6 +46,7 @@ from app.db import get_db
 from app.domain.types import AgentRequest, AiRequest, VnProject
 from app.models import AgentSession, Project, Share, User
 from app.schemas import (
+    AgentApplyActionsIn,
     AgentConversationCreateIn,
     AgentConversationOut,
     AgentConversationPutIn,
@@ -2615,6 +2616,86 @@ async def _build_agent_request(
     return req, last_user
 
 
+async def _apply_action_list(
+    db: AsyncSession,
+    project_id: str,
+    vn: VnProject,
+    actions: list,
+    *,
+    chapter_id: Optional[str],
+    last_user: str = "",
+    attachments: Optional[list] = None,
+    sess: Any = None,
+) -> tuple[VnProject, list[str], list[str], int]:
+    """把 actions 落到工程上，返回（新工程、已落地、跳过与警告、待审候选数）。
+
+    为什么从 `_finalize_agent_run` 里拆出来（2026-xx「先给方案、确认后才写」）：
+    方案阶段用 `apply_actions=false` 只拿 actions、不写；作者点确认后走
+    `/agent/apply-actions`。两处必须是**同一条**写入路径——否则闸门只是把
+    "不写"做了一遍，确认那一下会走另一条谁都没测过的分支。
+    """
+    from app.core.fact_extract import (
+        build_scan_candidates,
+        filter_new_candidates,
+    )
+    from app.services import analysis_inbox as inbox_svc
+
+    if sess is not None:
+        undo = list(sess.undo_stack or [])
+        undo.append(project_to_dict(vn))
+        sess.undo_stack = undo[-30:]
+
+    apply_result = apply_agent_actions(vn, actions, defaultChapterId=chapter_id)
+    new_vn = apply_result.project
+    warnings = list(apply_result.skipped or [])
+    inbox_added = 0
+
+    proposals = inbox_svc.proposals_from_agent(apply_result.inbox_proposals or [])
+    if proposals:
+        created = await inbox_svc.insert_candidates(db, project_id, proposals)
+        inbox_added += len(created)
+
+    if apply_result.scan_request:
+        req = apply_result.scan_request
+        paste_parts: list[str] = []
+        if req.get("includePaste") and last_user:
+            paste_parts.append(last_user)
+        if attachments:
+            from app.core.file_text import format_attachment_block
+
+            att = format_attachment_block(list(attachments))
+            if att:
+                paste_parts.append(att)
+        paste = "\n\n".join(paste_parts) if paste_parts else None
+        chapter_ref = req.get("chapterRef")
+        force = None
+        if chapter_ref:
+            ch = next(
+                (
+                    c
+                    for c in new_vn.chapters
+                    if c.id == chapter_ref or c.title == chapter_ref
+                ),
+                None,
+            )
+            force = [ch.id] if ch else None
+        cands, _delta, fresh_meta = build_scan_candidates(
+            new_vn,
+            force_chapter_ids=force,
+            paste_text=paste,
+            full=False,
+        )
+        pending_keys = await inbox_svc.blocked_dedupe_keys(db, project_id)
+        fresh = filter_new_candidates(new_vn, cands, pending_keys)
+        created = await inbox_svc.insert_candidates(db, project_id, fresh)
+        inbox_added += len(created)
+        new_vn = new_vn.model_copy(update={"analysisMeta": fresh_meta})
+        if created:
+            warnings.append(f"事实扫描新增 {len(created)} 条待审候选")
+
+    return new_vn, list(apply_result.applied or []), warnings, inbox_added
+
+
 async def _finalize_agent_run(
     db: AsyncSession,
     project_id: str,
@@ -2643,62 +2724,16 @@ async def _finalize_agent_run(
     out_project = None
     inbox_added = 0
     if body.apply_actions and actions:
-        from app.core.fact_extract import (
-            build_scan_candidates,
-            filter_new_candidates,
+        new_vn, _applied, warnings, inbox_added = await _apply_action_list(
+            db,
+            project_id,
+            vn,
+            actions,
+            chapter_id=body.chapter_id,
+            last_user=last_user,
+            attachments=body.attachments,
+            sess=sess,
         )
-        from app.services import analysis_inbox as inbox_svc
-
-        undo = list(sess.undo_stack or [])
-        undo.append(project_to_dict(vn))
-        sess.undo_stack = undo[-30:]
-        apply_result = apply_agent_actions(vn, actions, defaultChapterId=body.chapter_id)
-        new_vn = apply_result.project
-        warnings = list(apply_result.skipped or [])
-
-        proposals = inbox_svc.proposals_from_agent(apply_result.inbox_proposals or [])
-        if proposals:
-            created = await inbox_svc.insert_candidates(db, project_id, proposals)
-            inbox_added += len(created)
-
-        if apply_result.scan_request:
-            req = apply_result.scan_request
-            paste_parts: list[str] = []
-            if req.get("includePaste") and last_user:
-                paste_parts.append(last_user)
-            if body.attachments:
-                from app.core.file_text import format_attachment_block
-
-                att = format_attachment_block(list(body.attachments))
-                if att:
-                    paste_parts.append(att)
-            paste = "\n\n".join(paste_parts) if paste_parts else None
-            chapter_ref = req.get("chapterRef")
-            force = None
-            if chapter_ref:
-                ch = next(
-                    (
-                        c
-                        for c in new_vn.chapters
-                        if c.id == chapter_ref or c.title == chapter_ref
-                    ),
-                    None,
-                )
-                force = [ch.id] if ch else None
-            cands, _delta, fresh_meta = build_scan_candidates(
-                new_vn,
-                force_chapter_ids=force,
-                paste_text=paste,
-                full=False,
-            )
-            pending_keys = await inbox_svc.blocked_dedupe_keys(db, project_id)
-            fresh = filter_new_candidates(new_vn, cands, pending_keys)
-            created = await inbox_svc.insert_candidates(db, project_id, fresh)
-            inbox_added += len(created)
-            new_vn = new_vn.model_copy(update={"analysisMeta": fresh_meta})
-            if created:
-                warnings.append(f"事实扫描新增 {len(created)} 条待审候选")
-
         await sync_chapter_rows_from_vn(db, row, new_vn)
         applied = True
         out_project = None  # set after commit
@@ -2778,6 +2813,63 @@ async def run_project_agent(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return await _finalize_agent_run(db, project_id, row, vn, body, result, last_user)
+
+
+@router.post("/{project_id}/agent/apply-actions", response_model=dict)
+async def agent_apply_actions(
+    project_id: str,
+    body: AgentApplyActionsIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """确认写入：把上一轮「方案」里的 actions 落到工程。
+
+    为什么单开一条路：聊天那条路以前是 `apply_actions=true`——模型一给动作就立刻写进工程，
+    作者只在事后看到「已写入工程」。现在默认走"先给方案"（`apply_actions=false` 只拿 actions），
+    作者点「确认写入」才调这里，两个阶段共用 `_apply_action_list` 同一条写入路径。
+    与 `/agent/chapter-revise/apply`（改稿先对照、确认后才写）是同一个思路。
+    """
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    actions = [a for a in (body.actions or []) if isinstance(a, dict)]
+    if not actions:
+        raise HTTPException(status_code=400, detail="没有待写入的动作（方案为空）")
+
+    sess = None
+    if body.conversation_id:
+        sess = await _get_session(db, project_id, body.conversation_id)
+
+    new_vn, applied, warnings, inbox_added = await _apply_action_list(
+        db,
+        project_id,
+        vn,
+        actions,
+        chapter_id=body.chapter_id,
+        sess=sess,
+    )
+    if not applied:
+        raise HTTPException(
+            status_code=400,
+            detail="；".join(warnings) or "写入失败：方案里的动作全部被跳过",
+        )
+
+    await sync_chapter_rows_from_vn(db, row, new_vn)
+    if sess is not None:
+        sess.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(row)
+
+    message = "已按方案写入工程。"
+    if inbox_added:
+        message += f"\n\n（另有 {inbox_added} 条事实候选进入「结构分析」待审列表，需你逐条确认。）"
+    return {
+        "message": message,
+        "applied": applied,
+        "skipped": warnings,
+        "project": project_to_dict(row_to_vn(row)),
+        "wrote": True,
+        "inbox_added": inbox_added,
+    }
 
 
 @router.post("/{project_id}/agent/pre-questions")

@@ -167,6 +167,97 @@ def test_agent_run_without_actions_is_readonly():
     _run(_scenario())
 
 
+def test_agent_propose_then_apply_actions_gate():
+    """「先给方案、确认后才写」：方案阶段一个字都不写，确认端点才落库。
+
+    这条闸门的意义：以前 /agent 默认 apply_actions=true，模型一给动作就写进工程，
+    作者只在事后看到「已写入工程」。现在是两段式——`apply_actions=false` 拿方案，
+    作者点确认后调 /agent/apply-actions。两段共用 `_apply_action_list`，
+    所以这里既要验"没写"，也要验"确认后写的是同一批动作"。
+    """
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "agent_gate")
+            pid = await _create_demo_project(client, headers)
+
+            async def fake_run_agent(
+                config, request, *, on_event=None, on_checkpoint=None, resume=None
+            ):
+                return AgentResponse(
+                    message="建议把霖夏的台词改得冷静一些。",
+                    actions=[UPDATE_VOICE_ACTION],
+                    model="test-model",
+                )
+
+            # ---- 方案阶段：拿到动作，但工程没动 ----
+            with patch(PATCH_TARGET, new=fake_run_agent):
+                r = await client.post(
+                    f"/api/v1/projects/{pid}/agent",
+                    json={"messages": MESSAGE, "apply_actions": False},
+                    headers=headers,
+                )
+            assert r.status_code == 200, r.text
+            plan = r.json()
+            assert plan["applied"] is False
+            assert plan["actions"] == [UPDATE_VOICE_ACTION]
+            conv_id = plan["conversation_id"]
+            assert conv_id
+
+            r = await client.get(f"/api/v1/projects/{pid}", headers=headers)
+            chars = {c["id"]: c for c in r.json()["characters"]}
+            assert chars["linxia"]["voice"] != "冷静克制，短句", "方案阶段不该改工程"
+
+            # ---- 确认写入 ----
+            r = await client.post(
+                f"/api/v1/projects/{pid}/agent/apply-actions",
+                json={
+                    "actions": plan["actions"],
+                    "chapter_id": None,
+                    "conversation_id": conv_id,
+                },
+                headers=headers,
+            )
+            assert r.status_code == 200, r.text
+            out = r.json()
+            assert out["wrote"] is True
+            assert any(a.startswith("更新角色") for a in out["applied"]), out["applied"]
+            assert {c["id"]: c for c in out["project"]["characters"]}["linxia"][
+                "voice"
+            ] == "冷静克制，短句"
+
+            # DB 真的落库
+            r = await client.get(f"/api/v1/projects/{pid}", headers=headers)
+            chars = {c["id"]: c for c in r.json()["characters"]}
+            assert chars["linxia"]["voice"] == "冷静克制，短句"
+
+            # 撤回栈里有这一步：确认写入同样可以「撤回编辑」
+            r = await client.get(
+                f"/api/v1/projects/{pid}/agent/conversations/{conv_id}", headers=headers
+            )
+            assert r.status_code == 200, r.text
+            assert len(r.json()["undo_stack"]) == 1
+
+    _run(_scenario())
+
+
+def test_agent_apply_actions_rejects_empty_plan():
+    """空方案必须报错而不是"成功写入 0 条"——静默成功会让闸门看起来生效了。"""
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            headers = await db_gate.register_headers(client, "agent_gate_empty")
+            pid = await _create_demo_project(client, headers)
+            r = await client.post(
+                f"/api/v1/projects/{pid}/agent/apply-actions",
+                json={"actions": []},
+                headers=headers,
+            )
+            assert r.status_code == 400, r.text
+            assert "方案为空" in r.json()["detail"]
+
+    _run(_scenario())
+
+
 def test_agent_stream_sse_events_and_final():
     async def _scenario():
         async with db_gate.make_client(APP) as client:
