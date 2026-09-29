@@ -203,7 +203,7 @@ export function AgentMessagesList({
               <span className={styles.emptySlash} />
               <span className={styles.emptyShard} />
             </div>
-            <p className={styles.emptyHint}>直接输入需求开始聊，例如：「帮我改这一章」「给这段挑毛病」「续写下一场」。AI 不会在你确认前改动正文；只想听意见就加一句「先别改，只给意见」。</p>
+            <p className={styles.emptyHint}>直接输入需求开始聊，例如：「帮我改这一章」「给这段挑毛病」「续写下一场」。会改工程的活儿都先出一张方案卡片，点确认才写；改稿另有左右对照。只想听意见就加一句「先别改，只给意见」。</p>
           </div>
         ) : null}
         {messages.map((m, i) => {

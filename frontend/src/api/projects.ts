@@ -1234,6 +1234,36 @@ export function chapterReviseApply(
   });
 }
 
+/**
+ * 确认写入：把上一轮「方案」里的 actions 落到工程。
+ *
+ * 为什么单开一条路：`/agent` 那条路是模型一给动作就立刻写进工程，作者只在事后看到
+ * 「已写入工程」。现在聊天默认走"先给方案"（`apply_actions: false` 只回动作不落库），
+ * 作者点确认才调这里；后端两段共用同一条写入路径（`_apply_action_list`）。
+ * 与 `chapterReviseApply`（改稿先对照、确认后才写）同一个思路。
+ */
+export function applyAgentActions(
+  projectId: string,
+  body: {
+    actions: AgentAction[];
+    chapter_id?: string;
+    conversation_id?: string;
+  }
+): Promise<{
+  message: string;
+  applied: string[];
+  skipped: string[];
+  project: VnProject;
+  wrote: boolean;
+  inbox_added?: number;
+}> {
+  return apiFetch(`/projects/${projectId}/agent/apply-actions`, {
+    method: "POST",
+    timeoutMs: TIMEOUTS.upload,
+    body: JSON.stringify(body),
+  });
+}
+
 export interface AgentRunOut {
   message: string;
   actions: AgentAction[];

@@ -1813,3 +1813,19 @@ html[data-panel-glass="ink"] .stageOverlay {
   background: transparent;
   color: var(--ink);
 }
+
+/* ---- 写入闸门的方案卡片：复用 preQ 的卡片与按钮，只补清单本身的排版 ---- */
+.planList {
+  margin: 0;
+  padding-left: 1.05rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.planNote {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}

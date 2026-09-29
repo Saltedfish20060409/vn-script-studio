@@ -49,16 +49,30 @@ const ACTION_LABEL: Record<string, string> = {
  * 仍然是"追加剧本 / 替换剧本"，与改动前逐字一致；只有真的按体裁传了 copy 的
  * 调用点才会在小说工程里显示"追加正文 / 替换正文"。
  */
-export function describeActions(
+/**
+ * 逐条动作的人话（一行一条）。
+ *
+ * 为什么要它：写入闸门要把"这次打算改什么"一条一条摆给作者看，而 `describeActions`
+ * 是拼成一句话的（"更新角色 等 3 项"）——拿它当清单，作者看不出到底动了哪几处。
+ * `describeActions` 现在是它的薄包装，两处口径不会分叉。
+ */
+export function describeActionList(
   actions: AgentAction[],
   copy: GenreCopy = copyFor("vn")
-): string {
-  if (actions.length === 0) return "";
-  const names = actions.map((a) => {
+): string[] {
+  return actions.map((a) => {
     if (a.op === "append_script") return copy.appendScript;
     if (a.op === "replace_script") return copy.replaceScript;
     return ACTION_LABEL[a.op] ?? a.op;
   });
+}
+
+export function describeActions(
+  actions: AgentAction[],
+  copy: GenreCopy = copyFor("vn")
+): string {
+  const names = describeActionList(actions, copy);
+  if (names.length === 0) return "";
   return names.length <= 2 ? names.join("；") : `${names[0]} 等 ${names.length} 项`;
 }
 

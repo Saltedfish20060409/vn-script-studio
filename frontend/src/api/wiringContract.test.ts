@@ -122,6 +122,25 @@ const WIRINGS: Wiring[] = [
       pattern: /await runAgentStream\(/,
     },
   },
+  {
+    // 写入闸门的**两半**：聊天只拿方案（apply_actions:false），确认那一半必须真的接上
+    // /agent/apply-actions。只做前一半就成了"永远不写"，只做后一半则等于没有闸——
+    // 这两种断法在类型上都看不出来，所以两半各钉一条。
+    name: "写入闸门：聊天阶段只拿方案、不落库",
+    backend: { file: "backend/app/api/v1/projects.py", needle: "apply_actions" },
+    frontend: {
+      files: ["frontend/src/components/AgentChat.tsx"],
+      pattern: /apply_actions:\s*false/,
+    },
+  },
+  {
+    name: "写入闸门：确认后才调 /agent/apply-actions",
+    backend: { file: "backend/app/api/v1/projects.py", needle: "/agent/apply-actions" },
+    frontend: {
+      files: ["frontend/src/components/AgentChat.tsx"],
+      pattern: /await applyAgentActions\(/,
+    },
+  },
 ];
 
 describe("接线守卫：后端有的开关，前端必须真的接上", () => {

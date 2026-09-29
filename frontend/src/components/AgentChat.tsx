@@ -28,6 +28,7 @@ import {
   runAgentStream,
   uploadAgentAttachment,
   ingestAttachmentSettings,
+  applyAgentActions,
   chapterRevise,
   chapterReviseApply,
   factsScan,
@@ -39,6 +40,13 @@ import {
   type PipelineRunResult,
 } from "../api/client";
 import { inferAgentIntent } from "../lib/agentIntent";
+import {
+  planForFactsScan,
+  planForFinalize,
+  planForLedgerDigest,
+  planForPipeline,
+  planForSettingsIngest,
+} from "../lib/agentPlan";
 import {
   compactRunInfo,
   readRunInfoOpen,
@@ -67,6 +75,7 @@ import {
 import { blocksToEditable } from "../lib/scriptCodec";
 import { buildWriterCards, DEFAULT_WRITER } from "../lib/agentWriterCards";
 import type {
+  AgentAction,
   AgentChatMessage,
   AgentTaskKind,
   AgentTraceEvent,
@@ -77,6 +86,7 @@ import { AgentComposerBox } from "./AgentComposerBox";
 import { AgentConversationRail } from "./AgentConversationRail";
 import { AgentHelpOverlay } from "./AgentHelpOverlay";
 import {
+  describeActionList,
   describeActions,
   defaultWelcome,
   formatLintBlock,
@@ -119,6 +129,49 @@ type Props = {
   /** Hidden when float is minimized — keep mounted so state survives */
   hidden?: boolean;
 };
+
+/**
+ * 待确认的写入方案（"先给方案、确认后才写"那道闸）。
+ *
+ * 为什么要有它：除了改稿（早就是"先出对照、确认才写"），其余会动工程的流程以前都是
+ * 说一句就写——模型一给动作就落库，作者只在事后看到「已写入工程」。作者踩到的坑是
+ * 关键词被误判成命令（带附件聊到"设定"就被送去写入设定页），而一旦写下去只能靠撤回。
+ * 现在这几类流程先摆方案：**方案里列的是这次会动到什么**，点了确认才真的调后端写。
+ */
+type PendingPlanKind =
+  | "chat_actions"
+  | "settings_ingest"
+  | "facts_scan"
+  | "pipeline"
+  | "finalize"
+  | "ledger";
+
+type PendingPlan = {
+  kind: PendingPlanKind;
+  title: string;
+  lines: string[];
+  /** 提醒：确认前不会改动工程 */
+  note?: string;
+  confirmLabel: string;
+  /** chat_actions：后端回的那批动作；pipeline / facts_scan：沿用作者原话 */
+  actions?: AgentAction[];
+  instruction?: string;
+  /** 确认写入要落到哪个对话的撤回栈里 */
+  conversationId?: string;
+};
+
+/**
+ * 方案卡片上回显作者原话。
+ *
+ * 为什么要它：出方案时那条消息还没进对话记录（写入发生在确认之后，那时流程会自己补一条
+ * 【写入设定页】之类的指令），作者会觉得"我刚说的话去哪了"。长消息要截断，
+ * 否则一段分析会把卡片撑成一屏。
+ */
+function quoteAsk(text: string, limit = 40): string {
+  const t = (text || "").replace(/\s+/g, " ").trim();
+  if (!t) return "你的要求：（只有附件，没有额外说明）";
+  return t.length > limit ? `你的要求：${t.slice(0, limit)}…` : `你的要求：${t}`;
+}
 
 const TASK_LABEL: Record<AgentTaskKind, string> = {
   chat: "讨论",
@@ -202,6 +255,8 @@ export function AgentChat({
   );
   const [reviseReviewOpen, setReviseReviewOpen] = useState(false);
   const [reviseModeOpen, setReviseModeOpen] = useState(false);
+  /** 待确认的写入方案：非空时输入框上方出现方案卡片，确认后才真的写（见 confirmPendingPlan）。 */
+  const [pendingPlan, setPendingPlan] = useState<PendingPlan | null>(null);
   /** Aborts the in-flight streaming agent/pipeline request on unmount or when
    * a new request supersedes the current one (prevents leaked streams that
    * keep consuming LLM quota after the user navigates away). */
@@ -873,7 +928,10 @@ export function AgentChat({
           selection: selection || undefined,
           task: opts.task,
           conversation_id: convId,
-          apply_actions: true,
+          // 方案阶段：**只让后端回动作、不要落库**。有动作就在输入框上方摆出方案，
+          // 作者点确认才调 /agent/apply-actions 写入（见 applyConfirmedActions）。
+          // 以前这里是 true——模型一给动作就立刻写进工程，作者只在事后看到「已写入工程」。
+          apply_actions: false,
           resume: opts.resume || undefined,
           // 与 UI 选中同步；勿仅依赖 DB（避免 PUT 未完成时本轮漏注入）
           lens_ids: activeLensIds,
@@ -919,7 +977,9 @@ export function AgentChat({
       );
 
       const actions = res.actions ?? [];
+      // 方案阶段不落库：后端这次一定回 applied=false（除非它自己改了，那也要按动作处理）。
       const applied = res.applied && !!res.project;
+      const hasProposal = !applied && actions.length > 0;
 
       if (applied && res.project) {
         undoStack.current = [
@@ -929,14 +989,29 @@ export function AgentChat({
         setUndoCount(undoStack.current.length);
         onProjectChange(res.project);
       }
+      if (hasProposal) {
+        // 模型想改工程 → 摆方案，不写。写入只发生在作者点「确认写入」时。
+        setPendingPlan({
+          kind: "chat_actions",
+          title: `写入工程 · 待确认（${actions.length} 项）`,
+          lines: describeActionList(actions, copy),
+          note: "确认前不会改动工程；确认后才写入，且可用「撤回编辑」回滚。",
+          confirmLabel: "确认写入",
+          actions,
+          conversationId: convId,
+        });
+        setLastContext(`待确认方案 · 写入工程（${actions.length} 项）`);
+      }
 
       const meta = res.context_meta;
       const taskName = meta?.task ? (TASK_LABEL[meta.task] ?? meta.task) : "";
       const resultBit = applied
         ? "已写入工程"
-        : actions.length > 0
-          ? "未写入（动作失败或跳过）"
-          : "仅讨论未改工程";
+        : hasProposal
+          ? "待确认写入"
+          : actions.length > 0
+            ? "未写入（动作失败或跳过）"
+            : "仅讨论未改工程";
       const craftShort =
         meta?.craftMode === "full"
           ? "工艺全"
@@ -1037,6 +1112,10 @@ export function AgentChat({
           : "";
       const foot = [
         applied ? `已落地：${describeActions(actions, copy)}` : "",
+        hasProposal
+          ? `方案（未写入）：${describeActions(actions, copy)}\n` +
+            "确认前工程没有改动——点输入框上方方案卡片的「确认写入」才落地，不想要就点「放弃」。"
+          : "",
         proposed
           ? "上面的「提议」都放进了「项目 → 结构分析 → 待审列表」，你逐条勾选接受后才会写进工程（AI 不会直接改设定库）"
           : "",
@@ -1061,11 +1140,8 @@ export function AgentChat({
         undo_stack: undoStack.current.slice(-20),
       }).catch(() => undefined);
       void refreshList();
-
-      if (actions.some((a) => a.op === "add_chapter") && res.project) {
-        const last = res.project.chapters[res.project.chapters.length - 1];
-        if (last) onChapterFocus?.(last.id);
-      }
+      // 「新增了章节 → 焦点跳过去」放在确认写入那一步做（applyConfirmedActions）：
+      // 方案阶段工程还没变，这时候跳聚焦会跳到一个还不存在的章节上。
     } catch (e) {
       // Aborted by unmount / superseded request — stay quiet (no error bubble).
       if (
@@ -1103,6 +1179,118 @@ export function AgentChat({
     });
   }
 
+  /**
+   * 摆出方案，等作者点确认。
+   *
+   * 这一步**什么都不写**：不动工程、也不发写请求。方案卡片挂在输入框上方，
+   * 作者点「确认」才落到对应流程（见 confirmPendingPlan）。这是"先给方案再确认才写"的闸。
+   */
+  function proposePlan(plan: PendingPlan) {
+    setError("");
+    setPendingPlan(plan);
+    setLastContext(`待确认方案 · ${plan.title.replace(" · 待确认", "")}`);
+  }
+
+  /** 确认方案：按类别跑原来那条流程——写入只发生在这一步。 */
+  async function confirmPendingPlan() {
+    const plan = pendingPlan;
+    if (!plan || busy) return;
+    setPendingPlan(null);
+    switch (plan.kind) {
+      case "chat_actions":
+        await applyConfirmedActions(plan);
+        return;
+      case "settings_ingest":
+        await ingestSettingsFromAttachments();
+        return;
+      case "facts_scan":
+        await runFactsScanFlow(plan.instruction);
+        return;
+      case "pipeline":
+        await runPipelineFlow(plan.instruction || "");
+        return;
+      case "finalize":
+        await runQualityFinalize();
+        return;
+      case "ledger":
+        await runLedgerDigest();
+        return;
+    }
+  }
+
+  /** 放弃方案：一个字都不写，并把"工程没有改动"说清楚。 */
+  function cancelPendingPlan() {
+    const plan = pendingPlan;
+    if (!plan) return;
+    setPendingPlan(null);
+    const content = `好，这次不写。「${plan.title.replace(" · 待确认", "")}」的方案已丢弃，工程没有做任何改动。`;
+    const next = [
+      ...messagesRef.current,
+      { role: "assistant" as const, content },
+    ].slice(-120);
+    setMessages(next);
+    messagesRef.current = next;
+    setLastContext("方案已放弃 · 工程未改动");
+    if (conversationId) {
+      void putAgentConversation(projectId, conversationId, { messages: next }).catch(
+        () => undefined
+      );
+    }
+  }
+
+  /** 确认落库：把方案里的动作发给 /agent/apply-actions（与后端同一条写入路径）。 */
+  async function applyConfirmedActions(plan: PendingPlan) {
+    const actions = plan.actions || [];
+    const convId = plan.conversationId || conversationId;
+    if (!actions.length || !convId) return;
+    const snapshot = prepareProject ? prepareProject() : project;
+    setBusy(true);
+    setError("");
+    setThinking("正在按方案写入工程…");
+    try {
+      const res = await applyAgentActions(projectId, {
+        actions,
+        chapter_id: chapterId,
+        conversation_id: convId,
+      });
+      undoStack.current = [
+        ...undoStack.current,
+        { label: describeActions(actions, copy), project: snapshot },
+      ].slice(-20);
+      setUndoCount(undoStack.current.length);
+      if (res.project) onProjectChange(res.project);
+      const done = (res.applied || []).join("；") || describeActions(actions, copy);
+      const skipped = (res.skipped || []).length
+        ? `\n未执行：${res.skipped.join("；")}`
+        : "";
+      const content =
+        `${res.message}\n\n已落地：${done}${skipped}` +
+        `\n可用「撤回编辑」回滚（当前对话内 ${undoStack.current.length} 步）`;
+      const next = [
+        ...messagesRef.current,
+        { role: "assistant" as const, content },
+      ].slice(-120);
+      setMessages(next);
+      messagesRef.current = next;
+      await putAgentConversation(projectId, convId, {
+        messages: next,
+        undo_stack: undoStack.current.slice(-20),
+      }).catch(() => undefined);
+      if (actions.some((a) => a.op === "add_chapter") && res.project) {
+        const last = res.project.chapters[res.project.chapters.length - 1];
+        if (last) onChapterFocus?.(last.id);
+      }
+      setLastContext(`方案已确认 · ${done}`);
+    } catch (e) {
+      // 写入失败不要把方案弄丢：作者可以再点一次确认，或点放弃
+      setError(e instanceof Error ? e.message : "写入失败");
+      setPendingPlan(plan);
+    } finally {
+      setBusy(false);
+      setThinking("");
+    }
+  }
+
   async function sendText(text: string, task?: AgentTaskKind) {
     const trimmed = text.trim();
     const pendingAttach = attachments;
@@ -1115,9 +1303,27 @@ export function AgentChat({
         : "");
 
     const intent = inferAgentIntent(userVisible, pendingAttach.length);
+    const chapterTitle = (project.chapters || []).find(
+      (c) => c.id === chapterId
+    )?.title;
+    const attachFacts = pendingAttach.map((a) => ({
+      filename: a.filename,
+      chars: a.chars ?? a.text.length,
+    }));
 
     if (intent.kind === "pipeline") {
-      await runPipelineFlow(intent.note || trimmed);
+      // 自动写作会烧好几轮模型、还会写本章：先说清"跑什么、动哪一章"，确认后才开跑
+      const prefs = getHarnessPrefs();
+      proposePlan({
+        kind: "pipeline",
+        ...planForPipeline(intent.note || trimmed, {
+          chapterTitle,
+          maxReviseRounds: prefs.maxReviseRounds ?? 2,
+          voiceCheck: prefs.voiceCheck !== false,
+        }),
+        confirmLabel: "确认开跑",
+        instruction: intent.note || trimmed,
+      });
       return;
     }
     if (intent.kind === "chapter_lock_name") {
@@ -1181,23 +1387,48 @@ export function AgentChat({
         setError("要写入设定请先附上资料文件，再说一次即可");
         return;
       }
-      await ingestSettingsFromAttachments();
+      const settingsPreview = planForSettingsIngest(attachFacts);
+      proposePlan({
+        kind: "settings_ingest",
+        ...settingsPreview,
+        lines: [quoteAsk(userVisible), ...settingsPreview.lines],
+        confirmLabel: "确认写入设定页",
+      });
       return;
     }
     if (intent.kind === "facts_scan") {
-      await runFactsScanFlow(intent.note || trimmed);
+      const scanPreview = planForFactsScan(attachFacts, {
+        chapterTitle,
+        full: /全文|整本|全扫|full/i.test(intent.note || trimmed),
+      });
+      proposePlan({
+        kind: "facts_scan",
+        ...scanPreview,
+        lines: [quoteAsk(userVisible), ...scanPreview.lines],
+        confirmLabel: "确认开始扫描",
+        instruction: intent.note || trimmed,
+      });
       return;
     }
     if (intent.kind === "style_lint") {
+      // 只读：体检不改稿，不需要过闸
       await runStyleLint();
       return;
     }
     if (intent.kind === "finalize") {
-      await runQualityFinalize();
+      proposePlan({
+        kind: "finalize",
+        ...planForFinalize({ chapterTitle }),
+        confirmLabel: "确认定稿",
+      });
       return;
     }
     if (intent.kind === "ledger_digest") {
-      await runLedgerDigest();
+      proposePlan({
+        kind: "ledger",
+        ...planForLedgerDigest({ chapterTitle }),
+        confirmLabel: "确认更新账本",
+      });
       return;
     }
     if (intent.kind === "brainstorm") {
@@ -2413,6 +2644,45 @@ export function AgentChat({
                     </button>
                   </div>
                 </div>
+              </div>
+            </div>
+          ) : null}
+
+          {pendingPlan ? (
+            <div className={styles.preQCard} data-testid="agent-plan-gate">
+              <p className={styles.preQCardHead}>
+                {pendingPlan.title}
+                {"　"}确认前不会改动工程
+              </p>
+              <ul className={styles.planList}>
+                {pendingPlan.lines.map((line, i) => (
+                  <li key={`${i}-${line}`} className={styles.preQText}>
+                    {line}
+                  </li>
+                ))}
+              </ul>
+              {pendingPlan.note ? (
+                <p className={styles.planNote}>{pendingPlan.note}</p>
+              ) : null}
+              <div className={styles.preQActions}>
+                <button
+                  type="button"
+                  className={styles.preQPrimary}
+                  data-testid="agent-plan-confirm"
+                  disabled={busy}
+                  onClick={() => void confirmPendingPlan()}
+                >
+                  {pendingPlan.confirmLabel}
+                </button>
+                <button
+                  type="button"
+                  className={styles.preQGhost}
+                  data-testid="agent-plan-cancel"
+                  disabled={busy}
+                  onClick={cancelPendingPlan}
+                >
+                  放弃，先不写
+                </button>
               </div>
             </div>
           ) : null}
