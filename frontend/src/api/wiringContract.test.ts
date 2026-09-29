@@ -141,6 +141,29 @@ const WIRINGS: Wiring[] = [
       pattern: /await applyAgentActions\(/,
     },
   },
+  {
+    // 附件区那两个捷径按钮也是同一条闸：线上实测的误写就出在这里——
+    // 附了「第一章_改写稿.docx」手滑点到「写入设定页」，正文被当资料写进了世界观/角色卡。
+    // 钉的是"点了只出方案"这一半：谁把它改回直连 ingestSettingsFromAttachments / runFactsScanFlow，
+    // 类型上完全看不出来，但闸就没了。
+    name: "写入设定页按钮：点了只出方案，不直接写",
+    backend: {
+      file: "backend/app/api/v1/projects.py",
+      needle: "/agent/ingest-settings",
+    },
+    frontend: {
+      files: ["frontend/src/components/AgentChat.tsx"],
+      pattern: /onIngest=\{\(\) => proposeSettingsIngest\(\)\}/,
+    },
+  },
+  {
+    name: "整理关系/时间线按钮：点了只出方案，不直接扫",
+    backend: { file: "backend/app/api/v1/projects.py", needle: "analysis/facts/scan" },
+    frontend: {
+      files: ["frontend/src/components/AgentChat.tsx"],
+      pattern: /onScan=\{\(\) => proposeFactsScan\(/,
+    },
+  },
 ];
 
 describe("接线守卫：后端有的开关，前端必须真的接上", () => {

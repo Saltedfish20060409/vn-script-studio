@@ -47,11 +47,7 @@ import {
   planForPipeline,
   planForSettingsIngest,
 } from "../lib/agentPlan";
-import {
-  compactRunInfo,
-  readRunInfoOpen,
-  writeRunInfoOpen,
-} from "../lib/agentRunInfo";
+import { compactRunInfo, readRunInfoOpen, writeRunInfoOpen } from "../lib/agentRunInfo";
 import {
   getChapterRevisePrefs,
   prefsToNoteSuffix,
@@ -123,7 +119,12 @@ type Props = {
    * 由 StudioApp 接 marks 状态；返回成功建了几条。
    */
   onCreateMarksFromHints?: (
-    hints: Array<{ quote?: string; reason?: string; instruction?: string; code?: string }>
+    hints: Array<{
+      quote?: string;
+      reason?: string;
+      instruction?: string;
+      code?: string;
+    }>
   ) => number;
   compact?: boolean;
   /** Hidden when float is minimized — keep mounted so state survives */
@@ -288,7 +289,9 @@ export function AgentChat({
   const [loadingConv, setLoadingConv] = useState(true);
   /** 「动笔前先问几句」：问题卡片 + 作者的回答（可跳过） */
   const [preQuestions, setPreQuestions] = useState<string[] | null>(null);
-  const [preQuestionsSource, setPreQuestionsSource] = useState<"llm" | "template">("llm");
+  const [preQuestionsSource, setPreQuestionsSource] = useState<"llm" | "template">(
+    "llm"
+  );
   const [preAnswers, setPreAnswers] = useState<Record<number, string>>({});
   const preQBusy = useRef(false);
   /** 提问时那句话（回答完/跳过都用它作为写作指令） */
@@ -357,7 +360,9 @@ export function AgentChat({
   const [excluded, setExcluded] = useState<string[]>(() => loadExcludedSections());
   const [sectionsOpen, setSectionsOpen] = useState(false);
   /** 「证明它记得」：本次实际依据的资料与摘录 */
-  const [evidence, setEvidence] = useState<Array<{ label: string; preview: string }>>([]);
+  const [evidence, setEvidence] = useState<Array<{ label: string; preview: string }>>(
+    []
+  );
   /** 本次上下文用量（读了多少 / 上限 / 有没有被裁）——见 lib/contextUsage.ts */
   const [contextInfo, setContextInfo] = useState<ContextUsage>({
     text: "",
@@ -1058,10 +1063,22 @@ export function AgentChat({
       const evidenceRows = Array.isArray(meta?.includedDetails)
         ? meta.includedDetails
             .filter((d) => d && (d.label || d.preview))
-            .map((d) => ({ label: String(d.label ?? ""), preview: String(d.preview ?? "") }))
+            .map((d) => ({
+              label: String(d.label ?? ""),
+              preview: String(d.preview ?? ""),
+            }))
         : [];
       setLastContext(
-        [taskName, resultBit, craftShort, reviewShort, gateShort, prefetchShort, lensShort, refShort]
+        [
+          taskName,
+          resultBit,
+          craftShort,
+          reviewShort,
+          gateShort,
+          prefetchShort,
+          lensShort,
+          refShort,
+        ]
           .filter(Boolean)
           .join(" · ")
       );
@@ -1086,7 +1103,9 @@ export function AgentChat({
       );
       // 「证明它记得」：把这次真正读到的资料摆出来（可展开看摘录）
       // 用的是谁的钱：免费档下提示"长任务建议配 Key"（长任务最吃模型能力，也最容易撞限流）
-      setCredentialsMode(typeof meta?.credentialsMode === "string" ? meta.credentialsMode : "");
+      setCredentialsMode(
+        typeof meta?.credentialsMode === "string" ? meta.credentialsMode : ""
+      );
       setEvidence(evidenceRows);
       // 这次它读了多少、够不够、有没有被裁（作者据此判断"是不是它没看到前情"）
       setContextInfo(usage);
@@ -1107,7 +1126,10 @@ export function AgentChat({
         markHints.length > 0
           ? `写后闸失败段可用「标记批改」只改这些（不必整章回炉）：\n${markHints
               .slice(0, 3)
-              .map((h, i) => `${i + 1}. 「${String(h.quote).slice(0, 48)}」— ${h.reason || h.instruction || ""}`)
+              .map(
+                (h, i) =>
+                  `${i + 1}. 「${String(h.quote).slice(0, 48)}」— ${h.reason || h.instruction || ""}`
+              )
               .join("\n")}`
           : "";
       const foot = [
@@ -1176,6 +1198,58 @@ export function AgentChat({
       resume: true,
       apiMessages: [],
       nextMessages: messages,
+    });
+  }
+
+  /** 当前章标题（方案卡片上要写清"动的是哪一章"）。 */
+  function currentChapterTitle(): string | undefined {
+    return (project.chapters || []).find((c) => c.id === chapterId)?.title;
+  }
+
+  /**
+   * 「写入设定页」的**唯一入口**：自然语言意图与附件区那个捷径按钮都走它。
+   *
+   * 为什么按钮也要过闸（线上实测）：附件区那个按钮以前点了就直接写。作者附上
+   * 「第一章_改写稿.docx」，手一滑点到它，正文就被当成资料写进了世界观/背景/大纲/主题/备忘
+   * 与角色卡——数据库里那次会话是"开场白 + 一条【写入设定页】"，没有任何人打过这句话。
+   * 当时判断"点击本身就是确认"，但按钮就贴在输入框上方，误触的代价却是一次真实写入。
+   * 现在按钮与说话一样：先出方案，点了确认才写。
+   */
+  function proposeSettingsIngest(ask?: string) {
+    const attached = attachments;
+    if (!attached.length) {
+      setError("要写入设定请先附上资料文件，再说一次即可");
+      return;
+    }
+    const preview = planForSettingsIngest(
+      attached.map((a) => ({ filename: a.filename, chars: a.chars ?? a.text.length }))
+    );
+    proposePlan({
+      kind: "settings_ingest",
+      ...preview,
+      lines: [quoteAsk(ask || "点「写入设定页」捷径"), ...preview.lines],
+      confirmLabel: "确认写入设定页",
+    });
+  }
+
+  /** 「整理关系/时间线」的唯一入口：同样先出方案（这条也会改工程：候选进待审列表）。 */
+  function proposeFactsScan(note?: string) {
+    const preview = planForFactsScan(
+      attachments.map((a) => ({
+        filename: a.filename,
+        chars: a.chars ?? a.text.length,
+      })),
+      {
+        chapterTitle: currentChapterTitle(),
+        full: /全文|整本|全扫|full/i.test(note || ""),
+      }
+    );
+    proposePlan({
+      kind: "facts_scan",
+      ...preview,
+      lines: [quoteAsk(note || "点「整理关系/时间线」捷径"), ...preview.lines],
+      confirmLabel: "确认开始扫描",
+      instruction: note,
     });
   }
 
@@ -1303,13 +1377,7 @@ export function AgentChat({
         : "");
 
     const intent = inferAgentIntent(userVisible, pendingAttach.length);
-    const chapterTitle = (project.chapters || []).find(
-      (c) => c.id === chapterId
-    )?.title;
-    const attachFacts = pendingAttach.map((a) => ({
-      filename: a.filename,
-      chars: a.chars ?? a.text.length,
-    }));
+    const chapterTitle = currentChapterTitle();
 
     if (intent.kind === "pipeline") {
       // 自动写作会烧好几轮模型、还会写本章：先说清"跑什么、动哪一章"，确认后才开跑
@@ -1387,27 +1455,11 @@ export function AgentChat({
         setError("要写入设定请先附上资料文件，再说一次即可");
         return;
       }
-      const settingsPreview = planForSettingsIngest(attachFacts);
-      proposePlan({
-        kind: "settings_ingest",
-        ...settingsPreview,
-        lines: [quoteAsk(userVisible), ...settingsPreview.lines],
-        confirmLabel: "确认写入设定页",
-      });
+      proposeSettingsIngest(userVisible);
       return;
     }
     if (intent.kind === "facts_scan") {
-      const scanPreview = planForFactsScan(attachFacts, {
-        chapterTitle,
-        full: /全文|整本|全扫|full/i.test(intent.note || trimmed),
-      });
-      proposePlan({
-        kind: "facts_scan",
-        ...scanPreview,
-        lines: [quoteAsk(userVisible), ...scanPreview.lines],
-        confirmLabel: "确认开始扫描",
-        instruction: intent.note || trimmed,
-      });
+      proposeFactsScan(intent.note || trimmed);
       return;
     }
     if (intent.kind === "style_lint") {
@@ -1565,7 +1617,9 @@ export function AgentChat({
       (topicOverride ?? brainstormTopic).trim() ||
       "请就当前章节与选区，从各自擅长角度给建议（未指定具体议题）。";
     if (activeLensIds.length < 2) {
-      setError("头脑风暴需要至少 2 位作家参加。已为你打开选人面板：请勾选 2 位以上，再开始头脑风暴。");
+      setError(
+        "头脑风暴需要至少 2 位作家参加。已为你打开选人面板：请勾选 2 位以上，再开始头脑风暴。"
+      );
       setPersonaOpen(true);
       setMultiSelect(true);
       return;
@@ -1707,24 +1761,29 @@ export function AgentChat({
         streamAbortRef.current?.abort();
         controller = new AbortController();
         streamAbortRef.current = controller;
-        job = await pipelineRunStream(projectId, body, (evt) => {
-          if (evt.type === "token") {
-            liveDraft += evt.delta;
-            setThinking(`生成中… ${liveDraft.slice(-160)}`);
-            return;
-          }
-          if (evt.type === "stage") {
-            const label = STAGE_LABEL[evt.stage] ?? evt.stage;
-            const ms = evt.ms ? ` · ${evt.ms}ms` : "";
-            const extra =
-              evt.errorCount != null
-                ? ` · error ${evt.errorCount}`
-                : evt.warnCount != null
-                  ? ` · warn ${evt.warnCount}`
-                  : "";
-            setThinking(`阶段完成：${label}${ms}${extra}`);
-          }
-        }, controller.signal);
+        job = await pipelineRunStream(
+          projectId,
+          body,
+          (evt) => {
+            if (evt.type === "token") {
+              liveDraft += evt.delta;
+              setThinking(`生成中… ${liveDraft.slice(-160)}`);
+              return;
+            }
+            if (evt.type === "stage") {
+              const label = STAGE_LABEL[evt.stage] ?? evt.stage;
+              const ms = evt.ms ? ` · ${evt.ms}ms` : "";
+              const extra =
+                evt.errorCount != null
+                  ? ` · error ${evt.errorCount}`
+                  : evt.warnCount != null
+                    ? ` · warn ${evt.warnCount}`
+                    : "";
+              setThinking(`阶段完成：${label}${ms}${extra}`);
+            }
+          },
+          controller.signal
+        );
       } catch (e) {
         // User cancelled (component unmount / superseded request) — don't
         // fall back to a polling job that would keep consuming quota.
@@ -1830,7 +1889,9 @@ export function AgentChat({
         onProjectChange(data.project);
       }
       setLastContext(
-        ok ? "定稿完成 · 已通过自动检查 · 项目档案已更新" : "定稿未通过自动检查（已记入运行历史）"
+        ok
+          ? "定稿完成 · 已通过自动检查 · 项目档案已更新"
+          : "定稿未通过自动检查（已记入运行历史）"
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "定稿失败");
@@ -1863,7 +1924,9 @@ export function AgentChat({
         },
       ]);
       setLastContext(
-        data.enrichMeta?.enrich ? "项目档案 · 已更新（含 AI 补充）" : "项目档案 · 章节要点已更新"
+        data.enrichMeta?.enrich
+          ? "项目档案 · 已更新（含 AI 补充）"
+          : "项目档案 · 章节要点已更新"
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "账本更新失败");
@@ -2096,14 +2159,14 @@ export function AgentChat({
         [k: string]: unknown;
       };
       if ("jobId" in kicked && kicked.jobId) {
-        setThinking("正在生成改稿预览（后台处理中，完成后会先给你对照挑选，不会直接改动正文）…");
+        setThinking(
+          "正在生成改稿预览（后台处理中，完成后会先给你对照挑选，不会直接改动正文）…"
+        );
         const job = await waitProjectJob(projectId, kicked.jobId, {
           onTick: (j) => {
             const pct = Math.round((j.progress ?? 0) * 100);
             setThinking(
-              `正在生成改稿预览…（已完成 ${pct}%）${
-                j.message ? ` — ${j.message}` : ""
-              }`
+              `正在生成改稿预览…（已完成 ${pct}%）${j.message ? ` — ${j.message}` : ""}`
             );
           },
         });
@@ -2317,9 +2380,14 @@ export function AgentChat({
                  起手句点了只填不发，不替作者花模型调用。 */
               <>
                 {gateMarkHints.length > 0 && onCreateMarksFromHints ? (
-                  <div className={styles.resumeBar} role="status" data-testid="gate-mark-hints">
+                  <div
+                    className={styles.resumeBar}
+                    role="status"
+                    data-testid="gate-mark-hints"
+                  >
                     <span>
-                      写后闸标出 {gateMarkHints.length} 处可改失败段（只建标记，不自动改稿）
+                      写后闸标出 {gateMarkHints.length}{" "}
+                      处可改失败段（只建标记，不自动改稿）
                     </span>
                     <button
                       type="button"
@@ -2368,10 +2436,15 @@ export function AgentChat({
                   </span>
                 </div>
                 {preQuestions ? (
-                  <div className={styles.preQCard} data-testid="agent-prequestions-card">
+                  <div
+                    className={styles.preQCard}
+                    data-testid="agent-prequestions-card"
+                  >
                     <p className={styles.preQCardHead}>
                       先定这三件事（留空等于没答；不想答就点「跳过」）
-                      {preQuestionsSource === "template" ? "　·　模型不可用，这是通用问题" : ""}
+                      {preQuestionsSource === "template"
+                        ? "　·　模型不可用，这是通用问题"
+                        : ""}
                     </p>
                     {preQuestions.map((q, i) => (
                       <label key={q} className={styles.preQItem}>
@@ -2420,19 +2493,17 @@ export function AgentChat({
             busy={busy}
             attachBusy={attachBusy}
             conversationId={conversationId}
-            onRemove={(i) =>
-              setAttachments((prev) => prev.filter((_, j) => j !== i))
-            }
-            onIngest={() => void ingestSettingsFromAttachments()}
-            onScan={() => void runFactsScanFlow("请根据附件整理关系与时间线")}
+            onRemove={(i) => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+            onIngest={() => proposeSettingsIngest()}
+            onScan={() => proposeFactsScan("请根据附件整理关系与时间线")}
           />
 
           {/* 免费档提示：长任务（整章重写、长篇续写）最吃模型能力，也最容易撞限流 */}
           {credentialsMode === "shared" ? (
             <p className={styles.tierHint} data-testid="agent-tier-hint">
               当前用<b>站内免费档</b>（GLM-4-Flash · 每天有额度 · 人多会限流）。
-              整章重写、长篇续写这类长任务建议到「设置 → 模型」填自己的 Key：站内支持 GLM-5.3 / DeepSeek，
-              用量走你自己的账户。
+              整章重写、长篇续写这类长任务建议到「设置 → 模型」填自己的 Key：站内支持
+              GLM-5.3 / DeepSeek， 用量走你自己的账户。
             </p>
           ) : null}
 
@@ -2444,19 +2515,25 @@ export function AgentChat({
               被裁过 / 没装下的那些块照样直接可见，见下面 budgetInfo。 */}
           {runInfoOpen && contextInfo.text ? (
             <p
-              className={contextInfo.truncated ? styles.contextWarn : styles.contextLine}
+              className={
+                contextInfo.truncated ? styles.contextWarn : styles.contextLine
+              }
               data-testid="agent-context-usage"
               title={contextInfo.hint || undefined}
             >
               {contextInfo.text}
               {contextInfo.truncated ? " · 有资料没装下" : ""}
-              {contextInfo.hint ? <span className={styles.contextHint}>{contextInfo.hint}</span> : null}
+              {contextInfo.hint ? (
+                <span className={styles.contextHint}>{contextInfo.hint}</span>
+              ) : null}
             </p>
           ) : null}
           {/* 「这次没装下什么、怎么取回来」：每一行都能照着做，能取回的还给一个按钮 */}
           {budgetInfo.hasMissing ? (
             <details className={styles.missing} data-testid="agent-context-missing">
-              <summary>没装下的 {budgetInfo.missing.length} 项（点开看怎么取回）</summary>
+              <summary>
+                没装下的 {budgetInfo.missing.length} 项（点开看怎么取回）
+              </summary>
               <ul>
                 {budgetInfo.missing.map((row, i) => (
                   <li key={`${row.label}-${i}`}>
@@ -2493,17 +2570,15 @@ export function AgentChat({
               {budgetInfo.byDesign.length > 0 ? (
                 <p className={styles.missingNote}>
                   另有 {budgetInfo.byDesign.length} 项是**按任务省去**的（
-                  {budgetInfo.byDesign.map((r) => r.label).join("、")}），这类资料对写正文没有
-                  信息量，不是"没装下"。
+                  {budgetInfo.byDesign.map((r) => r.label).join("、")}
+                  ），这类资料对写正文没有 信息量，不是"没装下"。
                 </p>
               ) : null}
             </details>
           ) : null}
           {runInfoOpen && evidence.length > 0 ? (
             <details className={styles.evidence} data-testid="agent-evidence">
-              <summary>
-                依据 {evidence.length} 项（点开看它读到的原文摘录）
-              </summary>
+              <summary>依据 {evidence.length} 项（点开看它读到的原文摘录）</summary>
               <ul>
                 {evidence.map((item, i) => (
                   <li key={i}>
