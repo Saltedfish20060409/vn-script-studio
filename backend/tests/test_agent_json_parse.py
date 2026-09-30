@@ -136,7 +136,8 @@ def test_agent_loop_final_message_is_the_whole_review():
             emit=emit,
         )
 
-    _, _, _, final_message, _, _ = asyncio.run(_go())
+    # 第 7 个返回值是"有没有撞输出上限"（2026-09-30 加，见 agent_loop._agent_steps）
+    _, _, _, final_message, _, _, _ = asyncio.run(_go())
     assert ANALYSIS in final_message
     assert "```renpy" in final_message
 

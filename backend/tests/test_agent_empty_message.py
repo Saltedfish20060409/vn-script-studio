@@ -100,7 +100,8 @@ def _run_steps(provider: _ScriptedProvider, *, steps: int = 3):
             emit=emit,
         )
 
-    _, _, trace, final_message, _, _ = asyncio.run(_go())
+    # `_agent_steps` 返回 7 元组：第 7 个是"这次有没有撞输出上限"（2026-09-30 加）
+    _, _, trace, final_message, _, _, _ = asyncio.run(_go())
     return trace, final_message
 
 

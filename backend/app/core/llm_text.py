@@ -199,3 +199,113 @@ def extract_json_object(text: str) -> Optional[dict]:
         if isinstance(parsed, dict):
             return parsed
     return None
+
+
+# ---------------------------------------------------------------------------
+# 从**写坏/被截断**的 JSON 里抢救 message
+#
+# 为什么需要（2026-09-30 线上实盘）：作者两次让 Agent「写完整的第一章」，模型把整章正文塞进
+# JSON 的 `message` 里返回，输出一断（长字符串/撞上限），`extract_json_object` 全部候选都失败，
+# 于是 message 与 actions 一起丢——屏幕上只剩一段被截到 2000 字的裸 JSON（看起来像"模型胡说"），
+# 而稿子里**一个字都没写进去**，撤回栈也是空的。两条独立损失叠在一起才让这件事看起来像"续写很差"。
+#
+# 这里的原则：**只救文本**。`actions` 一律丢弃——动作可能正好切在半路（比如 append_script 的正文
+# 只写到一半），把它落盘比不落盘更糟。要写入就让作者看到提示后重来一次。
+# ---------------------------------------------------------------------------
+
+#: `"message"\s*:\s*"` 之后的第一个字符就是内容的起点
+_MESSAGE_KEY_RE = re.compile(r'"message"\s*:\s*"')
+
+
+def _repair_unterminated_json(text: str) -> Optional[str]:
+    """把"被截断在半路"的 JSON 补上收尾（只补字符串与括号，不改内容）；补不出来返回 None。
+
+    只在**确实没闭合**时返回值（已闭合的不归它管，避免把 `{...}garbage` 也当成功）。
+    """
+    raw = text or ""
+    starts = [i for i in (raw.find("{"), raw.find("[")) if i >= 0]
+    if not starts:
+        return None
+    start = min(starts)
+    pairs = {"{": "}", "[": "]"}
+    stack: list[str] = []
+    in_string = False
+    escaped = False
+    for ch in raw[start:]:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch in pairs:
+            stack.append(pairs[ch])
+        elif ch in ("}", "]"):
+            if not stack or stack.pop() != ch:
+                return None
+            if not stack:
+                return None  # 已经闭合了：不归这个函数管
+    if not stack:
+        return None
+    tail = '"' if in_string else ""
+    return raw[start:] + tail + "".join(reversed(stack))
+
+
+def _scan_message_literal(text: str) -> Optional[str]:
+    """按 `"message":"…"` 的字面量扫描取内容；字符串被截断时就交付已读到的部分。"""
+    match = _MESSAGE_KEY_RE.search(text or "")
+    if not match:
+        return None
+    out: list[str] = []
+    escaped = False
+    i = match.end()
+    while i < len(text):
+        ch = text[i]
+        if escaped:
+            out.append("\\" + ch)
+            escaped = False
+        elif ch == "\\":
+            escaped = True
+        elif ch == '"':
+            break
+        else:
+            out.append(ch)
+        i += 1
+    body = "".join(out)
+    if not body.strip():
+        return None
+    # 正常收尾（扫到了闭合引号）就走 json 反转义；被截断在半路时退回手工替换常见转义
+    try:
+        unescaped = json.loads('"' + body + '"')
+    except (json.JSONDecodeError, ValueError):
+        unescaped = (
+            body.replace("\\n", "\n").replace('\\"', '"').replace("\\t", "\t").rstrip("\\")
+        )
+    text_out = normalize_model_text(str(unescaped).strip())
+    return text_out or None
+
+
+def salvage_message_from_broken_json(text: str) -> Optional[str]:
+    """从**解析失败**的输出里尽量把 `message` 救回来（救不到返回 None，动作一律不带回）。
+
+    两条路：先把缺的引号/括号补齐再解析；补不出来（例如正切在转义字符中间）就按
+    `"message"` 的字面量扫描，把已经写出来的那部分交出去——宁可给作者半章，也不要给一坨 JSON。
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    repaired = _repair_unterminated_json(raw)
+    if repaired:
+        try:
+            parsed = json.loads(repaired)
+        except (json.JSONDecodeError, ValueError):
+            parsed = None
+        if isinstance(parsed, dict):
+            msg = parsed.get("message")
+            if isinstance(msg, str) and msg.strip():
+                return normalize_model_text(msg.strip())
+    return _scan_message_literal(raw)

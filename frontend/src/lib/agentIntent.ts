@@ -5,6 +5,7 @@
 
 type AgentIntentKind =
   | "chapter_revise"
+  | "write_to_script"
   | "revise_pick"
   | "chapter_polish"
   | "chapter_lock_name"
@@ -47,7 +48,7 @@ function hasAttach(n: number): boolean {
  * 否定（先别改 / 不要改）与征询（怎么改 / 要不要改）一律留在普通对话。
  */
 const REVISE_ACTION =
-  "帮我改|给我改|替我改|帮忙改|帮改|请改|改一下|改一版|改一遍|改改|改写(?!自|于)|重写|回炉|润色|润一版|修订|修改|改稿";
+  "帮我改|给我改|替我改|帮忙改|帮改|请改|改一下|改一版|改一遍|改改|改写(?!自|于|稿)|重写|回炉|润色|润一版|修订|修改|改稿";
 
 /**
  * 改稿对象：哪一章 / 哪份稿 / 哪一段。
@@ -169,6 +170,10 @@ function wantsCritiqueOnly(text: string): boolean {
   );
 }
 
+/** 明确要求"把内容落到稿子里"。 */
+const WRITE_TO_SCRIPT_RE =
+  /(写入|写进|存进|存入|放进|落到|落进|落盘|录进)[^。！？!?\n]{0,6}(正文|剧本|稿子|稿件|章节|工程)|(把|将)[^。！？!?\n]{0,24}(写|存|放|落)(进|入|到|盘)[^。！？!?\n]{0,6}(正文|剧本|稿子|稿件|章节|工程)/;
+
 /**
  * Infer capability from user text + attachment count.
  * Prefer specific studio pipelines over generic chat when intent is clear.
@@ -267,6 +272,14 @@ export function inferAgentIntent(text: string, attachmentCount = 0): AgentIntent
   // 作者只是在聊稿子就被切进改稿流程；现在没说出动作就一律留在普通对话。
   if (explicitReviseAsk(t)) {
     return { kind: "chapter_revise", note: t, mode };
+  }
+
+  // 「把 X 写进正文/剧本」——明确要求**落盘**。这条走写入任务的提示词，而不是自由讨论：
+  // 线上实测（2026-09-30）作者说「帮我把完整的第一章写入剧本」，走的是普通对话，
+  // 模型于是把整章正文塞进 JSON 的 message 里，输出一断，JSON 全废 → 正文一个字没写进稿子。
+  // 提示词里 chat 一条明写"把完整意见写进 message"，正是这个错配的源头。
+  if (WRITE_TO_SCRIPT_RE.test(t)) {
+    return { kind: "write_to_script", note: t };
   }
 
   // Settings ingest —— 真要把资料**写进**设定页：写入动作 + 设定对象同时出现（见 settingsIngestAsk）。

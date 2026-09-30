@@ -83,12 +83,12 @@ import { AgentComposerBox } from "./AgentComposerBox";
 import { AgentConversationRail } from "./AgentConversationRail";
 import { AgentHelpOverlay } from "./AgentHelpOverlay";
 import {
-  describeActionList,
   describeActions,
   defaultWelcome,
   formatLintBlock,
   formatPipelineResult,
   normalizeMessages,
+  planActionLines,
 } from "../lib/agentFormat";
 import { copyForProject } from "../lib/genreCopy";
 import { contextUsage, type ContextUsage } from "../lib/contextUsage";
@@ -1000,7 +1000,8 @@ export function AgentChat({
         setPendingPlan({
           kind: "chat_actions",
           title: `写入工程 · 待确认（${actions.length} 项）`,
-          lines: describeActionList(actions, copy),
+          // 带正文的动作把正文开头也摆出来：不然点确认等于盲签（见 planActionLines）
+          lines: planActionLines(actions, copy),
           note: "确认前不会改动工程；确认后才写入，且可用「撤回编辑」回滚。",
           confirmLabel: "确认写入",
           actions,
@@ -1498,8 +1499,17 @@ export function AgentChat({
     }
 
     let outbound = userVisible;
+    let runTask = task;
     if (intent.kind === "critique_only") {
       outbound = `${userVisible}\n\n（本轮只做文字审稿，不要直接改动正文：把完整意见写进回复；除非用户明确说「写入」，否则不要修改章节内容。）`;
+    }
+    if (intent.kind === "write_to_script") {
+      // 明确要求落盘：换成"写入"那档提示词（正文必须进 append_script / replace_script），
+      // 并在这条消息里再点一句——两处都说到，才不至于又变成"把整章写进聊天里"。
+      runTask = "rewrite";
+      outbound =
+        `${userVisible}\n\n（本轮要把正文落进稿子：成段的正文请放进 append_script / ` +
+        `replace_script 动作的文本里，message 只写一两句说明；不要把整章正文写在聊天回复里。）`;
     }
 
     setError("");
@@ -1525,7 +1535,7 @@ export function AgentChat({
         .filter((m) => m.role === "user" || m.role === "assistant")
         .slice(-20),
       nextMessages,
-      task,
+      task: runTask,
       attachments: pendingAttach,
     });
   }

@@ -54,8 +54,13 @@ def _demo() -> VnProject:
     )
 
 
-async def _fake_chat_json(*_args: Any, **_kwargs: Any) -> str:
-    return '{"message":"先看设定与当前章。","actions":[],"tool_calls":[],"done":true}'
+async def _fake_chat_json(*_args: Any, **_kwargs: Any) -> tuple[str, bool]:
+    # `_chat_json` 返回 (内容, 是否撞输出上限)：第二个元素是 2026-09-30 加的，
+    # 用来把"输出被截断"这件事冒泡到作者那一侧。
+    return (
+        '{"message":"先看设定与当前章。","actions":[],"tool_calls":[],"done":true}',
+        False,
+    )
 
 
 def _run_once(monkeypatch, *, task: str, prompt: str = "续写") -> Dict[str, Any]:

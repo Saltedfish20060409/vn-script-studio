@@ -138,7 +138,10 @@ async def _force_final_message(
     """
     nudge = list(messages) + [{"role": "user", "content": _FORCE_FINAL_NUDGE}]
     try:
-        content = await _chat_json(provider, temperature=temperature, messages=nudge)
+        # 收尾补写同样可能撞上限；这里不额外冒泡（它只是补一句说明，主路径已经报过截断了）
+        content, _truncated = await _chat_json(
+            provider, temperature=temperature, messages=nudge
+        )
     except Exception:  # noqa: BLE001 — 收尾失败不该把整轮变成异常
         return ""
 
@@ -216,7 +219,15 @@ async def _chat_json(
     *,
     temperature: float,
     messages: List[Dict[str, str]],
-) -> str:
+) -> tuple[str, bool]:
+    """调一次模型并返回 `(内容, 是否撞到输出上限)`。
+
+    为什么把 `finish_reason` 带回来（2026-09-30 线上实证）：`_warn_if_truncated` 只写日志，
+    作者那一侧完全看不到"这次输出被砍了"。于是现象是"续写只写了一点就没了 / 回复是一坨断掉的
+    JSON"，而界面上一句提示都没有。撞上限是**可判定**的事实，就该走到回复里。
+    """
+    from app.core.llm_http import finish_reason_from_response
+
     res = await provider.chat_completions(
         messages=messages,
         temperature=temperature,
@@ -224,7 +235,11 @@ async def _chat_json(
         timeout=llm_budget.WRITE,
     )
     content, _ = content_from_response(res)
-    return (content or "{}").strip() or "{}"
+    try:
+        truncated = finish_reason_from_response(res).lower() == "length"
+    except Exception:  # noqa: BLE001 - 拿不到结束原因不该影响主链路
+        truncated = False
+    return (content or "{}").strip() or "{}", truncated
 
 
 async def _agent_steps(
@@ -256,12 +271,14 @@ async def _agent_steps(
     """
     prompt_meta = dict(prompt_meta or {})
     hit_step_cap = False
+    truncated_any = False
     for step in range(start_step, steps):
-        content = await _chat_json(
+        content, truncated = await _chat_json(
             provider,
             temperature=temperature,
             messages=messages,
         )
+        truncated_any = truncated_any or truncated
         parsed = _parse_loop_json(content)
         # 这一步的文字说明：没有就是空（工具步正常就不写 message）。
         # 绝不能拿 `_parse_agent_json` 的空消息兜底来填——见 `_step_message` 的说明。
@@ -436,7 +453,15 @@ async def _agent_steps(
             else "本轮没有产出可用说明，请换个问法再试。"
         )
 
-    return working, accumulated, trace, final_message, messages, last_tool_text
+    return (
+        working,
+        accumulated,
+        trace,
+        final_message,
+        messages,
+        last_tool_text,
+        truncated_any,
+    )
 
 
 def record_context_stats(ctx) -> None:  # noqa: ANN001
@@ -744,23 +769,29 @@ async def run_agent_loop(
                 }
             )
 
-    working, accumulated, trace, final_message, messages, last_tool_text = (
-        await _agent_steps(
-            provider,
-            request=request,
-            messages=messages,
-            working=working,
-            accumulated=accumulated,
-            trace=trace,
-            final_message=final_message,
-            last_tool_text=last_tool_text,
-            start_step=start_step,
-            steps=steps,
-            temperature=temperature,
-            emit=emit,
-            on_checkpoint=on_checkpoint,
-            prompt_meta=prompt_meta or None,
-        )
+    (
+        working,
+        accumulated,
+        trace,
+        final_message,
+        messages,
+        last_tool_text,
+        truncated_any,
+    ) = await _agent_steps(
+        provider,
+        request=request,
+        messages=messages,
+        working=working,
+        accumulated=accumulated,
+        trace=trace,
+        final_message=final_message,
+        last_tool_text=last_tool_text,
+        start_step=start_step,
+        steps=steps,
+        temperature=temperature,
+        emit=emit,
+        on_checkpoint=on_checkpoint,
+        prompt_meta=prompt_meta or None,
     )
 
     review_note = ""
@@ -870,6 +901,23 @@ async def run_agent_loop(
         )
         await emit(
             {"type": "thought", "text": "检测到模型复读工具结果，已替换为提示语"}
+        )
+
+    if truncated_any:
+        # 撞上限是**可判定**的事实，不能只留在日志里（作者那一侧看到的是"只写了一点就没了"）。
+        # 文案要说清"这次可能没写完"，并给出可执行的下一步。
+        truncation_note = (
+            "（提醒：这次模型输出撞到了上限、被截断过，上面的内容可能不完整。"
+            "要接着写就说「继续」，或让我分两次写。）"
+        )
+        final_message = (
+            f"{final_message}\n\n{truncation_note}" if final_message else truncation_note
+        )
+        trace.append(
+            {"type": "thought", "text": "检测到模型输出撞上限被截断（finish_reason=length）"}
+        )
+        await emit(
+            {"type": "thought", "text": "检测到模型输出撞上限被截断（finish_reason=length）"}
         )
 
     trace.append({"type": "done", "message": final_message[:2000]})

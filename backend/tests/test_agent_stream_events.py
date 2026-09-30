@@ -48,7 +48,11 @@ def test_agent_loop_emits_stream_events(monkeypatch):
         events.append(evt)
 
     async def fake_chat_json(provider, *, temperature, messages):
-        return '{"message":"先看设定与当前章。","actions":[],"tool_calls":[],"done":true}'
+        # `_chat_json` 的返回是 (内容, 是否撞输出上限)——这里造"没撞上限"
+        return (
+            '{"message":"先看设定与当前章。","actions":[],"tool_calls":[],"done":true}',
+            False,
+        )
 
     monkeypatch.setattr(al, "_chat_json", fake_chat_json)
     cfg = DeepSeekConfig(apiKey="test-key", baseUrl="http://x", model="m")
@@ -83,9 +87,12 @@ def test_agent_loop_events_include_actions(monkeypatch):
 
     async def fake_chat_json(provider, *, temperature, messages):
         return (
-            '{"message":"写入剧本。","actions":[{"op":"append_script",'
-            '"chapterRef":"ch1","text":"霖夏 \\"……又来一场雨。\\""}],'
-            '"tool_calls":[],"done":true}'
+            (
+                '{"message":"写入剧本。","actions":[{"op":"append_script",'
+                '"chapterRef":"ch1","text":"霖夏 \\"……又来一场雨。\\""}],'
+                '"tool_calls":[],"done":true}'
+            ),
+            False,  # 没撞输出上限（见 agent_loop._chat_json 的返回约定）
         )
 
     monkeypatch.setattr(al, "_chat_json", fake_chat_json)

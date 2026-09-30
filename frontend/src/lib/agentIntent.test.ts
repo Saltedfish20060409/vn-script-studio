@@ -204,6 +204,23 @@ describe("inferAgentIntent：改稿模式必须由作者明确要求", () => {
     }
   });
 
+  it("明确要求落盘 → write_to_script（正文必须走动作，不塞聊天里）", () => {
+    // 线上原句：走普通对话时，模型把整章正文塞进 JSON 的 message，输出一断就全丢，
+    // 稿子一个字没写。这条路由就是为了让它走"写入"那档提示词。
+    for (const t of [
+      "帮我把完整的第一章写入剧本",
+      "把这段写进正文",
+      "这段存进稿子里",
+      "将改写稿落到正文",
+    ]) {
+      expect(inferAgentIntent(t).kind).toBe("write_to_script");
+    }
+  });
+
+  it("落盘要求与改稿同时出现时，改稿优先（先出对照再写）", () => {
+    expect(inferAgentIntent("帮我改这一章，然后写入正文").kind).toBe("chapter_revise");
+  });
+
   it("只是**聊到**这一章 → chat（不再自己切进改稿模式）", () => {
     for (const t of [
       "这一章有什么问题？",

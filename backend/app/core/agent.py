@@ -301,20 +301,64 @@ def _normalize_agent_actions(raw: Any) -> List[AgentAction]:
     return out
 
 
+def _looks_like_json_envelope(raw: str) -> bool:
+    """这段输出看起来是"想给结构化回复却没写完整"吗（而不是一段普通文本）？
+
+    判据故意只取开头一小段：模型给的 JSON 信封一定以 `{` / `[` 起，或开头就带
+    `"message"` / `"actions"` 这两个键名。用它区分两种解析失败——
+    "忽略协议的纯文本回复"（照旧当回复用）与"写坏的 JSON"（绝不能当回复）。
+    """
+    head = (raw or "").lstrip()[:400]
+    if not head:
+        return False
+    if head[:1] in "{[":
+        return True
+    return '"message"' in head or '"actions"' in head
+
+
 def _parse_agent_json(raw: str) -> Tuple[str, List[AgentAction]]:
-    from app.core.llm_text import extract_json_object, normalize_model_text
+    from app.core.llm_text import (
+        extract_json_object,
+        normalize_model_text,
+        salvage_message_from_broken_json,
+    )
 
     parsed = extract_json_object(raw)
     if parsed is None:
-        # 模型没吐 JSON（如忽略 response_format 返回纯文本，或返回空串）：
-        # 把原文当回复，绝不把裸 JSONDecodeError 抛给用户。
+        # 解析失败分两种，处理方式**不同**：
         #
-        # 注意这里喂给 normalize_model_text 的是**原文**，不是"最先找到的那段围栏"：
-        # 先挑围栏会把字符串值里的示例对白当成整份回复（见 llm_text.extract_json_object）。
+        # 1) 写坏的 JSON 信封（被输出上限切断、或长字符串里出现了破坏 JSON 的字符）。
+        #    绝不能把原文当回复——线上实证（2026-09-30）：作者两次要"完整的第一章"，
+        #    屏幕上只剩一坨被截到 2000 字的裸 JSON，而动作全丢、稿子一个字没写。
+        #    先把 message 救出来（动作一律丢弃，半截的写入动作落盘更糟），救不回来就明说。
+        # 2) 忽略协议的纯文本回复：照旧把原文当回复（这是既有行为，也有测试守着）。
+        salvaged = salvage_message_from_broken_json(raw)
+        if salvaged:
+            return (
+                f"{salvaged}\n\n（说明：这次回复没能完整解析（JSON 不完整），"
+                "**本轮没有改动工程**。需要落盘的话，可以让我分两次写，或说「重试」。）",
+                [],
+            )
+        if _looks_like_json_envelope(raw):
+            return (
+                "这次回复没能解析（JSON 不完整，通常是被输出上限切断、或长正文里出现了"
+                "破坏 JSON 的字符）。**本轮没有改动工程**。"
+                "可以让我分两次写（例如先写前半章），或直接说「重试」。",
+                [],
+            )
         prose = normalize_model_text((raw or "").strip())
         if not prose.strip():
             return "模型返回了无法解析的内容（空响应），请重试。", []
-        return prose.strip()[:2000], []
+        if len(prose.strip()) > 2000:
+            # 纯文本但很长：多半是正文，而它**没有**走写入动作。
+            # 说清"截断显示 + 没有写入"，别让作者以为稿子已经改了。
+            return (
+                prose.strip()[:2000]
+                + "\n\n（说明：这条回复超过 2000 字，这里只显示前 2000 字；"
+                "**本轮没有改动工程**——要落盘请让我用写入动作再来一次。）",
+                [],
+            )
+        return prose.strip(), []
     actions = _normalize_agent_actions(parsed.get("actions"))
     message = parsed.get("message")
     if isinstance(message, str) and message.strip():

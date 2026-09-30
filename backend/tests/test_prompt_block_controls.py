@@ -104,8 +104,9 @@ def _run_with_exclusions(monkeypatch, exclusions: List[str]) -> Dict[str, Any]:
         }
     )
 
-    async def fake_chat_json(*_a: Any, **_k: Any) -> str:
-        return '{"message":"好。","actions":[],"tool_calls":[],"done":true}'
+    async def fake_chat_json(*_a: Any, **_k: Any) -> tuple[str, bool]:
+        # 第二个元素是"是否撞到输出上限"（见 agent_loop._chat_json）
+        return '{"message":"好。","actions":[],"tool_calls":[],"done":true}', False
 
     from app.core import agent_loop as al
 

@@ -1,10 +1,7 @@
 /**
  * Agent 消息格式化工具（纯函数）——从组件文件中拆出以支持 fast-refresh。
  */
-import type {
-  HarnessLintResult,
-  PipelineRunResult,
-} from "../api/client";
+import type { HarnessLintResult, PipelineRunResult } from "../api/client";
 import { copyFor, type GenreCopy } from "./genreCopy";
 import type { AgentAction, AgentChatMessage } from "../types/vn";
 
@@ -43,13 +40,6 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 /**
- * 把一批写入动作拼成一句人话。
- *
- * 第二个参数缺省 `copyFor("vn")` 是刻意的向后兼容：调用点（含测试）不传时看到的
- * 仍然是"追加剧本 / 替换剧本"，与改动前逐字一致；只有真的按体裁传了 copy 的
- * 调用点才会在小说工程里显示"追加正文 / 替换正文"。
- */
-/**
  * 逐条动作的人话（一行一条）。
  *
  * 为什么要它：写入闸门要把"这次打算改什么"一条一条摆给作者看，而 `describeActions`
@@ -67,6 +57,13 @@ export function describeActionList(
   });
 }
 
+/**
+ * 把一批写入动作拼成一句人话。
+ *
+ * 第二个参数缺省 `copyFor("vn")` 是刻意的向后兼容：调用点（含测试）不传时看到的
+ * 仍然是"追加剧本 / 替换剧本"，与改动前逐字一致；只有真的按体裁传了 copy 的
+ * 调用点才会在小说工程里显示"追加正文 / 替换正文"。
+ */
 export function describeActions(
   actions: AgentAction[],
   copy: GenreCopy = copyFor("vn")
@@ -74,6 +71,29 @@ export function describeActions(
   const names = describeActionList(actions, copy);
   if (names.length === 0) return "";
   return names.length <= 2 ? names.join("；") : `${names[0]} 等 ${names.length} 项`;
+}
+
+/**
+ * 方案卡片上逐条列动作：**带正文的动作要把正文开头一起摆出来**。
+ *
+ * 为什么（2026-09-30 线上）：写入闸只列「追加正文 / 替换正文」的话，作者点确认等于盲签——
+ * 一次整章写入，卡片上看不到一个字的正文。这里把文本字段压成一行预览（前 100 字 + 总字数），
+ * 让"确认才写"这件事真的有判断依据。
+ */
+export function planActionLines(
+  actions: AgentAction[],
+  copy: GenreCopy = copyFor("vn")
+): string[] {
+  const labels = describeActionList(actions, copy);
+  return actions.map((action, i) => {
+    const label = labels[i] ?? action.op;
+    const raw = (action as { text?: unknown }).text;
+    const text = typeof raw === "string" ? raw.trim() : "";
+    if (!text) return label;
+    const flat = text.replace(/\s+/g, " ");
+    const head = flat.length > 100 ? `${flat.slice(0, 100)}…` : flat;
+    return `${label}：${head}（${text.length} 字）`;
+  });
 }
 
 export function defaultWelcome(): AgentChatMessage[] {
