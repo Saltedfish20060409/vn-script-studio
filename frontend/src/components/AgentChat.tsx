@@ -40,6 +40,7 @@ import {
   type PipelineRunResult,
 } from "../api/client";
 import { inferAgentIntent } from "../lib/agentIntent";
+import { attachmentLines, flowUserMessage } from "../lib/agentFlowMessage";
 import {
   planForFactsScan,
   planForFinalize,
@@ -1229,6 +1230,8 @@ export function AgentChat({
       ...preview,
       lines: [quoteAsk(ask || "点「写入设定页」捷径"), ...preview.lines],
       confirmLabel: "确认写入设定页",
+      // 作者的这句话要跟着方案走：确认后由 ingestSettingsFromAttachments 记进对话记录
+      instruction: ask,
     });
   }
 
@@ -1275,7 +1278,7 @@ export function AgentChat({
         await applyConfirmedActions(plan);
         return;
       case "settings_ingest":
-        await ingestSettingsFromAttachments();
+        await ingestSettingsFromAttachments(plan.instruction);
         return;
       case "facts_scan":
         await runFactsScanFlow(plan.instruction);
@@ -1284,10 +1287,10 @@ export function AgentChat({
         await runPipelineFlow(plan.instruction || "");
         return;
       case "finalize":
-        await runQualityFinalize();
+        await runQualityFinalize(plan.instruction);
         return;
       case "ledger":
-        await runLedgerDigest();
+        await runLedgerDigest(plan.instruction);
         return;
     }
   }
@@ -1464,7 +1467,7 @@ export function AgentChat({
     }
     if (intent.kind === "style_lint") {
       // 只读：体检不改稿，不需要过闸
-      await runStyleLint();
+      await runStyleLint(userVisible);
       return;
     }
     if (intent.kind === "finalize") {
@@ -1472,6 +1475,7 @@ export function AgentChat({
         kind: "finalize",
         ...planForFinalize({ chapterTitle }),
         confirmLabel: "确认定稿",
+        instruction: userVisible,
       });
       return;
     }
@@ -1480,6 +1484,7 @@ export function AgentChat({
         kind: "ledger",
         ...planForLedgerDigest({ chapterTitle }),
         confirmLabel: "确认更新账本",
+        instruction: userVisible,
       });
       return;
     }
@@ -1488,7 +1493,7 @@ export function AgentChat({
       return;
     }
     if (intent.kind === "list_mentors") {
-      await runListMentors();
+      await runListMentors(userVisible);
       return;
     }
 
@@ -1525,13 +1530,16 @@ export function AgentChat({
     });
   }
 
-  async function runListMentors() {
+  async function runListMentors(ask?: string) {
     if (busy || !conversationId) return;
     setError("");
     setThinking("读取写作导师配置…");
     const nextMessages: AgentChatMessage[] = [
       ...messages,
-      { role: "user", content: "列出写作导师" },
+      {
+        role: "user",
+        content: flowUserMessage("【写作导师】请列出当前启用的写作导师。", ask),
+      },
     ];
     setMessages(nextMessages);
     setBusy(true);
@@ -1682,7 +1690,7 @@ export function AgentChat({
     }
   }
 
-  async function runStyleLint() {
+  async function runStyleLint(ask?: string) {
     if (busy || !conversationId) return;
     const text = (draft || "").trim();
     if (!text) {
@@ -1693,7 +1701,10 @@ export function AgentChat({
     setThinking("正在按你项目里定好的文风要求检查本章文字…");
     const nextMessages: AgentChatMessage[] = [
       ...messages,
-      { role: "user", content: "【文风体检】请检查当前章节草稿。" },
+      {
+        role: "user",
+        content: flowUserMessage("【文风体检】请检查当前章节草稿。", ask),
+      },
     ];
     setMessages(nextMessages);
     setBusy(true);
@@ -1854,10 +1865,23 @@ export function AgentChat({
     }
   }
 
-  async function runQualityFinalize() {
+  async function runQualityFinalize(ask?: string) {
     if (busy || !conversationId) return;
     setError("");
     setBusy(true);
+    // 以前这条流程一条用户消息都不记（只记助手回复），作者那句"定稿"就没了。
+    const withUser: AgentChatMessage[] = [
+      ...messagesRef.current,
+      {
+        role: "user" as const,
+        content: flowUserMessage(
+          "【定稿】请跑一遍自动检查，通过后写入本章并记入账本。",
+          ask
+        ),
+      },
+    ].slice(-120);
+    setMessages(withUser);
+    messagesRef.current = withUser;
     try {
       const prefs = getHarnessPrefs();
       const data = await pipelineGate(projectId, {
@@ -1884,7 +1908,18 @@ export function AgentChat({
             .slice(0, 12)
             .map((i) => `- ${i.code}：${i.message}`)
             .join("\n")}`;
-      setMessages((prev) => [...prev, { role: "assistant", content }]);
+      const finalMessages = [
+        ...withUser,
+        { role: "assistant" as const, content },
+      ].slice(-120);
+      setMessages(finalMessages);
+      messagesRef.current = finalMessages;
+      await putAgentConversation(projectId, conversationId, {
+        messages: finalMessages,
+        chat_memory: "",
+        undo_stack: undoStack.current.slice(-20),
+      }).catch(() => undefined);
+      void refreshList();
       if (data.project) {
         onProjectChange(data.project);
       }
@@ -1900,10 +1935,20 @@ export function AgentChat({
     }
   }
 
-  async function runLedgerDigest() {
+  async function runLedgerDigest(ask?: string) {
     if (busy) return;
     setBusy(true);
     setError("");
+    // 同定稿：这条以前也只记助手回复，作者那句"更新账本"没进记录。
+    const withUser: AgentChatMessage[] = [
+      ...messagesRef.current,
+      {
+        role: "user" as const,
+        content: flowUserMessage("【账本入库】请把本章要点记入项目账本。", ask),
+      },
+    ].slice(-120);
+    setMessages(withUser);
+    messagesRef.current = withUser;
     try {
       const data = await pipelineLedgerDigest(projectId, chapterId, {
         enrich: true,
@@ -1914,15 +1959,23 @@ export function AgentChat({
         : data.enrichMeta?.error
           ? `（AI 补充未成功，已用保守方式记录：${data.enrichMeta.error}）`
           : "（保守摘要）";
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `### 本章要点已记录${enrichBit}\n\n已把本章的新增事实、出场人物状态和结尾悬念存入项目档案，之后 AI 写作会参考这些记录，尽量不前后矛盾。\n\n${(
-            data.agentBlock || ""
-          ).slice(0, 1200)}`,
-        },
-      ]);
+      const content = `### 本章要点已记录${enrichBit}\n\n已把本章的新增事实、出场人物状态和结尾悬念存入项目档案，之后 AI 写作会参考这些记录，尽量不前后矛盾。\n\n${(
+        data.agentBlock || ""
+      ).slice(0, 1200)}`;
+      const finalMessages = [
+        ...withUser,
+        { role: "assistant" as const, content },
+      ].slice(-120);
+      setMessages(finalMessages);
+      messagesRef.current = finalMessages;
+      if (conversationId) {
+        await putAgentConversation(projectId, conversationId, {
+          messages: finalMessages,
+          chat_memory: "",
+          undo_stack: undoStack.current.slice(-20),
+        }).catch(() => undefined);
+        void refreshList();
+      }
       setLastContext(
         data.enrichMeta?.enrich
           ? "项目档案 · 已更新（含 AI 补充）"
@@ -1966,7 +2019,7 @@ export function AgentChat({
     }
   }
 
-  async function ingestSettingsFromAttachments() {
+  async function ingestSettingsFromAttachments(ask?: string) {
     if (!attachments.length || !conversationId || busy) return;
     const pending = [...attachments];
     const snapshot = prepareProject ? prepareProject() : project;
@@ -1974,11 +2027,15 @@ export function AgentChat({
     setBusy(true);
     setThinking("正在把附件结构化写入设定页…");
     setAttachments([]);
+    // 作者原话必须排在前面：以前这条只记「【写入设定页】请根据附件更新故事设定与角色卡。」
+    // 这一句系统套话，作者打的字全没了（线上排查就是被这一点挡住过）。
     const userMsg: AgentChatMessage = {
       role: "user",
-      content: `【写入设定页】请根据附件更新故事设定与角色卡。\n\n📎 ${pending
-        .map((a) => `${a.filename}（${a.chars ?? a.text.length} 字）`)
-        .join("、")}`,
+      content: flowUserMessage(
+        "【写入设定页】请根据附件更新故事设定与角色卡。",
+        ask,
+        attachmentLines(pending)
+      ),
     };
     const withUser = [...messagesRef.current, userMsg].slice(-120);
     setMessages(withUser);
@@ -2042,11 +2099,11 @@ export function AgentChat({
       .join("\n\n");
     const userMsg: AgentChatMessage = {
       role: "user",
-      content: pending.length
-        ? `【整理关系/时间线】${note?.trim() || ""}\n\n📎 ${pending
-            .map((a) => `${a.filename}（${a.chars ?? a.text.length} 字）`)
-            .join("、")}`
-        : `【整理关系/时间线】${note?.trim() || "请扫描当前章事实"}`,
+      content: flowUserMessage(
+        "【整理关系/时间线】请扫描事实，候选先进待审列表。",
+        note,
+        attachmentLines(pending)
+      ),
     };
     const withUser = [...messagesRef.current, userMsg].slice(-120);
     setMessages(withUser);
