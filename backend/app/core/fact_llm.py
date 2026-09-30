@@ -23,7 +23,7 @@ from app.core import llm_budget
 from app.core.ai import DeepSeekConfig
 from app.domain.types import VnProject
 
-from .agent_context import _blocks_to_plain
+from .agent_context import chapter_plain
 from .fact_extract import FactCandidate, link_dedupe_key, timeline_dedupe_key
 from .llm_http import chat_completions, content_from_response
 
@@ -141,7 +141,7 @@ def _build_messages(
         if chapter_texts and chapter_texts.get(ch.id):
             text = chapter_texts[ch.id]
         else:
-            text = _blocks_to_plain(ch.blocks, project.characters)
+            text = chapter_plain(ch, project.characters)
         text = (text or "").strip()
         if text:
             chapters.append(

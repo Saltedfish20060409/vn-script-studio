@@ -21,7 +21,7 @@ from app.core.ai import DeepSeekConfig
 from app.core.llm_http import chat_completions, content_from_response
 from app.domain.types import VnProject
 
-from .agent_context import _blocks_to_plain
+from .agent_context import chapter_plain
 
 _CHAPTER_TEXT_CAP = 2200
 _MAX_CHAPTER_TEXTS = 12
@@ -61,7 +61,9 @@ class StyleMemoryResult:
 def _chapter_texts(project: VnProject) -> List[Dict[str, str]]:
     out: List[Dict[str, str]] = []
     for ch in project.chapters:
-        text = (ch.blocks and _blocks_to_plain(ch.blocks, project.characters) or "").strip()
+        # 文风记忆是从**作者自己的文本**里学的：只读 blocks 会让"用正文档写作"的作者
+        # 学不到东西（样本为零或全是旧脚本）。
+        text = (chapter_plain(ch, project.characters) or "").strip()
         if not text:
             continue
         out.append({"title": ch.title or "", "text": text[:_CHAPTER_TEXT_CAP]})

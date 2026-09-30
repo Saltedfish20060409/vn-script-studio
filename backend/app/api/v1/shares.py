@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.agent_context import _blocks_to_plain
+from app.core.agent_context import chapter_plain
 from app.db import get_db
 from app.domain.types import VnProject
 from app.models import Share
@@ -22,7 +22,9 @@ def _build_preview(project: VnProject) -> Dict[str, Any]:
     """Chapter text previews for the public landing page (read-only taste)."""
     chapter_previews: List[Dict[str, Any]] = []
     for ch in project.chapters:
-        plain = (ch.blocks and _blocks_to_plain(ch.blocks, project.characters) or "").strip()
+        # 公开分享页的试读与字数都走唯一口径（正文优先）：只读 blocks 时，
+        # 用正文档写作的作品分享出去会是"没有正文、字数 0"。
+        plain = (chapter_plain(ch, project.characters) or "").strip()
         if not plain:
             continue
         text = plain[:_PREVIEW_CHARS]
@@ -42,7 +44,7 @@ def _build_preview(project: VnProject) -> Dict[str, Any]:
         "stats": {
             "chapters": len(project.chapters),
             "words": sum(
-                len(_blocks_to_plain(c.blocks, project.characters) or "") // 2
+                len(chapter_plain(c, project.characters) or "") // 2
                 for c in project.chapters
             ),
         },

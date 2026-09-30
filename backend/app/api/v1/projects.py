@@ -1765,12 +1765,14 @@ async def analysis_semantic_search(
     q = body.query.strip()
 
     # Build chapter + bible chunks for fallback ranking / indexing.
-    from app.core.agent_context import _blocks_to_plain
+    from app.core.agent_context import chapter_plain
 
     chapters = list(vn.chapters or [])
     chunks: list[dict] = []
     for ch in chapters:
-        plain = _blocks_to_plain(ch.blocks or [], vn.characters or [])
+        # 检索语料（search_script 用的那份）必须包含**作者当下那一面**的正文，
+        # 只读 blocks 会让正文档写作的作品检索不到自己的正文。
+        plain = chapter_plain(ch, vn.characters or [])
         if plain.strip():
             chunks.append({"id": f"ch:{ch.id}", "kind": "chapter", "text": plain})
     bible_blob = {}

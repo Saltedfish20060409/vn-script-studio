@@ -21,7 +21,7 @@ from app.domain.types import (
     VnProject,
 )
 
-from .agent_context import _blocks_to_plain
+from .agent_context import chapter_plain
 from .project import uid
 
 # Phase 2: file upload extraction joins the same inbox via source="upload".
@@ -45,7 +45,9 @@ def chapter_fingerprint(project: VnProject, chapter_id: str) -> str:
     ch = next((c for c in project.chapters if c.id == chapter_id), None)
     if not ch:
         return ""
-    plain = _blocks_to_plain(ch.blocks, project.characters)
+    # 指纹决定"这一章自上次扫描后有没有变"：必须覆盖**作者当前那一面**的正文，
+    # 否则在正文档里改写的章节指纹不变，扫描会一直说"无变化"。
+    plain = chapter_plain(ch, project.characters)
     syn = ch.synopsis or ""
     return _sha(f"{ch.title}\n{syn}\n{plain}")
 
@@ -317,7 +319,7 @@ def extract_from_chapters(
     for ch in project.chapters:
         if ch.id not in id_set:
             continue
-        plain = _blocks_to_plain(ch.blocks, project.characters)
+        plain = chapter_plain(ch, project.characters)
         syn = (ch.synopsis or "").strip()
         blob = f"{syn}\n{plain}".strip()
         if not blob:
@@ -500,7 +502,9 @@ def _chapter_plain(project: VnProject, chapter_id: str) -> str:
     ch = next((c for c in project.chapters if c.id == chapter_id), None)
     if not ch:
         return ""
-    return _blocks_to_plain(ch.blocks, project.characters)
+    # 与全项目唯一口径一致（正文优先、正文为空才回落脚本块）：引用核对也要看作者
+    # 当下那一面，否则"正文里的台词"会被判成"已消失"。
+    return chapter_plain(ch, project.characters)
 
 
 def reconcile_stale(project: VnProject) -> VnProject:

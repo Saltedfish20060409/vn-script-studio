@@ -13,7 +13,7 @@ from app.core import llm_budget
 from app.domain.types import VnProject
 from app.llm_models import DEFAULT_LLM_MODEL
 
-from .agent_context import _blocks_to_plain
+from .agent_context import chapter_plain
 from .ai import DeepSeekConfig
 from .llm_http import chat_completions, content_from_response, usage_from_response
 from .narrative_lint import lint_narrative_draft
@@ -669,19 +669,22 @@ def resolve_chapter_source(
     if ch is None and project.chapters:
         ch = project.chapters[0]
 
-    chapter_plain = ""
+    chapter_text = ""
     cid: Optional[str] = None
     title = ""
     if ch is not None:
-        chapter_plain = (_blocks_to_plain(ch.blocks, project.characters) or "").strip()
+        # 回炉/改稿的"源文"必须走全项目唯一口径 `chapter_plain`（正文优先、正文为空才回落
+        # 脚本块）。只读 blocks 的话，在**正文档**里改稿的作者会被拿着脚本档那份旧文回炉
+        # （2026-10-01 线上事故：删掉的原文又出现在生成结果里）。
+        chapter_text = (chapter_plain(ch, project.characters) or "").strip()
         cid = ch.id
         title = ch.title or ""
 
     if att_text and len(att_text) >= 400:
         source = att_text
         warnings.append("以附件正文为回炉来源（优先于当前章）")
-    elif chapter_plain:
-        source = chapter_plain
+    elif chapter_text:
+        source = chapter_text
     elif att_text:
         source = att_text
         warnings.append("当前章为空，使用附件正文")

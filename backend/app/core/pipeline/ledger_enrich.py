@@ -6,7 +6,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from app.core import llm_budget
-from app.core.agent_context import _blocks_to_plain
+from app.core.agent_context import chapter_plain
 from app.core.ai import DeepSeekConfig
 from app.core.llm_http import chat_completions, content_from_response
 from app.domain.types import VnProject
@@ -46,7 +46,9 @@ async def enrich_chapter_ledger_payload(
     if not config.apiKey or "your-key" in config.apiKey:
         return {}
 
-    plain = _blocks_to_plain(ch.blocks, project.characters) or ""
+    # 账本补全读的是"这一章发生了什么"：走唯一口径（正文优先），否则正文档写作的章
+    # 在这个端点眼里是空章，补全永远跳过它。
+    plain = chapter_plain(ch, project.characters) or ""
     if not plain.strip():
         return {}
 

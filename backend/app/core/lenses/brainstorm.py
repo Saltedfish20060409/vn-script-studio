@@ -6,7 +6,7 @@ import asyncio
 from typing import Any, Dict, List, Optional
 
 from app.core import llm_budget
-from app.core.agent_context import _blocks_to_plain
+from app.core.agent_context import chapter_plain
 from app.core.ai import DeepSeekConfig
 from app.core.lenses import (
     MentorPack,
@@ -60,7 +60,9 @@ def _work_snippet(
     if chapter_id:
         ch = next((c for c in project.chapters if c.id == chapter_id), None)
         if ch:
-            plain = _blocks_to_plain(ch.blocks, project.characters)
+            # 头脑风暴的"当前章末尾"走唯一口径（正文优先）：只读 blocks 会把
+            # 用正文档写作的章当成空章，风暴于是凭空展开。
+            plain = chapter_plain(ch, project.characters)
             if plain:
                 parts.append(f"## 当前章「{ch.title}」末尾\n{(plain or '')[-1000:]}")
     if (draft or "").strip():

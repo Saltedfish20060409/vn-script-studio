@@ -121,11 +121,15 @@ def _summarize_plain(text: str, max_chars: int = 520) -> str:
 
 
 def number_chapters(project: VnProject) -> List[NumberedChapter]:
-    char_names = {c.id: c.displayName for c in project.characters}
+    # 记忆存档喂给模型的"这一章正文"必须走唯一口径（正文优先、空才回落脚本块）：
+    # 只读 blocks 会把整本正文档写作的作品记成空的 —— 那正是"长篇失忆"的源头。
+    # 导入放在函数里：novel_memory ← longform_memory ← agent_context 这条链在模块级会成环。
+    from app.core.agent_context import chapter_plain
+
     out: List[NumberedChapter] = []
     digests = {d.chapterId: d for d in digest_all_chapters(project)}
     for i, ch in enumerate(project.chapters, start=1):
-        plain = _blocks_to_plain(ch.blocks, char_names)
+        plain = chapter_plain(ch, project.characters)
         dig = digests.get(ch.id)
         speakers = list(dig.speakers) if dig else []
         out.append(

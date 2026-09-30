@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
-from app.core.agent_context import _blocks_to_plain
+from app.core.agent_context import chapter_plain
 from app.core.chapter_digest import chapter_content_hash, make_chapter_digest
 from app.domain.types import VnProject
 
@@ -460,7 +460,9 @@ def digest_chapter_into_ledger(
     if not ch:
         raise ValueError("章节不存在")
     dig = make_chapter_digest(ch, project.characters)
-    plain = _blocks_to_plain(ch.blocks, project.characters)
+    # 账本记的是"这一章发生了什么"：走唯一口径（正文优先），只读 blocks 的话
+    # 用正文档写作的章会进账本为空（伏笔/事实层跟着失忆）。
+    plain = chapter_plain(ch, project.characters)
     ledger = get_ledger(project)
 
     facts = list(llm_facts or [])
@@ -690,7 +692,7 @@ def auto_digest_ledger(project: VnProject, *, max_chapters: int = AUTO_DIGEST_MA
             h = chapter_content_hash(ch)
             if known.get(ch.id) == h:
                 continue
-            plain_len = len(_blocks_to_plain(ch.blocks, project.characters) or "")
+            plain_len = len(chapter_plain(ch, project.characters) or "")
             pending.append((ch.id, h, plain_len))
 
         if not pending and not pruned:

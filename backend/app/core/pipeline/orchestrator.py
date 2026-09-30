@@ -7,7 +7,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from app.core import llm_budget
-from app.core.agent_context import _blocks_to_plain
+from app.core.agent_context import chapter_plain
 from app.core.ai import DeepSeekConfig
 from app.core.harness.audit_full import full_audit_draft
 from app.core.harness.pipeline import build_writer_user_prompt, run_harness_llm
@@ -68,7 +68,9 @@ async def stage_plan(
     if chapter_id:
         ch = next((c for c in project.chapters if c.id == chapter_id), None)
         if ch:
-            plain = _blocks_to_plain(ch.blocks, project.characters)
+            # 节拍表要看的是"这一章现在写到哪"：走唯一口径（正文优先），
+            # 与下面的 writer 保持一致（旧实现只读 blocks）。
+            plain = chapter_plain(ch, project.characters)
             ch_hint = f"当前章「{ch.title}」末尾：\n{(plain or '')[-800:]}"
     ledger_block = format_ledger_for_agent(get_ledger(project), chapters=project.chapters)
     prompt = (
@@ -113,7 +115,11 @@ async def stage_write(
     if chapter_id:
         ch = next((c for c in project.chapters if c.id == chapter_id), None)
         if ch:
-            plain = _blocks_to_plain(ch.blocks, project.characters)
+            # 读"这一章的正文"必须走全项目唯一口径 `chapter_plain`（正文优先、正文为空才
+            # 回落到脚本块）。这里以前只读 `_blocks_to_plain(ch.blocks)`：作者在**正文档**里
+            # 改/删的这一章，写作通道却拿着脚本档里那份旧文当"当前章末尾"接着写
+            # （2026-10-01 线上事故：删掉的原文又出现在生成结果里）。
+            plain = chapter_plain(ch, project.characters)
             chapter_tail = (plain or "")[-1200:]
     ledger_block = format_ledger_for_agent(get_ledger(project), chapters=project.chapters)
     mem = long_memory

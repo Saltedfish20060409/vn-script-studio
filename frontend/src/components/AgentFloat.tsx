@@ -29,6 +29,8 @@ type Props = {
   selection: string;
   draft?: string;
   prepareProject: () => VnProject;
+  /** 动用 Agent 前先落盘（见 AgentChat 的同名 prop）：Agent 读的是服务端那一份。 */
+  beforeAgentRun?: () => Promise<void>;
   onProjectChange: (p: VnProject) => void;
   onChapterFocus?: (id: string) => void;
   /** 外部"打开"请求：值变化时把面板从任何状态（含贴边收起）拉出来 */
@@ -511,6 +513,7 @@ export function AgentFloat(props: Props) {
                 selection={props.selection}
                 draft={props.draft}
                 prepareProject={props.prepareProject}
+                beforeAgentRun={props.beforeAgentRun}
                 onProjectChange={props.onProjectChange}
                 onChapterFocus={props.onChapterFocus}
                 compact

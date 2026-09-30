@@ -451,12 +451,12 @@ async def pipeline_gate(
 
     draft = body.draft
     if not draft.strip() and body.chapter_id:
-        from app.core.agent_context import _blocks_to_plain
+        from app.core.agent_context import chapter_plain
 
         ch = next((c for c in vn.chapters if c.id == body.chapter_id), None)
         if not ch:
             raise HTTPException(status_code=404, detail="章节不存在")
-        draft = _blocks_to_plain(ch.blocks, vn.characters) or ""
+        draft = chapter_plain(ch, vn.characters) or ""
     if not draft.strip():
         raise HTTPException(status_code=400, detail="需要 draft 或 chapter_id")
     return await run_quality_gate_async(

@@ -20,7 +20,7 @@ from app.core.ai import DeepSeekConfig
 from app.core.llm_http import chat_completions, content_from_response
 from app.domain.types import VnProject
 
-from .agent_context import _blocks_to_plain
+from .agent_context import chapter_plain
 
 # Token budget for the whole-novel scan.
 _CHAPTER_TEXT_CAP = 1600
@@ -142,7 +142,9 @@ def _build_authority(project: VnProject) -> Dict[str, Any]:
 def _chapter_texts(project: VnProject) -> List[Dict[str, str]]:
     out: List[Dict[str, str]] = []
     for ch in project.chapters:
-        text = (ch.blocks and _blocks_to_plain(ch.blocks, project.characters) or "").strip()
+        # 送审正文走唯一口径 `chapter_plain`：只读 blocks 会把"用正文写作"的章当成空章
+        # （审计于是对着一份旧脚本或空白报告说"没问题"）。
+        text = (chapter_plain(ch, project.characters) or "").strip()
         if not text:
             continue
         out.append({"id": ch.id, "title": ch.title or "", "text": text[:_CHAPTER_TEXT_CAP]})

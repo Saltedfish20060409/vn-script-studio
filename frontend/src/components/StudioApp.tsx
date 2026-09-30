@@ -153,9 +153,10 @@ import {
 } from "../lib/volumes";
 import { chapterWithRecap } from "../lib/recap";
 import type { MarkRange } from "../lib/markHighlight";
-import { blockTextRange, blocksToEditable, editableToBlocks } from "../lib/scriptCodec";
+import { blockTextRange, blocksToEditable } from "../lib/scriptCodec";
 import { insertCommandAtLine } from "../lib/insertCommand";
 import { chapterProse, proseFingerprint, rpyIsStale } from "../lib/scriptProse";
+import { flushChapterSurface } from "../lib/chapterSurfaces";
 import { summarizeRpyFindings } from "../lib/rpyFindings";
 import { normalizeProject } from "../lib/vnLocal";
 import { loreLinkOptions } from "../lib/loreEntries";
@@ -1584,15 +1585,19 @@ export function StudioApp() {
     text: string,
     mode: WriteMode
   ): VnProject {
-    return {
-      ...p,
-      chapters: p.chapters.map((c) => {
-        if (c.id !== chId) return c;
-        return mode === "prose"
-          ? { ...c, prose: text }
-          : { ...c, blocks: editableToBlocks(text) };
-      }),
-    };
+    // 规则与理由都写在 lib/chapterSurfaces.ts：**清空当前档时另一面也一起清**。
+    // 旧实现在这里只写当前档，于是"文本存在脚本档、作者在正文档里删掉它"这条路上，
+    // 本地 JSON 一点没变（连保存都不发），而读侧又从另一面回落 —— 作者删掉的稿子
+    // 会作为"原文"回到 Agent 手里（2026-10-01 线上事故）。
+    const { project: next, clearedOther } = flushChapterSurface(p, chId, text, mode);
+    if (clearedOther) {
+      setStatus(
+        mode === "prose"
+          ? "本章已清空（脚本档里那份同章旧稿也一并清了；需要脚本时点「生成 .rpy」重新转换）"
+          : "本章已清空（正文档里那份同章旧稿也一并清了）"
+      );
+    }
+    return next;
   }
 
   function commitEditor() {
@@ -1626,6 +1631,25 @@ export function StudioApp() {
       editorRef.current,
       writeModeRef.current
     );
+  }
+
+  /**
+   * Agent 动手**之前**先把编辑器里的改动落盘。
+   *
+   * 为什么（2026-10-01 线上事故）：Agent 读的是**服务端那一份**作品，而本地保存有
+   * 800ms 防抖、编辑器提交还有 900ms 防抖——"删掉一段、立刻让它接着写"正好落在窗口里，
+   * 模型读到的就是删改之前的稿子，作者看到的现象是"它还在用我已经删掉的原文"。
+   * 保存失败（如版本冲突）不拦 Agent：冲突提示由 persistProject 自己弹。
+   */
+  async function flushBeforeAgent(): Promise<void> {
+    commitEditor();
+    const latest = buildLatestProject() ?? project;
+    if (!latest) return;
+    try {
+      await persistProject(latest, { silent: true });
+    } catch {
+      /* 读服务端那一版也能跑；冲突交给 persistProject 的提示 */
+    }
   }
 
   function persistWriteMode(next: WriteMode) {
@@ -2909,6 +2933,7 @@ export function StudioApp() {
                 selection={selection}
                 draft={editor}
                 prepareProject={() => buildLatestProject() ?? project}
+                beforeAgentRun={flushBeforeAgent}
                 onProjectChange={(next) => {
                   applyRemoteProject(next);
                   const ch = next.chapters.find((c) => c.id === chapterId) ?? next.chapters[0];
@@ -3791,6 +3816,7 @@ export function StudioApp() {
               draft={editor}
               openRequest={agentOpenTick}
               prepareProject={() => buildLatestProject() ?? project}
+              beforeAgentRun={flushBeforeAgent}
               onProjectChange={(p) => {
                 applyRemoteProject(p);
                 const ch = p.chapters.find((c) => c.id === chapterId) ?? p.chapters[0];

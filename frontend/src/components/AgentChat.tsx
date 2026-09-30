@@ -114,6 +114,12 @@ type Props = {
   /** Current chapter script text (editor buffer) for lint / pipeline / gate */
   draft?: string;
   prepareProject?: () => VnProject;
+  /**
+   * 动用 Agent 之前先落盘：Agent 读的是**服务端那一份**作品，而本地保存有防抖。
+   * 不落盘的话，"删掉一段、立刻让它接着写"会让模型读到删改之前的稿子
+   * （2026-10-01 线上事故：作者删掉的原文又出现在生成结果里）。失败不拦流程。
+   */
+  beforeAgentRun?: () => Promise<void>;
   onProjectChange: (project: VnProject) => void;
   onChapterFocus?: (chapterId: string) => void;
   /**
@@ -231,6 +237,7 @@ export function AgentChat({
   selection,
   draft = "",
   prepareProject,
+  beforeAgentRun,
   onProjectChange,
   onChapterFocus,
   onCreateMarksFromHints,
@@ -238,6 +245,16 @@ export function AgentChat({
   hidden,
 }: Props) {
   const projectId = project.id;
+
+  /** 调 Agent 前把本地改动落盘（见 Props.beforeAgentRun）。任何失败都不该拦住这一轮。 */
+  async function settleLocalEdits(): Promise<void> {
+    if (!beforeAgentRun) return;
+    try {
+      await beforeAgentRun();
+    } catch {
+      /* 落盘失败时照旧走：Agent 会读服务端那一版，界面上的保存冲突提示另说 */
+    }
+  }
   // Agent 的"写入动作"文案里，append_script / replace_script 要跟着作品体裁叫名字
   // （剧本 / 正文）。体裁只能从 project 读，所以在组件里取一次；无需 useMemo——
   // copyForProject 内部只是查表，返回的是模块级常量对象，不会造成额外渲染。
@@ -890,6 +907,9 @@ export function AgentChat({
     const convId = conversationId;
     if (!convId) return;
     const pendingAttach = opts.attachments ?? [];
+    // 先把编辑器里的改动落盘：Agent 读的是服务端那一份，防抖窗口内它会读到旧稿。
+    // 断点续跑不落盘——那一轮要的是"接着上次的检查点"，本地新改动不该插进去。
+    if (!opts.resume) await settleLocalEdits();
     setError("");
     setThinking(
       opts.resume
@@ -1554,6 +1574,9 @@ export function AgentChat({
   async function runWriteChannel(instruction: string) {
     if (busy || !conversationId) return;
     const ask = instruction.trim() || "请按设定与已有内容写一段可上演的正文";
+    // 写作通道的"当前章"由服务端读库，所以先把本地改动落盘——否则刚删掉的段落
+    // 会作为"章末那一拍"被接着写（2026-10-01 线上事故）。
+    await settleLocalEdits();
     const withUser = [
       ...messagesRef.current,
       {
@@ -2130,6 +2153,7 @@ export function AgentChat({
 
   async function ingestSettingsFromAttachments(ask?: string) {
     if (!attachments.length || !conversationId || busy) return;
+    await settleLocalEdits();
     const pending = [...attachments];
     const snapshot = prepareProject ? prepareProject() : project;
     setError("");
@@ -2196,6 +2220,8 @@ export function AgentChat({
 
   async function runFactsScanFlow(note?: string) {
     if (!conversationId || busy) return;
+    // 事实扫描是**由服务端读章节正文**跑出来的：本地没落盘的话，扫的是旧稿。
+    await settleLocalEdits();
     const pending = [...attachments];
     const snapshot = prepareProject ? prepareProject() : project;
     setError("");
@@ -2273,6 +2299,8 @@ export function AgentChat({
     }
   ) {
     if (!conversationId || busy) return;
+    // 改稿读的也是服务端那一章：先把本地改动落盘，别让刚删掉的段落进改稿输入。
+    await settleLocalEdits();
     const prefs = getChapterRevisePrefs(projectId, chapterId);
     // 不再弹窗拦人：话里点过方向就用那个，否则一律照作者的说明改（规则见 resolveReviseMode）。
     // 方向选择器改成**按需打开**——只有说「选个方向」才会进（见 revise_pick 分支）。

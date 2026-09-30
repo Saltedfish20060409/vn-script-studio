@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from app.core.agent_context import _blocks_to_plain
+from app.core.agent_context import chapter_plain
 from app.core.ai import DeepSeekConfig
 from app.core.pipeline.apply_draft import apply_draft_to_chapter
 from app.core.pipeline.ledger import digest_chapter_into_ledger, get_ledger, set_ledger
@@ -72,7 +72,9 @@ async def finalize_chapter_async(
         raise ValueError("章节不存在")
     text = (draft_override or "").strip()
     if not text:
-        text = _blocks_to_plain(ch.blocks, project.characters) or ""
+        # 没传草稿时，闸要体检的就是"这一章现在的正文"——走唯一口径（正文优先），
+        # 否则正文档写作的章会被体检成空的（闸全绿，其实一个字都没看）。
+        text = chapter_plain(ch, project.characters) or ""
 
     result = await run_quality_gate_async(
         text,
