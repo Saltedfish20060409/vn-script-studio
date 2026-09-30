@@ -107,6 +107,11 @@ from app.services.snapshots import (
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
+#: SSE 心跳间隔（秒）：别处（`llm_budget`）那套命名常量管的是**单次模型调用**的预算，
+#: 而心跳是"要写多久"的看门狗，必须短。单列成常量是为了满足 `test_llm_timeout_budget`
+#: 的守卫：调用点不许出现裸数字，否则前端的预算表就失去核对依据。
+_SSE_KEEPALIVE_SECONDS = 15
+
 
 def _reject_overlong_fields(*, title: str | None = None, genre: str | None = None) -> None:
     """超长字段 → 400（说清是哪一项、超了多少），而不是让它变成 500。
@@ -2603,6 +2608,9 @@ async def _build_agent_request(
         loreCraft=lore_combined,
         referenceDocs=reference_docs,
         excludeSections=body.exclude_sections,
+        # 「写作导师方法论」默认关（1.6k 字/轮，消融测不出收益）：前端「⚙ 资料」里
+        # 勾上才发 mentor_opt_in=true；工程里显式选过导师也算要（见 agent_loop）。
+        mentorOptIn=body.mentor_opt_in,
         credentialsMode=("own" if own_llm_key else "shared"),
         craftMode=settings.agent_craft_mode,
         selfReview=settings.agent_self_review,
@@ -2902,6 +2910,7 @@ async def agent_write_stream(
     from app.core.pipeline.orchestrator import stage_write
     from app.core.rate_limit import require_rate
     from app.core.usage import ensure_under_quota
+    from app.llm_models import resolve_write_model
 
     require_rate(
         user.id,
@@ -2917,10 +2926,13 @@ async def agent_write_stream(
     if not creds["api_key"]:
         raise HTTPException(status_code=400, detail="未配置模型 Key，请先在「设置 → 模型」填写")
     await ensure_under_quota(db, user.id, settings, creds)
+    # 写作通道默认**开思考**（settings.write_thinking=auto，见 llm_models.resolve_write_model）：
+    # 同一份材料在网页版是深度思考档写出来的，而我们此前一律下发 thinking:disabled。
+    # 这条通道是自由文本，不需要 JSON，所以思考档可用（聊天那条路有 JSON 互斥，用不了）。
     cfg = DeepSeekConfig(
         apiKey=creds["api_key"],
         baseUrl=creds["base_url"],
-        model=creds["model"],
+        model=resolve_write_model(creds["model"], settings.write_thinking),
     )
 
     chapter = None
@@ -2955,7 +2967,7 @@ async def agent_write_stream(
                 getter = asyncio.create_task(queue.get())
                 done, _pending = await asyncio.wait(
                     {getter, runner},
-                    timeout=15,
+                    timeout=_SSE_KEEPALIVE_SECONDS,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 if getter in done:

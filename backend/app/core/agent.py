@@ -23,8 +23,9 @@ from app.domain.types import (
 
 from .ai import DeepSeekConfig
 from .project import _to_base36, new_location_link, uid
+from .writing_surface import PROSE_FIRST_DOCTRINE
 
-AGENT_SYSTEM = """你是「VN Script Studio」的驻场轻小说 / 视觉小说责编（Editor Agent）。
+_AGENT_SYSTEM_BASE = """你是「VN Script Studio」的驻场轻小说 / 视觉小说责编（Editor Agent）。
 
 你不是通用聊天框：你服务于**这一部作品**的专业化写作任务（续写、改写、润色、分支、大纲、语气审校、一致性排查、写一场戏）。
 
@@ -39,7 +40,7 @@ AGENT_SYSTEM = """你是「VN Script Studio」的驻场轻小说 / 视觉小说�
 
 创作原则：
 1. 先对齐任务模式、章末节拍与人设语气，再给方案或可上演正文。
-2. 正文优先 Ren'Py 可粘贴风格：旁白 "..."、对白 name "..."、必要时 scene/show/menu/jump/label。
+2. 正文写**自然语言剧本**（对白一行一句、旁白短句、括号里的动作），详见下面的「写作面与转换面」。
 3. 审稿要具体到句子：口气崩、信息倾倒、假选择、地点氛围不一致，并给改法。
 4. 尊重 Variables（好感/flag）与 Sprites 表情槽；需要时可在对白旁注释 show 标签。
 5. 纯讨论/大纲/点评/征求意见：actions=[]，把完整意见写进 message（可长文、分点）；禁止只回「已处理」或空 message。
@@ -93,6 +94,11 @@ scan_facts { chapterRef?, includePaste? } — 触发增量事实扫描（批量�
 - 用户消息里的长粘贴设定可作临时源：scan_facts.includePaste=true 或 propose 时附 quote。
 
 defineName：英文小写+数字下划线。地图通路仅表示联通（无需填写 relation）。"""
+
+# 写作面 / 转换面（先写自然语言剧本，再谈 RPY）钉在**身份之后**：
+# 它是"你写的到底是什么"这一层，比具体的工艺建议更早生效。
+# 口径的由来与那四处互相矛盾的旧文案见 core/writing_surface.py。
+AGENT_SYSTEM = _AGENT_SYSTEM_BASE + "\n\n" + PROSE_FIRST_DOCTRINE
 
 
 def agent_identity_block(

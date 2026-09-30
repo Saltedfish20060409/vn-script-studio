@@ -90,7 +90,7 @@ def _run_once(monkeypatch, *, task: str, prompt: str = "续写") -> Dict[str, An
 
 
 def test_checkpoint_records_prompt_composition(monkeypatch):
-    """chat 任务：工艺关（但占位那句在），导师块在，各块都有实测字数。"""
+    """chat 任务：工艺关（但占位那句在），导师块**默认不带**，各块都有实测字数。"""
     out = _run_once(monkeypatch, task="chat", prompt="这章有什么问题？")
     cp = out["checkpoint"]
     meta = cp["promptMeta"]
@@ -100,7 +100,11 @@ def test_checkpoint_records_prompt_composition(monkeypatch):
     assert cp["craftMode"] == "off"
     assert meta["craftMode"] == "off"
     assert blocks["craft"] == 35, "「本轮关闭」那句占位是 35 字，与线上一致"
-    assert blocks["mentor"] > 800, "写作导师块线上恒在，不该是 0"
+    # 2026-09-30 起：导师块**默认不再注入**（1.6k 字，独立裁判测不出收益，
+    # 见 core/mentors.has_explicit_selection）。作者选过导师时它才回来——
+    # 那条路径由 test_prompt_block_controls.py 钉住。
+    assert blocks["mentor"] == 0, "没选导师就不该白付这 1.6k 字"
+    assert meta["mentorOptIn"] is False
     assert blocks["agentSystem"] > 2000
     assert blocks["loopProtocol"] > 0 and blocks["toolCatalog"] > 0
     # 检查点里的 craftMode 必须与返回给界面的 contextMeta 一致——两处读数不能分叉

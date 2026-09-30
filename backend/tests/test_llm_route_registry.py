@@ -65,6 +65,11 @@ EXEMPT: dict[str, str] = {
         "断点续跑靠 run_state 检查点。它经 run_agent → _agent_steps → _chat_json "
         "二级间接触达，自动发现扫不到，属手工登记。"
     ),
+    "POST /{project_id}/agent/write": (
+        "SSE：写作通道流式产出正文草稿（writer 条件、自由文本、不落库）。同样不设总超时——"
+        "靠 : keepalive 心跳 + 前端 onActivity 看门狗判活，作者可随时取消；"
+        "它与 /agent/stream 的分工（审阅条件 vs 写作条件）见 5456fe4 的提交说明。"
+    ),
 }
 
 

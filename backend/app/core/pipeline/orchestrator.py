@@ -39,6 +39,23 @@ def _extract_json_obj(text: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _length_line(instruction: str) -> str:
+    """作者明确要了篇幅时，指令里先写死"一次写完"。
+
+    写作条件本身没有短拍口径，但"生成可上演片段"这种措辞很容易被模型读成"写一小段"
+    （线上实测：作者说「写到设计完的情节」，拿到的正文比网页版短一半以上，
+    见 `agent_context._FULL_PROSE_ASK_RE`）。所以这里与他那句话一起说清楚。
+    """
+    from app.core.agent_context import wants_full_prose
+
+    if not wants_full_prose(instruction):
+        return ""
+    return (
+        "作者本轮要的篇幅：**一次写完**（他明确说了写完整 / 写到 X）；"
+        "不要用短拍收尾、不要自我截断、不要停在半句、不要用小结代替戏。\n"
+    )
+
+
 async def stage_plan(
     cfg: DeepSeekConfig,
     project: VnProject,
@@ -108,7 +125,11 @@ async def stage_write(
     elif instruction:
         beat_txt = f"## 意图\n{instruction}"
     user = build_writer_user_prompt(
-        f"{skill.confirm_preamble()}\n\n请严格按节拍表与风格 Skill 生成可上演片段（Ren'Py 风格优先）。\n{beat_txt}",
+        f"{skill.confirm_preamble()}\n\n{_length_line(instruction)}"
+        "请严格按节拍表与风格 Skill 写**可演的自然语言剧本**（对白一行一句 + 短旁白 + "
+        "括号里的动作）。不要写 label / jump / menu: / scene / show / $ 这类引擎语法——"
+        "RPY 由「生成脚本 / 导出 .rpy」那一步从这份剧本转换。\n"
+        f"{beat_txt}",
         selection=selection,
         chapter_tail=chapter_tail,
         long_memory=mem,
@@ -244,7 +265,9 @@ async def stage_revise(
         f"{skill.confirm_preamble()}\n\n"
         f"{skill.prompt_block(max_chars=1800)}\n\n"
         "根据检查报告做**最小化改动**修正。保持剧情意图与节拍。"
-        "先列仍须注意的点（短），再给出完整改写正文（可用 ```renpy 代码块）。\n\n"
+        "先列仍须注意的点（短），再给出完整改写正文。"
+        "**与来稿同形态**：来稿是自然语言剧本就还它自然语言剧本（不要顺手加上引擎语法）；"
+        "来稿本身就带引擎语法时才用 ```renpy 代码块。\n\n"
         f"## 检查报告\n{json.dumps(issues[:24], ensure_ascii=False)}\n\n"
         f"## 原文\n{draft[:8000]}"
     )

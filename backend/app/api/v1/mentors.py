@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.mentors import (
     default_active_ids,
     get_builtin,
+    has_explicit_selection,
     list_builtin_meta,
     match_mentor_ids_from_text,
     parse_mentor_markdown,
@@ -96,7 +97,12 @@ async def get_project_mentors(
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
     state = _mentor_state(vn)
-    active = resolve_project_mentors(vn)
+    # `active` 报**这一轮真的会生效**的那份：导师块默认关（1.6k 字/轮，消融测不出收益，
+    # 见 core/mentors.has_explicit_selection），只有工程里显式选过才算启用。
+    # 这里要是照旧回落 `default_active_ids()`，界面就会说"当前启用 X"而实际一个字都没注入
+    # ——那正是本仓库最忌讳的"显示的和实际对不上"。
+    enabled = has_explicit_selection(vn)
+    active = resolve_project_mentors(vn) if enabled else []
     return {
         "activeIds": state["activeIds"],
         "customPacks": [
@@ -109,6 +115,7 @@ async def get_project_mentors(
             for c in state["customPacks"]
         ],
         "active": [p.meta() for p in active],
+        "enabled": enabled,
         "builtin": list_builtin_meta(),
         "defaultActiveIds": default_active_ids(),
     }

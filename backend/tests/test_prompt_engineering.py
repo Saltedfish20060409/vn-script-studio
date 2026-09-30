@@ -111,11 +111,20 @@ def test_no_task_silently_inherits_the_chat_contract():
 def test_output_contract_is_placed_at_the_end_of_context():
     project = _project()
     ctx = build_agent_context(project, chapterId="c1", userMessage="接着写", task="continue")
-    tail = ctx.text[-500:]
-    assert "输出契约" in tail
     assert "输出契约" in ctx.included
-    # 硬规则与输出契约都在末尾：长上下文里中间的要求最容易被忽略
-    assert "本次硬规则" in tail
+    # 硬规则与输出契约都在末尾：长上下文里中间的要求最容易被忽略。
+    # 量的是位置关系而不是"后 N 字"：规则/契约的正文会长（加一条 doctrine 就够把窗口顶破），
+    # 而"它们在末尾、后面没有别的块"这条不变量不随字数变。
+    idx = ctx.text.rindex("## 本次硬规则（务必遵守）")
+    tail = ctx.text[idx:]
+    assert "## 输出契约" in tail
+    titles = {ln.strip() for ln in tail.splitlines() if ln.startswith("## ")}
+    assert titles <= {
+        "## 本次硬规则（务必遵守）",
+        "## 输出契约",
+        "## 作者自己的硬规则（最高优先，务必遵守）",
+    }, titles
+    assert len(tail) < 800, f"末尾这一段太长了（{len(tail)} 字）"
 
 
 # ---------------------------------------------------------------------------

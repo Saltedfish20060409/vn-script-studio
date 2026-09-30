@@ -1095,6 +1095,13 @@ export interface AgentRunInBody {
   resume?: boolean;
   /** 作者按需摘掉的资料块 key（见 lib/agentSections.AGENT_SECTIONS） */
   exclude_sections?: string[];
+  /**
+   * 本轮**显式要**写作导师块（`agent_loop` 里那块 1.6k 字的方法论）。
+   *
+   * 它默认关：消融测不出收益，且默认注入等于每轮白付 1.6k 字。作者在「⚙ 资料」里
+   * 勾上「写作导师方法论」即为要——不勾就不带。
+   */
+  mentor_opt_in?: boolean;
 }
 
 export type AgentAttachment = {

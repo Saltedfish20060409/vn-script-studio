@@ -8,8 +8,9 @@
 - **`style_guide.md` 硬约束块（约 2k 字）**：它此前会因为 `style_skill` 与
   `harness` 的**循环导入**而静默消失（调用方是 `try/except: pass`），提示词看着正常、
   规则没了。这里钉住"先导入 style_skill 也能拿到这段"。
-- **写作导师块**：1.6k 字、线上每轮都注入且**关不掉**。现在可以按 `exclude_sections`
-  的 `mentor` 键摘掉（走「⚙ 资料」面板同一个开关），并在 promptMeta 里留痕。
+- **写作导师块**：1.6k 字，线上每轮都注入。2026-09-28 的独立裁判消融测不出它的收益，
+  所以默认改成**按需**（作者选过才带）；`exclude_sections` 的 `mentor` 键仍是硬开关
+  （走「⚙ 资料」面板同一个开关），两种情况都在 promptMeta 里留痕。
 """
 from __future__ import annotations
 
@@ -83,7 +84,12 @@ def test_craft_block_actually_carries_the_style_guide():
 # ---- 导师块可关（exclude_sections 里的 mentor）--------------------------------
 
 
-def _run_with_exclusions(monkeypatch, exclusions: List[str]) -> Dict[str, Any]:
+def _run_with_exclusions(
+    monkeypatch,
+    exclusions: List[str],
+    mentor_ids: List[str] | None = None,
+    mentor_opt_in: bool | None = None,
+) -> Dict[str, Any]:
     import asyncio
 
     from app.core.agent_loop import run_agent_loop
@@ -124,6 +130,8 @@ def _run_with_exclusions(monkeypatch, exclusions: List[str]) -> Dict[str, Any]:
                 messages=[{"role": "user", "content": "续写"}],  # type: ignore[arg-type]
                 task="continue",
                 excludeSections=exclusions,
+                mentorIds=mentor_ids,
+                mentorOptIn=mentor_opt_in,
             ),
             on_checkpoint=on_checkpoint,
         )
@@ -132,11 +140,35 @@ def _run_with_exclusions(monkeypatch, exclusions: List[str]) -> Dict[str, Any]:
     return checkpoints[-1]["promptMeta"]
 
 
-def test_mentor_block_can_be_excluded(monkeypatch):
-    meta_on = _run_with_exclusions(monkeypatch, [])
-    meta_off = _run_with_exclusions(monkeypatch, ["mentor"])
+def test_mentor_block_is_absent_unless_the_author_picked_one(monkeypatch):
+    """默认**不带**导师块（2026-09-28 消融：1.6k 字，独立裁判测不出收益）。
 
-    assert meta_on["blocks"]["mentor"] > 800, "默认该带导师块（线上行为）"
+    这条改的是线上默认行为，所以三条路都钉：没要 = 0 字；工程里选过 = 带上；
+    前端「⚙ 资料」勾上（`mentor_opt_in`）= 带上。
+    """
+    meta_default = _run_with_exclusions(monkeypatch, [])
+    assert meta_default["blocks"]["mentor"] == 0
+    assert meta_default["mentorOptIn"] is False
+
+    meta_chosen = _run_with_exclusions(monkeypatch, [], mentor_ids=["ln-vn-editor"])
+    assert meta_chosen["blocks"]["mentor"] > 800, "作者选过导师就该带上"
+    assert meta_chosen["mentorOptIn"] is True
+    assert meta_chosen["systemChars"] > meta_default["systemChars"]
+
+    # 前端那个勾（不勾 = 不带）走的是同一条路：显式要就带
+    meta_toggled = _run_with_exclusions(monkeypatch, [], mentor_opt_in=True)
+    assert meta_toggled["blocks"]["mentor"] > 800
+    assert meta_toggled["mentorOptIn"] is True
+
+
+def test_mentor_block_can_be_excluded(monkeypatch):
+    """`exclude_sections` 里的 `mentor` 仍是硬开关：选了也不带。"""
+    meta_on = _run_with_exclusions(monkeypatch, [], mentor_ids=["ln-vn-editor"])
+    meta_off = _run_with_exclusions(
+        monkeypatch, ["mentor"], mentor_ids=["ln-vn-editor"]
+    )
+
+    assert meta_on["blocks"]["mentor"] > 800
     assert meta_off["blocks"]["mentor"] == 0, "写了 mentor 就该真摘掉"
     assert meta_off["mentorExcluded"] is True
     assert meta_on["mentorExcluded"] is False
@@ -146,7 +178,7 @@ def test_mentor_block_can_be_excluded(monkeypatch):
 
 def test_unknown_exclusion_key_does_not_break_the_run(monkeypatch):
     """前端版本不一致时可能发来未知 key：忽略即可，不能把整轮打挂。"""
-    meta = _run_with_exclusions(monkeypatch, ["不存在的块"])
+    meta = _run_with_exclusions(monkeypatch, ["不存在的块"], mentor_ids=["ln-vn-editor"])
     assert meta["blocks"]["mentor"] > 0
     assert meta["mentorExcluded"] is False
 

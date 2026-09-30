@@ -747,6 +747,9 @@ class AgentRequest(BaseModel):
     craftMode: Optional[str] = None
     # Override project writingMentors.activeIds for this turn (max 2)
     mentorIds: Optional[List[str]] = None
+    # 本轮**显式要**写作导师块（1.6k 字的方法论）。默认关：2026-09-28 的单块消融
+    # （独立裁判）测不出它的收益，默认注入等于每轮白付 1.6k 字。见 core/mentors.has_explicit_selection。
+    mentorOptIn: Optional[bool] = None
     # Optional author lenses for this turn (max 3); None = use project.authorLenses
     lensIds: Optional[List[str]] = None
     # Second-pass narrative/social self-review: auto | on | off

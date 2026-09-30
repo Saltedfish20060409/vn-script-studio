@@ -9,6 +9,7 @@ from app.domain.types import Character, Location, SceneChapter, ScriptBlock, VnP
 
 from .chapter_digest import digest_all_chapters, format_chapter_digest_index
 from .longform_memory import select_outline_beats
+from .writing_surface import PROSE_FIRST_RULE
 
 AgentTaskKind = str
 
@@ -313,6 +314,7 @@ _SECTION_ORDER: Tuple[str, ...] = (
 TASK_KEY_RULES: Dict[str, List[str]] = {
     "continue": [
         "紧接「当前章节」正文末尾续写，不要重述已经写过的内容。",
+        PROSE_FIRST_RULE,
         "只输出正文本身：不要解释、不要总结、不要加小标题。",
         "保持紧邻前文的人称、时态与专名；新出现的专名必须能在设定里找到出处。",
         "对白与叙述的比例、句子长短要贴近紧邻的前文。",
@@ -322,6 +324,7 @@ TASK_KEY_RULES: Dict[str, List[str]] = {
     "rewrite": [
         "只改指定的这一段（或这一章），其余一字不动。",
         "不新增事实、不删关键信息；专名原样保留。",
+        "**形态不变**：来稿是自然语言剧本就还它自然语言剧本，不要顺手加上 label / menu 这类引擎语法。",
         "只输出正文本身：不要解释、不要前后对比。",
     ],
     "polish": [
@@ -338,10 +341,12 @@ TASK_KEY_RULES: Dict[str, List[str]] = {
     "branch": [
         "本轮产出的是**分支结构**：每个选项必须真的通向不同的后果；禁止「三个选项接同一段」的假分支。",
         "选项文案要短、有戏剧性、有取舍；不要在选项里解释设定。",
+        PROSE_FIRST_RULE,
         "分支正文里的台词照常遵守人设与反倾倒规则（选项正文也要能演）。",
     ],
     "scene": [
         "写完整一小场戏：进场 → 冲突 → 收束钩子，不要停在半截。",
+        PROSE_FIRST_RULE,
         "设定与人物关系靠动作和对白露出，不要宣讲；不要写镜头术语或分镜表。",
         "紧接当前章的时间与地点，不要无故跳场或引入未登场的人物。",
     ],
@@ -371,32 +376,94 @@ def task_key_rules(task: str, project: Optional[VnProject] = None) -> List[str]:
     return base
 
 
+def task_key_rules_for(
+    task: str, project: Optional[VnProject] = None, user_message: Optional[str] = None
+) -> List[str]:
+    """本轮的硬规则（含"作者要了篇幅时短拍让位"这条覆盖，见 `_FULL_PROSE_ASK_RE`）。
+
+    覆盖做的是**替换而不是并列**：硬规则区里同时躺着「默认只写 180–450 字」和
+    「按作者要求写完」时，模型会挑默认值执行（线上就是这样少写的）。
+    """
+    rules = task_key_rules(task, project)
+    if (task or "chat") in _SHORT_BEAT_TASKS and wants_full_prose(user_message):
+        rules = [r for r in rules if "不要一次写长章" not in r]
+        rules.insert(0, LONG_PROSE_RULE)
+    return rules
+
+
 # 每个任务的**输出契约**：长度与形态。写清楚"给我什么形状的东西"，
 # 模型就不会拿解释、总结、小标题来凑数——这也是"工具不如裸聊"的一个常见原因。
 TASK_OUTPUT_CONTRACT: Dict[str, str] = {
-    "continue": "只输出续写的一小段可上演正文（默认 180–450 字；用户另有字数要求按用户）；不要一次写长章、不要解释、不要小结、不要标题。",
-    "scene": "只输出这一场的正文；场景切换用空行分隔，不要写镜头术语或舞台指令（除非用户要求）。",
+    "continue": "只输出续写的一小段可上演正文（默认 180–450 字；用户另有字数要求按用户）；写的是自然语言剧本，不要引擎语法；不要一次写长章、不要解释、不要小结、不要标题。",
+    "scene": "只输出这一场的正文（自然语言剧本：对白 + 短旁白 + 括号里的动作）；场景切换用空行分隔，不要写镜头术语、舞台指令或引擎语法（除非用户要求）。",
     "rewrite": "只输出改写后的正文；长度与原文相当；不附说明、不附对照。",
     "polish": "只输出润色后的正文；不改情节、不改专名。",
     "consistency": "先列冲突（每条一行：位置 → 与什么设定冲突 → 建议改法），再给一句总体判断；不要重写正文。",
     "outline": "输出分级大纲：卷/章/节三层用缩进或编号表示；每条一句话，不要展开成正文。",
     "branch": (
-        "输出 2–4 个分支（Ren'Py menu 形态）：每项一行选项文案，紧跟该选项的正文（或 jump 到 label）；"
-        "选项之间后果必须不同；不要解释、不要小结、不要给「建议」。"
+        "输出 2–4 个选项，每个选项写出它会演成什么（自然语言，不是引擎语法）："
+        "每项一行选项文案，紧跟该选项的正文；选项之间后果必须不同；不要解释、不要小结、不要给「建议」。"
     ),
     "voice": "输出调整后的台词或段落；旁边不写解释。",
     "chat": "直接回答：先结论后理由；需要时给可执行的改法；不要复述我的问题。",
 }
 
 
-def output_contract(task: str, project: Optional[VnProject] = None) -> str:
+# --- 作者本轮的**篇幅要求**：短拍默认必须让位 ------------------------------------
+#
+# 为什么单列（2026-09-30 线上实测，作者账号「搁浅de咸鱼」）：作者在网页版说
+# 「写到设计完的情节」，拿到 3052 字成稿；在我们这里说同样的话，拿到的是被自己
+# 截短的片段——因为 180–450 字的短拍口径写在**三处**（硬规则、任务提示、输出契约），
+# 而且在上下文末尾（注意力最高的位置）又重复一次。三条同向的指令压过作者的一句话，
+# 模型于是"守规矩地"少写。口径本来就写着"用户另有字数要求按用户"，那就得真的按用户：
+# 作者明确要了篇幅时，短拍默认整条让位，而不是三条并存等他猜谁优先。
+_FULL_PROSE_ASK_RE = re.compile(
+    r"写完整|一次写完|全部写完|整章写完|写完(这|本|整)?(一)?章|不要停|别停|接着写完|"
+    r"写到[^。！？!?\n]{0,12}(为止|结束|完)|写长|多写点|拉长|写满"
+)
+
+#: 作者要了篇幅时替换掉短拍的那条硬规则（放在末尾硬规则区的**第一位**）。
+#: 刻意**不写"180–450"这个数**：写上等于把短拍又提了一遍，模型会拿它当参照。
+LONG_PROSE_RULE = (
+    "作者本轮明确要了篇幅（写完整 / 写到 X / 写长）：**一次写完**，不要用默认短拍收尾、"
+    "不要自我截断、不要停在半句、不要用小结代替戏。"
+)
+
+#: 同上，替换掉的输出契约。
+LONG_PROSE_CONTRACT = (
+    "按作者要求的篇幅一次写完：紧接「当前章节」正文末尾往下写，把作者点到的那一段情节写完；"
+    "**不要**用短拍收尾（那只是作者没给篇幅时的默认）、不要自我截断、不要解释或小结。"
+    "（作者要的是成稿，要继续会自己说。）"
+)
+
+#: 这些任务才有"短拍 vs 篇幅"这一对：改稿 / 润色 / 检查的口径由它们自己的契约管。
+_SHORT_BEAT_TASKS = ("continue", "scene")
+
+
+def wants_full_prose(message: Optional[str]) -> bool:
+    """作者本轮是否明确要了**篇幅**（而不是一小段短拍）。"""
+    return bool(message and _FULL_PROSE_ASK_RE.search(message))
+
+
+def output_contract(
+    task: str, project: Optional[VnProject] = None, user_message: Optional[str] = None
+) -> str:
+    """这一轮的输出契约。
+
+    `user_message` 参与判断的原因见 `_FULL_PROSE_ASK_RE` 那段：作者要了篇幅时，
+    短拍口径（含题材覆盖版的）必须让位——**先让位、再取题材覆盖**，否则分部作品的
+    题材契约会把"写完整"又按回去。
+    """
+    t = task or "chat"
+    if t in _SHORT_BEAT_TASKS and wants_full_prose(user_message):
+        return LONG_PROSE_CONTRACT
     if project is not None:
         from app.core.genre_write import genre_output_contract
 
-        override = genre_output_contract(project, task or "chat")
+        override = genre_output_contract(project, t)
         if override:
             return override
-    return TASK_OUTPUT_CONTRACT.get(task or "chat") or TASK_OUTPUT_CONTRACT["chat"]
+    return TASK_OUTPUT_CONTRACT.get(t) or TASK_OUTPUT_CONTRACT["chat"]
 
 
 TASK_HINTS: Dict[str, str] = {
@@ -429,8 +496,9 @@ TASK_HINTS: Dict[str, str] = {
         "append_script 写入。message 说明润了哪些口气问题。"
     ),
     "branch": (
-        "本轮任务：有意义的分支。2～4 个 Ren'Py menu，每项后果不同；选项文案短而有戏剧性，"
-        "勿在选项里塞设定说明；append_script。"
+        "本轮任务：有意义的分支。2～4 个选项，每项后果不同；选项文案短而有戏剧性，"
+        "勿在选项里塞设定说明；选项用自然语言写清楚它会演成什么，"
+        "不要写 menu / label / jump 这类引擎语法（转换那一步再落）；append_script。"
     ),
     "outline": "本轮任务：场景大纲。规划 3～5 场（冲突/人物/钩子），用戏剧事件而非设定条目来写；先 message；同意后再 update_bible/add_chapter。",
     "voice": "本轮任务：人设语气审校。对照 voice/bio 找破功句；改写时仍禁止设定宣讲与过熟盘问。",
@@ -446,6 +514,59 @@ TASK_HINTS: Dict[str, str] = {
 }
 
 
+#: 作者在**要正文**（不是问"怎么写"）。与前端 `agentIntent.ts` 的 `PROSE_ASK_RE` 同口径：
+#: 两边都认这几种说法——前端把它送进写作通道（writer 条件 + 自由文本），
+#: 这里是没有走到那条通道时的兜底：至少不要再把它当成普通聊天或"查冲突"。
+#:
+#: 为什么兜底也要认（2026-09-30 线上实测）：作者说「请你先尝试帮我续写一段」和
+#: 「写到设计完的情节」，两条都落到了 chat 档——那一档的提示词写着"正文不要写进 message、
+#: message 超过 600 字基本就是走错了路"，等于**用规则劝模型别写正文**。
+#: 「写」这一族的动词。后面那个否定预查是关键：**"续写的部分我改过了"不是命令**
+#: （"续写"在这里是名词），而"续写""续写一段""接着往下写"是。
+_WRITE_VERB = r"(?:续写|接着写|继续写|往下写|写下去|接着往下写)"
+_VERB_NOT_A_NOUN = r"(?!的|了|过|中)"
+
+_PROSE_ASK_RE = re.compile(
+    rf"^{_WRITE_VERB}{_VERB_NOT_A_NOUN}|"
+    rf"(帮我|给我|替我|帮忙|请你|请帮|麻烦)[^。！？!?\n]{{0,12}}{_WRITE_VERB}{_VERB_NOT_A_NOUN}|"
+    r"写到[^。！？!?\n]{0,16}(为止|结束|写[完满]|完|情节|结尾|最后)|写完整|一次写完|"
+    r"写完[^。！？!?\n]{0,8}章|把[^。！？!?\n]{0,12}写[完满]"
+)
+
+#: 评价 / 征询口气：那是在问"这段写得怎么样"，不是让谁去写。它优先于 `_PROSE_ASK_RE`，
+#: 除非同一句里还明确要了篇幅（"帮我续写一段，写完为止"是命令，不是点评）。
+#:
+#: 词表刻意**不收**「问题 / 建议 / 意见」：作者说"第一章太长我认为不是问题，请你帮我续写
+#: 一段"时，句子里那个"问题"只是他在说明自己的判断，不是要我点评。收进来就会把
+#: "要正文"误判成"要意见"——正是这条链路上最容易犯的反向错误。
+_PROSE_ADVICE_RE = re.compile(
+    r"怎么样|好不好|行不行|对吗|对不对|觉得|点评|评价|值不值|可以吗|好不好看"
+)
+
+#: 在**问办法 / 要方向**：留在 chat 里回答，不要切进任何"动手"档。
+#:
+#: 修的是 2026-09-30 那次的错档：作者问「你认为这个第一章可以怎么续写？能不能提供一些
+#: 方向？也请你先帮我检查…有没有矛盾」——句子里有"矛盾"两个字，于是被"一致性检查"档接走
+#: （那一档的契约是"先列冲突、不要重写正文"）。他要的是**方向**，方向是讨论，不是查冲突，
+#: 所以"问办法"必须排在关键词之前。
+_DIRECTION_ASK_RE = re.compile(
+    r"(怎么|如何|怎样)[^。！？!?\n]{0,6}(续写|往下写|写下去|写完整)|"
+    r"(续写|剧情|故事|这一段|这段)[^。！？!?\n]{0,6}(方向|思路|建议|点子)|"
+    r"(提供|给|想|要)[^。！？!?\n]{0,4}(一些|几个)?(方向|思路)"
+)
+
+def prose_ask(message: str) -> bool:
+    """作者是否在**要正文**（要成段的可上演内容，而不是评价、方向或办法）。"""
+    m = message or ""
+    if not _PROSE_ASK_RE.search(m):
+        return False
+    if _DIRECTION_ASK_RE.search(m):
+        return False
+    if _PROSE_ADVICE_RE.search(m) and not wants_full_prose(m):
+        return False
+    return True
+
+
 def infer_agent_task(message: str) -> str:
     m = message.strip()
     # Long paste asking for opinions/critique stays in chat (don't mis-fire rewrite).
@@ -453,7 +574,13 @@ def infer_agent_task(message: str) -> str:
         r"(修改意见|审稿|你觉得|对吗|据此|怎么改|提一些|征求)", m
     ):
         return "chat"
-    if re.search(r"【任务：续写】|^续写|请续写|往下写", m):
+    # 先分"问办法 / 要正文"再看关键词——见 `_DIRECTION_ASK_RE` 的说明：
+    # 作者问"可以怎么续写、有没有矛盾"要的是方向，不是"查冲突"那一档。
+    if _DIRECTION_ASK_RE.search(m):
+        return "chat"
+    if prose_ask(m):
+        return "continue"
+    if re.search(r"【任务：续写】", m):
         return "continue"
     if re.search(r"【任务：改写】|改写选区", m) or (
         len(m) < 240 and re.search(r"请改写", m)
@@ -474,10 +601,16 @@ def infer_agent_task(message: str) -> str:
     return "chat"
 
 
-def task_hint(task: str) -> str:
+def task_hint(task: str, user_message: Optional[str] = None) -> str:
     # 不再用 TASK_HINTS[task]：调用方（含 API）传了未登记的任务名时，
     # 这里过去会抛 KeyError，把整轮对话打断；回落到 chat 才是合理行为。
-    return TASK_HINTS.get(task or "chat") or TASK_HINTS["chat"]
+    t = task or "chat"
+    base = TASK_HINTS.get(t) or TASK_HINTS["chat"]
+    # 短拍默认是"作者没说要多少"时的口径；他明确要了篇幅就得当场翻过来
+    # （见 `_FULL_PROSE_ASK_RE`：三处短拍口径同向压过作者一句话，是本条要修的病）。
+    if t in _SHORT_BEAT_TASKS and wants_full_prose(user_message):
+        return base + "\n本轮作者明确要了篇幅：按作者要求一次写完，默认短拍不适用。"
+    return base
 
 
 def _js(v: Optional[str]) -> str:
@@ -1052,6 +1185,14 @@ _BUDGET_DROP_ORDER_LAST: Tuple[str, ...] = (
     "globalMemory",  # 全局记忆：整本书骨架，尽量留到最后
     "longMemory",  # 长程记忆：最近发生了什么，最不该丢
 )
+
+#: 这几档里"作者上传的参考资料"要**最后**才让位。
+#:
+#: 为什么（2026-09-30 与网页版对比）：`referenceDocs` 原本排在让位表第一位，理由是
+#: "量大、相关性最低、可以重新上传"。可对写正文来说，作者刚上传的那份设计稿/大纲
+#: 就是**这一场要照着写的东西**——先把它丢掉，等于让模型裸写。网页版那边能"写得像
+#: 作者想要的样子"，一半原因是材料全在窗里。宁可少带别章摘录，也不要丢它。
+_REFERENCE_DOCS_KEEP_TASKS: Tuple[str, ...] = ("continue", "scene", "branch")
 
 #: 给"篇幅说明"预留的字符数：说明本身也要算进预算，否则会把它自己挤掉。
 _NOTICE_RESERVE = 420
@@ -1716,7 +1857,7 @@ def build_agent_context(
     # 而是这一轮的任务契约，必须首尾各出现一次（末尾那次见下方 tail）。
     #
     # **下面的书写顺序不代表输出顺序**：真正的顺序由 `_SECTION_ORDER` 决定（见那里的理由）。
-    head_rules = task_key_rules(resolved_task, project)
+    head_rules = task_key_rules_for(resolved_task, project, userMessage)
     must_bring_list = must_bring_items(project)
     if must_bring_list:
         included.append(f"必带×{len(must_bring_list)}")
@@ -1923,11 +2064,13 @@ def build_agent_context(
         if voice_tail:
             tail += "\n" + voice_tail
             included.append("口吻对照")
-    key_rules = task_key_rules(resolved_task, project)
+    key_rules = task_key_rules_for(resolved_task, project, userMessage)
     if key_rules:
         tail += "\n\n## 本次硬规则（务必遵守）\n" + "\n".join(f"- {r}" for r in key_rules)
         included.append("本次硬规则")
-    tail += "\n\n## 输出契约\n" + output_contract(resolved_task, project)
+    tail += "\n\n## 输出契约\n" + output_contract(
+        resolved_task, project, userMessage
+    )
     included.append("输出契约")
 
     # 作者自己写的硬规则（"必须/不要/禁止…"）单独拎出来，放进末尾的硬规则区：
@@ -2029,7 +2172,13 @@ def build_agent_context(
                 )
                 included.append("中段压缩")
         else:
-            for key in _BUDGET_DROP_ORDER + _BUDGET_DROP_ORDER_LAST:
+            drop_order = _BUDGET_DROP_ORDER
+            if resolved_task in _REFERENCE_DOCS_KEEP_TASKS:
+                # 写正文三档：参考资料排到最后（见 `_REFERENCE_DOCS_KEEP_TASKS`）
+                drop_order = tuple(
+                    k for k in _BUDGET_DROP_ORDER if k != "referenceDocs"
+                ) + ("referenceDocs",)
+            for key in drop_order + _BUDGET_DROP_ORDER_LAST:
                 if len(_join_sections()) <= budget:
                     break
                 if key in {k for k, _ in kept_keyed} and key not in budget_dropped:

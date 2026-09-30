@@ -113,14 +113,30 @@ def test_default_trimming_keeps_context_smaller_and_reports_what_was_dropped():
 
 
 def test_hard_rules_are_repeated_at_the_end():
+    """末尾那一段**就是**「硬规则 + 输出契约」，后面不再夹别的资料块。
+
+    这里原先量的是"后 400 字里有没有这两个标题"——那是个代理量：规则本身一多
+    （比如加一条"先写自然语言剧本"），窗口就够不着标题，而它想守的东西
+    （这两块在末尾、且后面没有别的块）一个字都没变。改成直接量那个意图，
+    与 `test_task_key_rules_exist_for_every_agent_task` 里"条数≤5 换成量真正的意图"同一个教训。
+    """
     project = _project()
     ctx = build_agent_context(project, chapterId="c1", userMessage="接着写", task="continue")
-    tail = ctx.text[-400:]
-    assert "本次硬规则" in tail
+    idx = ctx.text.rindex("## 本次硬规则（务必遵守）")
+    tail = ctx.text[idx:]
+    assert "输出契约" in tail
     for rule in task_key_rules("continue"):
-        assert rule in ctx.text
-    # 第一条硬规则也出现在末尾（长上下文里中间会被忽略）
+        assert rule in tail
+    # 第一条硬规则也在末尾（长上下文里中间会被忽略）
     assert task_key_rules("continue")[0] in tail
+    # 末尾这段之后不该再出现别的块标题（只有规则 / 契约 / 作者自己的硬规则）
+    titles = {ln.strip() for ln in tail.splitlines() if ln.startswith("## ")}
+    assert titles <= {
+        "## 本次硬规则（务必遵守）",
+        "## 输出契约",
+        "## 作者自己的硬规则（最高优先，务必遵守）",
+    }, titles
+    assert len(tail) < 800, f"末尾这一段太长了（{len(tail)} 字），说明有块混在里面"
 
 
 def test_hard_rules_appear_once_at_each_end():

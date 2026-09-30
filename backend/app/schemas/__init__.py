@@ -144,6 +144,9 @@ class AgentRunIn(BaseModel):
     resume: bool = False
     # 作者按需摘掉的资料块 key（见 core/agent_context.EXCLUDABLE_SECTIONS）
     exclude_sections: Optional[List[str]] = None
+    # 本轮**显式要**写作导师块（1.6k 字的方法论）。默认关：消融测不出收益
+    # （见 core/mentors.has_explicit_selection），前端在「⚙ 资料」里勾上才发 true。
+    mentor_opt_in: bool = False
 
 
 class AgentApplyActionsIn(BaseModel):

@@ -175,6 +175,56 @@ const WRITE_TO_SCRIPT_RE =
   /(写入|写进|存进|存入|放进|落到|落进|落盘|录进)[^。！？!?\n]{0,6}(正文|剧本|稿子|稿件|章节|工程)|(把|将)[^。！？!?\n]{0,24}(写|存|放|落)(进|入|到|盘)[^。！？!?\n]{0,6}(正文|剧本|稿子|稿件|章节|工程)/;
 
 /**
+ * 作者在**要正文**：让 Agent 写下去，而不是问"怎么写"。
+ * 与后端 `core/agent_context.py` 的 `_PROSE_ASK_RE` 同口径（两边都认这几种说法）。
+ *
+ * 为什么单列一条（2026-09-30 线上实测，作者账号「搁浅de咸鱼」）：作者说
+ * 「请你先尝试帮我续写一段」和「写到设计完的情节」，两条都落进了**普通对话**——
+ * 那一档的提示词写着"正文不要写进 message、message 超过 600 字基本就是走错了路"，
+ * 等于用规则劝模型别写正文。同一份材料在网页版是一轮 3052 字的成稿。
+ * 所以"要正文"要和"把 X 写进正文"走同一条写作通道（writer 条件 + 自由文本 + 思考档），
+ * 产出草稿进左右对照，作者确认才写入——这是离网页版最近的一条路。
+ */
+const PROSE_ASK_RE = new RegExp(
+  [
+    // 动词后的否定预查：**"续写的部分我改过了"不是命令**（"续写"在这里是名词），
+    // 而"续写""续写一段""接着往下写"是。与后端 `_VERB_NOT_A_NOUN` 同口径。
+    `^(续写|接着写|继续写|往下写|写下去|接着往下写)(?!的|了|过|中)`,
+    `(帮我|给我|替我|帮忙|请你|请帮|麻烦)${SENTENCE_GAP}(续写|接着写|继续写|往下写|写下去|接着往下写)(?!的|了|过|中)`,
+    `(帮我|给我|替我|帮忙|请你|请帮|麻烦)${SENTENCE_GAP}(写一段|写完整|写完)`,
+    "写到[^。！？!?\\n]{0,16}(为止|结束|写[完满]|完|情节|结尾|最后)|写完整|一次写完|写完[^。！？!?\\n]{0,8}章|把[^。！？!?\\n]{0,12}写[完满]",
+  ].join("|")
+);
+
+/** 评价 / 征询口气：在问"这段写得怎么样"，不是让谁去写。
+ *  刻意**不收**「问题 / 建议 / 意见」——作者说"第一章太长我认为不是问题，请你帮我续写一段"
+ *  时，那个"问题"是他在说自己的判断，收进来就会把"要正文"误判成"要意见"。 */
+const PROSE_ADVICE_RE =
+  /怎么样|好不好|行不行|对吗|对不对|觉得|点评|评价|值不值|可以吗/;
+
+/** 问办法 / 要方向：留在 chat 里回答（"可以怎么续写？给点方向？"要的是方向，不是正文）。 */
+const DIRECTION_ASK_RE =
+  /(怎么|如何|怎样)[^。！？!?\n]{0,6}(续写|往下写|写下去|写完整)|(续写|剧情|故事|这一段|这段)[^。！？!?\n]{0,6}(方向|思路|建议|点子)|(提供|给|想|要)[^。！？!?\n]{0,4}(一些|几个)?(方向|思路)/;
+
+/** 同一句里明确要了篇幅时，评价词不再把它拉回讨论。 */
+const FULL_PROSE_RE =
+  /写完整|一次写完|全部写完|整章写完|写完(这|本|整)?(一)?章|不要停|别停|接着写完|写到[^。！？!?\n]{0,12}(为止|结束|完)|写长|多写点|拉长|写满/;
+
+/** 明确叫停"写"这件事。**不能**直接复用 `WRITE_NEGATED_RE`：那张表里还有
+ *  「别动 X / 不要动 X」——那是**范围限制**（"帮我续写一段，别动林夏那条线" 是托付 +
+ *  一条限制），不是叫人别写。混用会把要正文的请求降成一条偏好记录。 */
+const PROSE_STOP_RE = /先别写|别写了|不要写|不用写|只要意见|只给意见|先别改|先不要改/;
+
+/** 作者是否在**要正文**（成段的可上演内容，而不是评价、方向或办法）。 */
+function proseWriteAsk(t: string): boolean {
+  if (!PROSE_ASK_RE.test(t)) return false;
+  if (DIRECTION_ASK_RE.test(t)) return false;
+  if (PROSE_ADVICE_RE.test(t) && !FULL_PROSE_RE.test(t)) return false;
+  if (PROSE_STOP_RE.test(t)) return false;
+  return true;
+}
+
+/**
  * Infer capability from user text + attachment count.
  * Prefer specific studio pipelines over generic chat when intent is clear.
  */
@@ -247,7 +297,10 @@ export function inferAgentIntent(text: string, attachmentCount = 0): AgentIntent
         !/^(写|改|重|润|修|动|这个|那个|这些|那些|这|那|此|我|你|他|她|它)/.test(
           name
         ) &&
-        !explicitReviseAsk(t)
+        !explicitReviseAsk(t) &&
+        // 「帮我续写，别动林夏」是**要正文** + 一条范围限制：不能被"别动 XX"吃掉，
+        // 只记成一条偏好就等于把这次续写要求丢了（同为线上实测的同一类丢话）。
+        !proseWriteAsk(t)
       ) {
         return { kind: "chapter_lock_name", lockName: name, note: t };
       }
@@ -278,7 +331,8 @@ export function inferAgentIntent(text: string, attachmentCount = 0): AgentIntent
   // 线上实测（2026-09-30）作者说「帮我把完整的第一章写入剧本」，走的是普通对话，
   // 模型于是把整章正文塞进 JSON 的 message 里，输出一断，JSON 全废 → 正文一个字没写进稿子。
   // 提示词里 chat 一条明写"把完整意见写进 message"，正是这个错配的源头。
-  if (WRITE_TO_SCRIPT_RE.test(t)) {
+  // 「写下去」这几种说法（续写 / 接着写 / 写到 X）走同一条通道，理由见 PROSE_ASK_RE。
+  if (WRITE_TO_SCRIPT_RE.test(t) || proseWriteAsk(t)) {
     return { kind: "write_to_script", note: t };
   }
 

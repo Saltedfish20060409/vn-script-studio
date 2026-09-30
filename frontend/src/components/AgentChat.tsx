@@ -944,6 +944,9 @@ export function AgentChat({
           lens_ids: activeLensIds,
           // 作者按需摘掉的资料块（空数组 = 不带这个字段也没关系）
           exclude_sections: excluded.length ? excluded : undefined,
+          // 「写作导师方法论」默认关（1.6k 字 / 每轮，消融测不出收益，见 agentSections.ts）。
+          // 后端只认"显式要"：作者在 ⚙ 资料 里把它勾上（= 不在 excluded 里）就算要。
+          mentor_opt_in: !excluded.includes("mentor"),
           attachments: opts.resume
             ? undefined
             : pendingAttach.map((a) => ({
@@ -1654,7 +1657,7 @@ export function AgentChat({
       const data = await getProjectMentors(projectId);
       const activeNames =
         (data.active || []).map((p) => `**${p.name}** (\`${p.id}\`)`).join("、") ||
-        "（将使用默认写作导师）";
+        "（当前未启用：导师块默认不带，每轮要花约 1.6k 字，而消融实测测不出它的收益。想要就在「⚙ 资料」里勾上「写作导师方法论」）";
       const content =
         `### 写作导师\n\n` +
         `当前启用：${activeNames}\n\n` +

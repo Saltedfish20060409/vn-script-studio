@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   AGENT_SECTIONS,
+  DEFAULT_EXCLUDED_SECTIONS,
   excludedSummary,
   loadExcludedSections,
   saveExcludedSections,
@@ -78,20 +79,33 @@ describe("交给 AI 的资料开关", () => {
     expect(loadExcludedSections(store)).toEqual(["bible", "lore"]);
   });
 
-  it("坏数据 / 非数组 → 空（不炸）", () => {
-    expect(loadExcludedSections(fakeStorage({ "vnss-agent-exclude-v1": "{不是 JSON" }))).toEqual([]);
+  it("默认不带写作导师块（1.6k 字、消融测不出收益），其余块照带", () => {
+    // 后端同口径：没显式要就不注入（见 core/mentors.has_explicit_selection）。
+    // 这里默认返回的那份，就是「⚙ 资料」面板上默认**没勾**的那几项。
+    expect(DEFAULT_EXCLUDED_SECTIONS).toEqual(["mentor"]);
+    expect(loadExcludedSections(fakeStorage())).toEqual(["mentor"]);
+    expect(loadExcludedSections(null)).toEqual(["mentor"]);
+  });
+
+  it("坏数据 / 非数组 → 回落默认那份（不是「全带」）", () => {
+    expect(loadExcludedSections(fakeStorage({ "vnss-agent-exclude-v1": "{不是 JSON" }))).toEqual(
+      ["mentor"]
+    );
     expect(
       loadExcludedSections(fakeStorage({ "vnss-agent-exclude-v1": JSON.stringify({ a: 1 }) }))
-    ).toEqual([]);
+    ).toEqual(["mentor"]);
+    // 存过的（哪怕是空数组：作者明确把导师块勾上了）照读，不要被默认值盖掉
     expect(
       loadExcludedSections(
         fakeStorage({ "vnss-agent-exclude-v1": JSON.stringify(["bible", 42, null]) })
       )
     ).toEqual(["bible"]);
+    expect(
+      loadExcludedSections(fakeStorage({ "vnss-agent-exclude-v1": JSON.stringify([]) }))
+    ).toEqual([]);
   });
 
   it("storage 不可用时不抛", () => {
-    expect(loadExcludedSections(null)).toEqual([]);
     expect(() => saveExcludedSections(["x"], null)).not.toThrow();
   });
 

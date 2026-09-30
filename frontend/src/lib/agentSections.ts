@@ -32,11 +32,21 @@ export const AGENT_SECTIONS: AgentSection[] = [
   { key: "sprites", label: "立绘" },
   { key: "otherChapters", label: "其他章节摘录" },
   { key: "style", label: "文风记忆" },
-  // 「写作导师方法论」是一块约 1.6k 字的固定文本，此前**关不掉**（线上每轮都注入）。
-  // 它不是事实来源、只是写法建议（摘掉不会让模型编造工程内容），所以放进可摘清单：
-  // 想省上下文、或觉得它的建议跑偏时，作者可以自己关。
-  { key: "mentor", label: "写作导师方法论" },
+  // 「写作导师方法论」是一块约 1.6k 字的固定文本，此前**线上每轮都注入**（关不掉）。
+  // 它不是事实来源、只是写法建议；2026-09-28 的单块消融（独立裁判）测不出它的收益
+  // （boundary 上 no_mentor − tool = −0.04，retention/chat 是小样本噪声）。
+  // 所以它现在**默认不带**（见 DEFAULT_EXCLUDED_SECTIONS），想用就在这个面板里勾上。
+  { key: "mentor", label: "写作导师方法论（默认不带，勾上即启用）" },
 ];
+
+/**
+ * 默认就摘掉的块。
+ *
+ * 现在只有「写作导师方法论」：1.6k 字 / 每轮，消融测不出收益，所以**默认不付**
+ * （与后端 `agent_loop` 的口径成对：没显式要就不注入）。其余块一律默认带上——
+ * 那些是事实来源（人设/设定/记忆），摘掉会让模型编。
+ */
+export const DEFAULT_EXCLUDED_SECTIONS: string[] = ["mentor"];
 
 const STORE_KEY = "vnss-agent-exclude-v1";
 
@@ -51,15 +61,16 @@ export function loadExcludedSections(
       store = null;
     }
   }
-  if (!store) return [];
+  if (!store) return [...DEFAULT_EXCLUDED_SECTIONS];
   try {
     const raw = store.getItem(STORE_KEY);
-    if (!raw) return [];
+    // 没存过 / 存坏了 → 走默认那份（默认不带导师块），而不是"全带"
+    if (!raw) return [...DEFAULT_EXCLUDED_SECTIONS];
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) return [...DEFAULT_EXCLUDED_SECTIONS];
     return parsed.filter((k): k is string => typeof k === "string");
   } catch {
-    return [];
+    return [...DEFAULT_EXCLUDED_SECTIONS];
   }
 }
 

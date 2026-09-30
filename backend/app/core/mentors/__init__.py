@@ -292,6 +292,27 @@ def default_active_ids() -> List[str]:
     return ["ln-vn-editor"]
 
 
+def has_explicit_selection(
+    project: Any, *, override_ids: Optional[Sequence[str]] = None
+) -> bool:
+    """作者**显式选过**写作导师吗（工程里选过，或本轮显式传了 mentorIds）。
+
+    为什么要问这个（2026-09-28 单块消融，独立裁判）：导师块每轮约 1.6k 字，而
+    boundary 集上 `no_mentor − tool = −0.04`（≈0），retention / chat 是小样本噪声
+    ——**测不出收益**。所以线上默认不再注入：只有作者在「写作导师」里真选过（或本轮指定）
+    才带上它；想用就选，不想用也不必每轮为它付上下文。
+
+    注意它**只影响"默认带不带"**：`exclude_sections` 里的 `mentor` 仍然是硬开关
+    （写了就摘掉），两条互不干扰。另外前端「⚙ 资料」勾上「写作导师方法论」时会直接发
+    `mentor_opt_in=true`（`AgentRequest.mentorOptIn`）——那是同一件事的另一个入口。
+    """
+    if override_ids:
+        return any(str(x).strip() for x in override_ids)
+    state = _project_mentor_state(project)
+    ids = state.get("activeIds")
+    return bool(isinstance(ids, list) and [x for x in ids if str(x).strip()])
+
+
 _TASK_TO_STAGE = {
     "outline": "plan",
     "chat": "plan",

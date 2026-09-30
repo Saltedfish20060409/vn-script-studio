@@ -21,7 +21,7 @@ OTAKU_SKILLS: Dict[str, List[str]] = {
         "轻小说可读的画面感 → 视觉小说可上演：优先「可见动作 + 听得见的对白」",
         "大段心理独白压缩：保留一句刺人的心声，其余改成停顿、视线、手指小动作",
         "章/场结尾钩子服务「想点下一页/想看下一句」：误会半揭、门响、称呼破格、秘密物件",
-        "输出默认贴近 Ren'Py：旁白短句、对白分行；需要时才 scene/show，勿写成设定集",
+        "写的是自然语言剧本：旁白短句、对白一行一句；引擎脚本（scene/show/label）留到转换那一步",
     ],
     "de_ai_voice": [
         "禁止纠偏讲解腔：「不是A，是B」「不像A也不像B，像C」连环；直接写判断与动作",
@@ -56,8 +56,10 @@ ROLE_PROMPTS: Dict[str, str] = {
 - 对白像真人：打断、省略、别扭、答非所问；陌生人勿连问盘人
 - 去 AI 味：禁「不是A是B」纠偏梯、禁双否一肯叠喻、禁电报对白、少装饰破折号
 - 二次元：写类型张力（距离、越界、中二羞耻、电波错频），禁止念标签
-- 优先可上演脚本：短旁白 + 对白；必要时 scene/show
-输出：可粘贴的 Ren'Py 风格片段或紧凑轻小说段落（按用户要求）；不要解释工艺。""",
+- 先写自然语言剧本：短旁白 + 可演对白（一行一句）+ 括号里的动作；
+  没有自然语言剧本就不要碰 RPY：label/jump/menu:/scene/show/$ 这些引擎语法
+  由「生成脚本 / 导出 .rpy」那一步从剧本转换过来，不归你这一步管
+输出：可读可演的自然语言剧本（或按用户要求的紧凑轻小说段落）；不要解释工艺。""",
     "editor": """你是视觉小说 / 轻小说责编（Harness Editor）。
 审核维度：
 1) 去 AI 味：纠偏句、叠喻梯、电报对白、套话、空心短段
@@ -87,6 +89,7 @@ def build_role_system(role: str, extra: str = "", project=None) -> str:
         from app.core.mentors import (
             build_mentor_prompt_for_project,
             default_active_ids,
+            has_explicit_selection,
             mentors_prompt_block,
             resolve_packs,
         )
@@ -94,9 +97,16 @@ def build_role_system(role: str, extra: str = "", project=None) -> str:
         stage = {"architect": "plan", "writer": "write", "editor": "check"}.get(
             role, "write"
         )
+        # 工程路径与聊天路径同口径：作者**没选过**导师就不注入（1.6k 字，消融测不出收益，
+        # 见 core/mentors.has_explicit_selection 的说明）。`project is None` 那条留给
+        # 评测/CLI：它们的臂由 ArmSpec 显式决定带不带，保持原样。
         if project is not None:
-            mentor = build_mentor_prompt_for_project(
-                project, stage=stage, total_budget=2200
+            mentor = (
+                build_mentor_prompt_for_project(
+                    project, stage=stage, total_budget=2200
+                )
+                if has_explicit_selection(project)
+                else ""
             )
         else:
             mentor = mentors_prompt_block(

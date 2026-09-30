@@ -140,10 +140,10 @@ SKILLS: Dict[str, WritingSkill] = {
         "勿用长旁白填满所有空白；给玩家想象与立绘表演留空",
         "连续对白之间插入一个可见动作，避免机关枪对轰",
     ]),
-    "renpy_hygiene": _s("renpy_hygiene", "Ren'Py 脚本卫生", [
-        '输出可粘贴片段：旁白用引号行，对白 name "..."，选项用 menu',
-        "label/jump 名称简短英文；勿发明无法落地的引擎指令",
-        "一次 append 保持同一场景连贯；大换景先写 scene",
+    "script_form": _s("script_form", "剧本形态（自然语言剧本）", [
+        "写的是**自然语言剧本**：对白一行一句（角色：「台词」），旁白短句，动作与场景写在括号里",
+        "选项也用自然语言写：每个选项后面接它会演成什么；不写 menu / label / jump 这类引擎语法",
+        "先有剧本再谈转换：引擎脚本由「生成脚本 / 导出 .rpy」从这份剧本生成，写作这一步不必替它操心",
     ]),
     "player_agency": _s("player_agency", "玩家能动感", [
         "重要分歧前给可读信号；选择后世界/关系要有可感反馈",
@@ -221,7 +221,7 @@ SKILLS: Dict[str, WritingSkill] = {
     "ln_vn_bridge": _s("ln_vn_bridge", "轻小说↔视觉小说", [
         "画面感服务可上演：可见动作 + 听得见对白；大段心声压成一句刺人独白+小动作",
         "场末钩子服务下一页/下一句：半揭误会、门响、破格称呼、秘密物件",
-        "默认 Ren'Py 友好：短旁白分行对白；需要才 scene/show",
+        "默认写成可演的自然语言剧本：短旁白、分行对白；引擎脚本留到转换那一步",
     ]),
     "de_ai_voice": _s("de_ai_voice", "去AI味", [
         "禁纠偏讲解「不是A，是B」与双否一肯叠喻梯；直接写判断与动作",
@@ -261,7 +261,7 @@ PROSE_CORE: List[str] = [
     "anti_repeat",
     "name_economy",
     "atmosphere",
-    "renpy_hygiene",
+    "script_form",
     "stranger_distance",
     "anti_qa_pingpong",
     "talk_economy",
@@ -304,7 +304,7 @@ TASK_SKILLS: Dict[str, List[str]] = {
         "emotion_truth",
         "name_economy",
         "anti_repeat",
-        "renpy_hygiene",
+        "script_form",
         "stranger_distance",
         "anti_qa_pingpong",
         "talk_economy",
@@ -340,7 +340,7 @@ TASK_SKILLS: Dict[str, List[str]] = {
         "subtext_conflict",
         "flag_subtle",
         "pacing_hook",
-        "renpy_hygiene",
+        "script_form",
         "voice_contrast",
     ],
     "outline": [
@@ -390,7 +390,7 @@ LITE_IDS: List[str] = [
     "vn_stagecraft",
     "dialogue_natural",
     "pacing_hook",
-    "renpy_hygiene",
+    "script_form",
     "anti_cliche",
     "stranger_distance",
     "anti_qa_pingpong",
@@ -505,7 +505,7 @@ PRIORITY_IDS: List[str] = [
     "subtext_conflict",
     "anti_cliche",
     "ln_vn_bridge",
-    "renpy_hygiene",
+    "script_form",
     "voice_contrast",
     "sensory_ground",
 ]

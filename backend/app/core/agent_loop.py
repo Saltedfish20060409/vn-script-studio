@@ -40,7 +40,11 @@ from app.core.llm_http import content_from_response
 from app.core.llm_params import task_temperature
 from app.core.llm_provider import LlmProvider, provider_from_config
 from app.core.longform_memory import summarize_chat_memory
-from app.core.mentors import build_mentor_prompt_for_project, resolve_project_mentors
+from app.core.mentors import (
+    build_mentor_prompt_for_project,
+    has_explicit_selection,
+    resolve_project_mentors,
+)
 from app.core.narrative_lint import NarrativeLintIssue, lint_has_blockers
 from app.core.narrative_review import (
     apply_reviewed_script,
@@ -494,6 +498,7 @@ def compose_agent_system(
     has_reference_docs: bool = False,
     context_text: str = "",
     chat_memory_block: str = "",
+    user_message: Optional[str] = None,
 ) -> str:
     """拼装 Agent 的 system 提示（顺序即优先级）。
 
@@ -501,11 +506,14 @@ def compose_agent_system(
     而 system 里只有固定身份、没有说明本轮借了谁的视角，于是问「你是谁」时
     模型答的和界面显示的完全对不上。这里保证 `AGENT_SYSTEM` 之后**紧跟**
     `identity_block`，并且测试/探针可以复用同一个函数来验证真实顺序。
+
+    `user_message` 只用来让任务提示认人话：作者明确要了篇幅时，那条"默认短拍
+    180–450 字"必须当场翻过来（见 `agent_context.wants_full_prose`）。
     """
     parts = [
         AGENT_SYSTEM,
         identity_block,
-        task_hint(task),
+        task_hint(task, user_message),
         craft_block,
         mentor_block,
         lens_block,
@@ -639,17 +647,23 @@ async def run_agent_loop(
         temperature = task_temperature(task, craft.mode)
 
         craft_block = build_writing_craft_prompt(task, craft.mode)
-        # 解析出来的**包对象**要留着：身份块要按真实生效的名字拼，不能只拿 id。
-        mentor_packs = resolve_project_mentors(
+        # 「写作导师方法论」是一块 1.6k 字的固定文本，此前**线上每轮都注入且关不掉**。
+        # 2026-09-28 的单块消融（独立裁判）测不出它的收益（boundary 上 no_mentor − tool = −0.04），
+        # 所以默认改成**按需**：作者在「写作导师」里真选过（或本轮显式传了 mentorIds）才带上；
+        # 另外「⚙ 资料」里的 `mentor` 仍然是硬开关（写了就摘掉，两条互不干扰）。
+        mentor_excluded = "mentor" in (request.excludeSections or [])
+        mentor_opted_in = bool(request.mentorOptIn) or has_explicit_selection(
             request.project, override_ids=request.mentorIds
         )
-        # 「写作导师方法论」是一块 1.6k 字的固定文本，线上**每轮都注入且此前无法关闭**。
-        # 作者可以在「⚙ 资料」里摘掉它（走同一个 exclude_sections，key = "mentor"）：
-        # 这一块是"方法论建议"，不是事实来源，摘掉不会让模型编造工程内容。
-        mentor_excluded = "mentor" in (request.excludeSections or [])
+        # 解析出来的**包对象**要留着：身份块要按真实生效的名字拼，不能只拿 id。
+        mentor_packs = (
+            resolve_project_mentors(request.project, override_ids=request.mentorIds)
+            if mentor_opted_in
+            else []
+        )
         mentor_block = (
             ""
-            if mentor_excluded
+            if (mentor_excluded or not mentor_opted_in)
             else build_mentor_prompt_for_project(
                 request.project, task=task, override_ids=request.mentorIds
             )
@@ -695,6 +709,7 @@ async def run_agent_loop(
             ),
             context_text=ctx.text,
             chat_memory_block=chat_memory_block,
+            user_message=last_user,
         )
 
         history: List[Dict[str, str]] = [
@@ -731,11 +746,12 @@ async def run_agent_loop(
             "craftReason": craft.reason,
             "mentorIds": mentor_ids,
             "mentorExcluded": mentor_excluded,
+            "mentorOptIn": mentor_opted_in,
             "lensIds": lens_ids,
             "blocks": {
                 "agentSystem": len(AGENT_SYSTEM),
                 "identity": len(identity_block),
-                "taskHint": len(task_hint(task)),
+                "taskHint": len(task_hint(task, last_user)),
                 "craft": len(craft_block),
                 "mentor": len(mentor_block),
                 "lens": len(lens_block),

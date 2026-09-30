@@ -68,6 +68,15 @@ class Settings(BaseSettings):
     # Agent writing craft / self-review (server-only)
     agent_craft_mode: Literal["auto", "off", "lite", "full"] = "auto"
     agent_self_review: Literal["auto", "on", "off"] = "auto"
+    # 写作通道（`POST /agent/write`，writer 条件）用哪一档：auto | on | off。
+    #
+    # 为什么默认要开（2026-09-30 与网页版正面对比）：同一份材料，网页版是**深度思考开着**
+    # 写出来的（首轮思考 11.6k 字：先核对人设、找矛盾、排方向，再落笔 3052 字），
+    # 而我们给模型下发的是 `thinking: disabled`（见 app/llm_models.py），
+    # 等于关着思考用同一个底座。写作通道是自由文本、不需要 JSON，所以思考档在这里
+    # 可用（"JSON 模式与思考档互斥"只锁住聊天那条路）。
+    # auto = 只把我们自己的默认非思考档换成同族思考档；别的厂商/别的模型一律不动。
+    write_thinking: Literal["auto", "on", "off"] = "auto"
     # 文风记忆自动学习（默认开）：攒够跨度且没学过/过期时自动学一次，只用作者自己的 Key
     style_auto_learn: bool = True
 
