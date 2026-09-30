@@ -115,13 +115,24 @@ describe("inferAgentIntent：自然语言改稿与 mode", () => {
   it("普通改章请求**不带**选方向意图（弹窗不再自动弹）", () => {
     // 用户反馈"弹窗很多余"，所以默认路径必须走 chapter_revise 直接改，
     // 只有下面那几句显式说法才进方向面板
-    for (const t of ["帮我改这一章", "这章回炉重写吧", "改写第一章", "据此修改第一章"]) {
+    for (const t of [
+      "帮我改这一章",
+      "这章回炉重写吧",
+      "改写第一章",
+      "据此修改第一章",
+    ]) {
       expect(inferAgentIntent(t).kind).not.toBe("revise_pick");
     }
   });
 
   it("显式说「选个方向」→ revise_pick（方向面板的唯一入口）", () => {
-    for (const t of ["选个方向", "选个方向改这一章", "按方向改", "选一个改法", "挑个模式"]) {
+    for (const t of [
+      "选个方向",
+      "选个方向改这一章",
+      "按方向改",
+      "选一个改法",
+      "挑个模式",
+    ]) {
       expect(inferAgentIntent(t).kind).toBe("revise_pick");
     }
   });
@@ -166,6 +177,31 @@ describe("inferAgentIntent：改稿模式必须由作者明确要求", () => {
     expect(inferAgentIntent("改稿").kind).toBe("chapter_revise");
     expect(inferAgentIntent("帮我改稿").kind).toBe("chapter_revise");
     expect(inferAgentIntent("这章回炉吧").kind).toBe("chapter_revise");
+  });
+
+  it("选中一段再说一句也算改稿（线上漏过的说法）", () => {
+    // 实测那条原句：因为对象列表里只有「这一段」没有「这段」，它没被认成改稿，
+    // 只回了一段点评——作者要的是改稿。
+    for (const t of [
+      "帮我把林夏登场这段改得更细腻",
+      "帮我改这段",
+      "这句重写一下",
+      "把这几段润色一遍",
+      "这部分改一下",
+    ]) {
+      expect(inferAgentIntent(t).kind).toBe("chapter_revise");
+    }
+  });
+
+  it("选区说法不会被评价句 / 出处句误用", () => {
+    for (const t of [
+      "这一段改得不错",
+      "这一段写得怎么样",
+      "帮我看这一段值不值",
+      "这段改写自朋友的小说",
+    ]) {
+      expect(inferAgentIntent(t).kind).not.toBe("chapter_revise");
+    }
   });
 
   it("只是**聊到**这一章 → chat（不再自己切进改稿模式）", () => {

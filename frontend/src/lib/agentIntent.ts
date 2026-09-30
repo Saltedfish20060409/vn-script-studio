@@ -47,11 +47,18 @@ function hasAttach(n: number): boolean {
  * 否定（先别改 / 不要改）与征询（怎么改 / 要不要改）一律留在普通对话。
  */
 const REVISE_ACTION =
-  "帮我改|给我改|替我改|帮忙改|帮改|请改|改一下|改一版|改一遍|改改|改写|重写|回炉|润色|润一版|修订|修改|改稿";
+  "帮我改|给我改|替我改|帮忙改|帮改|请改|改一下|改一版|改一遍|改改|改写(?!自|于)|重写|回炉|润色|润一版|修订|修改|改稿";
 
-/** 改稿对象：哪一章 / 哪份稿。没有对象的模糊说法（"帮我改一下"）不算改稿。 */
+/**
+ * 改稿对象：哪一章 / 哪份稿 / 哪一段。
+ *
+ * 选区说法（这段 / 这句 / 这部分）必须在内——线上实测漏过：作者说
+ * 「帮我把林夏登场这段改得更细腻」，因为列表里只有「这一段」没有「这段」，
+ * 于是没被认成改稿，只回了一段点评（他想要的是改稿）。这类"选中一段再说一句"是最常见的用法，
+ * 宁可多认几个说法，也不要让人再问一遍。
+ */
 const REVISE_TARGET =
-  "这一?章|当前章|本章|这章|整章|全章|第[〇一二三四五六七八九十百零0-9]+章|正文|本文|剧本|本稿|这稿|这一稿|文稿|这一段|这一?节|本场|这一场";
+  "这一?章|当前章|本章|这章|整章|全章|第[〇一二三四五六七八九十百零0-9]+章|正文|本文|剧本|本稿|这稿|这一稿|文稿|这一段|这段|这几段|这一?节|本场|这一场|这句|这几句|这一句|这部分|这处|这几处|这几行";
 
 /** 动作与对象之间允许的间隔：同一句内、不隔太远（"帮我改，这一章"也算）。 */
 const SENTENCE_GAP = "[^。！？!?\\n]{0,12}";
@@ -59,6 +66,17 @@ const SENTENCE_GAP = "[^。！？!?\\n]{0,12}";
 const REVISE_ASK_RE = new RegExp(
   `(?:${REVISE_ACTION})${SENTENCE_GAP}(?:${REVISE_TARGET})|(?:${REVISE_TARGET})${SENTENCE_GAP}(?:${REVISE_ACTION})`
 );
+
+/**
+ * 托付口气 + 选区 + 一个"改"字。
+ *
+ * 为什么单列一条：最常见的用法是「帮我把林夏登场这段改得更细腻」——"帮我"与"改"隔着半句话，
+ * 紧邻形式（`REVISE_ASK_RE`）对不上，于是线上它没被认成改稿，只回了一段点评。
+ * 这里要求**有托付口气**（帮我/给我/麻烦…），所以「这一段改得不错」这类评价不会被算进来；
+ * 「改」后面跟"写/稿/善…"的（"这部分的改写"）也排除掉，那不是命令。
+ */
+const ENTRUSTED_SELECTION_ASK_RE =
+  /(这一段|这段|这几段|这一?节|本场|这一场|这句|这几句|这一句|这部分|这处|这几行)[^。！？!?\n]{0,6}改(?!写|稿|善|动|版|过|完|好|正|天)/;
 
 /** 不带对象也成立的显式改稿指令（默认就是"当前这一章"）。
  *  `改稿` 后面跟"意见/建议/方向…"时是**名词**（在聊改稿这件事），不是在托付任务。 */
@@ -114,10 +132,12 @@ const WRITE_NEGATED_RE =
 /** 作者是否**明确**要求改稿——`chapter_revise` 的唯一入口。 */
 function explicitReviseAsk(text: string): boolean {
   const explicit = REVISE_STANDALONE_RE.test(text) || REVISE_ASK_RE.test(text);
-  if (!explicit) return false;
+  const trusted = ENTRUST_RE.test(text);
+  // 托付口气 + 选区 + 一个"改"字（见 ENTRUSTED_SELECTION_ASK_RE）。
+  if (!explicit && !(trusted && ENTRUSTED_SELECTION_ASK_RE.test(text))) return false;
   // 说了"帮我改"同时在限制范围（"帮我改这一章，不要改对白"）仍是明确要求，
   // 所以否定/征询只在**没有**托付口气时才把整句打回普通对话。
-  if (ENTRUST_RE.test(text)) return true;
+  if (trusted) return true;
   if (REVISE_NEGATED_RE.test(text)) return false;
   if (ASK_HOW_RE.test(text)) return false;
   return true;
