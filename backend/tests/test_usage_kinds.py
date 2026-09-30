@@ -15,6 +15,7 @@ def test_paths_map_to_specific_capabilities():
         "/api/v1/projects/p1/agent": "agent",
         "/api/v1/projects/p1/agent/chapter-revise": "chapter_revise",
         "/api/v1/projects/p1/agent/pipeline/run": "pipeline",
+        "/api/v1/projects/p1/agent/write": "write",
         "/api/v1/projects/p1/pipeline/run": "pipeline",
         "/api/v1/projects/p1/pipeline/gate": "finalize",
         "/api/v1/projects/p1/pipeline/ledger/digest": "ledger",

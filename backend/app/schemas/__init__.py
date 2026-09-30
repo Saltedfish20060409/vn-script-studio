@@ -115,6 +115,20 @@ class PreQuestionsIn(BaseModel):
     chapter_id: Optional[str] = None
 
 
+class AgentWriteIn(BaseModel):
+    """写作通道入参：要写什么、写到哪一章。**产出的是草稿，不落库。**
+
+    与 `AgentRunIn` 的分工：那条是"审阅条件"（JSON 协议 + 工具 + 规则块），
+    这条是"写作条件"（writer 角色 + 风格 Skill，自由文本流式）。
+    """
+
+    instruction: str
+    chapter_id: Optional[str] = None
+    selection: Optional[str] = None
+    temperature: Optional[float] = None
+    conversation_id: Optional[str] = None
+
+
 class AgentRunIn(BaseModel):
     messages: List[Dict[str, Any]]
     chapter_id: Optional[str] = None

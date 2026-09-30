@@ -104,7 +104,10 @@ const WIRINGS: Wiring[] = [
   },
   {
     name: "跨章一致性扫描 consistency-scan",
-    backend: { file: "backend/app/api/v1/projects.py", needle: "analysis/consistency-scan" },
+    backend: {
+      file: "backend/app/api/v1/projects.py",
+      needle: "analysis/consistency-scan",
+    },
     frontend: {
       files: ["frontend/src/api/projects.ts"],
       pattern: /analysis\/consistency-scan/,
@@ -162,6 +165,17 @@ const WIRINGS: Wiring[] = [
     frontend: {
       files: ["frontend/src/components/AgentChat.tsx"],
       pattern: /onScan=\{\(\) => proposeFactsScan\(/,
+    },
+  },
+  {
+    // 写作通道：正文必须走 writer 条件（`/agent/write`），不能再回到聊天那条"审阅条件"
+    // （JSON 协议 + 工具 + 规则块）。线上实测同一模型同一份设计书：审阅条件退化成把设计书
+    // 抄成骨架（1141 字、选项留成占位符），writer 条件给 2124 字成稿。
+    name: "写作通道：写正文走 writer 条件，不走聊天",
+    backend: { file: "backend/app/api/v1/projects.py", needle: "/agent/write" },
+    frontend: {
+      files: ["frontend/src/components/AgentChat.tsx"],
+      pattern: /await agentWriteStream\(/,
     },
   },
 ];

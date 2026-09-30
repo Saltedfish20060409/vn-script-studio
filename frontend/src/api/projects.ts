@@ -457,9 +457,12 @@ export async function prefillLocalization(
   id: string,
   locale: string
 ): Promise<{ ok: boolean; filled: number; stats: LocalizationOut["stats"] }> {
-  return apiFetch(`/projects/${id}/localization/prefill?locale=${encodeURIComponent(locale)}`, {
-    method: "POST",
-  });
+  return apiFetch(
+    `/projects/${id}/localization/prefill?locale=${encodeURIComponent(locale)}`,
+    {
+      method: "POST",
+    }
+  );
 }
 
 /** AI 代翻（草稿，状态标记为 ai，需人工校对后再导出）。 */
@@ -680,7 +683,12 @@ export interface BranchReportOut {
   };
   coverage: BranchCoverage;
   cycles: BranchCycle[];
-  deadBlocks: Array<{ chapterId: string; label: string; type: string; preview: string }>;
+  deadBlocks: Array<{
+    chapterId: string;
+    label: string;
+    type: string;
+    preview: string;
+  }>;
   chapterEndWithoutExit: Array<{
     chapterId: string;
     label: string;
@@ -1066,7 +1074,9 @@ export function compareSnapshot(
     method: "POST",
     timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify(
-      toSnapId ? { from_snap_id: fromSnapId, to_snap_id: toSnapId } : { from_snap_id: fromSnapId }
+      toSnapId
+        ? { from_snap_id: fromSnapId, to_snap_id: toSnapId }
+        : { from_snap_id: fromSnapId }
     ),
   });
 }
@@ -1262,6 +1272,90 @@ export function applyAgentActions(
     timeoutMs: TIMEOUTS.upload,
     body: JSON.stringify(body),
   });
+}
+
+/** 写作通道的流式事件（与后端 `/agent/write` 的 SSE 一一对应）。 */
+export type AgentWriteStreamEvent =
+  | { type: "token"; delta: string }
+  | {
+      type: "done";
+      content: string;
+      model?: string | null;
+      chapterId?: string | null;
+      chapterTitle?: string;
+      sourceText?: string;
+      /** 恒为 false：这条通道只产出草稿，不写工程（写入由作者确认后走 apply） */
+      wrote: false;
+    }
+  | { type: "error"; message: string };
+
+/**
+ * 写作通道（流式）：走 **writer 条件**（writer 角色 + 风格 Skill），自由文本产出正文草稿。
+ *
+ * 为什么不复用聊天那条：聊天是"审阅条件"（JSON 协议 + 工具 + 规则块）——线上实测同一模型、
+ * 同一份设计书下会退化成"把设计书抄成骨架"（1141 字，选项留成占位符、注释被当旁白），
+ * 而 writer 条件给的是 2124 字的成稿。另外 JSON 模式与思考档互斥，写作不需要 JSON。
+ *
+ * 拿到的 `content` 是**草稿**：前端把它塞进对照面板，作者确认后才调
+ * `chapterReviseApply`（替换）或 `applyAgentActions`（追加）。
+ */
+export async function agentWriteStream(
+  projectId: string,
+  body: {
+    instruction: string;
+    chapter_id?: string;
+    selection?: string;
+    temperature?: number;
+    conversation_id?: string;
+  },
+  onEvent: (evt: AgentWriteStreamEvent) => void,
+  signal?: AbortSignal,
+  onActivity?: () => void
+): Promise<Extract<AgentWriteStreamEvent, { type: "done" }>> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/agent/write`, {
+    method: "POST",
+    headers: buildApiHeaders(undefined, true),
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const detail = await res.text().catch(() => `HTTP ${res.status}`);
+    throw new Error(detail || `HTTP ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let final: Extract<AgentWriteStreamEvent, { type: "done" }> | null = null;
+  for (;;) {
+    if (signal?.aborted) {
+      reader.cancel().catch(() => undefined);
+      throw new Error("请求已取消");
+    }
+    const { done, value } = await reader.read();
+    if (value && value.byteLength > 0) onActivity?.();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+    let idx: number;
+    while ((idx = buffer.indexOf("\n\n")) >= 0) {
+      const chunk = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      const line = chunk.split("\n").find((l) => l.startsWith("data:"));
+      if (!line) continue;
+      const payload = line.slice(5).trim();
+      if (!payload) continue;
+      let evt: AgentWriteStreamEvent;
+      try {
+        evt = JSON.parse(payload) as AgentWriteStreamEvent;
+      } catch {
+        continue;
+      }
+      onEvent(evt);
+      if (evt.type === "error") throw new Error(evt.message);
+      if (evt.type === "done") final = evt;
+    }
+    if (done) break;
+  }
+  if (!final) throw new Error("写作通道没有返回结果，请重试");
+  return final;
 }
 
 export interface AgentRunOut {
@@ -2234,7 +2328,13 @@ export type NovelAuditChapter = {
   /** prose = 数的是正文；blocks = 数的是脚本块 */
   source: string;
   truncated: boolean;
-  words: { total: number; dialogue: number; narration: number; choice: number; chars: number };
+  words: {
+    total: number;
+    dialogue: number;
+    narration: number;
+    choice: number;
+    chars: number;
+  };
   ratio: { dialogue: number | null; narration: number | null };
   lines: { dialogue: number; narration: number; choice: number };
   paragraphs: { count: number; avgChars: number; longCount: number; longRatio: number };
@@ -2249,7 +2349,12 @@ export type NovelAuditChapter = {
     longThreshold: number;
   };
   /** 地の文的人称倾向（对白不计）；没有人称标记时 firstRatio 为 null */
-  person?: { first: number; third: number; firstRatio: number | null; checked: boolean };
+  person?: {
+    first: number;
+    third: number;
+    firstRatio: number | null;
+    checked: boolean;
+  };
   punctuation: Record<string, number>;
   onomatopoeia: { count: number; strictCount: number; per1000Chars: number };
   ruby: { count: number; per1000Chars: number };
@@ -2329,12 +2434,29 @@ export type AdaptationOut = {
     menus: number;
   }>;
   characters: {
-    appearing: Array<{ id: string; name: string; hasVoice: boolean; corpusCount: number; hasMind: boolean }>;
+    appearing: Array<{
+      id: string;
+      name: string;
+      hasVoice: boolean;
+      corpusCount: number;
+      hasMind: boolean;
+    }>;
     thin: Array<{ id: string; name: string }>;
   };
   /** 分支与结局的事实读数（不判断该不该有分支） */
-  flow: { menus: number; labels: number; endingsDeclared: number; endingsReached: number; computed: boolean };
-  coverage: { chaptersTotal: number; chaptersWithText: number; sceneBlocks: number; note: string };
+  flow: {
+    menus: number;
+    labels: number;
+    endingsDeclared: number;
+    endingsReached: number;
+    computed: boolean;
+  };
+  coverage: {
+    chaptersTotal: number;
+    chaptersWithText: number;
+    sceneBlocks: number;
+    note: string;
+  };
   notes: string[];
 };
 

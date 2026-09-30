@@ -19,6 +19,8 @@ _RULES: Tuple[Tuple[str, str], ...] = (
     ("/pipeline/gate", "finalize"),
     ("/pipeline/ledger/digest", "ledger"),
     ("/agent/chapter-revise", "chapter_revise"),
+    # 写作通道：writer 条件、自由文本流式（与审阅条件的 /agent 分开计）
+    ("/agent/write", "write"),
     ("/generate-rpy", "rpy"),
     ("/map/extract", "map"),
     ("/analysis/facts/scan", "facts"),
@@ -38,6 +40,7 @@ DEFAULT_KIND = "llm"
 # 已知分类（管理面板/报表按这个顺序展示，便于横向对比）
 KNOWN_KINDS: Tuple[str, ...] = (
     "agent",
+    "write",
     "chapter_revise",
     "pipeline",
     "finalize",
@@ -56,6 +59,7 @@ KNOWN_KINDS: Tuple[str, ...] = (
 
 _LABELS = {
     "agent": "AI 责编对话",
+    "write": "写作通道（生成正文草稿）",
     "chapter_revise": "章节回炉/改写",
     "pipeline": "自动写作流水线",
     "finalize": "定稿检查",

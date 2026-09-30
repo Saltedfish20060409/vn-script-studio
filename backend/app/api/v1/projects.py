@@ -57,6 +57,7 @@ from app.schemas import (
     AgentRunOut,
     AgentSessionOut,
     AgentSessionPutIn,
+    AgentWriteIn,
     AiRunIn,
     ChapterReviseApplyIn,
     ChapterReviseIn,
@@ -2870,6 +2871,131 @@ async def agent_apply_actions(
         "wrote": True,
         "inbox_added": inbox_added,
     }
+
+
+@router.post("/{project_id}/agent/write")
+async def agent_write_stream(
+    project_id: str,
+    body: AgentWriteIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """写作通道（SSE）：走 **writer 条件**，自由文本流式产出正文草稿。**不落库。**
+
+    为什么单开这条（2026-09-30 线上实测，作者账号「搁浅de咸鱼」）：
+    聊天那条路是**审阅条件**——JSON 输出协议、工具目录、craft/导师/透镜规则块、15k 上下文。
+    同一模型、同一份设计书，只换条件的结果是：
+
+    - 审阅条件（`/agent/stream`）：1141 字，退化成"把设计书抄成骨架"——选项留成
+      「[选项1][选项2][选项3]」、把作者的注释当旁白抄进正文、用摘要代替戏；
+    - 写作条件（`stage_write`：writer 角色 + 风格 Skill + 节拍/意图）：2124 字成稿，
+      两组选项有真内容。
+
+    另外 JSON 模式与 `deepseek-flash-think`（思考档）互斥，而写作不需要 JSON——
+    把写作从 JSON 里拿出来，思考档才可能用得上。
+
+    **本接口不写工程**：产出的是草稿，作者在前端对照/确认后才走
+    `/agent/chapter-revise/apply`（替换本章）或 `/agent/apply-actions`（追加）。
+    """
+    from app.core.agent_context import chapter_plain
+    from app.core.pipeline.orchestrator import stage_write
+    from app.core.rate_limit import require_rate
+    from app.core.usage import ensure_under_quota
+
+    require_rate(
+        user.id,
+        "llm_write",
+        240,
+        enabled=settings.rate_limit_enabled,
+        window=3600,
+        detail="Agent 调用过于频繁，请稍后再试",
+    )
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    creds = await resolve_llm_credentials(db, user.id, settings)
+    if not creds["api_key"]:
+        raise HTTPException(status_code=400, detail="未配置模型 Key，请先在「设置 → 模型」填写")
+    await ensure_under_quota(db, user.id, settings, creds)
+    cfg = DeepSeekConfig(
+        apiKey=creds["api_key"],
+        baseUrl=creds["base_url"],
+        model=creds["model"],
+    )
+
+    chapter = None
+    if body.chapter_id:
+        chapter = next((c for c in vn.chapters if c.id == body.chapter_id), None)
+    source_text = chapter_plain(chapter, vn.characters) if chapter is not None else ""
+    chapter_title = (chapter.title or chapter.id) if chapter is not None else ""
+
+    queue: "asyncio.Queue[dict]" = asyncio.Queue()
+
+    async def _sse(data: dict) -> str:
+        return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+    def on_token(delta: str) -> None:
+        queue.put_nowait({"type": "token", "delta": delta})
+
+    async def _run_stage() -> dict:
+        return await stage_write(
+            cfg,
+            vn,
+            instruction=body.instruction,
+            chapter_id=body.chapter_id,
+            selection=body.selection or "",
+            on_token=on_token,
+            temperature=body.temperature if body.temperature is not None else 0.75,
+        )
+
+    async def event_stream():
+        runner = asyncio.create_task(_run_stage())
+        try:
+            while True:
+                getter = asyncio.create_task(queue.get())
+                done, _pending = await asyncio.wait(
+                    {getter, runner},
+                    timeout=15,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if getter in done:
+                    yield await _sse(getter.result())
+                    continue
+                getter.cancel()
+                if runner in done:
+                    break
+                yield ": keepalive\n\n"
+            result = runner.result()
+        except asyncio.CancelledError:
+            runner.cancel()
+            raise
+        except Exception as exc:  # noqa: BLE001 - 流里出错也要让前端看得见
+            if not runner.done():
+                runner.cancel()
+            yield await _sse({"type": "error", "message": str(exc)[:500]})
+            return
+        yield await _sse(
+            {
+                "type": "done",
+                "content": (result.get("content") or "").strip(),
+                "model": result.get("model"),
+                "chapterId": body.chapter_id,
+                "chapterTitle": chapter_title,
+                "sourceText": source_text,
+                # 说清楚这条通道不落库：前端拿它当草稿，写入仍要作者确认
+                "wrote": False,
+            }
+        )
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/{project_id}/agent/pre-questions")

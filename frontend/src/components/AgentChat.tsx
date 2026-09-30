@@ -29,6 +29,7 @@ import {
   uploadAgentAttachment,
   ingestAttachmentSettings,
   applyAgentActions,
+  agentWriteStream,
   chapterRevise,
   chapterReviseApply,
   factsScan,
@@ -1398,6 +1399,10 @@ export function AgentChat({
       });
       return;
     }
+    if (intent.kind === "write_to_script") {
+      await runWriteChannel(userVisible);
+      return;
+    }
     if (intent.kind === "chapter_lock_name") {
       const name = intent.lockName || "";
       if (name && chapterId) {
@@ -1499,17 +1504,9 @@ export function AgentChat({
     }
 
     let outbound = userVisible;
-    let runTask = task;
+    const runTask = task;
     if (intent.kind === "critique_only") {
       outbound = `${userVisible}\n\n（本轮只做文字审稿，不要直接改动正文：把完整意见写进回复；除非用户明确说「写入」，否则不要修改章节内容。）`;
-    }
-    if (intent.kind === "write_to_script") {
-      // 明确要求落盘：换成"写入"那档提示词（正文必须进 append_script / replace_script），
-      // 并在这条消息里再点一句——两处都说到，才不至于又变成"把整章写进聊天里"。
-      runTask = "rewrite";
-      outbound =
-        `${userVisible}\n\n（本轮要把正文落进稿子：成段的正文请放进 append_script / ` +
-        `replace_script 动作的文本里，message 只写一两句说明；不要把整章正文写在聊天回复里。）`;
     }
 
     setError("");
@@ -1538,6 +1535,105 @@ export function AgentChat({
       task: runTask,
       attachments: pendingAttach,
     });
+  }
+
+  /**
+   * 写作通道：走 writer 条件流式产出正文**草稿**，拿到后打开既有的对照面板。
+   *
+   * 为什么不再让聊天那条路写正文（线上实测）：聊天是审阅条件（JSON 协议 + 工具 + 规则块），
+   * 同一模型、同一份设计书下会退化成"把设计书抄成骨架"（1141 字，选项留成占位符、
+   * 把作者的注释当旁白），而 writer 条件的成稿是 2124 字。且写作不需要 JSON，
+   * 思考档（deepseek-flash-think）因此不再被 JSON 模式排除在外。
+   *
+   * 闸没有变：这条通道**一个字都不写工程**，草稿进对照面板，作者确认后才 apply
+   * （可撤回），不想要就丢弃。
+   */
+  async function runWriteChannel(instruction: string) {
+    if (busy || !conversationId) return;
+    const ask = instruction.trim() || "请按设定与已有内容写一段可上演的正文";
+    const withUser = [
+      ...messagesRef.current,
+      {
+        role: "user" as const,
+        content: flowUserMessage("【写正文】走写作条件产出草稿（未写入）。", ask),
+      },
+    ].slice(-120);
+    setMessages(withUser);
+    messagesRef.current = withUser;
+    setError("");
+    setBusy(true);
+    setThinking("正在按写作条件写…");
+    setLastContext("写作通道 · 生成草稿（未写入）");
+    let live = "";
+    try {
+      streamAbortRef.current?.abort();
+      const controller = new AbortController();
+      streamAbortRef.current = controller;
+      const done = await agentWriteStream(
+        projectId,
+        {
+          instruction: ask,
+          chapter_id: chapterId,
+          selection: selection || undefined,
+          conversation_id: conversationId,
+        },
+        (evt) => {
+          if (evt.type === "token") {
+            live += evt.delta;
+            setThinking(`正在按写作条件写…（${live.length} 字）`);
+          }
+        },
+        controller.signal,
+        () => undefined
+      );
+      const draft = (done.content || "").trim();
+      if (!draft) {
+        throw new Error("写作通道没有返回正文，请重试");
+      }
+      const targetId = done.chapterId || chapterId;
+      setPendingRevise({
+        chapterId: targetId,
+        revisedText: draft,
+        originalText: (done.sourceText || "").trim(),
+        chapterTitle: done.chapterTitle,
+        savedAt: Date.now(),
+      });
+      setReviseReviewOpen(true);
+      const next = [
+        ...messagesRef.current,
+        {
+          role: "assistant" as const,
+          content:
+            `草稿写好了（${draft.length} 字，模型 ${done.model || "未知"}），**还没有写进正文**。` +
+            "已打开左右对照：逐段挑「改稿 / 原文」，满意再点「写入」；不想要就点「放弃」，正文保持原样。",
+        },
+      ].slice(-120);
+      setMessages(next);
+      messagesRef.current = next;
+      setLastContext("写作通道 · 草稿待确认");
+      await putAgentConversation(projectId, conversationId, {
+        messages: next,
+        undo_stack: undoStack.current.slice(-20),
+      }).catch(() => undefined);
+      void refreshList();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "写作通道失败";
+      if (
+        msg === "请求已取消" ||
+        streamAbortRef.current?.signal.aborted ||
+        (e instanceof Error && e.name === "AbortError")
+      ) {
+        return;
+      }
+      setError(msg);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `出错了：${msg}` },
+      ]);
+    } finally {
+      setBusy(false);
+      setThinking("");
+    }
   }
 
   async function runListMentors(ask?: string) {
