@@ -1530,6 +1530,16 @@ export function AgentChat({
       setReviseModeOpen(true);
       return;
     }
+    if (intent.kind === "targeted_revise") {
+      // 定点改：走 Agent 的 ops 路径（模型只需给"哪句改成哪句" → `patch_script`，
+      // 其余正文一个字不动），产出进方案卡片的**逐条勾选表**，勾中的才写。
+      //
+      // **不走 `runChapterReviseFlow`**：那条路（整章回炉/写作通道）只会产出一整章新写法，
+      // 作者说的"其他地方不动"在那边无处落脚——线上就是这么变成"改 7 处、重写全章"的
+      // （见 lib/agentIntent.ts 里那段实测）。
+      await sendText(userVisible, "rewrite");
+      return;
+    }
     if (intent.kind === "chapter_revise") {
       // 只传识别出的方向：要不要用固定方向由 resolveReviseMode 一处决定
       await runChapterReviseFlow(intent.note || trimmed, { mode: intent.mode });

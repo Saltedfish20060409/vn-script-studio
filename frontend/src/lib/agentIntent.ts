@@ -4,6 +4,7 @@
  */
 
 type AgentIntentKind =
+  | "targeted_revise"
   | "chapter_revise"
   | "write_to_script"
   | "revise_pick"
@@ -162,17 +163,96 @@ function factsScanAsk(text: string): boolean {
   return true;
 }
 
+/** 明确的"动手改"说法。
+ *  比 `REVISE_ACTION` **窄**：不含裸"修改 / 改"，否则"修改意见"这四个字会把自己否掉
+ *  （见 `wantsCritiqueOnly`）。 */
+const EXPLICIT_DO_RE =
+  /(帮我改|给我改|替我改|帮忙改|帮改|请改|改一下|改一版|改一遍|改改|重写|改写|回炉|润色|润一版|修订|进行修改|动手改|改完|改好)/;
+
 /** True when user explicitly wants discussion only. */
 function wantsCritiqueOnly(text: string): boolean {
-  if (explicitReviseAsk(text)) return false;
-  return /(只要意见|先别改|先不要改|不要写入|你觉得对吗|这个分析对吗|点评一下|审稿意见|修改意见(?!.*改))/u.test(
-    text
-  );
+  if (explicitReviseAsk(text) || targetedReviseAsk(text)) return false;
+  // 这条判据以前写的是 `修改意见(?!.*改)`，而那个负向预查**必然失效**：
+  // 句子里后面只要还有"改"字它就放过，而真实说法偏偏总是两者并存——线上原文就是
+  // 「其他部分的**修改意见**我同意。请帮我……进行**修改**」，后面有的是"改"字。
+  // 于是"作者只要意见"这条判断形同虚设。
+  // 现在改成两步：先认"征求/给意见"的说法，再用**明确的动手说法**否掉它
+  // （用 `EXPLICIT_DO_RE` 而不是裸"改"字——裸字会被"修改意见"自己命中）。
+  const wantsOpinion =
+    /(只要意见|先别改|先不要改|不要写入|你觉得对吗|这个分析对吗|点评一下|审稿意见|修改意见)/u.test(
+      text
+    );
+  if (!wantsOpinion) return false;
+  return !EXPLICIT_DO_RE.test(text);
 }
 
 /** 明确要求"把内容落到稿子里"。 */
 const WRITE_TO_SCRIPT_RE =
   /(写入|写进|存进|存入|放进|落到|落进|落盘|录进)[^。！？!?\n]{0,6}(正文|剧本|稿子|稿件|章节|工程)|(把|将)[^。！？!?\n]{0,24}(写|存|放|落)(进|入|到|盘)[^。！？!?\n]{0,6}(正文|剧本|稿子|稿件|章节|工程)/;
+
+// ---- 定点改：作者点名"只改这几处" ------------------------------------------
+//
+// 2026-10-01 线上实测（作者「搁浅de咸鱼」，项目《拟合少女》）。原话：
+//   「我不打算拆成两章，可以砍掉参观一楼的情节。其他部分的修改意见我同意。
+//     请帮我把需要修改的地方进行修改，**其他地方不动**，改好之后写入剧本」
+//
+// 一句再清楚不过的"只改这几处"，却一路落到了**整章重写**：
+//   ① `REVISE_ASK_RE` 要的是**指代**（这一段 / 这部分 / 这处），而作者说的是**描述**
+//      （"需要修改的地方"）；`REVISE_STANDALONE_RE` 要的是"回炉 / 整章重写 / 改稿"这类词；
+//      第三条"托付 + 选区"又要求他真的划过选区 → 三条全不中，改稿意图 = false；
+//   ② 句尾「写入剧本」命中上面的 `WRITE_TO_SCRIPT_RE` → 落到 `write_to_script`；
+//   ③ 而 `write_to_script` 的实现是**写作通道**：产出一整章草稿 + 整章对照面板
+//      （见 `AgentChat.runWriteChannel`）——它**没有"只改这几处"的入口**。
+// 于是「其他地方不动」在链路上无处落脚，模型被要求"写一版正文"，它当然整章重写了一遍，
+// 作者在对照面板里看到的每一段都成了"改稿"。**这不是模型自作聪明，是工序与要求不匹配。**
+//
+// 修法：把这几种说法**认成"定点改"**，走 Agent 的 ops 路径（`patch_script` 逐字替换 +
+// 逐条勾选卡片），而不是整章通道。判据在下面 `targetedReviseAsk`。
+
+/** 范围限制：作者点名"只动这一块"。 */
+const LIMITED_SCOPE_RE =
+  /(其他|其它|其余|别处|别的|剩下|剩余)[^。！？!?\n]{0,6}(地方|部分|段落|章节|内容|情节)?[^。！？!?\n]{0,4}(不动|不变|不改|不碰|别动|不要动|保持|照旧|保留|维持)|(只|仅)[^。！？!?\n]{0,4}(改|动|修|调|润)|(需要|要|该|必须|得)(修改|改|调整|润色)(的)(地方|部分|段落|句子|处)/;
+
+/** "把**修改**写进去" = 落实改动，而不是"写一整章"。 */
+const CHANGES_TO_WRITE_RE =
+  /(修改|改动|改好|改完|补丁)[^。！？!?\n]{0,6}(写入|写进|存进|放进|落到|落进|录进|应用)/;
+
+/**
+ * **计数式**点名："这几处 / 那两句 / 第 3 条"。
+ *
+ * 划界（与既有口径对齐，别抢）：**数词 + 处|句|行|条|点|地方** = 他在**点名几处**，
+ * 心里有具体清单，要的是逐处改动；而「这段 / 这几段 / 这部分 / 这一章」是在**指代一整块**
+ * （要的是把那一块重写一遍），现有口径归整章回炉——所以那个量词表里刻意**没有 `段`**。
+ * 也必须**有数词**：没有数词的"这段改写自朋友的小说"是在说出处，不是在点单。
+ */
+const TARGETED_COUNT_RE =
+  /(几|两|三|四|五|六|七|八|九|十|[0-9]+)\s*个?\s*(处|句|行|条|点|地方)|第\s*[0-9一二三四五六七八九十]+\s*个?\s*(处|句|行|条|点|地方)/;
+
+/** 作者确实在说"改"这件事（比 `REVISE_ACTION` 松：说出"改"就够了）。 */
+const REVISE_VERB_RE = /(改|修|润|重写|改写|回炉)/;
+
+/** 明确叫停"改"这件事。
+ *  **不能**复用 `REVISE_NEGATED_RE`：那张表里有"不要动 / 别动"，
+ *  而"其他地方不动 / 别动其他地方"是**范围限制**，不是叫停。 */
+const REVISE_HARD_STOP_RE = /(先别改|先不要改|别改了|不要改了|不用改|不需要改|先别动笔)/;
+
+/** 说了"整章推翻重来"就让整章通道优先——那是比范围限制更明确的指令。 */
+const FULL_REWRITE_RE =
+  /(回炉|整章\s*(重写|改写)|全章\s*(重写|改写)|(重写|改写)\s*(一版|一遍|这一?章|当前章|整章|全章))/;
+
+/** 作者要的是"定点改"吗（只动点到的几处，其余一字不动）。 */
+function targetedReviseAsk(text: string): boolean {
+  if (!text) return false;
+  if (REVISE_HARD_STOP_RE.test(text)) return false;
+  // 问办法（"这一章怎么改"）不是让谁动手
+  if (ASK_HOW_RE.test(text)) return false;
+  if (FULL_REWRITE_RE.test(text)) return false;
+  // "把修改写进正文"——要落盘的是**改动**，按定义就是局部的
+  if (CHANGES_TO_WRITE_RE.test(text)) return true;
+  // 计数式点名（"这几处 / 那两句 / 第 3 条"）+ 一个"改"字
+  if (TARGETED_COUNT_RE.test(text) && REVISE_VERB_RE.test(text)) return true;
+  return LIMITED_SCOPE_RE.test(text) && REVISE_VERB_RE.test(text);
+}
 
 /**
  * 作者在**要正文**：让 Agent 写下去，而不是问"怎么写"。
@@ -298,6 +378,9 @@ export function inferAgentIntent(text: string, attachmentCount = 0): AgentIntent
           name
         ) &&
         !explicitReviseAsk(t) &&
+        // 「帮我改这几处，别动林夏」是**一次定点改** + 一条范围限制：
+        // 只记成偏好就把这次的改动要求丢了（与下面 `proseWriteAsk` 那条同一个道理）。
+        !targetedReviseAsk(t) &&
         // 「帮我续写，别动林夏」是**要正文** + 一条范围限制：不能被"别动 XX"吃掉，
         // 只记成一条偏好就等于把这次续写要求丢了（同为线上实测的同一类丢话）。
         !proseWriteAsk(t)
@@ -319,6 +402,13 @@ export function inferAgentIntent(text: string, attachmentCount = 0): AgentIntent
   if (/只去说明书|只要去说明书|别大改/.test(t)) mode = "cut_lecture";
   else if (/轻润|不改结构|少改/.test(t)) mode = "light_touch";
   else if (/人味|更有温度|毛边/.test(t)) mode = "human_warmth";
+
+  // 定点改 —— **必须排在 chapter_revise 之前**。
+  // 「帮我改这一章，其他地方不动」同时命中改稿动作与对象，但它要的是"只改几处"；
+  // 整章回炉那条路只会产出一整章新写法，"其他地方不动"在那边无处落脚（见上面的实测）。
+  if (targetedReviseAsk(t)) {
+    return { kind: "targeted_revise", note: t, mode };
+  }
 
   // Chapter revise —— 只认作者**明确说出口**的改稿要求（见 explicitReviseAsk 的口径）。
   // 以前这里挂着"长文本带改字""带附件提到改写""这一章…修改"三条启发式，

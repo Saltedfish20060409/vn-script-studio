@@ -412,3 +412,73 @@ describe("inferAgentIntent：提到名词 ≠ 下命令（写入设定 / 事实�
     expect(inferAgentIntent("请帮我规划并生成第一章").kind).toBe("pipeline");
   });
 });
+
+describe("定点改：说了「只改这几处」就不许落到整章重写", () => {
+  // 线上原文（2026-10-01，作者「搁浅de咸鱼」，项目《拟合少女》）。
+  //
+  // 它当时的去向：改稿意图三条判据全不中（要"这一段"这类指代，而作者说的是
+  // "需要修改的地方"）→ 句尾「写入剧本」命中 `WRITE_TO_SCRIPT_RE` →
+  // `write_to_script` → **写作通道**（产出一整章草稿 + 整章对照面板）。
+  // 于是「其他地方不动」无处落脚，模型被要求"写一版正文"，整章重写了一遍，
+  // 作者看到对照面板里每一段都成了"改稿"。
+  const PROD_ASK =
+    "我不打算拆成两章，可以砍掉参观一楼的情节。其他部分的修改意见我同意。" +
+    "请帮我把需要修改的地方进行修改，其他地方不动，改好之后写入剧本";
+
+  it("线上原文 → targeted_revise（不再进整章通道）", () => {
+    const r = inferAgentIntent(PROD_ASK);
+    expect(r.kind).toBe("targeted_revise");
+    expect(r.note).toBe(PROD_ASK);
+  });
+
+  it("各种「只改这几处」的说法都认", () => {
+    for (const t of [
+      "帮我改这几处，其他地方不动",
+      "把这两句改一下，其余不变",
+      "只改这一处就行",
+      "请帮我修改需要修改的地方",
+      "把改动写进正文",
+      "按这三条建议改，其余保持原样",
+      "第 2 条按你说的改掉",
+    ]) {
+      expect(inferAgentIntent(t).kind, t).toBe("targeted_revise");
+    }
+  });
+
+  it("说了整章重写 → 仍是整章回炉（那是更明确的指令）", () => {
+    for (const t of ["整章重写一遍", "把这一章回炉", "帮我重写这一章，其他地方不动"]) {
+      expect(inferAgentIntent(t).kind, t).toBe("chapter_revise");
+    }
+  });
+
+  it("写一整章仍走写作通道（没被定点改抢走）", () => {
+    expect(inferAgentIntent("帮我把完整的第一章写入剧本").kind).toBe("write_to_script");
+    expect(inferAgentIntent("接着往下写").kind).toBe("write_to_script");
+  });
+
+  it("叫停与问办法都不算定点改", () => {
+    for (const t of ["先别改，我先看看", "这一章怎么改", "要不要改一下这一章"]) {
+      expect(inferAgentIntent(t).kind, t).not.toBe("targeted_revise");
+    }
+  });
+
+  it("定点改 + 「别动某某」：记偏好不能吃掉这次的改动要求", () => {
+    // 「别动林夏」会命中 chapter_lock_name 的入口；但这一句真正的主句是"改这几处"，
+    // 只记成一条偏好就等于把这次改动要求丢了（与 proseWriteAsk 那条同一个道理）。
+    expect(inferAgentIntent("帮我改这几处，别动林夏").kind).toBe("targeted_revise");
+  });
+});
+
+describe("「修改意见」这条判据不再形同虚设", () => {
+  it("只征求意见 → critique_only", () => {
+    expect(inferAgentIntent("我想听听你的修改意见").kind).toBe("critique_only");
+    expect(inferAgentIntent("先给我一份修改意见就行").kind).toBe("critique_only");
+  });
+
+  it("既说意见又说要动手 → 不许被当「只要意见」", () => {
+    // 旧判据写的是 `修改意见(?!.*改)`：句子里后面只要还有"改"字它就放过，
+    // 而这类句子必然两者并存（"修改意见我同意，请帮我改"），于是判断形同虚设。
+    const r = inferAgentIntent("修改意见我同意，请帮我改");
+    expect(r.kind).not.toBe("critique_only");
+  });
+});

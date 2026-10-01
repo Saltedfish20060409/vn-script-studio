@@ -27,6 +27,9 @@ const ACTION_LABEL: Record<string, string> = {
   rename_chapter: "重命名章节",
   update_bible: "更新设定",
   update_meta: "更新元信息",
+  // 定点改写指的是"只改点到的那几句"，与体裁叫法无关（正文/剧本都读得通），
+  // 所以不像 `append_script` / `replace_script` 那样按 copy 现取。
+  patch_script: "定点改写",
   propose_character_link: "提议关系",
   propose_lore_entries: "提议设定条目",
   propose_timeline_event: "提议时间线",
