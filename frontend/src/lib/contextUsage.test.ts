@@ -52,6 +52,21 @@ describe("contextUsage", () => {
     expect(out.hint).not.toContain("接近上限");
   });
 
+  it("接近上限 / 被裁过 → 给「开新对话」这个出口；正常用量不给", () => {
+    // 作者的要求（2026-10-01）："快到限额提示用户可以切换新对话"。
+    // 对话历史也占位置，越聊越长越挤——换新对话是最干净的解法。
+    const roomy = contextUsage(meta({ charsUsed: 12000, budgetChars: 96000 }));
+    expect(roomy.suggestNewChat).toBe(false);
+
+    const near = contextUsage(meta({ charsUsed: 80000, budgetChars: 96000 }));
+    expect(near.suggestNewChat).toBe(true);
+    expect(near.hint).toContain("新对话");
+
+    const cut = contextUsage(meta({ charsUsed: 95000, budgetChars: 96000, truncated: true }));
+    expect(cut.suggestNewChat).toBe(true);
+    expect(cut.hint).toContain("新对话");
+  });
+
   it("预算为 0 或缺省视为未知", () => {
     expect(contextUsage(meta({ budgetChars: 0 })).text).toBe("本次上下文 12,000 字");
     expect(contextUsage(meta({ budgetChars: undefined })).nearLimit).toBe(false);

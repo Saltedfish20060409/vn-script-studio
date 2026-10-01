@@ -262,6 +262,8 @@ class SettingsOut(BaseModel):
     # 用户声明的模型上下文窗口（千 token）。0 = 自动（预设表 → 服务端保守假设），
     # 负值 = 明确不夹。界面上按"留空/0 = 自动"呈现。
     api_context_window_k: int = 0
+    # 作者自选的 Agent 上下文预算（字符；0 = 用服务端默认）。
+    context_budget_chars: int = 0
     has_critic_api_key: bool = False
     critic_api_key_masked: str = ""
     critic_api_base_url: str = ""
@@ -291,6 +293,8 @@ class SettingsPutIn(BaseModel):
     # 用户声明的模型窗口（千 token）：0 = 自动，负值 = 不夹。
     # 有上下限夹取（1..10_000 千 token），免得填错把预算打成天文数字或 0。
     api_context_window_k: Optional[int] = None
+    # 上下文预算（字符）：0 = 跟随服务端默认；>0 = 作者自选（会被夹进服务端天花板）。
+    context_budget_chars: Optional[int] = None
     critic_api_key: Optional[str] = None
     critic_api_base_url: Optional[str] = None
     critic_api_model: Optional[str] = None

@@ -435,12 +435,21 @@ async def resolve_llm_credentials(
     # 放在这里而不是每个路由里：这是所有"解析凭据"的必经之路，一个地方就够。
     # 客户端头部覆盖（X-LLM-*）里没有模型窗口的概念，所以只用账号设置里的值。
     try:
-        from app.core.execution_profile import set_declared_window_k
+        from app.core.execution_profile import (
+            set_declared_budget_chars,
+            set_declared_window_k,
+        )
 
         declared = 0
         if isinstance(user_creds, dict) and merged.get("source") == "user":
             declared = int(user_creds.get("context_window_k") or 0)
         set_declared_window_k(declared)
+        # 作者自选的上下文预算（字符；0 = 用服务端默认）。与声明窗口同一条路：
+        # 只认账号设置里的值（客户端头部 X-LLM-* 没有这个概念），且仍会被服务端天花板夹住。
+        budget = 0
+        if isinstance(user_creds, dict) and merged.get("source") == "user":
+            budget = int(user_creds.get("context_budget_chars") or 0)
+        set_declared_budget_chars(budget)
     except Exception:  # noqa: BLE001 - 声明窗口是优化项，绝不能因此让请求失败
         pass
     return merged

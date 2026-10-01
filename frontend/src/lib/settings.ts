@@ -135,6 +135,8 @@ export interface SettingsPutBody {
   api_base_url?: string;
   api_model?: string;
   api_context_window_k?: number;
+  /** 上下文预算（字符）：0/缺省 = 跟随服务端默认。 */
+  context_budget_chars?: number;
   critic_api_key?: string;
   critic_api_base_url?: string;
   critic_api_model?: string;
@@ -156,6 +158,8 @@ export interface ServerSettingsOut {  theme: string;
   api_model?: string;
   /** 用户声明的模型窗口（千 token）。0/缺省 = 自动（预设表 → 服务端保守假设） */
   api_context_window_k?: number;
+  /** 上下文预算（字符）：0 = 跟随服务端默认。 */
+  context_budget_chars?: number;
   has_critic_api_key?: boolean;
   critic_api_key_masked?: string;
   critic_api_base_url?: string;

@@ -21,8 +21,10 @@ export type ContextUsage = {
   truncated: boolean;
   /** 用量是否接近上限（≥80%）——用于给出"装不下了"的提示 */
   nearLimit: boolean;
-  /** 一句话提示（可能要动作：精简资料 / 让它用工具取） */
+  /** 一句话提示（可能要动作：精简资料 / 换新对话 / 让它用工具取） */
   hint: string;
+  /** 用量已经贴近上限、或这次真被裁过：界面上给一个「开新对话」的出口 */
+  suggestNewChat: boolean;
 };
 
 function fmt(n: number): string {
@@ -37,7 +39,7 @@ export function contextUsage(meta?: AgentContextMeta | null): ContextUsage {
   const truncated = meta?.truncated === true;
 
   if (used === null) {
-    return { text: "", truncated, nearLimit: false, hint: "" };
+    return { text: "", truncated, nearLimit: false, hint: "", suggestNewChat: false };
   }
 
   const text = budget
@@ -50,9 +52,13 @@ export function contextUsage(meta?: AgentContextMeta | null): ContextUsage {
   if (truncated) {
     hint =
       "这次有资料没装下（正文被截过或整块让位）。需要那段前情时，直接让它「用 get_chapter 取第 N 章」，" +
-      "它就能读到；也可以在「资料」里摘掉用不上的块，把位置让给正文。";
+      "它就能读到；也可以在「资料」里摘掉用不上的块，把位置让给正文。" +
+      "如果这一章/这一场已经写完，**开个新对话**最干净：对话本身也占位置，越聊越长越挤。";
   } else if (nearLimit) {
-    hint = "上下文已经接近上限：再加设定/参考文档就要开始让位了。";
+    hint =
+      "上下文已经接近上限：再加设定/参考文档就要开始让位了。" +
+      "可以（1）在「资料」里摘掉用不上的块、（2）到「设置 → 模型」把上下文预算调大、" +
+      "（3）换一件新事就**开个新对话**——对话历史同样占位置。";
   }
-  return { text, truncated, nearLimit, hint };
+  return { text, truncated, nearLimit, hint, suggestNewChat: truncated || nearLimit };
 }

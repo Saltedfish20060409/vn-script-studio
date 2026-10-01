@@ -44,28 +44,34 @@ def is_agent_task(v: Any) -> bool:
 # `tests/test_context_budget_policy.py` 跨模块钉住不变量：
 #     (MAX_CONTEXT_MAX_CHARS - PREFILL_FREE_CHARS) / PREFILL_CHARS_PER_SECOND ≤ PREFILL_MAX_BONUS
 # 谁想再把上限调大，必须同时把预填充加时上限调大（前端阶梯表也读那个数）。
-DEFAULT_CONTEXT_MAX_CHARS = 48000
-"""默认主预算（字符）：旧值 12000 的 4 倍，为长篇留出"整章 + 记忆层 + 摘要"的余地。
+DEFAULT_CONTEXT_MAX_CHARS = 96000
+"""默认主预算（字符）：2026-10-01 从 48000 提到 96000（作者要求"能设到 128K/256K 或更大"）。
 
-按 1 token ≈ 1.4 汉字估，约 3.4 万 token——远小于最小预设窗口（128k），
-也够放下一章正文（续写场景 24k）+ 长程记忆 8k + 全局记忆 6k + 人设与摘要。
+按 1 token ≈ 1.4 汉字估，约 6.9 万 token——仍小于最小预设窗口（128k），
+而长篇"整章 + 记忆层 + 摘要"一起带上时不再捉襟见肘。
+注意这是**上限**不是目标：拼装只装作品里真有的东西，小工程的实际用量远低于它
+（线上常态量级几千到两万字符，见 `latency_stats` 的 promptChars 分布）。
 """
 
-MAX_CONTEXT_MAX_CHARS = 96000
+MAX_CONTEXT_MAX_CHARS = 128000
 """配置上限（字符，**同步档**）：超过这个量级，超时预算就不再能覆盖预填充（见上面的不变量）。
 
-作者仍可用 AGENT_CONTEXT_MAX_CHARS 调整，但会被夹到这里；想真正突破，
-改的是 `llm_budget.PREFILL_*`（那意味着"愿意为一次请求等更久"）。
+作者仍可用 `AGENT_CONTEXT_MAX_CHARS`（服务端）或账号设置里的「上下文预算」调整，
+但会被夹到这里；想真正突破，改的是 `llm_budget.PREFILL_*`（那意味着"愿意为一次请求等更久"）。
+
+为什么同步档只到 128k（而流式档给到 512k）：同步端点的等待是**前端阶梯预算**在买单
+（`frontend/src/api/timeouts.ts` 那张表由跨语言测试钉着"前端预算 ≥ 后端最坏耗时"），
+把它推到 20 分钟以上没有意义——真装得下那么长的上下文，本来就该走流式那条路。
 """
 
-MAX_CONTEXT_MAX_CHARS_STREAMED = 240000
+MAX_CONTEXT_MAX_CHARS_STREAMED = 512000
 """配置上限（字符，**流式档**）。
 
-流式端点（SSE + 心跳、前端不设总超时）可以等更久，所以这里给到 240k 字符
-（≈17 万 token）：长篇把"整章 + 全部记忆层 + 更多章节摘要"一起带上也装得下。
-它与 `llm_budget.PREFILL_MAX_BONUS_STREAMED`（240s）成对，同样由不变量测试钉住。
+流式端点（SSE + 心跳、前端不设总超时）可以等更久，所以这里给到 512k 字符
+（≈36 万 token）：长篇把"整章 + 全部记忆层 + 更多章节摘要"一起带上也装得下。
+它与 `llm_budget.PREFILL_MAX_BONUS_STREAMED`（360s）成对，同样由不变量测试钉住。
 
-代价如实记在这里：240k 字符的提示词按当前模型定价是**每次调用十几万输入 token**，
+代价如实记在这里：512k 字符的提示词按当前模型定价是**每次调用几十万输入 token**，
 多步 Agent 会乘上步数。所以它是"上限"，不是目标——真的用到这么大的上下文，
 应当先看 `GET /admin/llm-latency` 里的 promptChars 分布与截断率，再决定值不值。
 """
@@ -112,11 +118,16 @@ _CLIP_SELECTION = 2000
 
 
 def _default_context_max_chars(ceiling: int = MAX_CONTEXT_MAX_CHARS) -> int:
-    """Agent 上下文主预算：优先 AGENT_CONTEXT_MAX_CHARS（Settings），默认 48000。
+    """Agent 上下文主预算：优先服务端 `AGENT_CONTEXT_MAX_CHARS`（默认 96000），
+    再看作者在账号设置里选的「上下文预算」（请求级声明，见 execution_profile）。
+
+    为什么允许作者自己选（2026-10-01 作者要求"能设到 128K/256K 或更大"）：
+    长篇把"整章 + 记忆层 + 摘要"一起带上是有代价的（每次调用十几万输入 token、
+    预填充要等更久），值不值只有写的人知道。但作者**只能在这个范围内调**——
+    服务端天花板与模型窗口各夹一次，所以成本不会被一次误填打穿。
 
     用 try/except 包裹，保证纯上下文拼装（含测试）永远有可用默认值，
     不会因 SECRET_KEY 校验等环境问题抛错。
-    `ceiling` 是执行档对应的天花板（同步 96k / 流式 240k，见 `context_budget_for_model`）。
     """
     try:
         from app.config import get_settings
@@ -125,6 +136,14 @@ def _default_context_max_chars(ceiling: int = MAX_CONTEXT_MAX_CHARS) -> int:
         configured = int(v) if v else DEFAULT_CONTEXT_MAX_CHARS
     except Exception:  # noqa: BLE001 - core util must never raise for tuning knob
         configured = DEFAULT_CONTEXT_MAX_CHARS
+    try:
+        from app.core.execution_profile import declared_budget_chars
+
+        declared = declared_budget_chars()
+        if declared > 0:
+            configured = declared
+    except Exception:  # noqa: BLE001 - 声明预算是优化项，读不到就用服务端默认
+        pass
     return max(MIN_CONTEXT_MAX_CHARS, min(configured, max(ceiling, MIN_CONTEXT_MAX_CHARS)))
 
 

@@ -98,22 +98,27 @@ PREFILL_FREE_CHARS = 8000.0
 8000 字符以下 = 旧行为逐字不变（既有单测 `effective_timeout(120) == 120` 仍成立）。
 """
 
-PREFILL_MAX_BONUS = 60.0
+PREFILL_MAX_BONUS = 90.0
 """预填充加时的上限（同步档，秒）。
 
-上限不是随手定的：它与 `agent_context.MAX_CONTEXT_MAX_CHARS`（96k 字符）成对，
-取值满足 `(MAX_CONTEXT_MAX_CHARS - PREFILL_FREE_CHARS) / PREFILL_CHARS_PER_SECOND ≤ 本值`。
+上限不是随手定的：它与 `agent_context.MAX_CONTEXT_MAX_CHARS`（128k 字符）成对，
+取值满足 `(MAX_CONTEXT_MAX_CHARS - PREFILL_FREE_CHARS) / PREFILL_CHARS_PER_SECOND ≤ 本值`
+（本例：(128000-8000)/1500 = 80 ≤ 90）。
 即"**允许拼出来的最长上下文，一定落在超时预算能覆盖的范围内**"。
 这条不变量由 `tests/test_context_budget_policy.py` 跨模块钉住：谁单方面放宽上下文预算，
-谁就得同时调整这里（前端阶梯表也读这个数）。
+谁就得同时调整这里（前端阶梯表也读这个数，并由
+`frontend/src/api/timeouts.test.ts` 反过来验"前端预算 ≥ 后端最坏耗时"）。
+
+2026-10-01 从 60s 提到 90s：默认预算从 48k 提到 96k、同步天花板从 96k 放到 128k
+（作者要求"能设到 128K/256K 或更大"——大头的 256k/512k 给了**流式档**，见下一个常量）。
 """
 
-PREFILL_MAX_BONUS_STREAMED = 240.0
+PREFILL_MAX_BONUS_STREAMED = 360.0
 """预填充加时的上限（**流式档**，秒）。
 
-流式端点（SSE + 20s 心跳，前端不设总超时）可以等更久：等第一个字节等三四分钟不会
-把连接掐掉。所以这里与 `agent_context.MAX_CONTEXT_MAX_CHARS_STREAMED`（240k 字符）成对，
-同样满足上面那条不变量（只是换成流式档的两个数）。
+流式端点（SSE + 20s 心跳，前端不设总超时）可以等更久：等第一个字节等五六分钟也不会
+把连接掐掉。所以这里与 `agent_context.MAX_CONTEXT_MAX_CHARS_STREAMED`（512k 字符）成对，
+同样满足上面那条不变量（(512000-8000)/1500 ≈ 336 ≤ 360）。
 
 用哪一档由 `core/execution_profile.py` 的请求级档位决定；**默认是同步档**，
 所以没显式声明流式的路径不会拿到这个宽预算。

@@ -32,16 +32,17 @@ class Settings(BaseSettings):
     icp_beian_number: str = ""
     gongan_beian_number: str = ""
 
-    # Agent 写作上下文主预算（字符数）。**质量优先**：默认给到 48000（旧值 12000 的
-    # 4 倍），因为"写差一次再花 token 重写"比"多带资料"更浪费。
+    # Agent 写作上下文主预算（字符数）。**质量优先**：2026-10-01 从 48000 提到 96000
+    # （作者要求"能设到 128K/256K 或更大"：服务端这里是**默认**，账号设置里的
+    # 「上下文预算」可以按人调小/调大，但都被下面的上限夹住）。
     # 上限由两件硬事实决定，两者都在 app/core/agent_context.py 里写着：
     #   1. 所选模型的窗口（预设 context_k，见 model_presets.context_window_k）；
     #   2. 我们自己的超时预算——预填充耗时随提示词线性增长，而 read timeout 覆盖
     #      "预填充 + 生成"（见 app/core/llm_budget.py 的 PREFILL_*）。
-    # 环境变量 AGENT_CONTEXT_MAX_CHARS 可调，但会被夹在 3000–96000 之间（**流式端点**
-    # 到 240000，见 docs/long-context-policy.md 第七节）；
+    # 环境变量 AGENT_CONTEXT_MAX_CHARS 可调，但会被夹在 3000–128000 之间（**流式端点**
+    # 到 512000，见 docs/long-context-policy.md 第七节）；
     # 想再放宽就得同时放宽 PREFILL_MAX_BONUS（有跨模块不变量测试钉着）。
-    agent_context_max_chars: int = 48000
+    agent_context_max_chars: int = 96000
 
     # **未知模型**的上下文窗口保守假设（千 token）。预设表收不全，而"撑爆窗口"
     # 对用户是完全没结果的硬失败（上游直接拒答），所以认不出的模型按 128k 估计：

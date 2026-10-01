@@ -38,6 +38,9 @@ _profile: ContextVar[str] = ContextVar("execution_profile", default=PROFILE_SYNC
 #: 与档位一样是**请求级**的：凭据解析处（`services.projects.resolve_llm_credentials`）设一次，
 #: 之后所有 `context_budget_for_model` 都能看到——不用把参数一路透传到 agent 循环里。
 _declared_window_k: ContextVar[int] = ContextVar("declared_window_k", default=0)
+#: 作者在账号设置里选的上下文预算（字符）。0 = 没选（用服务端默认）。
+#: 它是**作者那一侧的意愿**：仍会被服务端天花板与模型窗口各夹一次（见 agent_context）。
+_declared_budget_chars: ContextVar[int] = ContextVar("declared_budget_chars", default=0)
 
 
 def normalize_profile(name: Optional[str]) -> str:
@@ -90,3 +93,30 @@ def declared_window_k() -> int:
 
 def reset_declared_window() -> None:
     _declared_window_k.set(0)
+
+
+def set_declared_budget_chars(value: Optional[int]) -> int:
+    """设置"作者在账号设置里选的上下文预算"（字符）；返回规范化后的值。
+
+    0 = 没选（用服务端默认 `AGENT_CONTEXT_MAX_CHARS`）。与声明窗口同一条路：
+    凭据解析处设一次，`context_budget_for_model` 就能看到——它仍然会被
+    **服务端天花板**与**模型窗口**各夹一次（作者只能在这个范围内调，不会把成本打穿）。
+    """
+    try:
+        raw = int(value or 0)
+    except (TypeError, ValueError):
+        raw = 0
+    if raw < 0:
+        raw = 0
+    elif raw > 10_000_000:
+        raw = 10_000_000
+    _declared_budget_chars.set(raw)
+    return raw
+
+
+def declared_budget_chars() -> int:
+    return int(_declared_budget_chars.get() or 0)
+
+
+def reset_declared_budget() -> None:
+    _declared_budget_chars.set(0)

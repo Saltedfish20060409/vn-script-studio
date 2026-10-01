@@ -74,6 +74,7 @@ def settings_to_out(row: UserSettings) -> SettingsOut:
         api_base_url=row.api_base_url or "",
         api_model=row.api_model or "",
         api_context_window_k=int(getattr(row, "api_context_window_k", 0) or 0),
+        context_budget_chars=int(getattr(row, "context_budget_chars", 0) or 0),
         has_critic_api_key=bool(critic_key),
         critic_api_key_masked=mask_api_key(critic_key),
         critic_api_base_url=row.critic_api_base_url or "",
@@ -132,6 +133,22 @@ async def update_settings(
             row.api_context_window_k = 0
         else:
             row.api_context_window_k = max(1, min(10_000, raw))
+    if body.context_budget_chars is not None:
+        # 上下文预算（字符）：0 = 用服务端默认；否则夹进 [下限, 流式天花板]。
+        # 夹在**服务端天花板**这里而不是让用户随便填：它决定每次调用的输入 token 与等待时长，
+        # 谁付钱谁定上限（作者只能在允许范围内调小/调大）。
+        from app.core.agent_context import (
+            MAX_CONTEXT_MAX_CHARS_STREAMED,
+            MIN_CONTEXT_MAX_CHARS,
+        )
+
+        raw = int(body.context_budget_chars)
+        if raw <= 0:
+            row.context_budget_chars = 0
+        else:
+            row.context_budget_chars = max(
+                MIN_CONTEXT_MAX_CHARS, min(MAX_CONTEXT_MAX_CHARS_STREAMED, raw)
+            )
     if body.critic_api_key is not None:
         row.critic_api_key_enc = encrypt_secret(body.critic_api_key.strip(), settings)
     if body.critic_api_base_url is not None:
@@ -168,6 +185,8 @@ async def user_llm_credentials(
         "model": row.api_model or settings.deepseek_model or DEFAULT_LLM_MODEL,
         # 用户声明的模型窗口（千 token）；0 = 没声明（由 agent_context 走预设表/保守假设）
         "context_window_k": int(getattr(row, "api_context_window_k", 0) or 0),
+        # 用户自选的上下文预算（字符）；0 = 用服务端默认
+        "context_budget_chars": int(getattr(row, "context_budget_chars", 0) or 0),
         "provider": settings.llm_provider or "openai",
         "source": "user",
         "critic_api_key": critic_key,

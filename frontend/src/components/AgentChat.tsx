@@ -398,6 +398,7 @@ export function AgentChat({
     truncated: false,
     nearLimit: false,
     hint: "",
+    suggestNewChat: false,
   });
   /** 「这次没装下什么、怎么取回来」——见 lib/contextBudget.ts */
   const [budgetInfo, setBudgetInfo] = useState<BudgetNotice>({
@@ -2727,6 +2728,25 @@ export function AgentChat({
           {/* 这些文字是**凭据**不是每条都要读的话，所以默认收起（折叠态摘要见 statusLine 的
               「本次运行」按钮）：作者反馈过它们占满了对话区。但**告警一律不折**——
               被裁过 / 没装下的那些块照样直接可见，见下面 budgetInfo。 */}
+          {/* 快到限额 / 这次真被裁过 → **常驻**一条提示 + 一个出口（不折叠）。
+              作者要的是"快到限额时有人告诉我可以开新对话"：对话历史同样占位置，
+              越聊越长越挤，换新对话是最干净的解法（见 lib/contextUsage.ts 的 hint）。 */}
+          {contextInfo.suggestNewChat ? (
+            <p className={styles.contextWarn} data-testid="agent-context-near-limit">
+              {contextInfo.truncated ? "这次有资料没装下" : "上下文接近上限"}
+              {contextInfo.text ? `（${contextInfo.text}）` : ""}
+              <button
+                type="button"
+                className={styles.missingAction}
+                data-testid="agent-context-new-chat"
+                disabled={busy}
+                title="开一个新对话：清掉对话历史占的位置，作品资料照旧（换对话不影响工程）"
+                onClick={() => void handleNewConversation()}
+              >
+                开新对话
+              </button>
+            </p>
+          ) : null}
           {runInfoOpen && contextInfo.text ? (
             <p
               className={

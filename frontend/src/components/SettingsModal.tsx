@@ -149,6 +149,14 @@ function LlmPane() {
   const [criticModel, setCriticModel] = useState("");
   /** 用户声明的模型窗口（千 token，输入框原样保存；"": 自动）。见 lib/modelWindow.ts */
   const [windowK, setWindowK] = useState("");
+  /**
+   * 上下文预算（**字符**，输入框原样保存；"" / 0 = 跟随服务端默认）。
+   *
+   * 为什么让作者自己选（2026-10-01 作者要求"能设到 128K/256K 或更大"）：长篇把整章 +
+   * 记忆层 + 摘要一起带上，代价是每次调用十几万输入 token、预填充更久——值不值只有写的人
+   * 知道。服务端仍会在两处夹住它：执行档天花板（同步 256k / 流式 512k 字）与模型窗口。
+   */
+  const [budgetChars, setBudgetChars] = useState("");
   const [storageMode, setStorageModeState] = useState<LlmStorageMode>(loadStorageMode);
   const [presets, setPresets] = useState<ModelPreset[]>([]);
   const [presetId, setPresetId] = useState<string>("");
@@ -177,6 +185,9 @@ function LlmPane() {
         // 声明的模型窗口是**账号级**设置：从服务端读回来（本机存储模式下不生效）
         const declared = readDeclaredK(s.api_context_window_k);
         setWindowK(declared > 0 ? String(declared) : "");
+        // 上下文预算也是账号级设置：0/缺省 = 跟随服务端默认
+        const budget = Number(s.context_budget_chars || 0);
+        setBudgetChars(budget > 0 ? String(budget) : "");
         // account 模式：服务端只回显 masked key，不回明文
         if (loadStorageMode() === "account" && s.has_api_key) {
           setApiKey("");
@@ -264,6 +275,10 @@ function LlmPane() {
         api_model: next.model || undefined,
         // 留空 = 自动（0）；不合法/超限时用解析后的值（并在提示里说明）
         api_context_window_k: parsedWindow.value,
+        // 上下文预算（字符）：留空 = 跟随服务端默认；只收数字，非法就当没填
+        context_budget_chars: /^\s*\d+\s*$/.test(budgetChars)
+          ? Number(budgetChars)
+          : 0,
         critic_api_key: opts?.clearAccountKey ? "" : next.criticKey === "" ? undefined : next.criticKey,
         critic_api_base_url: next.criticBaseUrl || undefined,
         critic_api_model: next.criticModel || undefined,
@@ -560,6 +575,23 @@ function LlmPane() {
         />
       </label>
       <p className={styles.note}>{windowHint}</p>
+      {/* 上下文预算：作者自选（留空 = 跟随服务端默认）。服务端仍会按执行档天花板与模型窗口夹一次。 */}
+      <label>
+        上下文预算（字符，留空 = 跟随服务端默认）
+        <input
+          type="text"
+          inputMode="numeric"
+          value={budgetChars}
+          data-testid="settings-context-budget"
+          onChange={(e) => setBudgetChars(e.target.value)}
+          placeholder="如 128000（≈9 万 token）/ 256000（≈18 万 token）"
+        />
+      </label>
+      <p className={styles.note}>
+        单位是字符、不是 token：中文 1 字 ≈ 0.7 token，所以 128000 ≈ 9 万 token。
+        装满会带来两件事：每次调用的输入 token 变多、等第一个字变久。服务端上限：同步接口
+        128000 字，AI 责编那条流式通道可到 512000 字；模型窗口更小时按窗口夹。不确定就留空。
+      </p>
       {savedNote && <p className={styles.okNote}>{savedNote}</p>}
       {testResult && (
         <p className={testResult.ok ? styles.okNote : styles.error}>

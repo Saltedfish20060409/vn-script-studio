@@ -98,7 +98,8 @@ def test_unknown_keys_are_silently_ignored_by_design():
     assert relaxed.api_base_url is None
     typed = SettingsPutIn.model_validate({"api_base_url": "https://relay.example/v1"})
     assert typed.api_base_url == "https://relay.example/v1"
-    # 其余键名一直是对的（模型名 / 窗口 / 评审档），钉住免得被"顺手改名"
-    for key in ("api_key", "api_model", "api_context_window_k", "critic_api_key",
-                "critic_api_base_url", "critic_api_model", "panel_glass", "bg_scrim"):
+    # 其余键名一直是对的（模型名 / 窗口 / 预算 / 评审档），钉住免得被"顺手改名"
+    for key in ("api_key", "api_model", "api_context_window_k", "context_budget_chars",
+                "critic_api_key", "critic_api_base_url", "critic_api_model",
+                "panel_glass", "bg_scrim"):
         assert key in SettingsPutIn.model_fields, f"schema 少了 {key}"

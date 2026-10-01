@@ -92,17 +92,17 @@ def test_profile_does_not_leak_across_contexts():
 
 
 def test_streamed_profile_raises_the_prefill_cap():
-    big = 200_000
+    big = 300_000
     sync_cap = llm_budget.prefill_allowance(big, streamed=False)
     streamed_cap = llm_budget.prefill_allowance(big, streamed=True)
-    # 同步档在这个体积上已经顶到上限（60s），流式档还远没到（128s < 240s）
+    # 同步档在这个体积上已经顶到上限（180s），流式档的同一条公式还没到（194.7s < 360s）
     assert sync_cap == llm_budget.PREFILL_MAX_BONUS
     assert streamed_cap == pytest.approx(
         (big - llm_budget.PREFILL_FREE_CHARS) / llm_budget.PREFILL_CHARS_PER_SECOND
     )
     assert streamed_cap > sync_cap
 
-    # 再大就顶到流式档自己的上限（240s），不会是无限
+    # 再大就顶到流式档自己的上限（360s），不会是无限
     huge = 10_000_000
     assert llm_budget.prefill_allowance(huge, streamed=True) == pytest.approx(
         llm_budget.PREFILL_MAX_BONUS_STREAMED
@@ -119,11 +119,11 @@ def test_streamed_profile_raises_the_prefill_cap():
 
 
 def test_streamed_profile_raises_the_context_ceiling(monkeypatch):
-    """配置里把预算写大：同步档夹到 96k，流式档可以到 240k。"""
+    """配置里把预算写大：同步档夹到 256k，流式档可以到 512k。"""
     import app.config as config
 
     class _S:
-        agent_context_max_chars = 500_000
+        agent_context_max_chars = 900_000  # 比两个天花板都大，才看得出"夹到哪一档"
 
     monkeypatch.setattr(config, "get_settings", lambda: _S())
     assert context_budget_for_model("deepseek-flash", streamed=False) == MAX_CONTEXT_MAX_CHARS
@@ -196,6 +196,66 @@ def test_negative_declared_window_means_do_not_clamp(monkeypatch):
 def test_declared_window_is_normalized(raw, expected):
     assert set_declared_window_k(raw) == expected
     assert declared_window_k() == expected
+
+
+# ---- 作者自选的上下文预算（2026-10-01：作者要求"能设到 128K/256K 或更大"）----------
+
+
+def test_declared_budget_raises_and_lowers_the_budget(monkeypatch):
+    """作者在账号设置里选的预算真的生效——但只能在服务端天花板之内。"""
+    import app.config as config
+    from app.core.execution_profile import (
+        declared_budget_chars,
+        reset_declared_budget,
+        set_declared_budget_chars,
+    )
+
+    class _S:
+        agent_context_max_chars = 96_000
+        agent_unknown_model_window_k = 128
+
+    monkeypatch.setattr(config, "get_settings", lambda: _S())
+    try:
+        reset_declared_budget()
+        assert context_budget_for_model("deepseek-flash") == 96_000  # 没选 → 服务端默认
+
+        set_declared_budget_chars(128_000)
+        assert declared_budget_chars() == 128_000
+        assert context_budget_for_model("deepseek-flash") == 128_000
+
+        set_declared_budget_chars(64_000)  # 也能调小（省 token / 等得少）
+        assert context_budget_for_model("deepseek-flash") == 64_000
+
+        # 填了个天文数字 → 被服务端天花板夹住（成本不会被一次误填打穿）
+        set_declared_budget_chars(10_000_000)
+        assert context_budget_for_model("deepseek-flash", streamed=False) == MAX_CONTEXT_MAX_CHARS
+        assert (
+            context_budget_for_model("deepseek-flash", streamed=True)
+            == MAX_CONTEXT_MAX_CHARS_STREAMED
+        )
+        # 小窗口模型仍然按窗口夹（作者加的预算不能把请求送去撞墙）
+        assert context_budget_for_model("qwen3:8b", streamed=True) == 19_200
+    finally:
+        reset_declared_budget()
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [(None, 0), ("", 0), ("abc", 0), (-5, 0), (0, 0), (128_000, 128_000), (999_999_999, 10_000_000)],
+)
+def test_declared_budget_is_normalized(raw, expected):
+    """非法值一律当"没选"，绝不落到"预算 0"或负数上（那会让拼装直接空转）。"""
+    from app.core.execution_profile import (
+        declared_budget_chars,
+        reset_declared_budget,
+        set_declared_budget_chars,
+    )
+
+    try:
+        assert set_declared_budget_chars(raw) == expected
+        assert declared_budget_chars() == expected
+    finally:
+        reset_declared_budget()
 
 
 

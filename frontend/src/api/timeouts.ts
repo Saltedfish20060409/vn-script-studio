@@ -56,22 +56,22 @@ export const TIMEOUTS = {
    */
   upload: 180_000,
   /** 一次短 LLM 调用：后端 `QUICK`=60s / `MEDIUM`=90s，思考档 180s + 预填充上限。 */
-  quick: 300_000,
+  quick: 330_000,
   /** 一次生成型 LLM 调用：后端 `CHAT`=120s，思考档 240s + 预填充上限。 */
-  chat: 360_000,
+  chat: 390_000,
   /** 长文写作 / 审稿 / 一致性审计：后端 `WRITE`=180s，或 QUICK+CHAT 两轮（含预填充）。 */
-  write: 540_000,
+  write: 600_000,
   /** 超长单轮或两轮串行：后端 `LONG`=240s（思考档 480s）、或 CHAT 两轮(2×240s+预填充)。 */
-  long: 660_000,
+  long: 720_000,
   /** 多轮回炉 / 多窗口批处理：后端 `WRITE`+`LONG` 两轮（含各自的预填充上限）。 */
-  batch: 1020_000,
+  batch: 1_080_000,
 } as const;
 
 /** 后端异步作业（async job）的轮询预算：作业本身不受 HTTP 超时约束。
  *
  * 必须 ≥ `batch`：作业里跑的往往就是同一批串行窗口扫描，比它更早放弃只会让
  * 用户看到"作业还在跑但结果拿不到"。 */
-export const JOB_POLL_TIMEOUT_MS = 20 * 60_000;
+export const JOB_POLL_TIMEOUT_MS = 21 * 60_000;
 
 /** 把毫秒说成人话，用于按钮提示 / 报错文案。 */
 export function humanizeMs(ms: number): string {

@@ -154,6 +154,12 @@ class UserSettings(Base):
     # 为什么让用户声明：预设表收不全（自建端点、自部署模型、厂商新名字），
     # 而"撑爆窗口"是上游直接拒答、什么都拿不到的硬失败（见 core/agent_context.py）。
     api_context_window_k: Mapped[int] = mapped_column(Integer, default=0)
+    # 作者自选的 Agent 上下文预算（**字符**；0 = 用服务端默认 AGENT_CONTEXT_MAX_CHARS）。
+    # 2026-10-01 作者要求"能设到 128K/256K 或更大"：这是一条**真被读**的开关
+    # （`execution_profile.declared_budget_chars` → `context_budget_for_model`），
+    # 不是摆设——0030 删掉 craft_mode/self_review 两列，正是因为没人读它们。
+    # 写入时会夹进 [MIN_CONTEXT_MAX_CHARS, MAX_CONTEXT_MAX_CHARS_STREAMED]。
+    context_budget_chars: Mapped[int] = mapped_column(Integer, default=0)
     critic_api_key_enc: Mapped[str] = mapped_column(Text, default="")
     critic_api_base_url: Mapped[str] = mapped_column(String(255), default="")
     critic_api_model: Mapped[str] = mapped_column(String(128), default="")
