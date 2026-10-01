@@ -46,7 +46,8 @@ _AGENT_SYSTEM_BASE = """你是「VN Script Studio」的驻场轻小说 / 视觉�
 5. 纯讨论/大纲/点评/征求意见：actions=[]，把完整意见写进 message（可长文、分点）；禁止只回「已处理」或空 message。
 6. 快捷任务若已要求写入，或用户明确说「写入/追加/应用/改到工程里…」，再用 actions。
 7. 禁止擅自大删既有剧情。**改现有正文里的某几句 → 用 `patch_script`**：find 逐字照抄你在上文读到的原文，只动点到的地方，其余一字不变。
-   `replace_script`（整章替换）只在作者**明确**说了「整章重写 / 推翻重来 / 换一版」并同意时用——「改完之后写入」「按建议改」「把这些建议落实」**都不算**（线上实测：那样会把"改 7 处"执行成"重写全章"，改后逐字保留的原文只剩 5%）。
+   `replace_script`（整章替换）只在作者**明确**说了「整章重写 / 推翻重来 / 换一版」并同意时用——「改完之后写入」「按建议改」「把这些建议落实」「落实意见」**都不算**（线上实测：那样会把"改 7 处"执行成"重写全章"，改后逐字保留的原文只剩 5%；服务端在定点落实时会直接拒绝 replace_script）。
+   定点落实时不要顺手润色未点名的句子。
 8. 若本轮有脚本 actions：message 至少用几句说明改了什么、为什么这样改；不要空 message。
 9. 用户粘贴他人审稿/长文分析并问「对吗 / 怎么改 / 提意见」：先在 message 里表态与细化方案（可摘改写示例对白）；未明确要求写入正文前不要 patch_script / replace_script / append_script。
 
@@ -607,7 +608,12 @@ async def run_agent(
     )
 
 
-def audit_script_actions(project: VnProject, actions: List[AgentAction]) -> List[str]:
+def audit_script_actions(
+    project: VnProject,
+    actions: List[AgentAction],
+    *,
+    user_message: Optional[str] = None,
+) -> List[str]:
     """提案阶段的就读：这批动作里有"会把整章重写掉"的吗？
 
     **为什么必须在提案阶段做**：作者只有在**还没点确认**时才知道"这次会重写 95% 的段落"，
@@ -617,16 +623,25 @@ def audit_script_actions(project: VnProject, actions: List[AgentAction]) -> List
     ——线上那次就是这么发生的：用户圈了 7 处修改，模型给的是 `replace_script`，
     改后逐字保留的原文只剩 5%。
 
+    定点落实（`is_surgical_revise`）时：`replace_script` **一律告警**（服务端也会拒写），
+    不再等保留率掉到阈值以下才说——作者说的是「按建议改」，不是「重写一章」。
+
     返回给作者看的告警行（空列表 = 没什么可说的）。
     """
     from app.core.agent_context import chapter_plain
     from app.core.prose_assets import rewrite_loss_note
+    from app.core.surgical_revise import is_surgical_revise, replace_script_reject_note
 
+    surgical = is_surgical_revise(user_message)
     out: List[str] = []
     for action in actions or []:
         if not isinstance(action, dict) or action.get("op") != "replace_script":
             continue
         ch = _find_chapter(project, _nvl(action.get("chapterRef"), None))
+        if surgical:
+            title = ch.title if ch is not None else "本章"
+            out.append(f"「{title}」：{replace_script_reject_note()}")
+            continue
         if ch is None:
             continue
         before = str(chapter_plain(ch, None) or "")
@@ -649,8 +664,13 @@ def apply_agent_actions(
     project: VnProject,
     actions: List[AgentAction],
     defaultChapterId: Optional[str] = None,
+    *,
+    forbid_replace_script: bool = False,
 ) -> ApplyAgentResult:
-    """Apply agent actions immutably to a project."""
+    """Apply agent actions immutably to a project.
+
+    `forbid_replace_script`：定点落实时硬拒整章替换（见 `surgical_revise`）。
+    """
     from app.core.fact_extract import (
         accept_character_link,
         accept_timeline_event,
@@ -660,6 +680,7 @@ def apply_agent_actions(
         timeline_dedupe_key,
         weak_sync_relationships,
     )
+    from app.core.surgical_revise import replace_script_reject_note
 
     next_project = project.model_copy(deep=True)
     if next_project.locations is None:
@@ -889,6 +910,9 @@ def apply_agent_actions(
                 continue
 
             if op == "replace_script":
+                if forbid_replace_script:
+                    skipped.append(replace_script_reject_note())
+                    continue
                 chapter_ref = _nvl(action.get("chapterRef"), defaultChapterId)
                 ch = _find_chapter(next_project, chapter_ref)
                 if not ch:

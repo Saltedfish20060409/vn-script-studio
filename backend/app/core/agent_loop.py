@@ -55,6 +55,7 @@ from app.core.narrative_review import (
 )
 from app.core.write_gate import WriteGateResult, gate_continue_draft, should_write_gate
 from app.core.writing_craft import build_writing_craft_prompt, select_craft_mode
+from app.core.surgical_revise import is_surgical_revise, replace_script_reject_note
 from app.domain.types import (
     AgentAction,
     AgentContextMeta,
@@ -262,6 +263,7 @@ async def _agent_steps(
     emit,
     on_checkpoint=None,
     prompt_meta: Optional[Dict[str, Any]] = None,
+    forbid_replace_script: bool = False,
 ):
     """多步工具循环主体（可从 start_step 续跑）。
 
@@ -272,10 +274,14 @@ async def _agent_steps(
     一并写进检查点：**它同时修掉一个静默错误**——续跑分支读
     `resume.get("craftMode") or "off"`，而检查点以前从不存这个键，
     于是任何续跑都被报成「工艺关」。
+
+    `forbid_replace_script`：定点落实时硬拒整章替换，并给模型一次改用
+    `patch_script` 的机会（见 `surgical_revise`）。
     """
     prompt_meta = dict(prompt_meta or {})
     hit_step_cap = False
     truncated_any = False
+    surgical_retry_used = False
     for step in range(start_step, steps):
         content, truncated = await _chat_json(
             provider,
@@ -296,10 +302,23 @@ async def _agent_steps(
         actions = _normalize_agent_actions(parsed.get("actions"))
         done_flag = bool(parsed.get("done"))
 
+        rejected_replace = False
+        if actions and forbid_replace_script:
+            kept: List[AgentAction] = []
+            for action in actions:
+                if isinstance(action, dict) and action.get("op") == "replace_script":
+                    rejected_replace = True
+                    continue
+                kept.append(action)
+            actions = kept
+
         if actions:
             accumulated.extend(actions)
             apply_res: ApplyAgentResult = apply_agent_actions(
-                working, actions, defaultChapterId=request.chapterId
+                working,
+                actions,
+                defaultChapterId=request.chapterId,
+                forbid_replace_script=forbid_replace_script,
             )
             working = apply_res.project
             trace.append(
@@ -316,6 +335,37 @@ async def _agent_steps(
                     "skipped": list(apply_res.skipped or []),
                 }
             )
+
+        if rejected_replace and not surgical_retry_used:
+            # 给模型一次改用 patch_script 的机会，而不是把整章重写方案交给作者确认。
+            surgical_retry_used = True
+            note = replace_script_reject_note()
+            messages.append({"role": "assistant", "content": content})
+            messages.append({"role": "user", "content": note})
+            trace.append({"type": "thought", "text": note})
+            await emit({"type": "thought", "text": note})
+            if on_checkpoint is not None:
+                try:
+                    await on_checkpoint(
+                        {
+                            "status": "running",
+                            "step": step + 1,
+                            "steps": steps,
+                            "task": request.task,
+                            "temperature": temperature,
+                            "messages": messages,
+                            "project": working.model_dump(mode="json"),
+                            "actions": accumulated,
+                            "trace": trace,
+                            "final_message": final_message,
+                            "last_tool_text": last_tool_text,
+                            "craftMode": prompt_meta.get("craftMode", ""),
+                            "promptMeta": prompt_meta,
+                        }
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            continue
 
         if tool_calls:
             result_chunks: List[str] = []
@@ -644,7 +694,12 @@ async def run_agent_loop(
         record_context_stats(ctx)
 
         # 采样参数按任务分档（集中在一处，见 core/llm_params）：连续创作偏高、改稿/检查偏低
-        temperature = task_temperature(task, craft.mode)
+        # 定点落实再压一点温度：贴原文 find/replace，不要发散润色
+        temperature = (
+            0.45
+            if (task == "rewrite" and is_surgical_revise(last_user))
+            else task_temperature(task, craft.mode)
+        )
 
         craft_block = build_writing_craft_prompt(task, craft.mode)
         # 「写作导师方法论」是一块 1.6k 字的固定文本，此前**线上每轮都注入且关不掉**。
@@ -808,6 +863,7 @@ async def run_agent_loop(
         emit=emit,
         on_checkpoint=on_checkpoint,
         prompt_meta=prompt_meta or None,
+        forbid_replace_script=(task == "rewrite" and is_surgical_revise(last_user)),
     )
 
     review_note = ""

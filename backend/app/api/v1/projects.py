@@ -2652,6 +2652,7 @@ async def _apply_action_list(
         build_scan_candidates,
         filter_new_candidates,
     )
+    from app.core.surgical_revise import is_surgical_revise
     from app.services import analysis_inbox as inbox_svc
 
     if sess is not None:
@@ -2659,7 +2660,12 @@ async def _apply_action_list(
         undo.append(project_to_dict(vn))
         sess.undo_stack = undo[-30:]
 
-    apply_result = apply_agent_actions(vn, actions, defaultChapterId=chapter_id)
+    apply_result = apply_agent_actions(
+        vn,
+        actions,
+        defaultChapterId=chapter_id,
+        forbid_replace_script=is_surgical_revise(last_user),
+    )
     new_vn = apply_result.project
     warnings = list(apply_result.skipped or [])
     inbox_added = 0
@@ -2758,7 +2764,7 @@ async def _finalize_agent_run(
         try:
             from app.core.agent import audit_script_actions
 
-            warnings = audit_script_actions(vn, actions)
+            warnings = audit_script_actions(vn, actions, user_message=last_user)
         except Exception:  # noqa: BLE001 - 就读失败不该让整轮对话挂掉
             warnings = []
 
@@ -2858,8 +2864,18 @@ async def agent_apply_actions(
         raise HTTPException(status_code=400, detail="没有待写入的动作（方案为空）")
 
     sess = None
+    last_user = ""
     if body.conversation_id:
         sess = await _get_session(db, project_id, body.conversation_id)
+        # 定点落实硬拒 replace_script：从会话最近一条用户话还原意图
+        try:
+            hist = list(sess.messages or []) if sess is not None else []
+            for row_msg in reversed(hist):
+                if isinstance(row_msg, dict) and row_msg.get("role") == "user":
+                    last_user = str(row_msg.get("content") or "")
+                    break
+        except Exception:  # noqa: BLE001
+            last_user = ""
 
     new_vn, applied, warnings, inbox_added = await _apply_action_list(
         db,
@@ -2867,6 +2883,7 @@ async def agent_apply_actions(
         vn,
         actions,
         chapter_id=body.chapter_id,
+        last_user=last_user,
         sess=sess,
     )
     if not applied:

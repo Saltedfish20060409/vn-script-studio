@@ -438,11 +438,20 @@ def select_craft_mode(
 
     Explicit user intent > settings preference > task > risk signals.
     """
+    from app.core.surgical_revise import is_surgical_revise
+
+    msg = (user_message or "").strip()
+
+    # 定点落实优先于账号里固定的 craft 档：灌全套工艺会怂恿「顺手改好」未点名句。
+    if task == "rewrite" and is_surgical_revise(msg):
+        return CraftDecision(
+            mode="off",
+            reason="定点落实建议：关工艺，只做 patch_script",
+        )
+
     pref = preference or "auto"
     if pref in ("off", "lite", "full"):
         return CraftDecision(mode=pref, reason=f"用户固定为「{pref}」")
-
-    msg = (user_message or "").strip()
 
     if re.search(r"关闭工艺|不要\s*skills?|不用工艺|关掉skills?|无工艺|别套工艺", msg, re.IGNORECASE):
         return CraftDecision(mode="off", reason="用户要求关闭工艺")

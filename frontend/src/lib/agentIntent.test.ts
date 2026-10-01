@@ -440,6 +440,11 @@ describe("定点改：说了「只改这几处」就不许落到整章重写", (
       "把改动写进正文",
       "按这三条建议改，其余保持原样",
       "第 2 条按你说的改掉",
+      "按建议改",
+      "按你的意见改一下",
+      "落实这些建议",
+      "把这些建议落实到正文",
+      "修改意见我同意，请帮我改",
     ]) {
       expect(inferAgentIntent(t).kind, t).toBe("targeted_revise");
     }
@@ -475,10 +480,10 @@ describe("「修改意见」这条判据不再形同虚设", () => {
     expect(inferAgentIntent("先给我一份修改意见就行").kind).toBe("critique_only");
   });
 
-  it("既说意见又说要动手 → 不许被当「只要意见」", () => {
+  it("既说意见又说要动手 → 定点落实，不许被当「只要意见」", () => {
     // 旧判据写的是 `修改意见(?!.*改)`：句子里后面只要还有"改"字它就放过，
     // 而这类句子必然两者并存（"修改意见我同意，请帮我改"），于是判断形同虚设。
     const r = inferAgentIntent("修改意见我同意，请帮我改");
-    expect(r.kind).not.toBe("critique_only");
+    expect(r.kind).toBe("targeted_revise");
   });
 });

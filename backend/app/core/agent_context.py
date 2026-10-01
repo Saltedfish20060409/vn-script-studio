@@ -556,11 +556,11 @@ TASK_HINTS: Dict[str, str] = {
         "正文放 append_script 的文本里，不要放 message。"
     ),
     "rewrite": (
-        "本轮任务：改写选区。保持剧情意图，砍盘问串与说明书腔，提升画面感与对白张力；"
-        "**定点改动用 `patch_script`**（find 逐字照抄原文，只改点到的地方，其余一字不动）；"
-        "只有作者明确要求整章重写时才用 replace_script，往下接新内容用 append_script。"
-        "message 说明改法要点。"
-        "**改写后的正文必须放进 patch_script / append_script / replace_script 的字段里**——"
+        "本轮任务：改写。默认**定点**：用 `patch_script`（find 逐字照抄原文，只改点到的地方，其余一字不动）；"
+        "只有作者明确说了「整章重写 / 推翻重来 / 换一版」才用 replace_script；往下接新内容用 append_script。"
+        "「按建议改 / 落实意见 / 改完写入」= 定点，**不算**整章重写授权。"
+        "message 说明改了哪几处。"
+        "**改写后的正文必须放进 patch_script（或作者明确要求时的 replace/append）字段里**——"
         "放 message 等于没改（作者看不到稿子变化，且容易被输出上限截断）。"
     ),
     "polish": (
@@ -676,12 +676,17 @@ def infer_agent_task(message: str) -> str:
 def task_hint(task: str, user_message: Optional[str] = None) -> str:
     # 不再用 TASK_HINTS[task]：调用方（含 API）传了未登记的任务名时，
     # 这里过去会抛 KeyError，把整轮对话打断；回落到 chat 才是合理行为。
+    from app.core.surgical_revise import SURGICAL_REWRITE_HINT, is_surgical_revise
+
     t = task or "chat"
     base = TASK_HINTS.get(t) or TASK_HINTS["chat"]
     # 默认口径是"作者没说要多少"时的写法；他明确要了篇幅就得当场翻过来
     # （见 `_FULL_PROSE_ASK_RE`：默认值曾三处同向压过作者一句话，是本条要修的病）。
     if t in _SHORT_BEAT_TASKS and wants_full_prose(user_message):
         return base + "\n本轮作者明确要了篇幅：按作者要求一次写完，不要中途收住。"
+    # 定点落实：完成标准压过普通 rewrite 提示（含「提升对白」这类顺手优化诱因）
+    if t == "rewrite" and is_surgical_revise(user_message):
+        return base + "\n" + SURGICAL_REWRITE_HINT
     return base
 
 
