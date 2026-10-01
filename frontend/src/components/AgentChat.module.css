@@ -737,15 +737,38 @@ html[data-panel-glass="ink"] .stageOverlay {
   word-break: break-word;
 }
 
-/* ---- 「资料」开关：这次带哪些资料交给作者决定 ---- */
+/* ---- 底部固定区：**一行**装下 ⚙ 资料 + 附件 + 两个捷径 ---- */
+
+/* 作者反馈："这些东西太挡 Agent 对话界面了"。原先它们是竖着的 4–6 行
+   （附件列表 1–2 行、常驻说明一行、捷径按钮一行、⚙ 资料 又一行），
+   折叠态也照样占着对话区的高度。现在统一收进这一行。
+   两个副作用都是想要的：对话区多出 3–5 行；底部高度不再随附件数量变化。 */
+.footerRow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  /* 默认一行；窄到装不下时**换行**，而不是溢出/裁切。
+     为什么不用 `nowrap`：Agent 窗口可以拖到 MIN_W=320px（见 DesktopWindow），
+     而这一行的固定部分是齿轮 + 两个捷径按钮 ≈ 290px，`nowrap` 到那种宽度就会把
+     右侧按钮顶出面板或裁掉——按钮点不到比多一行糟得多。
+     默认宽度（620px）下它在同一行，所以作者看到的仍然是"两行"。 */
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  min-width: 0;
+  padding: 0.15rem 0 0.25rem;
+}
 
 .sectionRow {
   position: relative;
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  flex-shrink: 0;
-  padding: 0.15rem 0 0.25rem;
+  /* 可收缩（在 `.footerRow` 里）：不收缩的话，"齿轮 + 那句 24 字提示"会整块挤不掉，
+     把同一行的附件与捷径顶出可视区。齿轮自己 `flex-shrink: 0`，先被挤的是提示。 */
+  flex: 0 1 auto;
+  min-width: 0;
+  /* 竖向外边距收进 `.footerRow`，否则行高会被两处 padding 各撑一次 */
+  padding: 0;
 }
 
 .sectionToggle {
@@ -758,6 +781,8 @@ html[data-panel-glass="ink"] .stageOverlay {
   font-size: 0.72rem;
   padding: 0.15rem 0.5rem;
   cursor: pointer;
+  /* 空间再紧也不挤掉齿轮：它是这一行的稳定锚点 */
+  flex-shrink: 0;
 }
 
 .sectionToggle:hover {
@@ -771,6 +796,9 @@ html[data-panel-glass="ink"] .stageOverlay {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* 上限：展开态那句提示有 24 字，不加限就会把同一行的附件与捷径挤出去。
+     超出的部分省略号收尾（完整内容仍在 title 上）。 */
+  max-width: 16rem;
 }
 
 .sectionMenu {
@@ -1509,11 +1537,22 @@ html[data-panel-glass="ink"] .stageOverlay {
 
 .attachList {
   list-style: none;
-  margin: 0 0 0.35rem;
+  margin: 0;
   padding: 0;
   display: flex;
-  flex-wrap: wrap;
+  /* 一行：附件多了**横向滚**，不换行。换行就等于把底部固定区变高，
+     而这段一直要求"底部高度稳定"（见 AgentChat 里 footer 那条注释：高度一变，
+     上方的弹出菜单会被顶到标题栏底下点不到）。 */
+  flex-wrap: nowrap;
   gap: 0.35rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.attachList::-webkit-scrollbar {
+  display: none;
 }
 
 .attachList li {
@@ -1524,6 +1563,8 @@ html[data-panel-glass="ink"] .stageOverlay {
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--accent) 8%, var(--panel-bg));
   font-size: 0.75rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .attachList em {
@@ -1540,33 +1581,48 @@ html[data-panel-glass="ink"] .stageOverlay {
   cursor: pointer;
   font-size: 0.7rem;
   font-weight: 650;
+  flex-shrink: 0;
 }
 
 /* 附件在本次对话里一直有效（发完不清空）——这句必须让作者看见，
-   否则他会以为"上一轮的附件这一轮已经没了"（线上就是这么误会的）。 */
+   否则他会以为"上一轮的附件这一轮已经没了"（线上就是这么误会的）。
+
+   但它**不再单独占一行**：压成同一行里的「（每轮都会带上）」，
+   完整句子仍在它的 title 上。压掉的是行数，不是这句话。 */
 .attachNote {
-  margin: 0 0 0.4rem;
+  margin: 0;
   color: var(--ink-soft);
   font-size: 0.68rem;
+  white-space: nowrap;
+  /* 空间不够时**它先让位**（省略号），而不是把右侧的捷径按钮挤出去。
+     完整句子仍在它的 title 上，所以信息不会丢，只是不再常驻显示。 */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .attachActions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.35rem;
-  margin: 0 0 0.45rem;
+  margin: 0;
+  flex-shrink: 0;
 }
 
 .attachActionBtn {
   border: 2px solid var(--line);
   background: color-mix(in srgb, var(--accent) 12%, var(--panel-bg));
   color: var(--ink);
-  padding: 0.3rem 0.55rem;
+  /* 与 ⚙ 资料 挤在同一行，所以压到和它差不多的身高，
+     否则这一行的高度由最高的那个按钮决定。 */
+  padding: 0.18rem 0.5rem;
   font-family: var(--font-display);
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .attachActionBtn:disabled {
@@ -1836,4 +1892,58 @@ html[data-panel-glass="ink"] .stageOverlay {
   font-size: 0.72rem;
   line-height: 1.45;
   color: var(--ink-soft);
+}
+
+/* 就读告警：这批动作会把整章重写掉多少。
+   摆在勾选表**之前**（先让作者看见代价，再看细目），用告警色而不是说明色。 */
+.planWarns {
+  margin: 0;
+  padding-left: 1.05rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--accent) 78%, var(--ink));
+}
+
+.planEditHint {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+
+/* 定点改写的逐条勾选表：改前 → 改后。
+   这就是"左右对照"，而且是**逐条**的——勾哪几条就写哪几条。 */
+.planEdits {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 16rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.planEdits label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.planEdits input {
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.planEditBefore {
+  color: var(--ink-soft);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--ink-soft) 55%, transparent);
+}
+
+.planEditAfter {
+  color: var(--ink);
 }

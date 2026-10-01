@@ -2753,6 +2753,14 @@ async def _finalize_agent_run(
         out_project = None  # set after commit
     else:
         out_project = project_to_dict(vn)
+        # 提案阶段就把"这一批动作会大改"说出来：作者据此决定要不要点确认。
+        # 放在这里而不是 apply 之后——写完了再提醒，作者只剩"撤回"这一条路。
+        try:
+            from app.core.agent import audit_script_actions
+
+            warnings = audit_script_actions(vn, actions)
+        except Exception:  # noqa: BLE001 - 就读失败不该让整轮对话挂掉
+            warnings = []
 
     sess.updated_at = datetime.now(timezone.utc)
     if (not sess.title or sess.title == "新对话") and body.messages:

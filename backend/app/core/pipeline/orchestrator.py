@@ -14,7 +14,7 @@ from app.core.harness.pipeline import build_writer_user_prompt, run_harness_llm
 from app.core.pipeline.apply_draft import apply_draft_to_chapter, extract_script_body
 from app.core.pipeline.beat_check import merge_beat_issues, resolve_beat_issues
 from app.core.pipeline.ledger import format_ledger_for_agent, get_ledger
-from app.core.pipeline.style_skill import load_style_skill
+from app.core.pipeline.rewrite_contract import rewrite_contract_block
 from app.domain.types import VnProject
 from app.llm_models import DEFAULT_LLM_MODEL
 from app.services.novel_memory import get_latest_continuity
@@ -63,7 +63,6 @@ async def stage_plan(
     instruction: str,
     chapter_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    skill = load_style_skill()
     ch_hint = ""
     if chapter_id:
         ch = next((c for c in project.chapters if c.id == chapter_id), None)
@@ -74,8 +73,6 @@ async def stage_plan(
             ch_hint = f"当前章「{ch.title}」末尾：\n{(plain or '')[-800:]}"
     ledger_block = format_ledger_for_agent(get_ledger(project), chapters=project.chapters)
     prompt = (
-        f"{skill.confirm_preamble()}\n\n"
-        f"{skill.prompt_block(max_chars=2200)}\n\n"
         "请输出本场景的节拍表（Beat Sheet），用 JSON：\n"
         '{"goal":"...","beats":[{"name":"...","action":"..."}],'
         '"emotionStart":{"角色":"..."},"emotionEnd":{"角色":"..."},'
@@ -110,7 +107,6 @@ async def stage_write(
     on_token: Optional[Callable[[str], None]] = None,
     temperature: float = 0.75,
 ) -> Dict[str, Any]:
-    skill = load_style_skill()
     chapter_tail = ""
     if chapter_id:
         ch = next((c for c in project.chapters if c.id == chapter_id), None)
@@ -131,8 +127,8 @@ async def stage_write(
     elif instruction:
         beat_txt = f"## 意图\n{instruction}"
     user = build_writer_user_prompt(
-        f"{skill.confirm_preamble()}\n\n{_length_line(instruction)}"
-        "请严格按节拍表与风格 Skill 写**可演的自然语言剧本**（对白一行一句 + 短旁白 + "
+        f"{_length_line(instruction)}"
+        "请严格按节拍表写**可演的自然语言剧本**（对白一行一句 + 短旁白 + "
         "括号里的动作）。不要写 label / jump / menu: / scene / show / $ 这类引擎语法——"
         "RPY 由「生成脚本 / 导出 .rpy」那一步从这份剧本转换。\n"
         f"{beat_txt}",
@@ -141,7 +137,9 @@ async def stage_write(
         long_memory=mem,
         lore_craft=ledger_block,
     )
-    user = f"{skill.prompt_block(max_chars=2000)}\n\n{user}"
+    # 这里以前又拼了一遍 `prompt_block(max_chars=2000)`：同一份负面清单在同一请求里出现两次
+    # （system 走 roles.py 的 writer 块，user 走这里），两次都被尾部截断。
+    # 生成侧现在不带任何风格规范块，user 侧自然也不再重复。
 
     if on_token is not None:
         # Token-level streaming: same prompt, SSE deltas forwarded to the sink.
@@ -258,7 +256,6 @@ async def stage_revise(
     draft: str,
     check: Dict[str, Any],
 ) -> Dict[str, Any]:
-    skill = load_style_skill()
     if check.get("pass") and int(check.get("warnCount") or 0) == 0:
         return {
             "stage": "revise",
@@ -268,8 +265,7 @@ async def stage_revise(
         }
     issues = check.get("issues") or []
     prompt = (
-        f"{skill.confirm_preamble()}\n\n"
-        f"{skill.prompt_block(max_chars=1800)}\n\n"
+        f"{rewrite_contract_block()}\n\n"
         "根据检查报告做**最小化改动**修正。保持剧情意图与节拍。"
         "先列仍须注意的点（短），再给出完整改写正文。"
         "**与来稿同形态**：来稿是自然语言剧本就还它自然语言剧本（不要顺手加上引擎语法）；"

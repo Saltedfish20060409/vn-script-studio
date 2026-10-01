@@ -290,6 +290,44 @@ def _run_arms(tmp_path, monkeypatch, arms: str, *, cases=1, seed=20260409):
     return json.loads(out.read_text(encoding="utf-8")), result.output
 
 
+def test_every_arm_reports_asset_density(tmp_path, monkeypatch, fake_llm):
+    """消融的读数必须能分辨"干净"和"瘦"。
+
+    以前只有 lint 命中数与 Rubric 均分——于是"约束把稿子逼瘦了"这件事在报告里**看不出来**，
+    而它正是第一章那次实测的结果（禁掉的都禁掉了，戏也没了）。
+    所以每条臂都要带资产密度（每千字对白+动作）与问句数，汇总与单例两层都要有。
+    """
+    report, output = _run_arms(tmp_path, monkeypatch, "tool,craft_lean", cases=4)
+    for arm in ("tool", "craft_lean"):
+        assets = report["cases"][0][arm]["assets"]
+        for key in ("dialogues", "actions", "questions", "perKchar"):
+            assert key in assets, (arm, assets)
+        # 多次采样时逐次也要留痕，方便复核
+        for run in report["cases"][0][arm]["runs"]:
+            assert "assets" in run
+    for kind in ("retention", "boundary"):
+        cell = report["summary"][kind]
+        for arm in ("tool", "craft_lean"):
+            assert "perKchar" in cell[arm]["assets"], (kind, arm)
+    assert "资产" in output and "/千字" in output
+    # 读法要把"命中少 ≠ 更好"写出来，否则读报告的人会把收缩当改进
+    assert "逼瘦" in report["summaryNote"]
+
+
+def test_arm_reports_how_big_the_craft_block_is(tmp_path, monkeypatch, fake_llm):
+    """消融的读法是"摘掉这一块，分掉多少"——那就得同时说清这一块是多少字。
+
+    报告里长期只有 `mentorChars` / `contextChars`，工艺块自己的字数没有留痕，
+    于是"多铺的那些详述值不值"连分母都看不到。`craft_lean` 就是对照这件事的那条臂。
+    """
+    report, _ = _run_arms(tmp_path, monkeypatch, "tool,craft_lean", cases=1)
+    case = report["cases"][0]
+    assert case["tool"]["craftChars"] > case["craft_lean"]["craftChars"]
+    delta = case["tool"]["craftChars"] - case["craft_lean"]["craftChars"]
+    assert delta > 500, f"精简只省了 {delta} 字，等于没省"
+    assert case["tool"]["promptChars"] > case["craft_lean"]["promptChars"]
+
+
 def test_ablation_arms_run_and_report_against_the_baseline(tmp_path, monkeypatch, fake_llm):
     # cases=4 → 前两个是保留集、后两个是边界集，两个集合都要出汇总
     report, output = _run_arms(tmp_path, monkeypatch, "tool,no_craft,no_mentor,bare", cases=4)
@@ -335,13 +373,40 @@ def test_no_craft_arm_really_drops_the_craft_block(tmp_path, monkeypatch, fake_l
     assert "写作导师" in craft_off[0]["system"], "no_craft 只是摘工艺，导师块要留着"
 
 
-def test_no_style_arm_keeps_skills_but_drops_the_style_guide(tmp_path, monkeypatch, fake_llm):
-    _run_arms(tmp_path, monkeypatch, "tool,no_style")
+def test_generation_prompts_never_carry_a_style_spec_block(tmp_path, monkeypatch, fake_llm):
+    """**生成侧不该出现任何风格规范块**——这是"这类稿子永远不该有"，不是"这轮省了"。
+
+    此处历史上放过三样东西：判定用的 `style_guide.md` 负面清单（被尾部截断，
+    §三 禁用词与 §六 参考范例都在截断之外，块尾却写着"禁用词与检查清单仍须遵守"）、
+    一版声口范例库（与工艺技能逐条重复，已删）、现在什么都不放。
+    所以断言写成"整类签名都不在"，而不是"某个字符串不在"——后者会给下一位填回去的人留门。
+    """
+    _run_arms(tmp_path, monkeypatch, "tool,craft_lean")
     writes = [c for c in fake_llm if not c["json"]]
-    with_style = next(c for c in writes if "写作风格 Skill" in c["system"])
-    without = next(c for c in writes if c is not with_style)
-    assert "写作工艺 Skills" in without["system"], "只是去掉风格硬约束，工艺 Skills 要留着"
-    assert "写作风格 Skill" not in without["system"]
+    assert writes, "诊测前提：这轮确实发出了写作请求"
+    for call in writes:
+        assert "写作工艺 Skills" in call["system"], "工艺 Skills 必须在"
+        for signature in ("写作风格 Skill", "硬负面清单", "禁用短语", "声口范例", "【必守声口】"):
+            assert signature not in call["system"], f"生成侧混进了风格规范块：{signature}"
+
+
+def test_retired_no_style_arm_fails_loudly(tmp_path, monkeypatch, fake_llm):
+    """`no_style` 已失效，必须**响亮地**拒绝，而不是静默跑成 `tool` 的副本。
+
+    它曾经量的是"生成侧文风块值不值这 1.8k 字"。那块已整体删除，于是这条臂再也摘不掉
+    任何东西。一条等同于基准臂的消融臂比没有更糟——它会跑出"摘掉它零代价"的假结论，
+    而读者会把它读成"这块没用"。
+    """
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(
+        cli,
+        ["eval", "--ab", "--cases", "1", "--api-key", "test-key", "--arms", "tool,no_style"],
+    )
+    assert result.exit_code != 0
+    combined = result.output + str(result.exception)
+    assert "no_style" in combined and "已失效" in combined, combined
+    # 要指出去哪儿看替代方案，否则等于只说"不行"
+    assert "craft_lean" in combined and "no_craft" in combined, combined
 
 
 def test_unknown_arm_name_fails_loudly(tmp_path, monkeypatch, fake_llm):

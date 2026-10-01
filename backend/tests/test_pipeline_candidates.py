@@ -370,16 +370,38 @@ def test_voice_term_skips_characters_without_a_usable_profile():
     assert "voice" not in row["weights"]
 
 
-def test_length_band_follows_the_instruction_and_penalizes_short_drafts():
+def test_length_is_reported_but_no_longer_caps_the_draft():
+    """长度不再替我们限制产出量（2026-10 改）。
+
+    以前两侧都罚（`over * 0.5`），于是默认区间 260–2000 字实际在**告诉模型别写太长**：
+    一份写得长的候选会因为"偏长"扣分，best-of-N 于是倾向挑短的那份。现在：
+
+    - 没给篇幅指令 → 只罚偏短，**偏长不扣分**（"不设上限，但别偷懒"）；
+    - 作者明确给了篇幅 → 两侧都算（那是他没照做，作者的一句话优先于我们的默认区间）。
+    """
     project = _project([_ch("ch1", [_d("lin", t) for t in LACONIC])])
-    long_enough = score_candidate(CLEAN, project, instruction="约 300 字")
-    tiny = score_candidate("林夏: 嗯。\n", project, instruction="约 300 字")
-    assert long_enough["lengthOk"]["ok"] is True
-    assert long_enough["lengthOk"]["source"] == "instruction(约数)"
-    assert tiny["lengthOk"]["ok"] is False
-    assert tiny["lengthOk"]["verdict"] == "偏短"
-    assert tiny["lengthOk"]["penalty"] > 0
-    assert tiny["score"] < long_enough["score"]
+
+    short = score_candidate("林夏: 嗯。\n", project, instruction="续写")
+    assert short["lengthOk"]["ok"] is False
+    assert short["lengthOk"]["verdict"] == "偏短"
+    assert short["lengthOk"]["penalty"] > 0, "写短仍要罚（否则 best-of-N 会挑一行敷衍）"
+    assert short["penalties"]["length"] > 0
+
+    long_text = "林夏: 我在车站等了三个小时，雨一直没停，站台的灯坏了半截。\n" * 120
+    long_row = score_candidate(long_text, project, instruction="续写")
+    assert long_row["lengthOk"]["chars"] > long_row["lengthOk"]["max"]
+    assert long_row["lengthOk"]["verdict"] == "偏长"
+    assert long_row["lengthOk"]["capUpper"] is False
+    assert long_row["lengthOk"]["penalty"] == 0.0, "默认不设上限：偏长不扣分"
+    assert long_row["penalties"]["length"] == 0.0
+    assert any("默认不设上限，不扣分" in n for n in long_row["notes"])
+
+    # 作者明确要了篇幅 → 上限也管（他没照做）
+    asked = score_candidate(long_text, project, instruction="约 300 字")
+    assert asked["lengthOk"]["source"] == "instruction(约数)"
+    assert asked["lengthOk"]["capUpper"] is True
+    assert asked["lengthOk"]["penalty"] > 0
+    assert any("作者要的是" in n for n in asked["notes"])
 
 
 def test_ai_flavor_issues_are_counted_separately():

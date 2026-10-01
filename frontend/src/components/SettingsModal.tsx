@@ -590,7 +590,7 @@ function LlmPane() {
       <p className={styles.note}>
         单位是字符、不是 token：中文 1 字 ≈ 0.7 token，所以 128000 ≈ 9 万 token。
         装满会带来两件事：每次调用的输入 token 变多、等第一个字变久。服务端上限：同步接口
-        128000 字，AI 责编那条流式通道可到 512000 字；模型窗口更小时按窗口夹。不确定就留空。
+        192000 字，AI 责编那条流式通道可到 512000 字；模型窗口更小时按窗口夹。不确定就留空。
       </p>
       {savedNote && <p className={styles.okNote}>{savedNote}</p>}
       {testResult && (

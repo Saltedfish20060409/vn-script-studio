@@ -24,6 +24,8 @@ from app.core.ai import DeepSeekConfig
 from app.core.llm_http import chat_completions, content_from_response, response_logprobs
 from app.core.llm_params import MARK_ADVICE_TEMPERATURE, MARK_REVISE_TEMPERATURE
 from app.core.model_presets import supports_logprobs
+from app.core.pipeline.rewrite_contract import rewrite_contract_block
+from app.core.prose_assets import asset_problems
 from app.core.variant_select import (
     certainty_from_logprobs,
     reason_for_winner,
@@ -110,6 +112,11 @@ def build_mark_messages(
 ) -> List[Dict[str, str]]:
     """拼提示词。纯函数，便于测试（与真实调用分开）。"""
     system = _ADVICE_SYSTEM if intent == "advice" else _REWRITE_SYSTEM
+    if intent != "advice":
+        # 改稿侧的硬契约：违规就地改写，不许用删掉信息来变干净（见 pipeline/rewrite_contract.py）。
+        # 这里曾经还附过一版「声口范例库」，已整块撤掉——它与既有工艺技能重复，
+        # 而声口的正确来源是作者自己的定稿（styleMemory.samples / voiceCorpus）。
+        system += "\n\n" + rewrite_contract_block()
     parts: List[str] = []
     if style_guide.strip():
         parts.append(f"【作者自己的文风（尽量贴合）】\n{_clip(style_guide, _STYLE_CAP)}")
@@ -151,7 +158,12 @@ def check_replacement(
     只做**能确定判断**的检查，不做风格评价：
     1. 长度失控（远超/远短于原文）；
     2. 把原文里的专有名词弄丢了（项目角色名、《书名号》、大写拉丁词）；
-    3. 把原文的标点结构弄没了（例如整段并成一句）。
+    3. 把原文的标点结构弄没了（例如整段并成一句）；
+    4. **把原文的对白/动作/问句删掉了一大截**（`prose_assets`）。
+
+    第 4 条是 2026-10 补的：在此之前"删掉"是免费的——长度那条只在短到 30% 以下才响，
+    而把一整场戏换成两句概括，长度可能还有 60%。于是"删掉难改的那一场"成了改稿的最优解
+    （第一章那顿晚饭就是这么没的）。这里把它变成一条会被 `variant_select` 计入约束轴的问题。
     """
     problems: List[str] = []
     text = (replacement or "").strip()
@@ -164,6 +176,7 @@ def check_replacement(
             problems.append(f"改写后长度是原文的 {ratio:.1f} 倍（要求接近原文）")
         elif ratio < 0.3:
             problems.append("改写后比原文短太多，可能丢了信息")
+        problems.extend(asset_problems(src, text, names=names))
 
     expected: List[str] = []
     for name in names or []:

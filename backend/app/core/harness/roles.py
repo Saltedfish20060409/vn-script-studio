@@ -78,13 +78,22 @@ def build_role_system(role: str, extra: str = "", project=None) -> str:
         craft_lines.append(f"【{key}】")
         craft_lines.extend(f"- {x}" for x in lines)
     block = base + "\n\n## 工艺约束\n" + "\n".join(craft_lines)
-    try:
-        from app.core.pipeline.style_skill import load_style_skill
+    # 生成侧（writer）**不再附任何风格规范块**：判定用的 `style_guide.md` 负面清单曾被塞进来，
+    # 而它被 `prompt_block` 从尾部截断（§三 禁用词 offset 2679、§六 参考范例 3687 都被切掉），
+    # 块尾却写着"禁用词与检查清单仍须遵守"——等于要求模型遵守一份它看不见的清单，
+    # 唯一可行的合规策略就是少写。后来换过一版正向的「声口范例库」，又因为与
+    # `writing_craft` 的工艺技能逐条重复而整块撤掉。
+    # 现在：writer 拿工艺技能（上面的 craft_lines + 调用方给的 craft/契约块），
+    # architect / editor 这些**判定侧**角色照旧拿禁用清单，一点没少。
+    # 沿革与理由见 `pipeline/rewrite_contract.py` 模块头。
+    if role != "writer":
+        try:
+            from app.core.pipeline.style_skill import load_style_skill
 
-        skill = load_style_skill()
-        block += "\n\n" + skill.prompt_block(max_chars=2400)
-    except ImportError:
-        pass
+            skill = load_style_skill()
+            block += "\n\n" + skill.prompt_block(max_chars=2400)
+        except ImportError:
+            pass
     try:
         from app.core.mentors import (
             build_mentor_prompt_for_project,

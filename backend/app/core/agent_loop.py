@@ -507,8 +507,8 @@ def compose_agent_system(
     模型答的和界面显示的完全对不上。这里保证 `AGENT_SYSTEM` 之后**紧跟**
     `identity_block`，并且测试/探针可以复用同一个函数来验证真实顺序。
 
-    `user_message` 只用来让任务提示认人话：作者明确要了篇幅时，那条"默认短拍
-    180–450 字"必须当场翻过来（见 `agent_context.wants_full_prose`）。
+    `user_message` 只用来让任务提示认人话：作者明确要了篇幅时，默认口径必须当场翻成
+    「一次写完」（见 `agent_context.wants_full_prose`）。
     """
     parts = [
         AGENT_SYSTEM,

@@ -399,7 +399,9 @@ text[-keep_tail:]` 拼回去）。两件事叠加之后，位置就不只是"读
     novel / vn 分任务叠硬规则与输出契约（continue/scene/branch）。
 11. **写路径材料预取**：上下文被裁时服务端先跑 `get_chapter` / `search_lore` /
     `search_script`，结果注入对话（不靠模型记得调用工具）；见 `agent_retrieve`。
-12. **默认短拍续写**：continue 契约默认 180–450 字一小段可上演；作者再点继续。
+12. **续写篇幅**：continue 的默认口径**不设字数上限**——只要求"写完这一场"（完整节拍）；
+    作者明确要了篇幅时，换成更直的「一次写完」（`agent_context.COMPLETE_BEAT_RULE` /
+    `LONG_PROSE_RULE`）。2026-10 之前这里默认写死 180–450 字，等于由我们的默认值替作者限制产出。
 13. **多变体差异点**：`variant_select.contrast_variants` 给出字数/句长/对白比等结构标签；
     界面标「证据优先」而非「文学最佳」；`diffTags` 进 ranking。
 14. **写后声线指纹**：画像就绪且本段对白 `level=drift` 时，`write_gate` 出 warn +

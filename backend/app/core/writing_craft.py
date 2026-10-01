@@ -10,7 +10,13 @@ import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+from app.core.pipeline.rewrite_contract import rewrite_contract_block
 from app.domain.types import VnProject
+
+# 为什么 `rewrite_contract` 走**模块顶层**导入，而 `style_skill` 还在函数里懒加载：
+# `style_skill` ←→ `harness` 是循环导入，只能懒加载 + try/except，代价是它曾**静默**
+# 丢掉整段硬约束（见那个模块的文件头）。`rewrite_contract` 只依赖标准库，没有环，
+# 所以顶层导入——将来它要是坏了，应该当场报错，而不是让改稿侧悄悄少一块。
 
 WritingSkillId = str
 CraftMode = str  # "off" | "lite" | "full"
@@ -490,6 +496,17 @@ def skills_for_task(task: str, mode: str = "full") -> List[WritingSkill]:
     return out
 
 
+REWRITE_TASKS = {"rewrite", "polish"}
+"""改稿类任务：要额外带「改写契约」（禁止用删掉信息的方式消除违规）。
+
+为什么单列：`stage_revise` 的提示词一直写着"最小化改动"，但它同时也是唯一会让稿子**变短**的
+一步——第一章那顿晚饭就是在这里被整场删掉的（删掉是消除风格违规最省事的做法）。
+"最小化改动"约束不了它，得把"信息只增不减"写成硬契约。
+
+键名必须与 `TASK_SKILLS` / `AGENT_TASKS` 对齐：写错名字不会报错，只会让 craft 块整个变空
+（`skills_for_task` 取不到就早返回 `""`）——本模块的测试里有一条专门钉这个。
+"""
+
 PRIORITY_IDS: List[str] = [
     "anti_exposition",
     "de_ai_voice",
@@ -515,14 +532,23 @@ def build_writing_craft_prompt(
     task: str,
     mode: str = "full",
     *,
-    include_style: bool = True,
+    include_rewrite_contract: bool = True,
     detail_max: Optional[int] = None,
 ) -> str:
     """Build craft prompt for the selected mode.
 
-    `include_style=False` 只服务消融评测（`eval --ab --arms ...,no_style`）：工艺 Skills 照给，
-    只是不附那段「写作风格 Skill 硬约束」（`style_guide.md`，约 2k 字）。线上没有这个开关——
-    线上只要 craft 开着就一定带它，否则没法回答"这段值不值 2k 字"。
+    生成侧**只有工艺 Skills 一块**。历史上这里还附过两样东西，都已撤掉：
+
+    - `style_guide.md` 的负面清单（约 2k 字）：它是**判定用**的，而且被尾部截断——
+      §三 禁用词与 §六 参考范例都在截断之外，块尾却写着"禁用词与检查清单仍须遵守"，
+      等于要求模型遵守一份它看不见的清单。判定侧照旧走 `style_skill`，一点没少。
+    - 「声口范例库」（约 1.5k 字）：四条声口指令与下面的工艺技能逐条重复，七个范例只在
+      "冷启动没有别的样例"时才有价值——那件事的正确来源是作者自己的定稿
+      （`styleMemory.samples` 与 `characters[].voiceCorpus`）。见 `pipeline/rewrite_contract.py`。
+
+    `include_rewrite_contract=False` 只服务测试：把工艺技能正文与改稿契约分开量。
+    改稿类任务（`REWRITE_TASKS`）默认带上契约——那是**正确性**约束（不许靠删掉变干净），
+    不是可调的偏好，所以它不对应任何消融臂。
 
     detail_max 限制**详述**条数（其余只进简表标题），默认 None = 现状不变。
     """
@@ -565,11 +591,9 @@ def build_writing_craft_prompt(
         SELF_CHECK if need_check else "",
     ]
     text = "\n\n".join(p for p in parts if p)
-    if include_style:
-        try:
-            from app.core.pipeline.style_skill import load_style_skill
-
-            text += "\n\n" + load_style_skill().prompt_block(max_chars=2000)
-        except Exception:
-            pass
+    if include_rewrite_contract and task in REWRITE_TASKS:
+        # 生成侧唯一的附加块，而且只给改稿类任务。
+        # 位置原来放过两样东西，都已撤掉：判定用的负面清单（被尾部截断，见函数说明），
+        # 以及声口范例库（与工艺技能重复，见 pipeline/rewrite_contract.py 模块头）。
+        text += "\n\n" + rewrite_contract_block()
     return text

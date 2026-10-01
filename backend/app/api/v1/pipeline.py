@@ -101,13 +101,17 @@ async def pipeline_meta():
     skill = load_style_skill()
     return {
         "layers": [
-            "写作风格 Skill（Do NOTs / Do's / Structural Rules）",
-            "写作导师包（方法论；不得推翻风格 Skill）",
+            "写作工艺 Skills（生成侧：按任务注入的技法清单 + 落笔自检）",
+            "写作风格 Skill（判定侧：Do NOTs / Do's / Structural Rules，只判不写）",
+            "写作导师包（方法论；不得推翻硬门禁）",
             "长期记忆账本（章事实 / 角色状态 / 伏笔）",
             "生成-检查工作流（Plan→Write→Check→Revise）",
             "质量门禁（定稿前硬错误为零）",
         ],
         "styleSkill": style_skill_meta(),
+        # `styleConfirm` 报的是"禁用短语 N 条"——它是**判定侧**的确认语，不是生成侧的。
+        # 生成侧曾经也吃这块，现在已撤（那份清单被尾部截断，见 pipeline/rewrite_contract.py）；
+        # 界面若照旧把它描述成生成侧的东西，就是在说假话。
         "styleConfirm": skill.confirm_preamble(),
         "mentors": {
             "builtin": list_builtin_meta(),

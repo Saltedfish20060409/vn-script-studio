@@ -39,10 +39,15 @@ class Settings(BaseSettings):
     #   1. 所选模型的窗口（预设 context_k，见 model_presets.context_window_k）；
     #   2. 我们自己的超时预算——预填充耗时随提示词线性增长，而 read timeout 覆盖
     #      "预填充 + 生成"（见 app/core/llm_budget.py 的 PREFILL_*）。
-    # 环境变量 AGENT_CONTEXT_MAX_CHARS 可调，但会被夹在 3000–128000 之间（**流式端点**
+    # 环境变量 AGENT_CONTEXT_MAX_CHARS 可调，但会被夹在 3000–192000 之间（**流式端点**
     # 到 512000，见 docs/long-context-policy.md 第七节）；
     # 想再放宽就得同时放宽 PREFILL_MAX_BONUS（有跨模块不变量测试钉着）。
-    agent_context_max_chars: int = 96000
+    #
+    # **0 = 跟随 `core/agent_context.DEFAULT_CONTEXT_MAX_CHARS`（默认预算的唯一真源在那）**。
+    # 为什么不再在这里写一个具体数字：默认值要**跟着执行档走**（同步档 128k、流式档 256k），
+    # 一个整数表达不了；而且这里曾与那边重复写着 96000，2026-10 上调默认预算时就漏改了这一处，
+    # 表现为"改了默认值却没生效"——重复真源迟早会这样分叉。
+    agent_context_max_chars: int = 0
 
     # **未知模型**的上下文窗口保守假设（千 token）。预设表收不全，而"撑爆窗口"
     # 对用户是完全没结果的硬失败（上游直接拒答），所以认不出的模型按 128k 估计：

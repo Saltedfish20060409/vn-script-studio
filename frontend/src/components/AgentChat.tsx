@@ -91,6 +91,12 @@ import {
   normalizeMessages,
   planActionLines,
 } from "../lib/agentFormat";
+import {
+  filterPatchActions,
+  patchEditRows,
+  patchPlanSummary,
+  type PatchEditRow,
+} from "../lib/patchEdits";
 import { copyForProject } from "../lib/genreCopy";
 import { contextUsage, type ContextUsage } from "../lib/contextUsage";
 import {
@@ -155,6 +161,12 @@ type PendingPlanKind =
   | "finalize"
   | "ledger";
 
+/** 勾选表里每行压成一行：改动原文可能很长，卡片不能撑爆。 */
+function clipLine(text: string, max = 64): string {
+  const t = (text || "").replace(/\s+/g, " ").trim();
+  return t.length > max ? `${t.slice(0, max)}…` : t;
+}
+
 type PendingPlan = {
   kind: PendingPlanKind;
   title: string;
@@ -167,6 +179,10 @@ type PendingPlan = {
   instruction?: string;
   /** 确认写入要落到哪个对话的撤回栈里 */
   conversationId?: string;
+  /** 定点改写的逐条勾选表（见 lib/patchEdits）：勾哪几条就写哪几条 */
+  editRows?: PatchEditRow[];
+  /** 后端在**提案阶段**算的就读（例如"这次会重写 95% 的段落"） */
+  warnings?: string[];
 };
 
 /**
@@ -287,6 +303,8 @@ export function AgentChat({
   const [reviseModeOpen, setReviseModeOpen] = useState(false);
   /** 待确认的写入方案：非空时输入框上方出现方案卡片，确认后才真的写（见 confirmPendingPlan）。 */
   const [pendingPlan, setPendingPlan] = useState<PendingPlan | null>(null);
+  /** 勾选表里**被取消勾选**的行（记未勾而不是记已勾：新方案默认全勾，不用同步初始化） */
+  const [uncheckedEdits, setUncheckedEdits] = useState<string[]>([]);
   /** Aborts the in-flight streaming agent/pipeline request on unmount or when
    * a new request supersedes the current one (prevents leaked streams that
    * keep consuming LLM quota after the user navigates away). */
@@ -1035,15 +1053,25 @@ export function AgentChat({
       }
       if (hasProposal) {
         // 模型想改工程 → 摆方案，不写。写入只发生在作者点「确认写入」时。
+        const editRows = patchEditRows(actions);
+        setUncheckedEdits([]); // 新方案默认全勾
         setPendingPlan({
           kind: "chat_actions",
-          title: `写入工程 · 待确认（${actions.length} 项）`,
+          // 定点改写时标题直接说"改几处"：比"写入工程（1 项）"更接近作者关心的事
+          title: editRows.length
+            ? `${patchPlanSummary(editRows)} · 待确认`
+            : `写入工程 · 待确认（${actions.length} 项）`,
           // 带正文的动作把正文开头也摆出来：不然点确认等于盲签（见 planActionLines）
           lines: planActionLines(actions, copy),
-          note: "确认前不会改动工程；确认后才写入，且可用「撤回编辑」回滚。",
-          confirmLabel: "确认写入",
+          note: editRows.length
+            ? "确认前不会改动工程；只写勾中的那几条，其余正文一个字都不会动。"
+            : "确认前不会改动工程；确认后才写入，且可用「撤回编辑」回滚。",
+          confirmLabel: editRows.length ? "确认写入勾中的改动" : "确认写入",
           actions,
           conversationId: convId,
+          // 后端在提案阶段算的就读：整章替换会丢掉多少原文（见 audit_script_actions）
+          warnings: res.warnings ?? [],
+          editRows,
         });
         setLastContext(`待确认方案 · 写入工程（${actions.length} 项）`);
       }
@@ -1339,6 +1367,7 @@ export function AgentChat({
     const plan = pendingPlan;
     if (!plan) return;
     setPendingPlan(null);
+    setUncheckedEdits([]); // 勾选状态跟着方案走，方案丢了就不该留着
     const content = `好，这次不写。「${plan.title.replace(" · 待确认", "")}」的方案已丢弃，工程没有做任何改动。`;
     const next = [
       ...messagesRef.current,
@@ -1356,8 +1385,18 @@ export function AgentChat({
 
   /** 确认落库：把方案里的动作发给 /agent/apply-actions（与后端同一条写入路径）。 */
   async function applyConfirmedActions(plan: PendingPlan) {
-    const actions = plan.actions || [];
+    const all = plan.actions || [];
+    // 定点改写按勾选过滤：没勾的改动不进这一批（后端因此一个字都不会动它）。
+    // 勾选表只对 patch_script 生效，别的动作（追加正文、改设定…）原样带着走。
+    const selectedIds = (plan.editRows || [])
+      .filter((row) => !uncheckedEdits.includes(row.id))
+      .map((row) => row.id);
+    const actions = plan.editRows?.length ? filterPatchActions(all, selectedIds) : all;
     const convId = plan.conversationId || conversationId;
+    if (plan.editRows?.length && actions.length === 0) {
+      setError("至少勾一处改动再确认");
+      return;
+    }
     if (!actions.length || !convId) return;
     const snapshot = prepareProject ? prepareProject() : project;
     setBusy(true);
@@ -2703,15 +2742,7 @@ export function AgentChat({
               </>
             }
           />
-          <AgentAttachList
-            attachments={attachments}
-            busy={busy}
-            attachBusy={attachBusy}
-            conversationId={conversationId}
-            onRemove={(i) => setAttachments((prev) => prev.filter((_, j) => j !== i))}
-            onIngest={() => proposeSettingsIngest()}
-            onScan={() => proposeFactsScan("请根据附件整理关系与时间线")}
-          />
+          {/* 附件区已下移，与 ⚙ 资料 合并成底部那一行（见下面 footerRow） */}
 
           {/* 免费档提示：长任务（整章重写、长篇续写）最吃模型能力，也最容易撞限流 */}
           {credentialsMode === "shared" ? (
@@ -2824,42 +2855,60 @@ export function AgentChat({
             </details>
           ) : null}
 
-          {/* 资料开关：把"这次带哪些资料"交给作者，一眼可控（工具比裸聊差多半是因为塞太多） */}
-          <div className={styles.sectionRow}>
-            <button
-              type="button"
-              className={styles.sectionToggle}
-              data-testid="agent-sections-toggle"
-              onClick={() => setSectionsOpen((v) => !v)}
-              title="按需决定这次要交给 AI 的资料（只影响本次会话，不改工程数据）"
-            >
-              ⚙ 资料
-            </button>
-            <span className={styles.sectionHint} data-testid="agent-sections-summary">
-              {excluded.length > 0
-                ? `本次不带 ${excluded.length} 项`
-                : runInfoOpen
-                  ? "AI 会参考你的设定与资料（点开可以少给它一些）"
-                  : ""}
-            </span>
-            {sectionsOpen ? (
-              <div className={styles.sectionMenu} data-testid="agent-sections-menu">
-                <p className={styles.sectionNote}>
-                  取消勾选 = 这次不交给它。塞太多无关资料反而会让它跑偏。
-                </p>
-                {AGENT_SECTIONS.map((s) => (
-                  <label key={s.key} className={styles.sectionItem}>
-                    <input
-                      type="checkbox"
-                      data-testid={`agent-section-${s.key}`}
-                      checked={!excluded.includes(s.key)}
-                      onChange={() => setExcluded((prev) => toggleSection(prev, s.key))}
-                    />
-                    <span>{s.label}</span>
-                  </label>
-                ))}
-              </div>
-            ) : null}
+          {/* 底部固定区收成**一行**：⚙ 资料 + 附件 chip + 两个捷径。
+              作者反馈："这些东西太挡 Agent 对话界面了"——原先它们是竖着的 4–6 行
+              （附件列表 1–2 行、一句常驻说明、捷径按钮一行、⚙ 资料 又一行）。
+              顺序把 ⚙ 资料 放在最左：没有附件时这一行就是它自己，位置不变。
+              顺带满足这段一直要求的**高度稳定**（见上面对 footer 的注释：底部固定区高度一变，
+              它上方的弹出菜单就会被顶到标题栏底下点不到）——现在底部高度不再随附件数量变化。
+              附件多了由 `.attachList` 横向滚，不换行、不挤掉右侧按钮。 */}
+          <div className={styles.footerRow} data-testid="agent-footer-row">
+            <div className={styles.sectionRow}>
+              <button
+                type="button"
+                className={styles.sectionToggle}
+                data-testid="agent-sections-toggle"
+                onClick={() => setSectionsOpen((v) => !v)}
+                title="按需决定这次要交给 AI 的资料（只影响本次会话，不改工程数据）"
+              >
+                ⚙ 资料
+              </button>
+              <span className={styles.sectionHint} data-testid="agent-sections-summary">
+                {excluded.length > 0
+                  ? `本次不带 ${excluded.length} 项`
+                  : runInfoOpen
+                    ? "AI 会参考你的设定与资料（点开可以少给它一些）"
+                    : ""}
+              </span>
+              {sectionsOpen ? (
+                <div className={styles.sectionMenu} data-testid="agent-sections-menu">
+                  <p className={styles.sectionNote}>
+                    取消勾选 = 这次不交给它。塞太多无关资料反而会让它跑偏。
+                  </p>
+                  {AGENT_SECTIONS.map((s) => (
+                    <label key={s.key} className={styles.sectionItem}>
+                      <input
+                        type="checkbox"
+                        data-testid={`agent-section-${s.key}`}
+                        checked={!excluded.includes(s.key)}
+                        onChange={() => setExcluded((prev) => toggleSection(prev, s.key))}
+                      />
+                      <span>{s.label}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <AgentAttachList
+              attachments={attachments}
+              busy={busy}
+              attachBusy={attachBusy}
+              conversationId={conversationId}
+              onRemove={(i) => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+              onIngest={() => proposeSettingsIngest()}
+              onScan={() => proposeFactsScan("请根据附件整理关系与时间线")}
+            />
           </div>
 
           {/* 起手句与「先问几句」都渲染在消息滚动区末尾（见上面的 footer），
@@ -2970,6 +3019,53 @@ export function AgentChat({
                   </li>
                 ))}
               </ul>
+              {/* 就读：这批动作会把整章重写掉多少（后端提案阶段算的）。
+                  摆在勾选表**之前**——先让作者看见代价，再看细目。 */}
+              {pendingPlan.warnings?.length ? (
+                <ul className={styles.planWarns} data-testid="agent-plan-warnings">
+                  {pendingPlan.warnings.map((w, i) => (
+                    <li key={`${i}-${w}`}>{w}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {/* 定点改写：每条改动一行（改前 → 改后），勾哪几条就写哪几条。
+                  这就是诊断承诺过的"左右对照"，而且是**逐条**的。 */}
+              {pendingPlan.editRows?.length ? (
+                <>
+                  <p className={styles.planEditHint}>
+                    勾选要落地的改动（没勾的一个字都不会动）：
+                  </p>
+                  <ul className={styles.planEdits} data-testid="agent-plan-edits">
+                    {pendingPlan.editRows.map((row) => {
+                      const on = !uncheckedEdits.includes(row.id);
+                      return (
+                        <li key={row.id}>
+                          <label>
+                            <input
+                              type="checkbox"
+                              data-testid={`agent-plan-edit-${row.id}`}
+                              checked={on}
+                              disabled={busy}
+                              onChange={() =>
+                                setUncheckedEdits((prev) =>
+                                  prev.includes(row.id)
+                                    ? prev.filter((x) => x !== row.id)
+                                    : [...prev, row.id]
+                                )
+                              }
+                            />
+                            <span className={styles.planEditBefore}>{clipLine(row.before)}</span>
+                            <span aria-hidden="true">→</span>
+                            <span className={styles.planEditAfter}>
+                              {row.after ? clipLine(row.after) : "（删掉这一句）"}
+                            </span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              ) : null}
               {pendingPlan.note ? (
                 <p className={styles.planNote}>{pendingPlan.note}</p>
               ) : null}

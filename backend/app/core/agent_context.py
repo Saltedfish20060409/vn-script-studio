@@ -44,22 +44,39 @@ def is_agent_task(v: Any) -> bool:
 # `tests/test_context_budget_policy.py` 跨模块钉住不变量：
 #     (MAX_CONTEXT_MAX_CHARS - PREFILL_FREE_CHARS) / PREFILL_CHARS_PER_SECOND ≤ PREFILL_MAX_BONUS
 # 谁想再把上限调大，必须同时把预填充加时上限调大（前端阶梯表也读那个数）。
-DEFAULT_CONTEXT_MAX_CHARS = 96000
-"""默认主预算（字符）：2026-10-01 从 48000 提到 96000（作者要求"能设到 128K/256K 或更大"）。
+DEFAULT_CONTEXT_MAX_CHARS = 128000
+"""默认主预算（字符，**同步档**）：2026-10-01 从 48000 提到 96000，2026-10 再提到 128000。
 
-按 1 token ≈ 1.4 汉字估，约 6.9 万 token——仍小于最小预设窗口（128k），
-而长篇"整章 + 记忆层 + 摘要"一起带上时不再捉襟见肘。
-注意这是**上限**不是目标：拼装只装作品里真有的东西，小工程的实际用量远低于它
-（线上常态量级几千到两万字符，见 `latency_stats` 的 promptChars 分布）。
+为什么直接给到旧的天花板：这是**上限**不是目标——拼装只装作品里真有的东西，
+小工程的实际用量远低于它（线上常态量级几千到两万字符，见 `latency_stats` 的 promptChars 分布）。
+以前"默认 96k、天花板 128k"的后果是：作者不手动去设置里调，就永远拿不到天花板以内的余量，
+而"按需"这件事本来就该由**作品大小**决定，不该由我们的默认值决定。
+
+按 1 token ≈ 1.4 汉字估，128k 字符 ≈ 9.1 万 token，仍在最小预设窗口（128k）之内。
 """
 
-MAX_CONTEXT_MAX_CHARS = 128000
+DEFAULT_CONTEXT_MAX_CHARS_STREAMED = 256000
+"""默认主预算（字符，**流式档**）。
+
+流式端点靠心跳保活、前端不设总超时，能等更久（预填充加时上限 360s，与 512k 天花板配对），
+所以它的默认值可以比同步档更大。上限仍是 `MAX_CONTEXT_MAX_CHARS_STREAMED`。
+
+代价如实说明：256k 字符的提示词按当前定价是**每次调用十几万输入 token**，多步 Agent 会乘上
+步数。但它只在作品真的大到需要时才被填满——真用到这个量级，应当先看
+`GET /admin/llm-latency` 里的 promptChars 分布与截断率，再决定值不值。
+"""
+
+MAX_CONTEXT_MAX_CHARS = 192000
 """配置上限（字符，**同步档**）：超过这个量级，超时预算就不再能覆盖预填充（见上面的不变量）。
+
+2026-10 从 128000 提到 192000，同时把 `llm_budget.PREFILL_MAX_BONUS` 从 90s 提到 130s
+（(192000-8000)/1500 = 122.7 ≤ 130）——这一对必须一起动，否则就是"预算放开而超时不放"，
+会重演用户报障过的假"后端没启动"。
 
 作者仍可用 `AGENT_CONTEXT_MAX_CHARS`（服务端）或账号设置里的「上下文预算」调整，
 但会被夹到这里；想真正突破，改的是 `llm_budget.PREFILL_*`（那意味着"愿意为一次请求等更久"）。
 
-为什么同步档只到 128k（而流式档给到 512k）：同步端点的等待是**前端阶梯预算**在买单
+为什么同步档比流式档低：同步端点的等待是**前端阶梯预算**在买单
 （`frontend/src/api/timeouts.ts` 那张表由跨语言测试钉着"前端预算 ≥ 后端最坏耗时"），
 把它推到 20 分钟以上没有意义——真装得下那么长的上下文，本来就该走流式那条路。
 """
@@ -117,9 +134,15 @@ _CLIP_SELECTION = 2000
 """用户选区：改写任务的焦点，超长选区本身就该先缩小。"""
 
 
-def _default_context_max_chars(ceiling: int = MAX_CONTEXT_MAX_CHARS) -> int:
-    """Agent 上下文主预算：优先服务端 `AGENT_CONTEXT_MAX_CHARS`（默认 96000），
+def _default_context_max_chars(
+    ceiling: int = MAX_CONTEXT_MAX_CHARS, *, streamed: bool = False
+) -> int:
+    """Agent 上下文主预算：优先服务端 `AGENT_CONTEXT_MAX_CHARS`，
     再看作者在账号设置里选的「上下文预算」（请求级声明，见 execution_profile）。
+
+    默认值**跟着档位走**（2026-10 改）：同步档给 `DEFAULT_CONTEXT_MAX_CHARS`，
+    流式档给更大的 `DEFAULT_CONTEXT_MAX_CHARS_STREAMED`。以前两档共用一个默认值，
+    结果是流式档那 512k 的天花板谁都够不着——作者不去设置里手动调，就永远吃那个默认值。
 
     为什么允许作者自己选（2026-10-01 作者要求"能设到 128K/256K 或更大"）：
     长篇把"整章 + 记忆层 + 摘要"一起带上是有代价的（每次调用十几万输入 token、
@@ -129,13 +152,14 @@ def _default_context_max_chars(ceiling: int = MAX_CONTEXT_MAX_CHARS) -> int:
     用 try/except 包裹，保证纯上下文拼装（含测试）永远有可用默认值，
     不会因 SECRET_KEY 校验等环境问题抛错。
     """
+    fallback = DEFAULT_CONTEXT_MAX_CHARS_STREAMED if streamed else DEFAULT_CONTEXT_MAX_CHARS
     try:
         from app.config import get_settings
 
         v = get_settings().agent_context_max_chars
-        configured = int(v) if v else DEFAULT_CONTEXT_MAX_CHARS
+        configured = int(v) if v else fallback
     except Exception:  # noqa: BLE001 - core util must never raise for tuning knob
-        configured = DEFAULT_CONTEXT_MAX_CHARS
+        configured = fallback
     try:
         from app.core.execution_profile import declared_budget_chars
 
@@ -160,15 +184,18 @@ def context_budget_for_model(
     （context length exceeded）——那比截断更难善后，用户拿不到任何结果。
 
     为什么要按执行档分：天花板由**我们的超时预算**决定，而"能等多久"取决于
-    客户端是不是看着进度条（见 `core/execution_profile.py`）。同步档 96k、流式档 240k；
-    `streamed=None` 时读请求级档位（默认同步档，保守）。
+    客户端是不是看着进度条（见 `core/execution_profile.py`）。同步档默认 128k /
+    天花板 192k，流式档默认 256k / 天花板 512k；`streamed=None` 时读请求级档位
+    （默认同步档，保守）。
     """
     if streamed is None:
         from app.core.execution_profile import is_streamed
 
         streamed = is_streamed()
     ceiling = MAX_CONTEXT_MAX_CHARS_STREAMED if streamed else MAX_CONTEXT_MAX_CHARS
-    resolved = int(budget) if budget else _default_context_max_chars(ceiling=ceiling)
+    resolved = (
+        int(budget) if budget else _default_context_max_chars(ceiling=ceiling, streamed=streamed)
+    )
     window_k = _effective_window_k(model)
     if window_k:
         room = int(window_k * 1000 * _CHARS_PER_TOKEN * _WINDOW_INPUT_SHARE)
@@ -330,6 +357,23 @@ _SECTION_ORDER: Tuple[str, ...] = (
 
 # 每个任务的**硬规则**：短、可执行、且会在上下文末尾再重复一次。
 # 为什么单列：长上下文里夹在中间的要求最容易被忽略，末尾的位置才是"当场生效"的。
+COMPLETE_BEAT_RULE = (
+    "写完这一场的完整节拍（进场→推进→交锋→收束），不要中途截断；篇幅按作者要求。"
+)
+"""「continue」的篇幅口径：**不设上限**，只要求"这一场是完整的"。
+
+2026-10 改。这里以前写的是「默认只写一小段可上演内容（约 180–450 字）；不要一次写长章」，
+而同一句话还写在任务提示与输出契约里，末尾又重复一次——**三条同向的默认值在替作者
+限制产出量**。作者要一大段时，模型会"守规矩地"少写（线上实测：同样的话在网页版拿 3052 字，
+在我们这里拿到被截短的片段）。
+
+"别写太多"属于该去掉的那一类约束（见 `candidates._length_penalty` 的同一处取舍）：
+换成"别写一半"——完整性与篇幅无关，它不会压住发挥。
+
+刻意留短（≤64 字）：`test_agent_context_trim` 要求硬规则"一眼看得完"，
+更细的解释写在输出契约与这里，不塞进规则行。
+"""
+
 TASK_KEY_RULES: Dict[str, List[str]] = {
     "continue": [
         "紧接「当前章节」正文末尾续写，不要重述已经写过的内容。",
@@ -338,7 +382,7 @@ TASK_KEY_RULES: Dict[str, List[str]] = {
         "保持紧邻前文的人称、时态与专名；新出现的专名必须能在设定里找到出处。",
         "对白与叙述的比例、句子长短要贴近紧邻的前文。",
         "角色卡若有【声线硬对照】/正例，对白必须贴近；标了【声线降级】的角色勿代写长对白。",
-        "默认只写一小段可上演内容（约 180–450 字）；不要一次写长章。作者要继续会再点续写。",
+        COMPLETE_BEAT_RULE,
     ],
     "rewrite": [
         "只改指定的这一段（或这一章），其余一字不动。",
@@ -398,14 +442,17 @@ def task_key_rules(task: str, project: Optional[VnProject] = None) -> List[str]:
 def task_key_rules_for(
     task: str, project: Optional[VnProject] = None, user_message: Optional[str] = None
 ) -> List[str]:
-    """本轮的硬规则（含"作者要了篇幅时短拍让位"这条覆盖，见 `_FULL_PROSE_ASK_RE`）。
+    """本轮的硬规则（含"作者要了篇幅时默认口径让位"这条覆盖，见 `_FULL_PROSE_ASK_RE`）。
 
-    覆盖做的是**替换而不是并列**：硬规则区里同时躺着「默认只写 180–450 字」和
-    「按作者要求写完」时，模型会挑默认值执行（线上就是这样少写的）。
+    覆盖做的是**替换而不是并列**：硬规则区里同时躺着默认口径与「按作者要求写完」时，
+    模型会挑默认值执行（线上就是这样少写的）。
     """
     rules = task_key_rules(task, project)
     if (task or "chat") in _SHORT_BEAT_TASKS and wants_full_prose(user_message):
-        rules = [r for r in rules if "不要一次写长章" not in r]
+        # 按**同一条常量**替换，不再按子串匹配：原来匹配的那句「不要一次写长章」
+        # 已经不在默认口径里了，而子串过滤会**静默失效**——改了文案，覆盖就悄悄不再生效，
+        # 模型又回到默认口径，作者那句话再次被吃掉。
+        rules = [r for r in rules if r != COMPLETE_BEAT_RULE]
         rules.insert(0, LONG_PROSE_RULE)
     return rules
 
@@ -413,7 +460,7 @@ def task_key_rules_for(
 # 每个任务的**输出契约**：长度与形态。写清楚"给我什么形状的东西"，
 # 模型就不会拿解释、总结、小标题来凑数——这也是"工具不如裸聊"的一个常见原因。
 TASK_OUTPUT_CONTRACT: Dict[str, str] = {
-    "continue": "只输出续写的一小段可上演正文（默认 180–450 字；用户另有字数要求按用户）；写的是自然语言剧本，不要引擎语法；不要一次写长章、不要解释、不要小结、不要标题。",
+    "continue": "只输出续写的可上演正文（篇幅按用户要求；他没说就写完这一场，别中途截断）；写的是自然语言剧本，不要引擎语法、不要解释、不要小结、不要标题。",
     "scene": "只输出这一场的正文（自然语言剧本：对白 + 短旁白 + 括号里的动作）；场景切换用空行分隔，不要写镜头术语、舞台指令或引擎语法（除非用户要求）。",
     "rewrite": "只输出改写后的正文；长度与原文相当；不附说明、不附对照。",
     "polish": "只输出润色后的正文；不改情节、不改专名。",
@@ -428,34 +475,38 @@ TASK_OUTPUT_CONTRACT: Dict[str, str] = {
 }
 
 
-# --- 作者本轮的**篇幅要求**：短拍默认必须让位 ------------------------------------
+# --- 作者本轮的**篇幅要求**：默认口径让位 ----------------------------------------
 #
-# 为什么单列（2026-09-30 线上实测，作者账号「搁浅de咸鱼」）：作者在网页版说
-# 「写到设计完的情节」，拿到 3052 字成稿；在我们这里说同样的话，拿到的是被自己
-# 截短的片段——因为 180–450 字的短拍口径写在**三处**（硬规则、任务提示、输出契约），
-# 而且在上下文末尾（注意力最高的位置）又重复一次。三条同向的指令压过作者的一句话，
-# 模型于是"守规矩地"少写。口径本来就写着"用户另有字数要求按用户"，那就得真的按用户：
-# 作者明确要了篇幅时，短拍默认整条让位，而不是三条并存等他猜谁优先。
+# 历史（2026-09-30 线上实测，作者账号「搁浅de咸鱼」）：作者在网页版说「写到设计完的情节」，
+# 拿到 3052 字成稿；在我们这里说同样的话，拿到的是被自己截短的片段——因为「约 180–450 字」
+# 的短拍口径写在**三处**（硬规则、任务提示、输出契约），而且在上下文末尾（注意力最高的
+# 位置）又重复一次。三条同向的指令压过作者的一句话，模型于是"守规矩地"少写。
+#
+# 2026-10 的处置分两步，缺一不可：
+# 1. **默认口径本身去掉了上限**（见 `COMPLETE_BEAT_RULE`）——"别写太多"这类约束
+#    不该由我们的默认值施加；
+# 2. 这一层覆盖仍然保留：作者明确要了篇幅时，把默认口径换成更直的"一次写完"，
+#    并给它在末尾硬规则区**第一位**的位置。
 _FULL_PROSE_ASK_RE = re.compile(
     r"写完整|一次写完|全部写完|整章写完|写完(这|本|整)?(一)?章|不要停|别停|接着写完|"
     r"写到[^。！？!?\n]{0,12}(为止|结束|完)|写长|多写点|拉长|写满"
 )
 
-#: 作者要了篇幅时替换掉短拍的那条硬规则（放在末尾硬规则区的**第一位**）。
-#: 刻意**不写"180–450"这个数**：写上等于把短拍又提了一遍，模型会拿它当参照。
+#: 作者要了篇幅时替换掉默认口径的那条硬规则（放在末尾硬规则区的**第一位**）。
+#: 刻意**不写任何字数**：写上等于把默认口径又提了一遍，模型会拿它当参照。
 LONG_PROSE_RULE = (
-    "作者本轮明确要了篇幅（写完整 / 写到 X / 写长）：**一次写完**，不要用默认短拍收尾、"
+    "作者本轮明确要了篇幅（写完整 / 写到 X / 写长）：**一次写完**，不要中途收住、"
     "不要自我截断、不要停在半句、不要用小结代替戏。"
 )
 
 #: 同上，替换掉的输出契约。
 LONG_PROSE_CONTRACT = (
     "按作者要求的篇幅一次写完：紧接「当前章节」正文末尾往下写，把作者点到的那一段情节写完；"
-    "**不要**用短拍收尾（那只是作者没给篇幅时的默认）、不要自我截断、不要解释或小结。"
+    "**不要**中途收住、不要自我截断、不要解释或小结。"
     "（作者要的是成稿，要继续会自己说。）"
 )
 
-#: 这些任务才有"短拍 vs 篇幅"这一对：改稿 / 润色 / 检查的口径由它们自己的契约管。
+#: 这些任务才有"默认口径 vs 作者要的篇幅"这一对：改稿 / 润色 / 检查的口径由它们自己的契约管。
 _SHORT_BEAT_TASKS = ("continue", "scene")
 
 
@@ -498,7 +549,7 @@ TASK_HINTS: Dict[str, str] = {
         "message 超过 600 字基本就是走错了路：既容易被输出上限截断，也不会有任何东西落进稿子。"
     ),
     "continue": (
-        "本轮任务：续写一小段可上演节拍（默认短拍 180–450 字，不要一次成章）。"
+        "本轮任务：续写可上演节拍，把这一场写完（篇幅按作者要求，他没说就写到这场戏收住）。"
         "紧接【当前章末尾】；人设只校准语气。禁止设定宣讲；"
         "禁止陌生人连问盘人（一拍一角色 ideally ≤1 问）；信息用环境/失言/残缺感推进。默认 append_script；不要重写前文。"
         "message 须简要说明本段节拍意图；作者要继续会再点续写。"
@@ -506,8 +557,10 @@ TASK_HINTS: Dict[str, str] = {
     ),
     "rewrite": (
         "本轮任务：改写选区。保持剧情意图，砍盘问串与说明书腔，提升画面感与对白张力；"
-        "append_script 追加改写稿（勿 replace 整章，除非用户要求）。message 说明改法要点。"
-        "**改写后的正文必须放进 append_script / replace_script 的文本字段**——"
+        "**定点改动用 `patch_script`**（find 逐字照抄原文，只改点到的地方，其余一字不动）；"
+        "只有作者明确要求整章重写时才用 replace_script，往下接新内容用 append_script。"
+        "message 说明改法要点。"
+        "**改写后的正文必须放进 patch_script / append_script / replace_script 的字段里**——"
         "放 message 等于没改（作者看不到稿子变化，且容易被输出上限截断）。"
     ),
     "polish": (
@@ -625,10 +678,10 @@ def task_hint(task: str, user_message: Optional[str] = None) -> str:
     # 这里过去会抛 KeyError，把整轮对话打断；回落到 chat 才是合理行为。
     t = task or "chat"
     base = TASK_HINTS.get(t) or TASK_HINTS["chat"]
-    # 短拍默认是"作者没说要多少"时的口径；他明确要了篇幅就得当场翻过来
-    # （见 `_FULL_PROSE_ASK_RE`：三处短拍口径同向压过作者一句话，是本条要修的病）。
+    # 默认口径是"作者没说要多少"时的写法；他明确要了篇幅就得当场翻过来
+    # （见 `_FULL_PROSE_ASK_RE`：默认值曾三处同向压过作者一句话，是本条要修的病）。
     if t in _SHORT_BEAT_TASKS and wants_full_prose(user_message):
-        return base + "\n本轮作者明确要了篇幅：按作者要求一次写完，默认短拍不适用。"
+        return base + "\n本轮作者明确要了篇幅：按作者要求一次写完，不要中途收住。"
     return base
 
 
@@ -1419,22 +1472,26 @@ def build_agent_context(
         if p
     ]
 
-    bible_budget = 2800 if resolved_task in ("outline", "consistency") else 2000
+    # 设定/大纲/主题的**单栏上限与总预算**（2026-10 上调）。
+    # 旧值（单栏 900/500/500/300/300，总 2000）在默认上下文预算 96k 面前小得不成比例：
+    # 它决定的是"模型知道多少"，截在这里等于直接砍发挥——没读到的设定写不出来。
+    # 总预算必须 ≥ 各栏之和，否则第二级 `_clip` 又会把刚放宽的栏位裁回去。
+    bible_budget = 6000 if resolved_task in ("outline", "consistency") else 4800
     bible_parts: List[str] = []
     if (bible and bible.world) or project.lore:
-        bible_parts.append(f"世界观:\n{_clip((bible.world if bible else None) or project.lore or '', 900)}")
+        bible_parts.append(f"世界观:\n{_clip((bible.world if bible else None) or project.lore or '', 1600)}")
     if bible and bible.background:
-        bible_parts.append(f"故事背景:\n{_clip(bible.background, 500)}")
+        bible_parts.append(f"故事背景:\n{_clip(bible.background, 900)}")
     if bible and bible.outline:
         related_beats = select_outline_beats(bible.outline, effective_tokens, 5)
         if related_beats and resolved_task != "outline":
             bible_parts.append("大纲相关节拍（检索）:\n" + "\n".join(f"- {b}" for b in related_beats))
             included.append(f"大纲节拍×{len(related_beats)}")
-        bible_parts.append(f"大纲:\n{_clip(bible.outline, 1200 if resolved_task == 'outline' else 500)}")
+        bible_parts.append(f"大纲:\n{_clip(bible.outline, 2000 if resolved_task == 'outline' else 900)}")
     if bible and bible.themes:
-        bible_parts.append(f"主题/基调:\n{_clip(bible.themes, 300)}")
+        bible_parts.append(f"主题/基调:\n{_clip(bible.themes, 500)}")
     if bible and bible.notes:
-        bible_parts.append(f"备忘:\n{_clip(bible.notes, 300)}")
+        bible_parts.append(f"备忘:\n{_clip(bible.notes, 500)}")
     bible_block = "\n\n".join(bible_parts)
     if len(bible_block) > bible_budget:
         bible_block = _clip(bible_block, bible_budget)
@@ -1639,12 +1696,13 @@ def build_agent_context(
                 if kind == "character" and target_id not in picked_char_ids:
                     c = char_by_id_all.get(target_id)
                     if c is not None:
-                        brief = _clip((c.voice or c.bio or "").strip(), 80)
+                        # 只进索引的"关联角色"也要够判断立场（旧值 80 字常常只够半句人设）
+                        brief = _clip((c.voice or c.bio or "").strip(), 240)
                         line = f"- {c.displayName}（{title} 点名关联）" + (f"：{brief}" if brief else "")
                 elif kind == "location" and target_id not in picked_loc_ids:
                     loc = loc_by_id_all.get(target_id)
                     if loc is not None:
-                        brief = _clip((loc.description or "").strip(), 80)
+                        brief = _clip((loc.description or "").strip(), 240)
                         line = f"- {loc.name}（{title} 点名关联）" + (f"：{brief}" if brief else "")
                 elif kind == "chapter":
                     ch = chapter_by_id_all.get(target_id)
@@ -1703,7 +1761,7 @@ def build_agent_context(
                 # 对面没进上下文时，附一行要点（立场判断往往就靠这句）
                 far = b if link.fromId in picked_ids else a
                 if far is not None and far.id not in picked_ids:
-                    brief = _clip((far.bio or far.voice or "").strip(), 60)
+                    brief = _clip((far.bio or far.voice or "").strip(), 180)
                     if brief:
                         line += f"（{far.displayName}：{brief}）"
                 relation_lines.append(line)
@@ -1858,16 +1916,19 @@ def build_agent_context(
         ][:3]
         style_samples = samples
         if guide:
+            # 1200 → 2400（2026-10）：这份指南是"作者自己的腔调"，它被截断等于模型只学到了
+            # 前一半习惯；它相对 96k 的默认预算本来也不算大。
             style_block = (
                 "\n## 作者文风记忆（延续作者自己的习惯：续写/改写/润色请贴合此风格；"
-                "它是归纳不是圣旨，具体情节仍听用户）\n" + _clip(guide, 1200)
+                "它是归纳不是圣旨，具体情节仍听用户）\n" + _clip(guide, 2400)
             )
             included.append("文风记忆")
         if samples:
             # 样例比规则更管用：模型模仿"看得见的句子"远比遵守"形容词式的规则"稳。
+            # 每条 200 → 400 字：200 字常常把一句话切在半途，仿出来的节奏是错的。
             style_block += (
                 "\n\n【作者原文样例（最重要：模仿它们的句法、节奏与用词密度，不要照抄内容）】\n"
-                + "\n".join(f"- {_clip(s, 200)}" for s in samples)
+                + "\n".join(f"- {_clip(s, 400)}" for s in samples)
             )
             included.append(f"文风样例×{len(samples)}")
 

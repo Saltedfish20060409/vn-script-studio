@@ -56,6 +56,7 @@ from app.core.harness.audit_full import full_audit_draft
 from app.core.llm_http import chat_completions, content_from_response
 from app.core.llm_params import clamp_temperature, task_temperature
 from app.core.pipeline.beat_check import lint_beat_sheet
+from app.core.prose_assets import asset_preservation
 from app.core.voice_fingerprint import build_voice_profile, score_voice
 from app.domain.types import VnProject
 
@@ -87,12 +88,22 @@ SAMPLE_TIMEOUT = llm_budget.WRITE
 # - 软项之间按"读者多快能察觉"排：AI 味和节拍缺失是读者一眼就皱眉的（0.22），声线跑偏
 #   要连读几章才觉出（0.18），长度是最表层的（0.18），warn 级零碎问题最多（0.20）。
 SOFT_WEIGHTS: Dict[str, float] = {
-    "lintWarn": 0.20,
-    "beat": 0.22,
-    "voice": 0.18,
-    "aiFlavor": 0.22,
-    "length": 0.18,
+    "lintWarn": 0.16,
+    "beat": 0.20,
+    "voice": 0.16,
+    "aiFlavor": 0.18,
+    "length": 0.12,
+    "assets": 0.18,
 }
+"""软项权重，和必须正好等于 `W_LINT_ERROR`（=1.00），否则"一票否决"就不成立。
+
+2026-10 调整：新增 `assets`(0.18)，从 `lintWarn`(−0.04)、`beat`(−0.02)、`voice`(−0.02)、
+`aiFlavor`(−0.04)、`length`(−0.06) 各匀出来。理由是这张表此前**只有罚分**，于是
+"删掉内容"是唯一能改善分数的动作——第一章那顿晚饭就是这么被删掉的。`assets` 与 `length`
+是同一件事的两面：长度管"别失控"，资产管"别删光"（见 `core/prose_assets.py`）。
+
+`assets` 项**只在有原稿可比时**参与（改稿）；生成侧没有原稿，它是 `None`，
+`_weighted_score` 会把它从权重里摘掉、其余项重新归一化——这是本来就有的规矩，不用特判。"""
 
 W_LINT_ERROR = 1.00
 """硬错误罚分权重。见上表注释：它等于软项权重之和，这是故意的。"""
@@ -106,15 +117,66 @@ FLAVOR_SATURATION = 4.0
 
 #: 判"AI 味"的依据：ai_flavor 自己的检查（code 前缀 ai_）、宅味外壳，
 #: 以及风格 Skill 的全部命中（禁用项/心理标签/作者总结/万能回应）。
+#:
+#: **2026-10 修的是另一头**：这里保留 `style_skill`（这些命中确实属于"AI 腔/套话"），
+#: 改成 `lintWarn` 项不再数它们（见 `_other_warn_count`）。此前两边都数，于是同一处命中
+#: 被罚两次——一处 warn ≈ 0.20×(1/6) + 0.22×(1/4) ≈ 0.088 分，四处就吃掉约 0.35。
+#: 叠上当时被污染的禁用表（108 条里 75 条是抓来的垃圾），结果是**越像指南范例的稿子分越低**。
+#:
+#: 反面做法（试过、是错的）：把 `style_skill` 从这里删掉——那样 style_skill 的 warn
+#: 在 `lintWarn` 与 `aiFlavor` 两边都不算，命中变成**免费**，等于把"点了点头"放行。
 _FLAVOR_SOURCES = {"style_skill"}
 _FLAVOR_CODES = {"otaku_shell"}
 _FLAVOR_CODE_PREFIX = "ai_"
+
+def _other_warn_count(issues: Sequence[Dict[str, Any]], total_warn: int) -> int:
+    """warn 总数里剔掉 style_skill 的——那一类归 `aiFlavor` 管，不能罚两次。
+
+    见 `_FLAVOR_SOURCES` 的注释：双重计罚的后果不是"更严"，而是**误报的代价翻倍**，
+    于是越贴近指南范例的稿子越吃亏。
+    """
+    style_warn = sum(
+        1
+        for issue in issues
+        if str(issue.get("source") or "") == "style_skill"
+        and str(issue.get("severity") or "") == "warn"
+    )
+    return max(0, int(total_warn) - style_warn)
+
+
+def _project_names(project: Optional[VnProject]) -> List[str]:
+    """项目角色名——专名保留检查要用（`displayName` / `defineName`）。"""
+    out: List[str] = []
+    for c in getattr(project, "characters", None) or []:
+        for attr in ("displayName", "defineName"):
+            v = str(getattr(c, attr, "") or "").strip()
+            if v:
+                out.append(v)
+    return out
+
+
+def _asset_term(
+    draft: str, source: str, project: Optional[VnProject]
+) -> Optional[Dict[str, Any]]:
+    """资产保留项：**只有给了原稿才算**。
+
+    生成侧（best-of-N 新写一段）没有原稿，返回 `None` → `_weighted_score` 把这一项
+    从权重里摘掉、其余重新归一化。硬给"资产分"会奖励废话（多写字 ≠ 多给信息）。
+    """
+    if not (source or "").strip() or not (draft or "").strip():
+        return None
+    return asset_preservation(source, draft, names=_project_names(project))
+
 
 # ------------------------------------------------------------------ 长度区间
 
 DEFAULT_MIN_CHARS = 260
 DEFAULT_MAX_CHARS = 2000
-"""没有 instruction 提示时的经验区间：一个"场"通常在 300–1500 字之间。"""
+"""没有篇幅指令时的**参考**区间：一个"场"通常在 300–1500 字之间。
+
+`MAX` 只用来在报告里说一句"偏长"，**不参与扣分**（见 `_length_penalty`）——
+默认值不该替作者限制产出量。`MIN` 仍然扣分：写短是偷懒。
+"""
 
 INSTRUCTION_RATIO_LOW = 0.5
 INSTRUCTION_RATIO_HIGH = 1.6
@@ -620,14 +682,28 @@ def _length_band(instruction: str) -> Tuple[int, int, str]:
     return DEFAULT_MIN_CHARS, DEFAULT_MAX_CHARS, "default"
 
 
-def _length_penalty(chars: int, low: int, high: int) -> float:
-    """长度罚分：区间内 0；过短线性扣到 1（0 字时满罚）；过长比过短宽容一半。"""
+def _length_penalty(chars: int, low: int, high: int, *, cap_upper: bool = False) -> float:
+    """长度罚分：区间内 0；过短线性扣到 1（0 字时满罚）。
+
+    **上限默认不管**（2026-10 改）。以前是"过长比过短宽容一半"（`over * 0.5`），
+    于是这套量具在**替我们限制模型的产出量**：默认区间只有 260–2000 字，一份写得长的
+    候选会因为"偏长"被扣分，best-of-N 于是倾向挑短的那份——作者要的发挥被我们的默认值压住。
+    这类"别写太多"的约束属于该去掉的一类（同 `agent_context` 里那条默认短拍口径）。
+
+    保留下界是有意的：写短是偷懒，不罚会让 best-of-N 挑到一行敷衍。两条合起来的原则是
+    **"不设上限，但别偷懒"**。
+
+    `cap_upper=True` 只在**作者明确给了篇幅**时用（"约 800 字"）：那是他没照做，
+    上下两侧都得算——作者的一句话优先于我们的默认区间。
+    """
     if chars <= 0:
         return 1.0
     if low <= chars <= high:
         return 0.0
     if chars < low:
         return max(0.0, 1.0 - chars / float(low))
+    if not cap_upper:
+        return 0.0
     over = (chars - high) / float(max(1, high))
     return min(1.0, over * 0.5)
 
@@ -635,6 +711,8 @@ def _length_penalty(chars: int, low: int, high: int) -> float:
 def _length_term(text: str, instruction: str) -> Dict[str, Any]:
     chars = count_chars(text)
     low, high, source = _length_band(instruction)
+    # 作者明确给了篇幅才管上限（见 `_length_penalty` 的说明）
+    cap_upper = source.startswith("instruction")
     ok = low <= chars <= high
     verdict = "合适" if ok else ("偏短" if chars < low else "偏长")
     return {
@@ -644,7 +722,9 @@ def _length_term(text: str, instruction: str) -> Dict[str, Any]:
         "ok": ok,
         "verdict": verdict,
         "source": source,
-        "penalty": round(_length_penalty(chars, low, high), 4),
+        "capUpper": cap_upper,
+        # 偏长时是 0（默认不设上限）；偏短照旧扣——所以这个数不再是"越短越好"的反向指标
+        "penalty": round(_length_penalty(chars, low, high, cap_upper=cap_upper), 4),
     }
 
 
@@ -671,10 +751,12 @@ def _build_notes(
     hard: int,
     lint_error: int,
     lint_warn: int,
+    other_warn: Optional[int] = None,
     beat: Dict[str, Any],
     voice: Dict[str, Any],
     flavor_count: int,
     length: Dict[str, Any],
+    assets: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     notes: List[str] = []
     if empty:
@@ -686,7 +768,14 @@ def _build_notes(
     if lint_error:
         notes.append(f"体检 error {lint_error} 处")
     if lint_warn:
-        notes.append(f"体检 warn {lint_warn} 处（罚分 {min(1.0, lint_warn / WARN_SATURATION):.2f}）")
+        # 说清这个数字的去向：style_skill 那一部分归 AI 味项，不在这里重复罚。
+        extra = ""
+        if other_warn is not None and other_warn != lint_warn:
+            extra = f"，其中 {lint_warn - other_warn} 处属风格 Skill（计入 AI 味项，此处不重复计罚）"
+        notes.append(
+            f"体检 warn {lint_warn} 处{extra}（本项罚分按 {other_warn if other_warn is not None else lint_warn} 处算："
+            f"{min(1.0, (other_warn if other_warn is not None else lint_warn) / WARN_SATURATION):.2f}）"
+        )
     if beat.get("checked"):
         notes.append(f"节拍覆盖 {beat['covered']}/{beat['total']}（issue {beat['issueCount']} 条）")
     if voice.get("checked"):
@@ -694,7 +783,27 @@ def _build_notes(
     elif voice.get("rows"):
         notes.append("声线未参与：出场角色画像样本不足")
     notes.append(f"AI 味/套话 {flavor_count} 处")
-    notes.append(f"长度 {length['chars']} 字（{length['verdict']}，区间 {length['min']}–{length['max']}）")
+    # 长度照旧报告，但说清"偏长扣不扣分"：以前这行只给区间，作者会以为超了就要扣分。
+    if length["ok"]:
+        notes.append(f"长度 {length['chars']} 字（合适，参考区间 {length['min']}–{length['max']}）")
+    elif length["chars"] < length["min"]:
+        notes.append(
+            f"长度 {length['chars']} 字（偏短，低于 {length['min']} 字——这一项会扣分）"
+        )
+    elif length.get("capUpper"):
+        notes.append(
+            f"长度 {length['chars']} 字（偏长，作者要的是 {length['min']}–{length['max']} 字）"
+        )
+    else:
+        notes.append(
+            f"长度 {length['chars']} 字（偏长，参考区间 {length['min']}–{length['max']} 字；"
+            "默认不设上限，不扣分）"
+        )
+    if assets is not None:
+        if assets["note"]:
+            notes.append(f"资产流失 {assets['loss']:.2f}（{assets['note']}）")
+        else:
+            notes.append("资产未流失：原稿的对白/动作/问句/专名都还在")
     return notes
 
 
@@ -705,17 +814,22 @@ def score_candidate(
     beat_sheet: Optional[Dict[str, Any]] = None,
     instruction: str = "",
     profile_cache: Optional[Dict[str, Dict[str, Any]]] = None,
+    source: str = "",
 ) -> Dict[str, Any]:
     """给一份候选打分。**纯确定性、不调模型**：同一输入必得同一分数，可进 CI 做回归。
 
     ``instruction`` 用于长度区间判断（可选）；``profile_cache`` 是角色声线画像的缓存
     （画像只取决于项目、与候选无关，best-of-N 的 N 份之间可以复用，省下 N 倍画像构建）。
+
+    ``source`` 是**原稿**（改稿场景才给）：给了就启用 `assets` 项，量"改稿有没有把内容删掉"。
+    生成侧不传，这一项缺席、不参与计分。
     """
     text = _clean(draft)
     audit = full_audit_draft(text)
     issues = [i for i in (audit.get("issues") or []) if isinstance(i, dict)]
     lint_error = int(audit.get("errorCount") or 0)
     lint_warn = int(audit.get("warnCount") or 0)
+    other_warn = _other_warn_count(issues, lint_warn)
     empty = not text
     lint_pass = bool(audit.get("pass")) and not empty
 
@@ -723,14 +837,17 @@ def score_candidate(
     beat = _beat_term(text, beat_sheet)
     voice = _voice_term(project, text, profile_cache)
     length = _length_term(text, instruction)
+    assets = _asset_term(text, source, project)
 
     hard = lint_error + int(beat.get("errorCount") or 0) + (1 if empty else 0)
     penalties: Dict[str, Optional[float]] = {
-        "lintWarn": min(1.0, lint_warn / WARN_SATURATION),
+        # 剔掉 style_skill 的那部分（归 aiFlavor），避免同一处命中罚两次
+        "lintWarn": min(1.0, other_warn / WARN_SATURATION),
         "beat": beat.get("penalty"),
         "voice": voice.get("penalty"),
         "aiFlavor": min(1.0, len(flavor) / FLAVOR_SATURATION),
         "length": length["penalty"],
+        "assets": None if assets is None else assets["loss"],
     }
     score, weights = _weighted_score(penalties)
     if hard > 0:
@@ -753,6 +870,7 @@ def score_candidate(
             "issues": flavor,
         },
         "lengthOk": length,
+        "assetKeep": assets,
         "penalties": {
             k: (None if v is None else round(float(v), 4)) for k, v in penalties.items()
         },
@@ -764,10 +882,12 @@ def score_candidate(
             hard=hard,
             lint_error=lint_error,
             lint_warn=lint_warn,
+            other_warn=other_warn,
             beat=beat,
             voice=voice,
             flavor_count=len(flavor),
             length=length,
+            assets=assets,
         ),
     }
 

@@ -555,6 +555,18 @@ export type AgentAction =
   | { op: "rename_chapter"; ref: string; title: string }
   | { op: "append_script"; chapterRef?: string; text: string }
   | { op: "replace_script"; chapterRef?: string; text: string }
+  /**
+   * 定点改写：只改点到的那几句，其余正文一个字都不动。
+   *
+   * 与 `replace_script` 的区别是**改动的粒度**——它让"改 7 处"不必执行成"重写全章"，
+   * 也让界面能把每条改动摆成可勾选的一行（见 `lib/patchEdits`）。
+   * `find` 必须与原文逐字一致、且在该章里只出现一次；`replace` 为空 = 删掉那一句。
+   */
+  | {
+      op: "patch_script";
+      chapterRef?: string;
+      edits: Array<{ find: string; replace?: string }>;
+    }
   | { op: "update_bible"; patch: Partial<StoryBible> }
   | { op: "update_meta"; title?: string; logline?: string; genre?: string }
   | {

@@ -9,14 +9,16 @@
    一致性检查档（契约是"先列冲突、不要重写正文"）。所以：
    - "要正文"→ continue（前端另有一条写作通道，见 agentIntent.test.ts）；
    - "问办法 / 要方向"→ chat，且**优先于**关键词。
-2. **篇幅**：短拍默认（180–450 字）写在硬规则、任务提示、输出契约**三处**，
-   还在上下文末尾重复一次；作者明确说"写完整 / 写到 X"时，三处一起让位——
-   否则作者的一句话压不过我们自己的三条默认值，正文就比网页版短一半以上。
+2. **篇幅**：默认口径曾经写死"约 180–450 字"，而且写在硬规则、任务提示、输出契约**三处**，
+   还在上下文末尾重复一次——三条同向的默认值压过作者的一句话，正文就比网页版短一半以上。
+   2026-10 分两步修：默认口径**去掉上限**（只要求"写完这一场"，见 `COMPLETE_BEAT_RULE`），
+   作者明确要篇幅时再换成更直的「一次写完」（`LONG_PROSE_RULE`，放在末尾硬规则区第一位）。
 """
 
 from __future__ import annotations
 
 from app.core.agent_context import (
+    COMPLETE_BEAT_RULE,
     LONG_PROSE_RULE,
     build_agent_context,
     infer_agent_task,
@@ -74,23 +76,29 @@ def test_length_ask_is_recognised():
     assert not wants_full_prose(None)
 
 
-def test_contract_and_rules_yield_to_the_author():
+def test_default_length_has_no_cap_and_the_ask_rule_takes_over():
+    """默认口径**不设字数上限**（2026-10 改）；作者要了篇幅时换成更直的那条。
+
+    这里以前钉的是"默认 180–450 字、作者要篇幅时让位"。去掉上限之后，"让位"这件事
+    仍然要钉：默认口径必须被**替换**（而不是与它并排），否则模型会挑默认值执行。
+    """
     short = output_contract("continue")
     long = output_contract("continue", None, "写到设计完的情节")
-    assert "180–450" in short
-    assert "180–450" not in long, "作者要了篇幅，短拍口径必须让位"
+    for text in (short, long):
+        assert "180–450" not in text, "默认口径不该再出现字数上限"
+    assert "别中途截断" in short
     assert "一次写完" in long
 
-    # 硬规则里那条"不要一次写长章"要被换成覆盖条，而不是并排（并排时模型挑默认值执行）
+    # 硬规则：默认那条是"写完这一场"；作者要篇幅时它被**换成** LONG_PROSE_RULE
     default_rules = task_key_rules_for("continue")
     asked_rules = task_key_rules_for("continue", None, "写到设计完的情节")
-    assert any("不要一次写长章" in r for r in default_rules)
-    assert not any("不要一次写长章" in r for r in asked_rules)
+    assert COMPLETE_BEAT_RULE in default_rules
+    assert COMPLETE_BEAT_RULE not in asked_rules, "默认口径要与覆盖条替换，不能并排"
     assert asked_rules[0] == LONG_PROSE_RULE
 
     # 任务提示（system 里那块）也要跟着翻
-    assert "默认短拍不适用" in task_hint("continue", "写到设计完的情节")
-    assert "默认短拍不适用" not in task_hint("continue")
+    assert "不要中途收住" in task_hint("continue", "写到设计完的情节")
+    assert "不要中途收住" not in task_hint("continue")
 
 
 def test_no_message_keeps_the_old_behaviour():
@@ -101,7 +109,7 @@ def test_no_message_keeps_the_old_behaviour():
 
 
 def test_context_tail_carries_the_length_override():
-    """端到端：作者要了篇幅时，上下文头尾两处都不再出现 180–450 的短拍口径。"""
+    """端到端：默认口径里没有字数上限；作者要篇幅时，头尾两处都换成覆盖条。"""
     project = _project()
     ctx = build_agent_context(
         project,
@@ -109,18 +117,21 @@ def test_context_tail_carries_the_length_override():
         userMessage="写到设计完的情节",
         task="continue",
     )
-    assert "180–450" not in ctx.text, "短拍口径还在上下文里，模型会照它截断"
+    assert "180–450" not in ctx.text
     assert "一次写完" in ctx.text
+    assert COMPLETE_BEAT_RULE not in task_key_rules_for("continue", None, "写到设计完的情节")
     # 覆盖条要在**头部硬规则**与**末尾硬规则**各出现一次
     head, tail = ctx.text[:1200], ctx.text[-1200:]
     assert "作者本轮明确要了篇幅" in head
     assert "作者本轮明确要了篇幅" in tail
 
-    # 没要篇幅时照旧（回归：别把默认口径改掉）
+    # 没要篇幅时：走默认口径，且**同样没有字数上限**
     plain = build_agent_context(
         project, chapterId="ch1", userMessage="接着写", task="continue"
     )
-    assert "180–450" in plain.text
+    assert "180–450" not in plain.text
+    assert COMPLETE_BEAT_RULE in plain.text
+    assert "作者本轮明确要了篇幅" not in plain.text
 
 
 def test_system_prompt_task_hint_also_yields(monkeypatch):
@@ -135,8 +146,8 @@ def test_system_prompt_task_hint_also_yields(monkeypatch):
     asked = compose_agent_system(
         identity_block="", task="continue", user_message="写到设计完的情节"
     )
-    assert "默认短拍不适用" not in short
-    assert "默认短拍不适用" in asked
+    assert "不要中途收住" not in short
+    assert "不要中途收住" in asked
     assert len(asked) > len(short)
 
 

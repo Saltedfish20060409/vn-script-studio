@@ -8,6 +8,11 @@
 - **`style_guide.md` 硬约束块（约 2k 字）**：它此前会因为 `style_skill` 与
   `harness` 的**循环导入**而静默消失（调用方是 `try/except: pass`），提示词看着正常、
   规则没了。这里钉住"先导入 style_skill 也能拿到这段"。
+  **2026-10 改**：这块**不再进生成侧**——它是判定用的，而且被尾部截断（§三 禁用词
+  offset 2679、§六 参考范例 3687 全在 2000 之外），块尾却还写着"禁用词与检查清单仍须遵守"，
+  等于要求模型遵守一份它看不见的清单，产物因此又瘦又平。生成侧中间试过一版正向的
+  「声口范例库」，又因为与工艺技能逐条重复而整块撤掉。**现在生成侧不带任何风格规范块**，
+  判定侧照旧拿清单。沿革见 `pipeline/rewrite_contract.py` 的模块头。
 - **写作导师块**：1.6k 字，线上每轮都注入。2026-09-28 的独立裁判消融测不出它的收益，
   所以默认改成**按需**（作者选过才带）；`exclude_sections` 的 `mentor` 键仍是硬开关
   （走「⚙ 资料」面板同一个开关），两种情况都在 promptMeta 里留痕。
@@ -29,15 +34,15 @@ STYLE_MARKER = "写作风格 Skill"
 
 def test_default_full_craft_lists_every_priority_skill_in_detail():
     """默认行为不变：优先级技能全部详述（`【技能：…】` 逐条出现）。"""
-    text = build_writing_craft_prompt("continue", "full", include_style=False)
+    text = build_writing_craft_prompt("continue", "full", include_rewrite_contract=False)
     detailed = text.count("【技能：")
     assert detailed >= 10, detailed
     assert "【亦须遵守（简表）】" in text
 
 
 def test_detail_max_moves_the_extras_into_the_title_list():
-    full = build_writing_craft_prompt("continue", "full", include_style=False)
-    lean = build_writing_craft_prompt("continue", "full", include_style=False, detail_max=6)
+    full = build_writing_craft_prompt("continue", "full", include_rewrite_contract=False)
+    lean = build_writing_craft_prompt("continue", "full", include_rewrite_contract=False, detail_max=6)
 
     assert lean.count("【技能：") == 6
     assert len(lean) < len(full), "精简版必须更短，否则等于没省"
@@ -74,11 +79,27 @@ def test_style_skill_can_be_imported_first_without_cycles():
     assert int(out.stdout.strip()) > 500, "风格清单块不该是空的"
 
 
-def test_craft_block_actually_carries_the_style_guide():
-    """`build_writing_craft_prompt` 的 try/except 会吞掉导入失败——所以必须正面断言它进了。"""
+def test_craft_block_carries_no_style_spec_block_at_all():
+    """生成侧不带**任何**风格规范块——不只是"不带某一份清单"。
+
+    为什么断言写成"这一类都没有"而不是"某个字符串不在"：块尾那个位置前后放过三样东西
+    （判定用的负面清单 → 声口范例库 → 现在什么都不放）。只钉住"声口范例不在"，
+    等于给下一位把这个位置填回去的人留了门——而填回去的第一版恰好是被尾部截断、
+    谎称"禁用词与检查清单仍须遵守"的那份清单。
+
+    生成侧该有的只有工艺 Skills；判定用的清单归 `style_skill`，走检查与修正的检查侧。
+    """
     text = build_writing_craft_prompt("continue", "full")
-    assert STYLE_MARKER in text
-    assert "禁用" in text
+    assert BLOCK_MARKER in text, "工艺 Skills 必须在"
+    # 风格规范块的各种签名，一个都不许出现
+    for signature in (
+        STYLE_MARKER,  # style_skill.prompt_block 的表头
+        "硬负面清单",  # style_guide §三 的节标题
+        "禁用短语",  # style_skill.confirm_preamble 的宣传语
+        "声口范例",  # 已删除的声口范例库
+        "【必守声口】",
+    ):
+        assert signature not in text, f"生成侧混进了风格规范块：{signature}"
 
 
 # ---- 导师块可关（exclude_sections 里的 mentor）--------------------------------

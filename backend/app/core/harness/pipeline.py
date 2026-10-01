@@ -13,6 +13,7 @@ from app.core.harness.ai_flavor import (
     summarize_issues,
 )
 from app.core.harness.roles import build_role_system
+from app.core.pipeline.rewrite_contract import rewrite_contract_block
 from app.core.llm_http import chat_completions, content_from_response
 from app.core.renpy import project_to_context
 from app.domain.types import VnProject
@@ -95,6 +96,7 @@ async def harness_editor_pass(
         else "（散文体：只给正文，不要代码块、不要标题或分段标记）"
     )
     prompt = (
+        f"{rewrite_contract_block()}\n\n"
         "请根据下列体检问题，给出最小改动后的文本（保持剧情意图）。"
         f"先用条目列出仍须注意的点，再给出改写正文{tail}。\n\n"
         f"## 体检\n{json.dumps(audit['issues'][:20], ensure_ascii=False)}\n\n"

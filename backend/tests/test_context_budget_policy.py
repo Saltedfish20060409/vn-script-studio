@@ -110,7 +110,7 @@ def test_small_window_model_clamps_the_budget_but_unknown_model_does_not():
     """32k 窗口的本地模型不能被默认预算撑爆；未知模型按保守窗口夹。"""
     assert context_budget_for_model("qwen3:8b") < DEFAULT_CONTEXT_MAX_CHARS
     assert context_budget_for_model("deepseek-flash") == DEFAULT_CONTEXT_MAX_CHARS
-    # 未知模型：默认预算（2026-10-01 起 96000）已经**高于**保守窗口（128k token ≈ 76.8k 字符），
+    # 未知模型：默认预算（2026-10 起同步档 128k）已经**高于**保守窗口（128k token ≈ 76.8k 字符），
     # 所以它现在确实被那个保守假设夹住了——这正是当初加这条假设要防的事
     # （自部署小窗口模型被上游直接拒答，用户什么都拿不到）。
     assert context_budget_for_model("some-custom-model") == 76_800

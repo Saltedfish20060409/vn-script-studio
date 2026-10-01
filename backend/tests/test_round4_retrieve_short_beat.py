@@ -87,15 +87,22 @@ def test_chat_task_does_not_prefetch():
     assert plan_write_prefetch(ctx, task="chat", chapter_id="ch1") == []
 
 
-def test_continue_contract_is_short_beat():
+def test_continue_contract_asks_for_a_complete_beat_not_a_short_one():
+    """续写要的是"这一场是完整的"，**不是**"写短"（2026-10 改）。
+
+    这两条以前断言契约里必须有 180/450 与"一小段"。那个口径是本轮要拆掉的东西：
+    它由我们的默认值替作者限制产出量，作者要一大段时模型会"守规矩地"少写。
+    现在默认不设上限，改钉"，写完这一场、不要中途截断"这件真正在意的事。
+    """
     contract = output_contract("continue")
-    assert "180" in contract or "450" in contract
-    assert "一小段" in contract or "短" in contract
+    assert "180" not in contract and "450" not in contract, "默认口径不该再有字数上限"
+    assert "写完" in contract and "截断" in contract
     rules = task_key_rules("continue")
-    assert any("一小段" in r or "180" in r for r in rules)
+    assert any("完整" in r and "截断" in r for r in rules), rules
+    assert not any("180" in r for r in rules)
 
 
-def test_novel_continue_contract_short_beat():
+def test_novel_continue_contract_also_has_no_length_cap():
     p = normalize_project(
         {
             "id": "n",
@@ -105,4 +112,5 @@ def test_novel_continue_contract_short_beat():
         }
     )
     contract = output_contract("continue", p)
-    assert "180" in contract or "450" in contract
+    assert "180" not in contract and "450" not in contract
+    assert "写完" in contract and "截断" in contract

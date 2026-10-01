@@ -155,7 +155,7 @@ def eval(
         "--arms",
         help=(
             "要跑哪些臂（逗号分隔）。tool=线上等价流程；bare=一句话人设；"
-            "消融臂：no_craft / no_style / no_mentor / no_review / no_context。"
+            "消融臂：no_craft / no_mentor / no_review / no_context / craft_lean。"
             "默认 tool,bare（与旧报告口径一致）"
         ),
     ),
@@ -266,6 +266,9 @@ def eval(
         from app.core.llm_params import task_temperature
         from app.core.narrative_lint import NarrativeLintIssue, lint_has_blockers
         from app.core.narrative_review import run_narrative_self_review
+        # 资产密度量具（每千字对白+动作 / 问句数）：读"约束让稿子变瘦了没有"，
+        # 与 lint 命中数一起读。见 `_score_arm` 的说明。
+        from app.core.prose_assets import extract_assets
         from app.core.writing_craft import build_writing_craft_prompt, select_craft_mode
 
     settings = get_settings()
@@ -413,7 +416,6 @@ def eval(
         composed: bool = True  # False = 裸聊臂
         craft: bool = True  # 工艺 Skills（含档位判定）
         craft_detail: Optional[int] = None  # 详述条数上限（None = 现状：全部优先级技能铺开）
-        style: bool = True  # 工艺块里那段「写作风格 Skill 硬约束」
         mentor: bool = True  # 写作导师块（线上默认恒开，可用 exclude_sections 摘掉）
         context: bool = True  # 作品上下文（检索拼装）
         self_review: bool = True  # 第二遍自检修订（线上只在有写动作时跑）
@@ -426,8 +428,7 @@ def eval(
             )
         ),
         "craft_lean": ArmSpec(label="工艺精简：详述只留前 6 条优先级技能（其余进简表）", craft_detail=6),
-        "no_craft": ArmSpec(label="消融：去掉工艺 Skills（连风格硬约束一起）", craft=False),
-        "no_style": ArmSpec(label="消融：保留工艺 Skills，去掉「写作风格 Skill」硬约束正文", style=False),
+        "no_craft": ArmSpec(label="消融：去掉工艺 Skills（连改稿契约一起）", craft=False),
         "no_mentor": ArmSpec(label="消融：去掉写作导师块（1.6k 字，线上默认关不掉）", mentor=False),
         "no_context": ArmSpec(label="消融：去掉作品上下文（只留提示词骨架）", context=False),
         "no_review": ArmSpec(label="消融：去掉第二遍自检修订", self_review=False),
@@ -443,6 +444,16 @@ def eval(
         arm_names = ["tool", "bare"]
     unknown = [a for a in arm_names if a not in AB_ARMS]
     if unknown:
+        # `no_style` 曾经量的是"生成侧文风块值不值这 1.8k 字"。那块已被整体删除
+        # （声口范例库与工艺技能逐条重复；判定用的负面清单则因为被尾部截断而撤走），
+        # 于是这条臂**再也摘不掉任何东西**。一条静默等同于基准臂的消融臂比没有更糟：
+        # 它会跑出"摘掉它零代价"的假结论。所以这里明确拒绝，而不是让它悄悄跑成 tool 的副本。
+        if "no_style" in unknown:
+            raise typer.BadParameter(
+                "`no_style` 已失效：生成侧不再有任何独立的文风块可摘"
+                "（声口范例库已删除，见 app/core/pipeline/rewrite_contract.py 的说明）。"
+                "想量约束的代价，请用 `craft_lean`（详述条数）或 `no_craft`（整块工艺）。"
+            )
         raise typer.BadParameter(
             f"未知的臂：{', '.join(unknown)}；可选：{', '.join(sorted(AB_ARMS))}"
         )
@@ -508,12 +519,13 @@ def eval(
         mentor_block = (
             build_mentor_prompt_for_project(project, task=agent_task) if spec.mentor else ""
         )
+        craft_block = build_writing_craft_prompt(
+            agent_task, craft.mode, detail_max=spec.craft_detail
+        )
         system = compose_agent_system(
             identity_block=agent_identity_block([], []),
             task=agent_task,
-            craft_block=build_writing_craft_prompt(
-                agent_task, craft.mode, include_style=spec.style, detail_max=spec.craft_detail
-            ),
+            craft_block=craft_block,
             mentor_block=mentor_block,
             context_text=ctx_obj.text if spec.context else "",
         )
@@ -569,6 +581,7 @@ def eval(
             "craftMode": craft.mode,
             "contextChars": ctx_obj.charsUsed if spec.context else 0,
             "mentorChars": len(mentor_block),
+            "craftChars": len(craft_block),
             "promptChars": len(system),
             "selfReview": review_note,
             "selfRevised": revised,
@@ -592,6 +605,7 @@ def eval(
             "craftMode": "off",
             "contextChars": 0,
             "mentorChars": 0,
+            "craftChars": 0,
             "promptChars": len(BARE_SYSTEM),
             "selfReview": "",
             "selfRevised": False,
@@ -690,9 +704,18 @@ def eval(
         return (sum(nums) / len(nums)) if nums else None
 
     async def _score_arm(text: str, task: str, instruction: str) -> dict:
-        """两臂用完全相同的量具：确定性 lint + 同一份 Rubric Judge。"""
+        """两臂用完全相同的量具：确定性 lint + 同一份 Rubric Judge。
+
+        **为什么还要量资产密度**（2026-10 补）：这套读数此前只有 lint 命中数与 Rubric 均分，
+        于是它只能分辨"干净"与"脏"，分不出"干净"与"瘦"。而"追求零命中"本身就是把稿子逼瘦的
+        激励机制——第一章实测：禁掉的都禁掉了，戏也没了。`assetPerKchar`（每千字对白+动作）
+        与 `questions`（问句数，未闭合问题的粗代理）就是为这个补的量具。
+        读法：`craft_lean` 若在 lint 上更差、却在资产密度和 Rubric 上不落下风，
+        那多铺的那 1.4k 字详述就不值；反过来"warn 变少 + 密度也掉 + Rubric 不涨"是收缩，不是改进。
+        """
         audit = full_audit_draft(text)
         judge = await _judge_rubric(ctx, task, text, instruction)
+        assets = extract_assets(text)
         return {
             "chars": len(text),
             "passed": bool(audit.get("pass")),
@@ -702,9 +725,38 @@ def eval(
                 {"severity": i.get("severity"), "code": i.get("code")}
                 for i in (audit.get("issues") or [])[:6]
             ],
+            "assets": {
+                "dialogues": assets["dialogues"],
+                "actions": assets["actions"],
+                "questions": assets["questions"],
+                # 密度而不是绝对数：长稿天然对白多，拿绝对数比会奖励灌水。
+                "perKchar": round(
+                    1000.0 * (assets["dialogues"] + assets["actions"]) / max(1, len(text)), 2
+                ),
+            },
             "judge": judge,
             "rubricAvg": _avg_rubric(judge),
             "veto": bool((judge or {}).get("veto")),
+        }
+
+    def _avg_assets(runs: List[dict]) -> dict:
+        """把多次采样的资产读数折成一条。
+
+        `perKchar` 取**均值**（密度是比率，不能先加总再除）；计数取均值后取整。
+        """
+        rows = [r.get("assets") or {} for r in runs]
+        if not rows:
+            return {}
+        n = len(rows)
+
+        def _mean(key: str) -> float:
+            return sum(float(r.get(key) or 0) for r in rows) / n
+
+        return {
+            "dialogues": round(_mean("dialogues")),
+            "actions": round(_mean("actions")),
+            "questions": round(_mean("questions")),
+            "perKchar": round(_mean("perKchar"), 2),
         }
 
     def _aggregate_runs(runs: List[dict]) -> dict:
@@ -734,6 +786,7 @@ def eval(
             "passRate": round(sum(passes) / n, 3),
             "errorCount": round(sum(int(r.get("errorCount") or 0) for r in ok) / n),
             "warnCount": round(sum(int(r.get("warnCount") or 0) for r in ok) / n),
+            "assets": _avg_assets(ok),
             "runs": [
                 {
                     k: r.get(k)
@@ -744,6 +797,7 @@ def eval(
                         "errorCount",
                         "warnCount",
                         "chars",
+                        "assets",
                         "selfRevised",
                     )
                 }
@@ -854,6 +908,9 @@ def eval(
                 "rubricAvg": round(sum(avgs) / len(avgs), 2) if avgs else None,
                 "errors": sum(c["errorCount"] for c in cells),
                 "warns": sum(c["warnCount"] for c in cells),
+                # 资产密度：读"这块约束让稿子变瘦了没有"（见 `_score_arm` 的说明）。
+                # 与 lint 命中数一起读：命中少 + 密度也低 = 干净但瘦，那正是要避免的结果。
+                "assets": _avg_assets(cells),
             }
 
         # 汇总。注意边界集的读法：那里的指令是"照写问题写法"，
@@ -866,6 +923,9 @@ def eval(
         report["summaryNote"] = (
             "边界集指令要求「照写问题写法」，因此 lint 命中率在对照模式下会被任务本身"
             "混淆（越听话写得越糟、命中越多），不作为优劣指标；边界集请看 Rubric 均分与 veto。"
+            "另：每条臂都补了**资产密度**（每千字对白+动作）与问句数——"
+            "命中少不一定好，可能是稿子被约束逼瘦了；"
+            "「warn 变少 + 密度也掉 + Rubric 不涨」是收缩，不是改进。"
         )
         report["method"] = {
             "repeats": repeats_n,
@@ -928,9 +988,13 @@ def eval(
                 if not agg.get("n"):
                     continue
                 mark = "（基准）" if name == baseline else ""
+                assets = agg.get("assets") or {}
                 typer.echo(
                     f"    {name}{mark}: lint通过 {agg['lintPass']:.0%} · Rubric {agg['rubricAvg']} · "
-                    f"veto {agg['veto']} · error {agg['errors']} / warn {agg['warns']}"
+                    f"veto {agg['veto']} · error {agg['errors']} / warn {agg['warns']} · "
+                    f"资产 {assets.get('perKchar', 0)}/千字"
+                    f"（对白 {assets.get('dialogues', 0)} · 动作 {assets.get('actions', 0)} · "
+                    f"问句 {assets.get('questions', 0)}）"
                 )
             for name, paired in comparisons.items():
                 base_agg = aggs[baseline]

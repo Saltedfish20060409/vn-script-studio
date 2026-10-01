@@ -17,6 +17,7 @@ from .agent_context import chapter_plain
 from .ai import DeepSeekConfig
 from .llm_http import chat_completions, content_from_response, usage_from_response
 from .narrative_lint import lint_narrative_draft
+from .pipeline.rewrite_contract import rewrite_contract_block
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
 _INNER_OS_RE = re.compile(r"[（(【\[]\s*内心\s*OS|内心\s*OS\s*[：:]", re.IGNORECASE)
@@ -92,15 +93,20 @@ REWRITE_SYSTEM = f"""你是资深视觉小说责编兼改稿人。输出**完整
 
 {GOLDEN_FEWSHOT}
 
+{rewrite_contract_block()}
+
 硬性要求：
 - 只输出正文（场景/画面/对白/选项），不要前言、不要 JSON、不要「改写说明」。
 - 必须落实诊断 keep/cut/rewrite/structure。
 - 禁止问答词典串；禁止「（内心OS：…）」；禁止连续物件讲解课。
 - **禁止**角色把名字总结成「明白了。为了达成…要求/任务…」。
 - **禁止**场景导览说明书（这里是…/工作区 + 尊重定义课）。
-- **禁止**工序/常识百科问答（为什么要分开、什么时候放、原理就是…）；过程旁白带过，只留入口感受。
+- **禁止**工序/常识百科问答（为什么要分开、什么时候放、原理就是…）；**就地把它改成经过，不要删掉整场戏**——
+  规则要拦的是"讲解腔"，不是"那场戏"：带这些字样的段落里往往同时有最好的日常戏与相处细节，
+  删掉整场是拿温度换干净，比留着更糟。过程旁白带过，只留入口感受。
 - **原文有选择菜单则必须保留**：含「请选择您的回答」与 A/B/C；至少一项毛边（「……我也说不清」）。
 - **改稿≠缩写**：砍说明书与假选择；相处、对视、入口感受、错位处该留则留，需要时允许略写长一点来保温度。
+  **信息只增不减**：物象数、关系触发、已埋伏笔、没被回答的问题——一项都不许少（见上面的改写契约）。
 - 禁止空旁白灌水；禁止把已干净的短章灌成说明书。
 - 对白要有毛边：沉默、跑题、不解释、答非所问。
 - 保留人名、称谓、系统输入名、选项标记风格；假选择要改成真选择（含「说不清」）。

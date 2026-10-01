@@ -45,9 +45,10 @@ _AGENT_SYSTEM_BASE = """你是「VN Script Studio」的驻场轻小说 / 视觉�
 4. 尊重 Variables（好感/flag）与 Sprites 表情槽；需要时可在对白旁注释 show 标签。
 5. 纯讨论/大纲/点评/征求意见：actions=[]，把完整意见写进 message（可长文、分点）；禁止只回「已处理」或空 message。
 6. 快捷任务若已要求写入，或用户明确说「写入/追加/应用/改到工程里…」，再用 actions。
-7. 禁止擅自大删既有剧情；replace_script 仅在用户明确要求整章重写并写入时。
+7. 禁止擅自大删既有剧情。**改现有正文里的某几句 → 用 `patch_script`**：find 逐字照抄你在上文读到的原文，只动点到的地方，其余一字不变。
+   `replace_script`（整章替换）只在作者**明确**说了「整章重写 / 推翻重来 / 换一版」并同意时用——「改完之后写入」「按建议改」「把这些建议落实」**都不算**（线上实测：那样会把"改 7 处"执行成"重写全章"，改后逐字保留的原文只剩 5%）。
 8. 若本轮有脚本 actions：message 至少用几句说明改了什么、为什么这样改；不要空 message。
-9. 用户粘贴他人审稿/长文分析并问「对吗 / 怎么改 / 提意见」：先在 message 里表态与细化方案（可摘改写示例对白）；未明确要求写入正文前不要 replace_script/append_script。
+9. 用户粘贴他人审稿/长文分析并问「对吗 / 怎么改 / 提意见」：先在 message 里表态与细化方案（可摘改写示例对白）；未明确要求写入正文前不要 patch_script / replace_script / append_script。
 
 输出（单一 JSON，无 markdown 围栏）：
 {
@@ -60,8 +61,12 @@ add_character / update_character / delete_character /
 add_location / update_location / delete_location /
 add_location_link / delete_location_link /
 add_chapter / delete_chapter / rename_chapter /
-append_script { "op":"append_script", "chapterRef"?, "text" } /
-replace_script { "op":"replace_script", "chapterRef"?, "text" } /
+append_script { "op":"append_script", "chapterRef"?, "text" } — 往下写新内容（接在章末） /
+patch_script { "op":"patch_script", "chapterRef"?, "edits":[{"find":"<逐字照抄的原文>","replace":"<新文>"}] } — **定点改现有正文**。
+  find 必须与上下文里的原文**逐字一致**（含标点与括号），且在该章里**只出现一次**；
+  只要有一条 find 找不到或有歧义，整条 op 会被拒绝并告诉你原因（改 find 再试，别改成整章替换）。
+  删除某句就给空 replace。其余正文一个字都不会动 /
+replace_script { "op":"replace_script", "chapterRef"?, "text" } — **整章替换**，仅作者明确要求整章重写时 /
 update_bible / update_meta /
 propose_character_link { fromRef, toRef, label?, quote? } — 进分析待审托盘，不直接改图 /
 propose_timeline_event { title, when?, summary?, chapterRef? } — 进待审托盘 /
@@ -200,6 +205,197 @@ def _text_to_blocks(text: str) -> List[ScriptBlock]:
     return blocks
 
 
+# ---------------------------------------------------------------- patch_script
+#
+# 为什么需要这个 op（2026-10，线上取证）：
+#
+# 改稿只有两条路——`append_script`（只能接在末尾）与 `replace_script`（整章替换）。
+# 于是"按这几条建议改"落到工具面上就只剩"把整章重新打一遍"，而模型无法逐字复现
+# 几千字，必然改写成自己的话。线上实测（项目《拟合少女》，作者「搁浅de咸鱼」）：
+# 用户圈定了 **7 处**定点修改，模型给出的动作是 `replace_script`，改后与改前**逐段完全
+# 相同的只有 5%**——也就是说"改 7 处"实际执行成了"重写全章"。
+#
+# `patch_script` 把这件事变成"改哪几句就说哪几句"：模型只给 find/replace 对，
+# 服务端做**逐字**替换，其余正文一个字都不动。
+
+MAX_PATCH_EDITS = 40
+"""一次 patch_script 最多几条改动。
+
+正常一次定点改 3–10 条；给到 40 是留余量，同时挡住"把整章拆成几百条 find"这种滥用
+（那种情况本来就该用 replace_script，并且要作者明确同意）。
+"""
+
+
+def _clip_quote(text: str, limit: int = 28) -> str:
+    """报错里引用一段原文：太长的截断，免得 skipped 变成一屏。"""
+    s = str(text or "").replace("\n", "⏎").strip()
+    return s if len(s) <= limit else s[:limit] + "…"
+
+
+def _block_text_field(block: Any) -> Tuple[str, str]:
+    """返回 `(存文本的字段名, 文本)`：`raw` 用 `code`，`narration` / `dialogue` 用 `text`。
+
+    字段名必须留着并按原样写回：一律写 `code` 会给 `narration` 块**多加**一个字段，
+    而渲染器仍读 `text` —— 补丁看起来成功了，实际上一个字没改（静默失效）。
+    """
+    if isinstance(block, dict):
+        for key in ("code", "text", "content"):
+            value = block.get(key)
+            if isinstance(value, str):
+                return key, value
+    return "", ""
+
+
+#: 模型常见的别名（find 侧 / replace 侧）。宁可多认几个，也别让它因为字段名写错而整条失败。
+_FIND_KEYS = ("find", "from", "old", "oldText", "search", "before", "match", "原文", "改前")
+_REPLACE_KEYS = ("replace", "to", "new", "newText", "after", "with", "替换", "改后")
+
+
+def _normalize_patch_edits(raw: Any, action: Dict[str, Any]) -> List[Dict[str, str]]:
+    """把模型给的各种写法归一成 `[{"find": ..., "replace": ...}]`。
+
+    接受三种形态：
+    1. `edits: [{find, replace}, ...]`（推荐形态）；
+    2. `edits: [["原文","新文"], ...]`（偶发的二元数组）；
+    3. 顶层简写：action 上直接写 `find` / `replace`（只有一条改动时最省事）。
+    """
+    items: List[Any] = []
+    if isinstance(raw, list):
+        items = list(raw)
+    elif isinstance(raw, dict):
+        items = [raw]
+    elif raw is None:
+        items = [action]  # 顶层简写
+
+    out: List[Dict[str, str]] = []
+    for item in items:
+        find = replace = None
+        if isinstance(item, dict):
+            for key in _FIND_KEYS:
+                if isinstance(item.get(key), str):
+                    find = item[key]
+                    break
+            for key in _REPLACE_KEYS:
+                if isinstance(item.get(key), str):
+                    replace = item[key]
+                    break
+            # 删除型改动：允许只给 find，没给 replace
+            if replace is None and any(k in item for k in ("delete", "remove")):
+                replace = ""
+        elif isinstance(item, (list, tuple)) and len(item) >= 2:
+            if isinstance(item[0], str) and isinstance(item[1], str):
+                find, replace = item[0], item[1]
+        if not isinstance(find, str) or not find:
+            continue
+        if replace is None:
+            replace = ""
+        out.append({"find": find, "replace": replace})
+    return out
+
+
+def _apply_edits_to_text(
+    text: str, edits: List[Dict[str, str]]
+) -> Tuple[Optional[str], str]:
+    """按顺序做逐字替换；**任何一条不是"恰好命中一次"就整条拒绝**。
+
+    为什么整条拒绝，而不是"能改的改掉"：半落地的稿子是**静默错误**——作者看到的正文
+    与模型以为改过的东西不一致，而且没有任何地方会报错。整条拒绝会给模型一条明确的
+    失败原因，它可以照着改 find 再试一次。
+
+    返回 `(新文本, 失败原因)`；成功时原因是空串。
+    """
+    working = text
+    for index, edit in enumerate(edits, start=1):
+        find = edit["find"]
+        hits = working.count(find)
+        if hits == 0:
+            return None, (
+                f"第 {index} 条 find 在正文里找不到：「{_clip_quote(find)}」"
+                "（find 必须**逐字**照抄上面读到的原文，不能凭记忆改写、不要自己补标点）"
+            )
+        if hits > 1:
+            return None, (
+                f"第 {index} 条 find 匹配到 {hits} 处，无法确定改哪一处：「{_clip_quote(find)}」"
+                "（把 find 写长一点，带上前后文）"
+            )
+        working = working.replace(find, edit["replace"], 1)
+    return working, ""
+
+
+def _patched_blocks(blocks: List[Any], edits: List[Dict[str, str]]) -> Optional[List[Any]]:
+    """逐块就地替换：每条 find 都落在**同一个块内**时才用这条路。
+
+    比"整章重排"好的地方：手调过的脚本（scene / show / label 这些块类型）原样保住，
+    只有被改到的那几行变——而且**写回原来的字段名**（`code` 或 `text`，见
+    `_block_text_field`）。任何一条落不到单块里就返回 None，由调用方回退到重排。
+    """
+    fields = [_block_text_field(b) for b in blocks]
+    values = [value for _, value in fields]
+    for edit in edits:
+        find = edit["find"]
+        hits = [i for i, value in enumerate(values) if value.count(find) == 1]
+        if len(hits) != 1:
+            return None
+        index = hits[0]
+        values[index] = values[index].replace(find, edit["replace"], 1)
+    out: List[Any] = []
+    for i, block in enumerate(blocks):
+        key, _ = fields[i]
+        if key and isinstance(block, dict):
+            out.append({**block, key: values[i]})
+        else:
+            out.append(block)
+    return out
+
+
+def _patch_chapter(
+    ch: SceneChapter, edits: List[Dict[str, str]]
+) -> Tuple[Optional[Dict[str, Any]], str]:
+    """在**权威读文本**上做定点改，返回 `(要写回工程的字段, 说明)` 或 `(None, 失败原因)`。
+
+    权威读文本 = `chapter_plain`（**正文优先、正文为空回落脚本档**）。这一点必须跟着读侧走：
+    模型是在那份文本上找到 find 的，改也必须改那一份，否则"改了但读不到"。
+
+    写回时**两面都尽量保持同步**：作者切到另一面时不该看到旧文（"一份存储不同步"是他们
+    踩过的坑）。另一面匹配不上就只改权威面，并在说明里如实写出来——不静默。
+    """
+    from app.core.agent_context import chapter_plain
+
+    text = chapter_plain(ch, None)
+    if not str(text or "").strip():
+        return None, (
+            "这一章是空的，没有可改的原文（要写新内容请用 append_script / replace_script）"
+        )
+
+    patched, why = _apply_edits_to_text(str(text), edits)
+    if patched is None:
+        return None, why
+
+    prose = str(getattr(ch, "prose", None) or "")
+    blocks = list(getattr(ch, "blocks", None) or [])
+    update: Dict[str, Any] = {}
+
+    if prose.strip():
+        # 权威面是正文档
+        update["prose"] = patched
+        where = "正文档"
+        synced = _patched_blocks(blocks, edits) if blocks else None
+        if synced is not None:
+            update["blocks"] = synced
+            where += "（脚本档同步）"
+    else:
+        # 权威面是脚本档：优先逐块就地改，保住块类型；落不到单块才整章重排
+        inplace = _patched_blocks(blocks, edits) if blocks else None
+        if inplace is not None:
+            update["blocks"] = inplace
+            where = "脚本档（逐块）"
+        else:
+            update["blocks"] = _text_to_blocks(patched)
+            where = "脚本档（整章重排：find 跨了块，块类型会退化成 raw）"
+
+    return update, where
+
+
 def _normalize_bible_patch(raw: Any) -> Dict[str, str]:
     """Accept English keys or common Chinese aliases from the model."""
     if not isinstance(raw, dict):
@@ -278,11 +474,11 @@ def _normalize_agent_actions(raw: Any) -> List[AgentAction]:
             continue
         obj["op"] = str(obj["op"]).strip()
 
-        if obj["op"] in ("append_script", "replace_script"):
+        if obj["op"] in ("append_script", "replace_script", "patch_script"):
             text = _coerce_script_text(
                 _nvl(obj.get("text"), obj.get("content"), obj.get("script"), obj.get("body"), obj.get("code"))
             )
-            if text is not None:
+            if text is not None and obj["op"] != "patch_script":
                 obj["text"] = text
             # chapter title sometimes sent as chapter / chapterId / chapter_name
             if obj.get("chapterRef") is None:
@@ -294,6 +490,11 @@ def _normalize_agent_actions(raw: Any) -> List[AgentAction]:
                 )
                 if isinstance(ref, str):
                     obj["chapterRef"] = ref
+            if obj["op"] == "patch_script":
+                # 归一化到 edits 列表（顶层简写与二元数组都收进来）
+                edits = _normalize_patch_edits(obj.get("edits") or obj.get("patch"), obj)
+                if edits:
+                    obj["edits"] = edits
 
         if obj["op"] in ("update_bible", "update_story_bible", "set_bible"):
             obj["op"] = "update_bible"
@@ -404,6 +605,35 @@ async def run_agent(
     return await run_agent_loop(
         config, request, on_event=on_event, on_checkpoint=on_checkpoint, resume=resume
     )
+
+
+def audit_script_actions(project: VnProject, actions: List[AgentAction]) -> List[str]:
+    """提案阶段的就读：这批动作里有"会把整章重写掉"的吗？
+
+    **为什么必须在提案阶段做**：作者只有在**还没点确认**时才知道"这次会重写 95% 的段落"，
+    那时候他还能选择不确认、或者要求改用 `patch_script`；等写完了再说就只剩"撤回"。
+
+    整章替换本身不是错（作者确实可以要求整章重写），错的是它被**当成"改几处"的执行方式**
+    ——线上那次就是这么发生的：用户圈了 7 处修改，模型给的是 `replace_script`，
+    改后逐字保留的原文只剩 5%。
+
+    返回给作者看的告警行（空列表 = 没什么可说的）。
+    """
+    from app.core.agent_context import chapter_plain
+    from app.core.prose_assets import rewrite_loss_note
+
+    out: List[str] = []
+    for action in actions or []:
+        if not isinstance(action, dict) or action.get("op") != "replace_script":
+            continue
+        ch = _find_chapter(project, _nvl(action.get("chapterRef"), None))
+        if ch is None:
+            continue
+        before = str(chapter_plain(ch, None) or "")
+        note = rewrite_loss_note(before, str(_coerce_script_text(action.get("text")) or ""))
+        if note:
+            out.append(f"「{ch.title}」：{note}")
+    return out
 
 
 @dataclass
@@ -682,6 +912,40 @@ def apply_agent_actions(
                     for c in next_project.chapters
                 ]
                 applied.append(f"重写「{ch.title}」")
+                continue
+
+            if op == "patch_script":
+                chapter_ref = _nvl(action.get("chapterRef"), defaultChapterId)
+                ch = _find_chapter(next_project, chapter_ref)
+                if not ch:
+                    skipped.append("无章节可改")
+                    continue
+                # 直接调用本函数时不会经过 `_normalize_agent_actions`，所以这里也要认
+                # `patch` 这个别名与顶层简写（见 `_normalize_patch_edits`）。
+                edits = _normalize_patch_edits(
+                    action.get("edits") or action.get("patch"), action
+                )
+                if not edits:
+                    skipped.append(
+                        "patch_script 没给出可用的 find/replace（每条至少要有 find；"
+                        '形如 {"find":"<逐字照抄的原文>","replace":"<新文>"}）'
+                    )
+                    continue
+                if len(edits) > MAX_PATCH_EDITS:
+                    skipped.append(
+                        f"patch_script 一次最多 {MAX_PATCH_EDITS} 条（收到 {len(edits)} 条）："
+                        "条目这么多就该整章重写了，而那要先得到作者明确同意"
+                    )
+                    continue
+                update, why = _patch_chapter(ch, edits)
+                if update is None:
+                    skipped.append(f"patch_script 未落地：{why}")
+                    continue
+                next_project.chapters = [
+                    c.model_copy(update=update) if c.id == ch.id else c
+                    for c in next_project.chapters
+                ]
+                applied.append(f"定点改写「{ch.title}」{len(edits)} 处（{why}）")
                 continue
 
             if op == "update_bible":
