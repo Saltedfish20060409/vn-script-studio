@@ -105,9 +105,9 @@ def test_writer_and_preview_use_the_prose():
     """写作通道的"当前章末尾"与公开分享页的试读，都取自作者当下那一面。"""
     import asyncio
 
+    from app.api.v1.shares import _build_preview
     from app.core.ai import DeepSeekConfig
     from app.core.pipeline import orchestrator as orch
-    from app.api.v1.shares import _build_preview
 
     project = _project(prose=PROSE)
     preview = _build_preview(project)

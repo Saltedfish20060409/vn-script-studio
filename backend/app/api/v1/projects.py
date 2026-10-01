@@ -2272,6 +2272,7 @@ async def agent_chapter_revise(
         payload = {
             "chapter_id": body.chapter_id,
             "note": body.note or "",
+            "discussion": body.discussion or "",
             "attachments": list(body.attachments or []),
             "mode": body.mode,
             "preferences": dict(body.preferences or {}) if body.preferences else None,
@@ -2288,6 +2289,7 @@ async def agent_chapter_revise(
                     vn2,
                     chapter_id=payload["chapter_id"],
                     note=payload["note"],
+                    discussion=payload.get("discussion") or "",
                     attachments=payload["attachments"],
                     mode=payload["mode"],
                     preferences=payload["preferences"],
@@ -2334,6 +2336,7 @@ async def agent_chapter_revise(
             vn,
             chapter_id=body.chapter_id,
             note=body.note or "",
+            discussion=body.discussion or "",
             attachments=list(body.attachments or []),
             mode=body.mode,
             preferences=dict(body.preferences or {}) if body.preferences else None,

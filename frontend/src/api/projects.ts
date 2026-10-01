@@ -1180,6 +1180,13 @@ export function chapterRevise(
   body: {
     chapter_id?: string;
     note?: string;
+    /**
+     * 作者正在回应的上一轮意见（一般是责编那条审阅回复）。
+     *
+     * 为什么需要：改稿这条路的提示词里**没有对话历史**，只有「本章正文 + note + 偏好」。
+     * 作者说「根据这些建议改写」时，不把那份意见递过去，那四个字对模型就是空的。
+     */
+    discussion?: string;
     conversation_id?: string;
     attachments?: AgentAttachment[];
     /**

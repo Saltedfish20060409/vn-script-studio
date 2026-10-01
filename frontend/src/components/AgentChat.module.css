@@ -1542,6 +1542,14 @@ html[data-panel-glass="ink"] .stageOverlay {
   font-weight: 650;
 }
 
+/* 附件在本次对话里一直有效（发完不清空）——这句必须让作者看见，
+   否则他会以为"上一轮的附件这一轮已经没了"（线上就是这么误会的）。 */
+.attachNote {
+  margin: 0 0 0.4rem;
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+}
+
 .attachActions {
   display: flex;
   flex-wrap: wrap;

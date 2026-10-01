@@ -648,6 +648,21 @@ def project_brief(project: VnProject, *, max_chars: int = 2200) -> str:
     return text if len(text) <= max_chars else text[:max_chars]
 
 
+#: 只有结构标记的行：新建章节、清空后的章节都会留一个 `[label start]`，
+#: 它渲染出来有 13 个字符，但**不是正文**——拿它回炉等于拿空气回炉。
+_STRUCTURAL_LINE_RE = re.compile(r"^\s*\[(?:label|scene|show|hide|jump|return)[^\]]*\]\s*$")
+
+
+def _meaningful_text(text: str) -> str:
+    """去掉纯结构标记行之后的正文（判"这一章到底有没有内容"用它）。"""
+    lines = [
+        ln
+        for ln in (text or "").splitlines()
+        if ln.strip() and not _STRUCTURAL_LINE_RE.match(ln)
+    ]
+    return "\n".join(lines).strip()
+
+
 def resolve_chapter_source(
     project: VnProject,
     *,
@@ -676,7 +691,8 @@ def resolve_chapter_source(
         # 回炉/改稿的"源文"必须走全项目唯一口径 `chapter_plain`（正文优先、正文为空才回落
         # 脚本块）。只读 blocks 的话，在**正文档**里改稿的作者会被拿着脚本档那份旧文回炉
         # （2026-10-01 线上事故：删掉的原文又出现在生成结果里）。
-        chapter_text = (chapter_plain(ch, project.characters) or "").strip()
+        # 再滤掉纯结构标记：清空后的章节会剩一个 `[label start]`，那不是可回炉的正文。
+        chapter_text = _meaningful_text(chapter_plain(ch, project.characters) or "")
         cid = ch.id
         title = ch.title or ""
 
@@ -685,11 +701,20 @@ def resolve_chapter_source(
         warnings.append("以附件正文为回炉来源（优先于当前章）")
     elif chapter_text:
         source = chapter_text
-    elif att_text:
-        source = att_text
-        warnings.append("当前章为空，使用附件正文")
+    elif att_text or attachments:
+        # 有附件，但抽出来的正文太短（空文档 / 只有标题 / 抽取失败）
+        raise RuntimeError(
+            "附件里没有可回炉的正文（不足 400 字）：换个内容完整的文档，"
+            "或先把正文写进这一章再回炉"
+        )
     else:
-        raise RuntimeError("没有可回炉的正文：请打开有内容的章节，或先上传章节附件")
+        # 最容易被误解的一种（2026-10-01 线上原话）：作者上一轮附了文档、这一轮说
+        # 「根据这些建议改写」——**附件只属于发送它的那一轮**，这一轮手里没有它，
+        # 而当前章又是空的，于是看起来像"它读不到上一句的附件、上下文不行"。
+        raise RuntimeError(
+            "没有可回炉的正文：这一轮没带附件，当前章也是空的。"
+            "附件只在发送它的那一轮生效——重新附上文档，或先把这一章的正文写进作品，再点一次"
+        )
 
     if len(source) > max_chars:
         source = source[:max_chars]
@@ -865,6 +890,7 @@ async def run_chapter_revise(
     *,
     chapter_id: Optional[str] = None,
     note: str = "",
+    discussion: str = "",
     attachments: Optional[List[Dict[str, Any]]] = None,
     critic_config: Optional[DeepSeekConfig] = None,
     mode: Optional[str] = None,
@@ -891,6 +917,15 @@ async def run_chapter_revise(
     )
     brief = project_brief(project)
     note_bit = (note or "").strip() or "按固化改稿协议回炉：砍问答课与内心OS，留相处与毛边。"
+    # 作者正在回应的上一轮意见（一般是责编那条审阅回复）。改稿提示词里**没有对话历史**，
+    # 所以作者说「根据这些建议」时必须把它一起递进来，否则那四个字对模型是空的。
+    advice_bit = (discussion or "").strip()
+    advice_block = (
+        f"## 作者正在回应的上一轮意见（他认可的部分要落实；与之冲突时以「用户说明」为准）\n"
+        f"{advice_bit[:4000]}\n\n"
+        if advice_bit
+        else ""
+    )
     mode_hint = resolve_mode_hint(mode)
     pref_hint = _prefs_hint(preferences)
     guidance = "\n\n".join(x for x in (mode_hint, pref_hint) if x)
@@ -901,6 +936,7 @@ async def run_chapter_revise(
         f"## 工程摘要\n{brief}\n\n"
         f"## 用户说明\n{note_bit}\n\n"
         f"## 回炉指引\n{guidance}\n\n"
+        f"{advice_block}"
         f"## 章节{('「' + title + '」') if title else ''}\n{source}"
     )
     raw_diag, model_a, tok_a = await _chat_json(
@@ -931,6 +967,7 @@ async def run_chapter_revise(
         f"## 工程摘要\n{brief}\n\n"
         f"## 用户说明\n{note_bit}\n\n"
         f"## 回炉指引\n{guidance}\n\n"
+        f"{advice_block}"
         f"## 诊断报告（必须落实）\n{json.dumps(diagnosis, ensure_ascii=False)}\n\n"
         f"## 原章节正文\n{source}\n\n"
         "请直接输出完整改写正文。"

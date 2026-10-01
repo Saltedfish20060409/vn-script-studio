@@ -268,6 +268,16 @@ export function AgentChat({
   const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
   const [messages, setMessages] = useState<AgentChatMessage[]>(defaultWelcome);
   const [input, setInput] = useState("");
+  /**
+   * 本次**对话**的附件：发完不清空，后续每一轮都跟着一起发给它（换剧本 / 换对话时清空）。
+   *
+   * 为什么改（2026-10-01 线上原话）：作者先附上「第一章.docx」让它审阅，拿到意见后说
+   * 「根据这些建议帮我改写第一章」——那一轮手里什么都没有，服务端只能拿"当前章正文"
+   * 当回炉源，而那一章是空的，于是报「没有可回炉的正文」。作者看到的像是"它读不到
+   * 上一句的附件、上下文理解不行"，其实是**附件从来只属于发送它的那一轮**。
+   *
+   * 代价是每一轮都会带一次附件正文（服务端单块上限 12000 字）：不想带就点「移除」。
+   */
   const [attachments, setAttachments] = useState<AgentAttachment[]>([]);
   const [attachBusy, setAttachBusy] = useState(false);
   const [pendingRevise, setPendingReviseState] = useState<ChapterReviseDraft | null>(
@@ -729,6 +739,8 @@ export function AgentChat({
     if (!nextId || nextId === conversationId || busy) return;
     setBusy(true);
     setError("");
+    // 附件属于"这一次对话"：换对话就清掉，免得上一个话题的资料串到新对话里
+    setAttachments([]);
     try {
       await flushSave();
       sessionReady.current = false;
@@ -746,6 +758,7 @@ export function AgentChat({
     if (busy) return;
     setBusy(true);
     setError("");
+    setAttachments([]); // 新对话 = 空手开始（附件属于上一次对话）
     try {
       await flushSave();
       sessionReady.current = false;
@@ -1548,7 +1561,9 @@ export function AgentChat({
       { role: "user", content: `${outbound}${attachNote}` },
     ];
     setMessages(nextMessages);
-    setAttachments([]);
+    // 附件**不清空**：它在本次对话里一直有效（见 state 声明处的说明）。
+    // 旧行为是发完即清，于是"先让它审阅这份文档，再说『按上面的建议改写』"这一轮
+    // 手里什么都没有 —— 线上原话：「没有可回炉的正文」。
     await streamAgentRun({
       resume: false,
       apiMessages: nextMessages
@@ -2159,7 +2174,6 @@ export function AgentChat({
     setError("");
     setBusy(true);
     setThinking("正在把附件结构化写入设定页…");
-    setAttachments([]);
     // 作者原话必须排在前面：以前这条只记「【写入设定页】请根据附件更新故事设定与角色卡。」
     // 这一句系统套话，作者打的字全没了（线上排查就是被这一点挡住过）。
     const userMsg: AgentChatMessage = {
@@ -2227,7 +2241,6 @@ export function AgentChat({
     setError("");
     setBusy(true);
     setThinking("正在扫描关系 / 时间线事实…");
-    setAttachments([]);
     const paste = pending
       .map((a) => a.text)
       .filter(Boolean)
@@ -2311,12 +2324,18 @@ export function AgentChat({
     setError("");
     setBusy(true);
     setThinking("正在准备改稿预览…");
-    setAttachments([]);
     const prefNote = prefsToNoteSuffix({ ...prefs, mode: resolvedMode });
     // 作者自己写的改法排在最前：提示词里「用户说明」是模型的**首要依据**，
     // 排在【本章偏好】之前，免得偏好里的旧话把他的新要求压下去
     const authorNote = opts?.customNote?.trim() || note?.trim() || "";
     const noteCombined = [authorNote, prefNote].filter(Boolean).join("\n");
+    // 改稿那条路（/agent/chapter-revise）**不带对话历史**，它的输入只有「本章正文 + 这一句 +
+    // 偏好」。所以作者说「根据这些建议」时，得把上一轮那份意见一起递过去，否则那四个字对
+    // 模型是空的（线上原话：作者接着责编的审阅意见说「其他建议我接受，请根据这些建议改写」）。
+    const lastAdvice = [...messagesRef.current]
+      .reverse()
+      .find((m) => m.role === "assistant" && (m.content || "").trim().length >= 200);
+    const discussion = (lastAdvice?.content || "").trim().slice(0, 4000);
     const userMsg: AgentChatMessage = {
       role: "user",
       content: pending.length
@@ -2333,6 +2352,7 @@ export function AgentChat({
       const kicked = await chapterRevise(projectId, {
         chapter_id: chapterId,
         note: noteCombined || undefined,
+        discussion: discussion || undefined,
         conversation_id: conversationId,
         attachments: pending,
         mode: resolvedMode,

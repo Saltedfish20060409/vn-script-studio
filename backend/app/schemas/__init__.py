@@ -350,6 +350,9 @@ class FactsAckStaleIn(BaseModel):
 class ChapterReviseIn(BaseModel):
     chapter_id: Optional[str] = None
     note: Optional[str] = None
+    # 作者正在回应的上一轮意见（责编那条审阅回复）：改稿提示词不带对话历史，
+    # 作者说「根据这些建议」时全靠它（2026-10-01 线上实测）。
+    discussion: Optional[str] = None
     conversation_id: Optional[str] = None
     attachments: Optional[List[Dict[str, Any]]] = None
     mode: Optional[str] = None  # cut_lecture | human_warmth | light_touch

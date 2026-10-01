@@ -194,3 +194,107 @@ def test_hard_fail_patterns_are_demo_free():
     src = inspect.getsource(cr)
     for token in ("味增", "大泡泡", "雪菜", "雨夜车站"):
         assert token not in src, f"demo token {token!r} still hardcoded in chapter_revise"
+
+
+# ---- 回炉源与"上一轮意见"（2026-10-01 线上实测）-------------------------------
+
+
+def _empty_chapter_project():
+    from app.core.project import normalize_project
+
+    return normalize_project(
+        {
+            "id": "p-revise",
+            "title": "回炉",
+            "characters": [{"id": "c1", "displayName": "甲", "defineName": "a"}],
+            "chapters": [
+                {
+                    "id": "ch1",
+                    "title": "第一章",
+                    "prose": "",
+                    "blocks": [{"type": "label", "id": "start", "name": "start"}],
+                }
+            ],
+        }
+    )
+
+
+def test_missing_source_error_names_the_real_cause():
+    """线上原话：「我上一轮附了文档、这一轮说根据这些建议改写」→「没有可回炉的正文」。
+
+    附件**只属于发送它的那一轮**（前端发完即清、服务端也不把附件写进会话），而那一章又是
+    空的 —— 报错必须把这两件事说出来，否则作者会以为"它读不到上一句的附件、上下文不行"。
+    """
+    import pytest as _pytest
+
+    project = _empty_chapter_project()
+    with _pytest.raises(RuntimeError) as err:
+        resolve_chapter_source(project, chapter_id="ch1", attachments=[])
+    message = str(err.value)
+    assert "附件只在发送它的那一轮生效" in message
+    assert "重新附上文档" in message
+
+
+def test_attachment_too_short_gets_its_own_message():
+    import pytest as _pytest
+
+    project = _empty_chapter_project()
+    with _pytest.raises(RuntimeError) as err:
+        resolve_chapter_source(
+            project, chapter_id="ch1", attachments=[{"filename": "a.docx", "text": "只有标题"}]
+        )
+    assert "不足 400 字" in str(err.value)
+
+
+def test_attachment_carried_into_this_turn_is_a_usable_source():
+    """会话附件那条路：附件正文跟着这一轮一起到了，就该能回炉（哪怕当前章是空的）。"""
+    project = _empty_chapter_project()
+    body = "雪菜坐在沙发上。" * 60  # > 400 字
+    source, cid, _title, warnings = resolve_chapter_source(
+        project, chapter_id="ch1", attachments=[{"filename": "第一章.docx", "text": body}]
+    )
+    assert source.startswith("雪菜坐在沙发上")
+    assert cid == "ch1"
+    assert any("附件正文为回炉来源" in w for w in warnings)
+
+
+def test_discussion_reaches_both_prompts(monkeypatch):
+    """作者说「根据这些建议」时，上一轮那份意见要真的进提示词（改稿路不带对话历史）。"""
+    import asyncio
+    import json as _json
+
+    from app.core import chapter_revise as cr
+    from app.core.ai import DeepSeekConfig
+
+    captured: dict = {}
+
+    async def fake_json(config, *, system, user, temperature, max_tokens=None):
+        captured["diagnose"] = user
+        return (
+            _json.dumps({"verdict": "ok", "keep": [], "cut": [], "rewrite": []}, ensure_ascii=False),
+            "m",
+            {},
+        )
+
+    async def fake_text(config, *, system, user, temperature, max_tokens=None):
+        captured["rewrite"] = user
+        return "她把杯子挪了半寸。\n" * 30, "m", {}
+
+    monkeypatch.setattr(cr, "_chat_json", fake_json)
+    monkeypatch.setattr(cr, "_chat_text", fake_text)
+
+    project = _empty_chapter_project()
+    result = asyncio.run(
+        cr.run_chapter_revise(
+            DeepSeekConfig(apiKey="k", baseUrl="http://x", model="m"),
+            project,
+            chapter_id="ch1",
+            note="我认为不需要拆章，其他建议我接受。",
+            discussion="建议一：砍掉参观一楼的碎过程。建议二：第二个 menu 是假选择。",
+            attachments=[{"filename": "第一章.docx", "text": "雪菜坐在沙发上。" * 60}],
+        )
+    )
+    for key in ("diagnose", "rewrite"):
+        assert "作者正在回应的上一轮意见" in captured[key], key
+        assert "建议一：砍掉参观一楼的碎过程" in captured[key], key
+    assert result.revised_text.strip()

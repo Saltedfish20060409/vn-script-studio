@@ -31,7 +31,7 @@ export function AgentAttachList({
   if (attachments.length === 0) return null;
   return (
     <>
-      <ul className={styles.attachList} aria-label="待发送附件">
+      <ul className={styles.attachList} aria-label="本次对话的附件">
         {attachments.map((a, i) => (
           <li key={`${a.filename}-${i}`}>
             <span title={a.warning || undefined}>
@@ -48,6 +48,9 @@ export function AgentAttachList({
           </li>
         ))}
       </ul>
+      <p className={styles.attachNote}>
+        附件在本次对话里一直有效（每一轮都会带上）；不用了就点「移除」。
+      </p>
       <div className={styles.attachActions}>
         <button
           type="button"
