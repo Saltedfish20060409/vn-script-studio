@@ -789,6 +789,20 @@ async def generate_rpy_from_prose_api(
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    nl_rpy_map = None
+    unmapped: list = []
+    if getattr(settings, "nl_rpy_full_map", True):
+        from app.core.nl_rpy_map import (
+            build_nl_rpy_map,
+            ensure_block_map_ids,
+            merge_preserve_structure,
+        )
+
+        old_blocks = list(ch.blocks or [])
+        blocks, unmapped = merge_preserve_structure(old_blocks, list(blocks))
+        blocks = ensure_block_map_ids(blocks)
+        nl_rpy_map = build_nl_rpy_map(body.prose or "", blocks)
+
     # 埋点：首次生成 RPY（激活漏斗里"能不能做成游戏"这一环）
     from app.core.analytics import RPY_GENERATED, record_first_event
 
@@ -803,8 +817,10 @@ async def generate_rpy_from_prose_api(
     return {
         "rpy": rpy,
         "blocks": blocks,
+        "proseHash": prose_fingerprint(body.prose or ""),
         "usedLlm": use_llm,
-        "proseHash": prose_fingerprint(body.prose),
+        "nlRpyMap": nl_rpy_map,
+        "unmappedCount": len(unmapped),
     }
 
 
@@ -2428,8 +2444,8 @@ async def agent_ingest_settings(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    """Force structured write of attachment text into bible / characters / meta."""
-    from app.core.settings_ingest import ingest_attachments_to_settings
+    """P7：多源设定入库。默认 dry-run（只返回 actions）；确认后再 apply-actions。"""
+    from app.core.settings_ingest import ingest_sources_to_settings
 
     row = await get_owned_project(db, user, project_id)
     vn = row_to_vn(row)
@@ -2439,8 +2455,23 @@ async def agent_ingest_settings(
             status_code=400,
             detail="服务端未配置 DEEPSEEK_API_KEY，请在 backend/.env 中设置",
         )
-    if not body.attachments:
-        raise HTTPException(status_code=400, detail="请先上传附件")
+
+    chapter_text = (body.chapter_text or "").strip()
+    outline = (body.outline or "").strip()
+    if body.chapter_id and not chapter_text:
+        ch = next((c for c in vn.chapters if c.id == body.chapter_id), None)
+        if ch:
+            chapter_text = (ch.prose or "").strip()
+            if not outline:
+                outline = (ch.synopsis or "").strip()
+    if not outline and vn.bible:
+        outline = (vn.bible.outline or "").strip()
+
+    has_src = bool(body.attachments) or bool(chapter_text) or bool(
+        (body.selection or "").strip()
+    ) or bool(outline)
+    if not has_src:
+        raise HTTPException(status_code=400, detail="请提供附件、章节正文、选区或大纲")
 
     from app.core.usage import ensure_under_quota
 
@@ -2450,12 +2481,18 @@ async def agent_ingest_settings(
         baseUrl=creds["base_url"],
         model=creds["model"],
     )
+    # 直写仅当服务端 flag 开且客户端显式 apply=true
+    do_apply = bool(settings.ingest_direct_apply) and (body.apply is True)
     try:
-        result = await ingest_attachments_to_settings(
+        result = await ingest_sources_to_settings(
             cfg,
             vn,
-            list(body.attachments),
+            list(body.attachments or []),
             user_note=body.note or "",
+            chapter_text=chapter_text,
+            selection=body.selection or "",
+            outline=outline,
+            apply=do_apply,
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2481,6 +2518,7 @@ async def agent_ingest_settings(
         "skipped": list(result.skipped),
         "project": out_project,
         "wrote": result.project is not None and bool(result.applied),
+        "dryRun": not do_apply,
     }
 
 
@@ -3146,15 +3184,21 @@ async def _streaming_writer_draft(
 
 async def _streaming_turn_ingest_delegate(
     *,
-    capability: str,
+    project_id: str,
+    body: AgentTurnIn,
     instruction: str,
+    user: User,
+    db: AsyncSession,
+    settings: Settings,
 ) -> StreamingResponse:
-    """P4 ingest 薄委托：不静默直写；引导走 Diff 确认（附件入库方案卡片）。"""
+    """P7 ingest：dry-run 出 actions Diff；不静默直写。"""
     from app.core.agent_turn import turn_meta_event
+    from app.core.settings_ingest import ingest_sources_to_settings
+    from app.services.projects import get_owned_project, row_to_vn
 
     async def event_stream():
         meta = turn_meta_event(
-            capability=capability,
+            capability=body.capability,
             write_op=None,
             passthrough=False,
             delegated=True,
@@ -3162,18 +3206,90 @@ async def _streaming_turn_ingest_delegate(
         meta["compatLayer"] = True
         meta["delegate"] = "settings_ingest_diff"
         yield f"data: {json.dumps(meta, ensure_ascii=False)}\n\n"
-        note = f"\n\n你的指令：{instruction}" if instruction else ""
+
+        row = await get_owned_project(db, user, project_id)
+        vn = row_to_vn(row)
+        chapter_text = ""
+        outline = ""
+        if body.chapter_id:
+            ch = next((c for c in vn.chapters if c.id == body.chapter_id), None)
+            if ch:
+                chapter_text = (ch.prose or "").strip()
+                outline = (ch.synopsis or "").strip()
+        if not outline and vn.bible:
+            outline = (vn.bible.outline or "").strip()
+        attachments = list(body.attachments or [])
+        has_src = (
+            bool(attachments)
+            or bool(chapter_text)
+            or bool((body.selection or "").strip())
+            or bool(outline)
+        )
+        if not has_src:
+            done = {
+                "type": "done",
+                "content": (
+                    "已路由到设定入库（ingest）。请附上资料，或选中正文/打开有内容的章，"
+                    "再说「写入设定」——会先出 Diff，确认后才写进工程。"
+                ),
+                "wrote": False,
+                "capability": "ingest",
+                "actions": [],
+                "dryRun": True,
+                "delegated": True,
+            }
+            yield f"data: {json.dumps(done, ensure_ascii=False)}\n\n"
+            return
+
+        creds = await resolve_llm_credentials(db, user.id, settings)
+        if not creds["api_key"]:
+            done = {
+                "type": "done",
+                "content": "未配置 API Key，无法整理设定 Diff。",
+                "wrote": False,
+                "capability": "ingest",
+                "actions": [],
+                "delegated": True,
+            }
+            yield f"data: {json.dumps(done, ensure_ascii=False)}\n\n"
+            return
+        cfg = DeepSeekConfig(
+            apiKey=creds["api_key"],
+            baseUrl=creds["base_url"],
+            model=creds["model"],
+        )
+        try:
+            result = await ingest_sources_to_settings(
+                cfg,
+                vn,
+                attachments,
+                user_note=instruction or "",
+                chapter_text=chapter_text,
+                selection=body.selection or "",
+                outline=outline,
+                apply=False,
+            )
+        except Exception as exc:
+            done = {
+                "type": "done",
+                "content": f"设定 Diff 失败：{exc}",
+                "wrote": False,
+                "capability": "ingest",
+                "actions": [],
+                "delegated": True,
+            }
+            yield f"data: {json.dumps(done, ensure_ascii=False)}\n\n"
+            return
+
         done = {
             "type": "done",
-            "content": (
-                "已路由到设定入库（ingest）。请附上资料后说「写入设定」，"
-                "会先出 Diff 方案卡片，点确认才写进工程（不会静默直写）。"
-                + note
-            ),
+            "content": result.message,
             "wrote": False,
-            "capability": capability,
-            "delegated": True,
+            "capability": "ingest",
+            "actions": result.actions,
+            "dryRun": True,
             "delegate": "settings_ingest_diff",
+            "delegated": True,
         }
         yield f"data: {json.dumps(done, ensure_ascii=False)}\n\n"
 
@@ -3197,15 +3313,43 @@ async def _streaming_turn_agent_delegate(
     db: AsyncSession,
     settings: Settings,
 ) -> StreamingResponse:
-    """P4 critique/chat 薄委托：先发 turn meta，再跑既有责编工具环 stream。"""
+    """P4/P6 critique/chat 薄委托：先发 turn meta，再跑既有责编工具环 stream。"""
     from app.core.agent_turn import turn_meta_event
+    from app.core.capability_router import critique_framing
+    from app.core.genre_write import resolve_writing_genre
+    from app.services.projects import get_owned_project, row_to_vn
+
+    task = "chat"
+    messages = list(
+        body.messages
+        or ([{"role": "user", "content": instruction}] if instruction else [])
+    )
+    warnings: list[str] = []
+    if body.capability == "critique":
+        task = "critique"
+        row = await get_owned_project(db, user, project_id)
+        project = row_to_vn(row) if row else None
+        genre = resolve_writing_genre(
+            project, override=body.genre_override
+        )
+        if project is not None and not (
+            str(getattr(project, "writingGenre", None) or "").strip()
+        ):
+            warnings.append("未设置 writingGenre，审稿按推断体裁；可在作品设置里显式选择。")
+        frame = critique_framing(genre)
+        # 把体裁帧并入最后一条 user 消息，确保进工具环
+        if messages and isinstance(messages[-1], dict):
+            last = dict(messages[-1])
+            last["content"] = frame + "\n" + str(last.get("content") or "")
+            messages[-1] = last
+        elif instruction:
+            messages = [{"role": "user", "content": frame + "\n" + instruction}]
 
     run_body = AgentRunIn(
-        messages=body.messages
-        or ([{"role": "user", "content": instruction}] if instruction else []),
+        messages=messages,
         chapter_id=body.chapter_id,
         selection=body.selection,
-        task="chat" if body.capability == "chat" else None,
+        task=task,  # type: ignore[arg-type]
         conversation_id=body.conversation_id,
         apply_actions=body.apply_actions
         if body.capability != "critique"
@@ -3232,6 +3376,10 @@ async def _streaming_turn_agent_delegate(
         )
         meta["compatLayer"] = True
         meta["delegate"] = "agent_stream"
+        if body.capability == "critique":
+            meta["task"] = "critique"
+        if warnings:
+            meta["warnings"] = warnings
         yield f"data: {json.dumps(meta, ensure_ascii=False)}\n\n"
         async for chunk in inner.body_iterator:
             if isinstance(chunk, bytes):
@@ -3260,7 +3408,7 @@ async def agent_turn_stream(
 ):
     """Writing Turn（ADR 0001 P4）：Capability 路由统一 SSE 入口。
 
-    - write：仅 continue / rewrite（P5 ops → 400）
+    - write：continue / rewrite / polish / expand / condense / style_transfer（未知 op → 400）
     - critique / chat：薄委托既有责编工具环 stream（先发 turn meta）
     - ingest：薄委托说明（Diff 确认路径；不静默直写）
     """
@@ -3311,8 +3459,12 @@ async def agent_turn_stream(
 
     if body.capability == "ingest":
         return await _streaming_turn_ingest_delegate(
-            capability=body.capability,
+            project_id=project_id,
+            body=body,
             instruction=instruction,
+            user=user,
+            db=db,
+            settings=settings,
         )
 
     # critique / chat → 薄委托既有 /agent/stream

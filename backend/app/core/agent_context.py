@@ -427,6 +427,11 @@ TASK_KEY_RULES: Dict[str, List[str]] = {
         "给结论与理由，不要客套、不要复述我的问题。",
         "除非我明确要求，否则不要改工程。",
     ],
+    "critique": [
+        "只审稿、不改稿、不 apply 工程。",
+        "按体裁 rubric 指出问题；每条给位置/摘句（若有）与可执行改法。",
+        "输出须为约定 JSON（summary + issues）。",
+    ],
 }
 
 
@@ -472,6 +477,10 @@ TASK_OUTPUT_CONTRACT: Dict[str, str] = {
     ),
     "voice": "输出调整后的台词或段落；旁边不写解释。",
     "chat": "直接回答：先结论后理由；需要时给可执行的改法；不要复述我的问题。",
+    "critique": (
+        "只输出 JSON：{\"summary\":\"…\",\"issues\":[{\"code\",\"severity\",\"quote?\","
+        "\"reason\",\"suggestion?\"}]}；不要改写正文、不要 apply。"
+    ),
 }
 
 

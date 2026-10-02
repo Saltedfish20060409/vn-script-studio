@@ -18,6 +18,19 @@ export const EVENTS = {
   aiCall: "ai_call",
   shareCreated: "share_created",
   inviteSent: "invite_sent",
+  onboardingStep: "onboarding_step",
+  agentTurnStart: "agent_turn_start",
+  agentTurnDone: "agent_turn_done",
+  agentTurnCancel: "agent_turn_cancel",
+  agentSoftTimeout: "agent_soft_timeout",
+  confirmWrite: "confirm_write",
+  autoRpyOk: "auto_rpy_ok",
+  autoRpyFail: "auto_rpy_fail",
+  ingestDiffConfirm: "ingest_diff_confirm",
+  ingestDiffDiscard: "ingest_diff_discard",
+  critiqueRendered: "critique_rendered",
+  contextTier: "context_tier",
+  costEstimateShown: "cost_estimate_shown",
 } as const;
 
 type Props = Record<string, string | number | boolean>;

@@ -96,6 +96,7 @@ import {
   createAutoRpyInflight,
   isAutoRpyAbortError,
 } from "../lib/autoRpyInflight";
+import { detectNlRpyConflict } from "../lib/nlRpyConflict";
 import { buildWriterCards, DEFAULT_WRITER } from "../lib/agentWriterCards";
 import type {
   AgentAction,
@@ -130,6 +131,13 @@ import {
   retrieveAllMessage,
   type BudgetNotice,
 } from "../lib/contextBudget";
+import { estimateContextCost } from "../lib/contextBudgetTier";
+import {
+  critiqueIssuesToMarkHints,
+  parseCritiquePayload,
+  type CritiquePayload,
+} from "../lib/critiquePayload";
+import { track, trackOncePerUser, EVENTS } from "../lib/track";
 import { AgentMessagesList } from "./AgentMessagesList";
 import { AgentPersonaOverlay } from "./AgentPersonaOverlay";
 import { ChapterReviseModePicker } from "./ChapterReviseModePicker";
@@ -215,6 +223,8 @@ type PendingPlan = {
   conversationId?: string;
   /** 定点改写的逐条勾选表（见 lib/patchEdits）：勾哪几条就写哪几条 */
   editRows?: PatchEditRow[];
+  /** P7：按整条 action 勾选（ingest Diff），非 patch find/replace */
+  actionLevelChecks?: boolean;
   /** 后端在**提案阶段**算的就读（例如"这次会重写 95% 的段落"） */
   warnings?: string[];
 };
@@ -440,6 +450,10 @@ export function AgentChat({
   const [gateMarkHints, setGateMarkHints] = useState<
     Array<{ quote?: string; reason?: string; instruction?: string; code?: string }>
   >([]);
+  /** P6：结构化审稿 issues（可一键建标记） */
+  const [critiquePayload, setCritiquePayload] = useState<CritiquePayload | null>(
+    null
+  );
   /** 「资料」开关：这次不交给 AI 的资料块（只影响本机会话；后端会忽略未知 key） */
   const [excluded, setExcluded] = useState<string[]>(() => loadExcludedSections());
   const [sectionsOpen, setSectionsOpen] = useState(false);
@@ -1053,6 +1067,11 @@ export function AgentChat({
     );
     setBusy(true);
     setGateMarkHints([]);
+    setCritiquePayload(null);
+    track(EVENTS.agentTurnStart, {
+      capability: opts.turnCapability || "chat",
+      resume: opts.resume,
+    });
     // 防御：**90 秒一个字节都没收到**（连服务端 20s 一次的 `: keepalive` 都没有）
     // 才判定连接出了问题，否则 busy 永远为 true，界面卡死在"正在检索设定"。
     //
@@ -1233,6 +1252,14 @@ export function AgentChat({
       // `included` 里的中文串——那种写法每加一个资料块都得同步改正则，漏了就不显示。
       const refShort = includedSummary(meta?.budgetReport);
       const usage = contextUsage(meta);
+      let costBit = "";
+      if (usage.nearLimit || usage.truncated) {
+        const chars =
+          typeof meta?.charsUsed === "number" ? meta.charsUsed : 0;
+        const est = estimateContextCost(chars);
+        costBit = est.label;
+        track(EVENTS.costEstimateShown, { tokens: est.estInputTokens });
+      }
       const evidenceRows = Array.isArray(meta?.includedDetails)
         ? meta.includedDetails
             .filter((d) => d && (d.label || d.preview))
@@ -1251,6 +1278,7 @@ export function AgentChat({
           prefetchShort,
           lensShort,
           refShort,
+          costBit,
         ]
           .filter(Boolean)
           .join(" · ")
@@ -1326,8 +1354,28 @@ export function AgentChat({
         content: foot ? `${res.message}\n\n${foot}` : res.message,
         trace: Array.isArray(res.trace) ? res.trace : undefined,
       };
+      if (opts.turnCapability === "critique") {
+        const parsed = parseCritiquePayload(res.message || "");
+        if (parsed) {
+          setCritiquePayload(parsed);
+          track(EVENTS.critiqueRendered, { issues: parsed.issues.length });
+        }
+        if (
+          Array.isArray(res.warnings) &&
+          res.warnings.some((w) => /writingGenre|体裁/.test(String(w)))
+        ) {
+          /* warnings already in foot */
+        }
+      }
       const finalMessages = [...opts.nextMessages, assistantMsg];
       setMessages(finalMessages);
+      track(EVENTS.agentTurnDone, {
+        capability: opts.turnCapability || "chat",
+        has_proposal: hasProposal ? 1 : 0,
+      });
+      trackOncePerUser(EVENTS.aiCall, {
+        capability: opts.turnCapability || "chat",
+      });
 
       await putAgentConversation(projectId, convId, {
         messages: finalMessages.slice(-120),
@@ -1447,10 +1495,18 @@ export function AgentChat({
     setPendingPlan(null);
     switch (plan.kind) {
       case "chat_actions":
+        track(EVENTS.confirmWrite, { kind: "chat_actions" });
         await applyConfirmedActions(plan);
         return;
       case "settings_ingest":
-        await ingestSettingsFromAttachments(plan.instruction);
+        // 粗闸确认 → dry-run Diff；若已有 actions（Diff 二次确认）则直接 apply
+        if (plan.actions?.length) {
+          track(EVENTS.ingestDiffConfirm, { actions: plan.actions.length });
+          track(EVENTS.confirmWrite, { kind: "settings_ingest" });
+          await applyConfirmedActions({ ...plan, kind: "chat_actions" });
+        } else {
+          await previewSettingsIngestDiff(plan.instruction);
+        }
         return;
       case "facts_scan":
         await runFactsScanFlow(plan.instruction);
@@ -1471,6 +1527,9 @@ export function AgentChat({
   function cancelPendingPlan() {
     const plan = pendingPlan;
     if (!plan) return;
+    if (plan.kind === "settings_ingest" && plan.actions?.length) {
+      track(EVENTS.ingestDiffDiscard, { actions: plan.actions.length });
+    }
     setPendingPlan(null);
     setUncheckedEdits([]); // 勾选状态跟着方案走，方案丢了就不该留着
     const content = `好，这次不写。「${plan.title.replace(" · 待确认", "")}」的方案已丢弃，工程没有做任何改动。`;
@@ -1491,12 +1550,25 @@ export function AgentChat({
   /** 确认落库：把方案里的动作发给 /agent/apply-actions（与后端同一条写入路径）。 */
   async function applyConfirmedActions(plan: PendingPlan) {
     const all = plan.actions || [];
-    // 定点改写按勾选过滤：没勾的改动不进这一批（后端因此一个字都不会动它）。
-    // 勾选表只对 patch_script 生效，别的动作（追加正文、改设定…）原样带着走。
+    // 定点改写按勾选过滤；ingest Diff 也用 editRows（before=动作标签）按 actionIndex 过滤。
     const selectedIds = (plan.editRows || [])
       .filter((row) => !uncheckedEdits.includes(row.id))
       .map((row) => row.id);
-    const actions = plan.editRows?.length ? filterPatchActions(all, selectedIds) : all;
+    let actions: AgentAction[];
+    if (plan.editRows?.length) {
+      if (plan.actionLevelChecks) {
+        const keep = new Set(
+          plan.editRows
+            .filter((r) => selectedIds.includes(r.id))
+            .map((r) => r.actionIndex)
+        );
+        actions = all.filter((_, i) => keep.has(i));
+      } else {
+        actions = filterPatchActions(all, selectedIds);
+      }
+    } else {
+      actions = all;
+    }
     const convId = plan.conversationId || conversationId;
     if (plan.editRows?.length && actions.length === 0) {
       setError("至少勾一处改动再确认");
@@ -1820,6 +1892,7 @@ export function AgentChat({
           setThinking(`正在写…（${live.length} 字）`);
           setLiveStream({ events: [], text: live });
         } else if (evt.type === "soft_timeout") {
+          track(EVENTS.agentSoftTimeout, { chars: live.length });
           const hint =
             (evt.message || "已超过软上限，仍可继续等待或点「取消」停止。") +
             (typeof evt.hardCancelS === "number"
@@ -1919,6 +1992,7 @@ export function AgentChat({
         setMessages(cancelled);
         messagesRef.current = cancelled;
         setLastContext("写作已取消");
+        track(EVENTS.agentTurnCancel, { capability: "write" });
         return;
       }
       setError(msg);
@@ -2423,20 +2497,17 @@ export function AgentChat({
     }
   }
 
-  async function ingestSettingsFromAttachments(ask?: string) {
+  async function previewSettingsIngestDiff(ask?: string) {
     if (!attachments.length || !conversationId || busy) return;
     await settleLocalEdits();
     const pending = [...attachments];
-    const snapshot = prepareProject ? prepareProject() : project;
     setError("");
     setBusy(true);
-    setThinking("正在把附件结构化写入设定页…");
-    // 作者原话必须排在前面：以前这条只记「【写入设定页】请根据附件更新故事设定与角色卡。」
-    // 这一句系统套话，作者打的字全没了（线上排查就是被这一点挡住过）。
+    setThinking("正在整理设定 Diff…");
     const userMsg: AgentChatMessage = {
       role: "user",
       content: flowUserMessage(
-        "【写入设定页】请根据附件更新故事设定与角色卡。",
+        "【写入设定页】请根据附件整理设定 Diff（确认前不写入）。",
         ask,
         attachmentLines(pending)
       ),
@@ -2445,43 +2516,75 @@ export function AgentChat({
     setMessages(withUser);
     messagesRef.current = withUser;
     try {
-      const res = await ingestAttachmentSettings(projectId, {
+      const preview = await ingestAttachmentSettings(projectId, {
         attachments: pending,
         note: "请把附件信息写入设定页（世界观/背景/大纲/主题/备忘）与角色卡",
         conversation_id: conversationId,
+        apply: false,
+        chapter_id: chapterId,
+        selection: selection || undefined,
       });
-      if (res.wrote && res.project) {
-        undoStack.current = [
-          ...undoStack.current,
-          { label: describeActions(res.actions || [], copy), project: snapshot },
-        ].slice(-20);
-        setUndoCount(undoStack.current.length);
-        onProjectChange(res.project);
+      const actions = preview.actions || [];
+      if (!actions.length) {
+        const assistantMsg: AgentChatMessage = {
+          role: "assistant",
+          content:
+            preview.message ||
+            "没有可写入的设定动作。请检查附件内容，或补充说明后再试。",
+        };
+        const finalMessages = [...withUser, assistantMsg].slice(-120);
+        setMessages(finalMessages);
+        messagesRef.current = finalMessages;
+        setLastContext("设定 Diff · 无动作");
+        await putAgentConversation(projectId, conversationId, {
+          messages: finalMessages,
+        }).catch(() => undefined);
+        return;
       }
-      const foot = [
-        res.wrote
-          ? `已落地：${(res.applied || []).join("；") || describeActions(res.actions || [], copy)}`
-          : "未写入工程",
-        (res.skipped || []).length ? `未执行：${res.skipped.join("；")}` : "",
-        res.wrote
-          ? `可用「撤回编辑」回滚（当前对话内 ${undoStack.current.length} 步）· 请打开「视图 → 设定」查看`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
+      const lines = planActionLines(actions, copy);
+      const editRows: PatchEditRow[] = actions.map((a, i) => ({
+        id: `${i}:0`,
+        actionIndex: i,
+        editIndex: 0,
+        chapterRef: "设定",
+        before: lines[i] || a.op,
+        after: "",
+      }));
+      setUncheckedEdits([]);
+      setPendingPlan({
+        kind: "settings_ingest",
+        title: `设定 Diff · 待确认（${actions.length} 项）`,
+        lines: [
+          quoteAsk(ask || "写入设定"),
+          ...lines,
+          ...(preview.skipped?.length
+            ? [`跳过：${preview.skipped.join("；")}`]
+            : []),
+        ],
+        note: "确认前不会改动工程；只写入勾中的动作。",
+        confirmLabel: "确认写入勾中的设定",
+        actions,
+        actionLevelChecks: true,
+        editRows,
+        conversationId,
+        instruction: ask,
+      });
+      setLastContext(`待确认方案 · 设定 Diff（${actions.length} 项）`);
       const assistantMsg: AgentChatMessage = {
         role: "assistant",
-        content: foot ? `${res.message}\n\n${foot}` : res.message,
+        content:
+          `${preview.message || "已整理设定 Diff。"}\n\n` +
+          `方案（未写入）：${describeActions(actions, copy)}\n` +
+          "确认前工程没有改动——勾选后点「确认写入勾中的设定」才落地。",
       };
       const finalMessages = [...withUser, assistantMsg].slice(-120);
       setMessages(finalMessages);
       messagesRef.current = finalMessages;
-      setLastContext(res.wrote ? "已写入设定页" : "设定写入未完成");
       await putAgentConversation(projectId, conversationId, {
         messages: finalMessages,
       }).catch(() => undefined);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "写入设定失败");
+      setError(e instanceof Error ? e.message : "整理设定 Diff 失败");
       setAttachments(pending);
     } finally {
       setBusy(false);
@@ -2737,7 +2840,10 @@ export function AgentChat({
         if (resolveWritingSurface() === "prose") {
           const ch = nextProject.chapters.find((c) => c.id === draft!.chapterId);
           if (ch && shouldAutoGenerateRpyAfterProseWrite(ch)) {
-            if (!isAutoRpyAfterProseWriteEnabled()) {
+            if (detectNlRpyConflict(ch) === "both") {
+              autoRpyNote =
+                "正文档已写入；正文与脚本都改过，已跳过自动更新脚本（请手动选择保留哪一面）";
+            } else if (!isAutoRpyAfterProseWriteEnabled()) {
               autoRpyNote = autoRpySkippedBySettingMessage();
             } else {
               const prose = storedProse(ch).trim();
@@ -2808,17 +2914,24 @@ export function AgentChat({
           const merged: VnProject = {
             ...latest,
             chapters: latest.chapters.map((c) =>
-              c.id === job.chapterId
-                ? {
-                    ...c,
-                    blocks: out.blocks,
-                    rpyFromProseHash: proseFingerprint(job.prose),
-                  }
-                : c
+                  c.id === job.chapterId
+                    ? {
+                        ...c,
+                        blocks: out.blocks,
+                        rpyFromProseHash: proseFingerprint(job.prose),
+                        ...(out.nlRpyMap ? { nlRpyMap: out.nlRpyMap } : {}),
+                      }
+                    : c
             ),
           };
           onProjectChange(merged, { skipEditorReload: true });
           setLastContext("正文档已写入，脚本已更新");
+          try {
+            const { track, EVENTS } = await import("../lib/track");
+            track(EVENTS.autoRpyOk, { kind: "auto" });
+          } catch {
+            /* ignore */
+          }
         } catch (e) {
           if (
             isAutoRpyAbortError(e) ||
@@ -2826,6 +2939,12 @@ export function AgentChat({
             !autoRpyInflightRef.current.isCurrent(job.id)
           ) {
             return;
+          }
+          try {
+            const { track, EVENTS } = await import("../lib/track");
+            track(EVENTS.autoRpyFail, { kind: "auto" });
+          } catch {
+            /* ignore */
           }
           setError(
             e instanceof Error
@@ -2950,6 +3069,33 @@ export function AgentChat({
                  顶到标题栏底下点不到（起手句那次已经踩过一遍）。
                  起手句点了只填不发，不替作者花模型调用。 */
               <>
+                {critiquePayload && onCreateMarksFromHints ? (
+                  <div
+                    className={styles.resumeBar}
+                    role="status"
+                    data-testid="critique-issues"
+                  >
+                    <span>
+                      审稿 {critiquePayload.issues.length} 处
+                      {critiquePayload.summary
+                        ? ` · ${critiquePayload.summary.slice(0, 48)}`
+                        : ""}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      data-testid="critique-mark-one-click"
+                      onClick={() => {
+                        const n = onCreateMarksFromHints(
+                          critiqueIssuesToMarkHints(critiquePayload.issues)
+                        );
+                        if (n > 0) setCritiquePayload(null);
+                      }}
+                    >
+                      一键标记批改
+                    </button>
+                  </div>
+                ) : null}
                 {gateMarkHints.length > 0 && onCreateMarksFromHints ? (
                   <div
                     className={styles.resumeBar}
@@ -3351,7 +3497,9 @@ export function AgentChat({
               {pendingPlan.editRows?.length ? (
                 <>
                   <p className={styles.planEditHint}>
-                    勾选要落地的改动（没勾的一个字都不会动）：
+                    {pendingPlan.actionLevelChecks
+                      ? "勾选要落地的设定动作（没勾的不会写入）："
+                      : "勾选要落地的改动（没勾的一个字都不会动）："}
                   </p>
                   <ul className={styles.planEdits} data-testid="agent-plan-edits">
                     {pendingPlan.editRows.map((row) => {
@@ -3372,11 +3520,21 @@ export function AgentChat({
                                 )
                               }
                             />
-                            <span className={styles.planEditBefore}>{clipLine(row.before)}</span>
-                            <span aria-hidden="true">→</span>
-                            <span className={styles.planEditAfter}>
-                              {row.after ? clipLine(row.after) : "（删掉这一句）"}
-                            </span>
+                            {pendingPlan.actionLevelChecks ? (
+                              <span className={styles.planEditBefore}>
+                                {clipLine(row.before, 96)}
+                              </span>
+                            ) : (
+                              <>
+                                <span className={styles.planEditBefore}>
+                                  {clipLine(row.before)}
+                                </span>
+                                <span aria-hidden="true">→</span>
+                                <span className={styles.planEditAfter}>
+                                  {row.after ? clipLine(row.after) : "（删掉这一句）"}
+                                </span>
+                              </>
+                            )}
                           </label>
                         </li>
                       );

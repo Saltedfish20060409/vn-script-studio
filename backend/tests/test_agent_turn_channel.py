@@ -89,22 +89,23 @@ def test_agent_turn_write_passthrough_emits_meta_and_done(monkeypatch):
     _run(_scenario())
 
 
-def test_agent_turn_rejects_p5_write_op(monkeypatch):
+def test_agent_turn_rejects_unknown_write_op(monkeypatch):
+    """P5 已开放 polish 等；未知 write_op 仍应 400。"""
+
     async def _scenario():
         async with db_gate.make_client(APP) as client:
-            headers = await db_gate.register_headers(client, "turn_p5")
+            headers = await db_gate.register_headers(client, "turn_bad_op")
             pid = await _create_project(client, headers)
             resp = await client.post(
                 f"/api/v1/projects/{pid}/agent/turn",
                 json={
                     "capability": "write",
-                    "write_op": "polish",
-                    "instruction": "润色一下",
+                    "write_op": "teleport",
+                    "instruction": "非法 op",
                 },
                 headers=headers,
             )
-            assert resp.status_code == 400, resp.text
-            assert "P5" in resp.text
+            assert resp.status_code in (400, 422), resp.text
 
     _run(_scenario())
 

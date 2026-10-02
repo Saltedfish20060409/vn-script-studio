@@ -157,6 +157,12 @@ class Settings(BaseSettings):
     # single-worker (in-process) broadcasts.
     redis_url: str = ""
 
+    # P7：设定入库是否允许 LLM 后直接落库。默认 false = 只出 Diff，确认后再 apply。
+    ingest_direct_apply: bool = False
+
+    # NL↔RPY 完整映射（独立 ADR）。false = 回退 P5 hash + 章级 regenerate。
+    nl_rpy_full_map: bool = True
+
     # Optional embedding endpoint for pgvector semantic search (OpenAI
     # compatible). Leave empty to keep heuristic keyword retrieval.
     embedding_base_url: str = ""

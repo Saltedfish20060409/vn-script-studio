@@ -54,32 +54,57 @@ export interface Character {
 }
 
 export type ScriptBlock =
-  | { type: "label"; id: LabelId; name: string }
-  | { type: "scene"; image: string; transition?: string }
-  | { type: "show"; image: string; at?: string }
-  | { type: "hide"; image: string }
-  | { type: "narration"; text: string }
-  | { type: "dialogue"; characterId: CharacterId; text: string }
-  | { type: "menu"; id: string; prompt?: string; choices: MenuChoice[] }
-  | { type: "jump"; target: LabelId }
-  | { type: "return" }
-  | { type: "comment"; text: string }
-  | { type: "raw"; code: string }
+  | ({ type: "label"; id: LabelId; name: string } & { mapId?: string })
+  | ({ type: "scene"; image: string; transition?: string } & { mapId?: string })
+  | ({ type: "show"; image: string; at?: string } & { mapId?: string })
+  | ({ type: "hide"; image: string } & { mapId?: string })
+  | ({ type: "narration"; text: string } & { mapId?: string })
+  | ({
+      type: "dialogue";
+      characterId: CharacterId;
+      text: string;
+    } & { mapId?: string })
+  | ({
+      type: "menu";
+      id: string;
+      prompt?: string;
+      choices: MenuChoice[];
+    } & { mapId?: string })
+  | ({ type: "jump"; target: LabelId } & { mapId?: string })
+  | ({ type: "return" } & { mapId?: string })
+  | ({ type: "comment"; text: string } & { mapId?: string })
+  | ({ type: "raw"; code: string } & { mapId?: string })
   // ---- 演出指令（音频 / 等待 / 镜头 / 特效）----
-  | { type: "music"; action: "play" | "stop"; file?: string; fade?: number }
-  | { type: "sound"; action: "play" | "stop"; file?: string; volume?: number }
-  | { type: "voice"; action: "play" | "stop"; file?: string }
-  | { type: "wait"; seconds?: number }
-  | { type: "camera"; zoom?: number; x?: number; y?: number; at?: string }
-  | { type: "effect"; kind: string; duration?: number }
+  | ({
+      type: "music";
+      action: "play" | "stop";
+      file?: string;
+      fade?: number;
+    } & { mapId?: string })
+  | ({
+      type: "sound";
+      action: "play" | "stop";
+      file?: string;
+      volume?: number;
+    } & { mapId?: string })
+  | ({ type: "voice"; action: "play" | "stop"; file?: string } & { mapId?: string })
+  | ({ type: "wait"; seconds?: number } & { mapId?: string })
+  | ({
+      type: "camera";
+      zoom?: number;
+      x?: number;
+      y?: number;
+      at?: string;
+    } & { mapId?: string })
+  | ({ type: "effect"; kind: string; duration?: number } & { mapId?: string })
   // ---- 变量与条件 ----
-  | {
+  | ({
       type: "set";
       key: string;
       op?: "=" | "+=" | "-=";
       value?: number | boolean | string;
-    }
-  | { type: "if"; branches: IfBranch[] };
+    } & { mapId?: string })
+  | ({ type: "if"; branches: IfBranch[] } & { mapId?: string });
 
 export interface IfBranch {
   /** 空 = 否则分支 */
@@ -104,6 +129,18 @@ export interface SceneChapter {
   prose?: string;
   /** Fingerprint of prose last used to generate RPY. */
   rpyFromProseHash?: string;
+  /** NL↔RPY 完整映射（可选；旧工程无此字段）。 */
+  nlRpyMap?: {
+    version: number;
+    proseFingerprint: string;
+    blocksFingerprint: string;
+    segments?: Array<{
+      id: string;
+      proseStart: number;
+      proseEnd: number;
+      mapIds: string[];
+    }>;
+  };
   /** 所属卷（可选）。没有卷 = 平铺章节，老工程行为不变。 */
   volumeId?: string;
   /**

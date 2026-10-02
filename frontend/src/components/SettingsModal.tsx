@@ -41,6 +41,12 @@ import {
   setAutoRpyAfterProseWriteEnabled,
 } from "../lib/autoRpyFlag";
 import {
+  budgetCharsToTier,
+  saveContextBudgetTier,
+  type ContextBudgetTier,
+} from "../lib/contextBudgetTier";
+import { track, EVENTS } from "../lib/track";
+import {
   loadLlmCredentials,
   loadStorageMode,
   saveLlmCredentials,
@@ -336,6 +342,11 @@ function LlmPane() {
 
   const save = () => {
     setError("");
+    const tier: ContextBudgetTier = budgetCharsToTier(
+      /^\s*\d+\s*$/.test(budgetChars) ? Number(budgetChars) : 0
+    );
+    saveContextBudgetTier(tier);
+    track(EVENTS.contextTier, { tier });
     persist({
       apiKey,
       baseUrl,
@@ -591,20 +602,46 @@ function LlmPane() {
       <p className={styles.note}>{windowHint}</p>
       {/* 上下文预算：作者自选（留空 = 跟随服务端默认）。服务端仍会按执行档天花板与模型窗口夹一次。 */}
       <label>
-        上下文预算（字符，留空 = 跟随服务端默认）
+        上下文档位（P8）
+        <select
+          data-testid="settings-context-tier"
+          value={
+            /^\s*\d+\s*$/.test(budgetChars) && Number(budgetChars) > 0
+              ? Number(budgetChars) <= 128000
+                ? "standard"
+                : Number(budgetChars) <= 192000
+                  ? "enhanced"
+                  : "max"
+              : budgetChars.trim() === "" || budgetChars.trim() === "0"
+                ? "max"
+                : "standard"
+          }
+          onChange={(e) => {
+            const t = e.target.value;
+            if (t === "standard") setBudgetChars("128000");
+            else if (t === "enhanced") setBudgetChars("192000");
+            else setBudgetChars(""); // max = 跟随服务端
+          }}
+        >
+          <option value="standard">标准（同步 128k 字）</option>
+          <option value="enhanced">增强（同步 192k 字）</option>
+          <option value="max">最大（不设产品硬顶，跟模型窗口）</option>
+        </select>
+      </label>
+      <label>
+        上下文预算高级覆盖（字符，留空 = 跟随档位/服务端）
         <input
           type="text"
           inputMode="numeric"
           value={budgetChars}
           data-testid="settings-context-budget"
           onChange={(e) => setBudgetChars(e.target.value)}
-          placeholder="如 128000（≈9 万 token）/ 256000（≈18 万 token）"
+          placeholder="如 128000 / 192000；留空=最大档"
         />
       </label>
       <p className={styles.note}>
-        单位是字符、不是 token：中文 1 字 ≈ 0.7 token，所以 128000 ≈ 9 万 token。
-        装满会带来两件事：每次调用的输入 token 变多、等第一个字变久。服务端上限：同步接口
-        192000 字，AI 责编那条流式通道可到 512000 字；模型窗口更小时按窗口夹。不确定就留空。
+        单位是字符。与后端一致：约 1.2 字 ≈ 1 token，故 128000 字 ≈ 10.7 万
+        token。装满会让输入 token 变多、首字变慢。最大档会在责编条显示成本估算。
       </p>
       {savedNote && <p className={styles.okNote}>{savedNote}</p>}
       {testResult && (

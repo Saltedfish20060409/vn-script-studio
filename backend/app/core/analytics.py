@@ -43,6 +43,19 @@ EXPORT_DONE = "export_done"
 SHARE_CREATED = "share_created"
 INVITE_SENT = "invite_sent"
 MEMORY_ARCHIVED = "memory_archived"
+ONBOARDING_STEP = "onboarding_step"
+AGENT_TURN_START = "agent_turn_start"
+AGENT_TURN_DONE = "agent_turn_done"
+AGENT_TURN_CANCEL = "agent_turn_cancel"
+AGENT_SOFT_TIMEOUT = "agent_soft_timeout"
+CONFIRM_WRITE = "confirm_write"
+AUTO_RPY_OK = "auto_rpy_ok"
+AUTO_RPY_FAIL = "auto_rpy_fail"
+INGEST_DIFF_CONFIRM = "ingest_diff_confirm"
+INGEST_DIFF_DISCARD = "ingest_diff_discard"
+CRITIQUE_RENDERED = "critique_rendered"
+CONTEXT_TIER = "context_tier"
+COST_ESTIMATE_SHOWN = "cost_estimate_shown"
 
 EVENT_NAMES = frozenset(
     {
@@ -57,12 +70,41 @@ EVENT_NAMES = frozenset(
         SHARE_CREATED,
         INVITE_SENT,
         MEMORY_ARCHIVED,
+        ONBOARDING_STEP,
+        AGENT_TURN_START,
+        AGENT_TURN_DONE,
+        AGENT_TURN_CANCEL,
+        AGENT_SOFT_TIMEOUT,
+        CONFIRM_WRITE,
+        AUTO_RPY_OK,
+        AUTO_RPY_FAIL,
+        INGEST_DIFF_CONFIRM,
+        INGEST_DIFF_DISCARD,
+        CRITIQUE_RENDERED,
+        CONTEXT_TIER,
+        COST_ESTIMATE_SHOWN,
     }
 )
 
 # props 只允许这些键（避免前端不小心把正文/密钥带上来）
 _ALLOWED_PROP_KEYS = frozenset(
-    {"template", "is_sample", "kind", "step", "from", "chars", "model"}
+    {
+        "template",
+        "is_sample",
+        "kind",
+        "step",
+        "from",
+        "chars",
+        "model",
+        "capability",
+        "write_op",
+        "tier",
+        "tokens",
+        "resume",
+        "issues",
+        "actions",
+        "has_proposal",
+    }
 )
 _MAX_PROPS = 6
 _MAX_VALUE_LEN = 64

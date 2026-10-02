@@ -388,6 +388,8 @@ export type GenerateRpyOut = {
   blocks: import("../types/vn").ScriptBlock[];
   usedLlm: boolean;
   proseHash: string;
+  nlRpyMap?: import("../types/vn").SceneChapter["nlRpyMap"];
+  unmappedCount?: number;
 };
 
 export async function generateRpyFromProse(
@@ -1164,6 +1166,11 @@ export function ingestAttachmentSettings(
     attachments: AgentAttachment[];
     note?: string;
     conversation_id?: string;
+    apply?: boolean;
+    chapter_id?: string;
+    chapter_text?: string;
+    selection?: string;
+    outline?: string;
   }
 ): Promise<{
   message: string;
@@ -1172,6 +1179,7 @@ export function ingestAttachmentSettings(
   skipped: string[];
   project: VnProject;
   wrote: boolean;
+  dryRun?: boolean;
 }> {
   return apiFetch(`/projects/${projectId}/agent/ingest-settings`, {
     method: "POST",
@@ -1185,6 +1193,11 @@ export function ingestAttachmentSettings(
       })),
       note: body.note,
       conversation_id: body.conversation_id,
+      apply: body.apply,
+      chapter_id: body.chapter_id,
+      chapter_text: body.chapter_text,
+      selection: body.selection,
+      outline: body.outline,
     }),
   });
 }

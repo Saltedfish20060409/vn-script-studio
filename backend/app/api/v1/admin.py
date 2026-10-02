@@ -506,8 +506,14 @@ async def admin_funnel(
     - 只读，不做任何写操作。
     """
     from app.core.analytics import (
+        AGENT_TURN_CANCEL,
+        AGENT_TURN_DONE,
+        AGENT_TURN_START,
         AI_CALL,
+        CONFIRM_WRITE,
+        CRITIQUE_RENDERED,
         EXPORT_DONE,
+        INGEST_DIFF_CONFIRM,
         PLAYTEST_OPENED,
         PROJECT_CREATED,
         PROSE_SAVED,
@@ -601,6 +607,12 @@ async def admin_funnel(
         "share_created": counts.get(SHARE_CREATED, 0),
         "playtest_opened": counts.get(PLAYTEST_OPENED, 0),
         "export_done": counts.get(EXPORT_DONE, 0),
+        "agent_turn_start": counts.get(AGENT_TURN_START, 0),
+        "agent_turn_done": counts.get(AGENT_TURN_DONE, 0),
+        "agent_turn_cancel": counts.get(AGENT_TURN_CANCEL, 0),
+        "confirm_write": counts.get(CONFIRM_WRITE, 0),
+        "ingest_diff_confirm": counts.get(INGEST_DIFF_CONFIRM, 0),
+        "critique_rendered": counts.get(CRITIQUE_RENDERED, 0),
     }
 
     return {

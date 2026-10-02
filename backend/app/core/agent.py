@@ -1117,6 +1117,10 @@ def apply_agent_actions(
                     next_project.logline = action["logline"]
                 if "genre" in action:
                     next_project.genre = action["genre"]
+                if "writingGenre" in action:
+                    wg = str(action.get("writingGenre") or "").strip().lower()
+                    if wg in ("vn", "novel"):
+                        next_project.writingGenre = wg
                 applied.append("更新作品信息")
                 continue
 

@@ -437,3 +437,9 @@ class AgentIngestSettingsIn(BaseModel):
     attachments: List[Dict[str, Any]] = Field(default_factory=list)
     note: Optional[str] = None
     conversation_id: Optional[str] = None
+    #: P7：显式要求落库；默认仍受 INGEST_DIRECT_APPLY 约束
+    apply: Optional[bool] = None
+    chapter_id: Optional[str] = None
+    chapter_text: Optional[str] = None
+    selection: Optional[str] = None
+    outline: Optional[str] = None

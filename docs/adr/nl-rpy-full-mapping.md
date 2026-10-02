@@ -1,54 +1,54 @@
 # ADR：自然语言 ↔ RPY 完整映射
 
-**状态**：Proposed（单独立项，**不占** ADR 0001 的 P 编号）  
+**状态**：Accepted（与 P6–P9 同一次大交付）  
 **日期**：2026-10-02  
 **前置**：
 
 | 阶段 | 归属 | 状态 |
 |------|------|------|
-| 短期导正（doctrine / 双面 SoT / 清空闸） | P4 + P4.5 | 已通过 |
-| 中期打通（条件自动 generate、禁静默 raw、hash 跟随） | P5-B | 已通过 |
-| **完整映射** | **本 ADR** | 未开工 |
+| 短期导正 | P4 + P4.5 | 已通过 |
+| 中期打通 | P5-B | 已通过 |
+| **完整映射** | **本 ADR** | 本交付实现 |
 
 ---
 
 ## 1. 问题
 
-当前工程是**双面存盘**（`prose` SoT + `blocks` 脚本面），转换是**单向、章级、可丢结构**的：
+双面存盘（`prose` + `blocks`）转换曾是单向章级、易丢结构。「完整映射」= 两端可互推、结构可锚定、漂移可解释。
 
-- prose → RPY：`generate_rpy_from_prose`（成功则写 `rpyFromProseHash`）
-- RPY → prose：无保真回写；手调 label / menu / characterId 在全文 replace 时易丢
+## 2. 设计钉死
 
-「完整映射」指：两端可互推、结构资产可锚定、漂移可解释——不是再加一个自动按钮。
+### 2.1 锚定单位
 
-## 2. 非目标（本 ADR 明确不做）
+- RPY：`ScriptBlock.mapId`（可选；缺则生成稳定 id）。
+- 章级 `nlRpyMap`：`{ version, proseFingerprint, blocksFingerprint, segments: [{ id, proseStart, proseEnd, mapIds[] }] }`。
+- **不在** prose 正文插入不可见标记。
 
-- 不并入 P6–P9；不占用 Writing Turn 核心门禁编号。
-- 不回退「只清当前面」而不做 sticky SoT（既有产品否定项）。
-- 不把完整映射当成 P5 的尾巴补丁。
+### 2.2 冲突策略
 
-## 3. 设计须单独回答（开工前写清）
+- 双指纹：仅 prose 变 / 仅 blocks 变 / 双变。
+- 双变 → 冲突面板（保留 prose / 保留脚本 / 分段重映射）；禁止静默盖写。
+- 单变 → 可一键按映射更新对面。
 
-1. **锚定单位**：句 / 段 / 块 / label？跨面 id 如何分配与持久化？
-2. **冲突策略**：手调 RPY 与新 prose 同时变时，以谁为准、如何三路合并或提示？
-3. **结构资产表**：哪些字段必须 round-trip（label id、menu、条件、characterId…）？
-4. **验收**：除盲测外，需要哪些确定性夹具（结构钉死 / 哈希 / 差分）？
-5. **回滚**：关闭完整映射时，是否回退到 P5「hash 跟随 + 章级 regenerate」？
+### 2.3 结构资产 round-trip
 
-## 4. 建议交付切片（设计通过后再排期）
+尽量保留：`label.id/name`、`menu` 跳转、`characterId`/`defineName`、条件、音乐/场景标签。  
+`generate_rpy_from_prose` 保 `mapId` regenerate；未对齐块进「未映射」区。
 
-1. 映射模型 + 存盘字段（不破坏现有章节可读）
-2. prose→RPY 保结构 regenerate（相对今日整章重排）
-3. RPY→prose 投影（只读或可选写回）
-4. 漂移 UI（与「脚本待更新」徽章衔接）
-5. 夹具与 ADR 验收表
+### 2.4 RPY→prose
 
-## 5. 与 ADR 0001 的关系
+- 默认只读投影；写回须确认闸。
 
-Writing Turn 第一期核心（P0–P5）**已收口**。本文件是旁路产品线；进度与 0001 附录互链，但不阻塞 P6+。
+### 2.5 Flag / 回滚
 
-参见：
+- `NL_RPY_FULL_MAP` 默认开；关 → P5（hash + 章级 generate）。
 
-- [p4-delivery-summary.md](./p4-delivery-summary.md)（短期导正）
-- [p5-delivery-summary.md](./p5-delivery-summary.md)（中期打通）
-- [0001-writing-turn-orchestration.md](./0001-writing-turn-orchestration.md)（P5 正式通过留痕）
+### 2.6 验收夹具
+
+- 含 menu/label 的章 regenerate 后 mapId/跳转仍在。
+- 双变不静默。
+- 与清空闸 / auto-RPY inflight 正交。
+
+## 3. 与 ADR 0001
+
+不占 P 编号；与 P6–P9 同一次统一验收。见 [p6-p9-delivery-summary.md](./p6-p9-delivery-summary.md)。

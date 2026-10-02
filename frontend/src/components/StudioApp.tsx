@@ -161,6 +161,10 @@ import { blockTextRange, blocksToEditable } from "../lib/scriptCodec";
 import { insertCommandAtLine } from "../lib/insertCommand";
 import { proseFingerprint, rpyIsStale, scriptPreview, storedProse } from "../lib/scriptProse";
 import {
+  detectNlRpyConflict,
+  nlRpyConflictLabel,
+} from "../lib/nlRpyConflict";
+import {
   createClearConfirmLock,
   resolveClearCancelRestoreText,
 } from "../lib/clearConfirmGate";
@@ -1508,6 +1512,9 @@ export function StudioApp() {
       setSaveBadge("idle");
       setSavedAt(Date.now());
       if (!silent) setStatus("工程已同步到服务器");
+      if (p.chapters.some((c) => (c.prose || "").trim().length > 0)) {
+        trackOncePerUser(EVENTS.proseSaved, { kind: "persist" });
+      }
       return true;
     } catch (e) {
       setSaveBadge("error");
@@ -1682,6 +1689,16 @@ export function StudioApp() {
     if (!project) return ids;
     for (const ch of project.chapters) {
       if (rpyIsStale(ch)) ids.add(ch.id);
+    }
+    return ids;
+  }, [project]);
+
+  /** NL↔RPY 双变冲突 → 章节列表「映射冲突」 */
+  const nlRpyConflictIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!project) return ids;
+    for (const ch of project.chapters) {
+      if (detectNlRpyConflict(ch) === "both") ids.add(ch.id);
     }
     return ids;
   }, [project]);
@@ -1885,6 +1902,18 @@ export function StudioApp() {
       window.clearTimeout(editorCommitTimer.current);
       editorCommitTimer.current = null;
     }
+    const conflict = detectNlRpyConflict(chapter);
+    if (conflict === "both") {
+      const keepProse = await confirm({
+        title: "正文与脚本都已改动",
+        body:
+          nlRpyConflictLabel("both") +
+          "\n\n选「保留正文」将按正文重新生成脚本（尽量保 mapId/跳转）；选「取消」可先手动对齐。",
+        confirmLabel: "保留正文并生成脚本",
+        cancelLabel: "取消",
+      });
+      if (!keepProse) return;
+    }
     const flushed = await confirmClearBothSurfacesIfNeeded(
       project,
       chapter.id,
@@ -1918,6 +1947,7 @@ export function StudioApp() {
                       prose: storedProse(c),
                       blocks: out.blocks,
                       rpyFromProseHash: proseFingerprint(stored),
+                      ...(out.nlRpyMap ? { nlRpyMap: out.nlRpyMap } : {}),
                     }
                   : {
                       blocks: out.blocks,
@@ -3517,6 +3547,7 @@ export function StudioApp() {
                 volumes={project.volumes ?? []}
                 activeVolumeId={activeVolumeId}
                 rpyPendingUpdateIds={rpyPendingUpdateIds}
+                nlRpyConflictIds={nlRpyConflictIds}
                 onSelectVolume={setActiveVolumeId}
                 onAddVolume={() => void addVolumeFlow()}
                 onRenameVolume={(id) => void renameVolumeFlow(id)}
@@ -3566,7 +3597,7 @@ export function StudioApp() {
                     }}
                     onExport={() => void exportCurrentView()}
                     onStep={(step) =>
-                      trackOncePerUser(`onboarding_${step}`, { step })
+                      trackOncePerUser(EVENTS.onboardingStep, { step })
                     }
                   />
                 ) : null}

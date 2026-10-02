@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import FrozenSet, Literal, Optional
 
 from app.core.pipeline.style_transfer_contract import style_transfer_prompt_block
+from app.core.critique_contract import critique_framing as _critique_framing
 
 Capability = Literal["write", "critique", "ingest", "chat"]
 WriteOp = Literal[
@@ -124,3 +125,8 @@ def write_op_framing(write_op: str) -> str:
         "【本轮 write_op=continue · 续写】在章末（或指示位置）接着往下写；"
         "不要重写已有正文，除非作者明确要求。输出自然语言剧本。\n"
     )
+
+
+def critique_framing(genre: str = "vn") -> str:
+    """P6：注入审稿短帧（按 writingGenre）。"""
+    return _critique_framing(genre)

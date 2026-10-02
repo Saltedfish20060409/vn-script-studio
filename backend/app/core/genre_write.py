@@ -43,6 +43,9 @@ GENRE_TASK_RULES: dict[str, dict[str, List[str]]] = {
         "branch": [
             "小说体裁下若被要求分支：用「若…则…」叙事分叉简述，不要输出 Ren'Py menu 语法。",
         ],
+        "critique": [
+            "体裁是小说/轻小说：审章末钩子、叙述空喊、对白密度；不要要求引擎语法。",
+        ],
     },
     "vn": {
         "continue": [
@@ -56,6 +59,9 @@ GENRE_TASK_RULES: dict[str, dict[str, List[str]]] = {
             "2–4 个选项，每项后果不同；选项文案短，勿在选项里塞设定。",
             "选项也用自然语言写（「选项一：… → 它会演成什么」），不要写 menu/label 这类语法。",
         ],
+        "critique": [
+            "体裁是视觉小说：审可演性、说明书旁白、假分支；少报纯文笔偏好。",
+        ],
     },
 }
 
@@ -67,6 +73,9 @@ GENRE_OUTPUT_CONTRACT: dict[str, dict[str, str]] = {
         ),
         "scene": "只输出这一场的叙述正文；场景切换用空行；不要镜头术语、不要选项菜单。",
         "branch": "用短段落写出 2–3 条叙事分叉（若选A…/若选B…），不要 Ren'Py menu。",
+        "critique": (
+            "只输出审稿 JSON：summary + issues[]；不要改写正文。"
+        ),
     },
     "vn": {
         "continue": (
@@ -77,11 +86,21 @@ GENRE_OUTPUT_CONTRACT: dict[str, dict[str, str]] = {
             "输出 2–4 个选项（自然语言写：每项一行选项文案，紧跟它会演成什么）："
             "选项之间后果必须不同；不要写 menu/label 这类引擎语法。"
         ),
+        "critique": (
+            "只输出审稿 JSON：summary + issues[]；不要改写正文。"
+        ),
     },
 }
 
 
-def resolve_writing_genre(project: Optional[VnProject]) -> WritingGenre:
+def resolve_writing_genre(
+    project: Optional[VnProject],
+    *,
+    override: Optional[str] = None,
+) -> WritingGenre:
+    ov = (override or "").strip().lower()
+    if ov in ("novel", "vn"):
+        return ov  # type: ignore[return-value]
     if project is None:
         return "vn"
     explicit = str(getattr(project, "writingGenre", None) or "").strip().lower()
@@ -97,7 +116,6 @@ def resolve_writing_genre(project: Optional[VnProject]) -> WritingGenre:
     if any(m in raw for m in _NOVEL_MARKERS):
         return "novel"
     return "vn"
-
 
 def genre_key_rules(project: Optional[VnProject], task: str) -> List[str]:
     g = resolve_writing_genre(project)

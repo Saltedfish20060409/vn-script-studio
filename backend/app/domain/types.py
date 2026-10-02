@@ -259,6 +259,8 @@ class SceneChapter(BaseModel):
     prose: Optional[str] = None
     # Fingerprint of prose last used to generate RPY (stale when it drifts).
     rpyFromProseHash: Optional[str] = None
+    # NL↔RPY 完整映射（可选；旧工程无此字段）
+    nlRpyMap: Optional[Dict[str, Any]] = None
     # 所属卷（可选）。没有卷时是 None，行为与"平铺章节"完全一致。
     volumeId: Optional[str] = None
     # 连载发布状态（可选）：有值 = 这一章作者标记为"已发布"（ISO 时间）。
