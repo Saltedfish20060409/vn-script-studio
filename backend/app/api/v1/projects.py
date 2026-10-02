@@ -407,6 +407,33 @@ async def put_project(
     chapter_ids = body.chapter_ids or []
     sections = body.sections or []
 
+    # 乐观并发：全量与章级 PUT 共用。此前章级分支跳过检查，快照恢复后旧客户端
+    # 可用过期 updated_at 把空稿盖回（P0 hotfix）。force 仍可显式覆盖。
+    if body.updated_at and not body.force:
+        client_ts = body.updated_at.replace("Z", "+00:00")
+        try:
+            client_dt = datetime.fromisoformat(client_ts)
+            if client_dt.tzinfo is None:
+                client_dt = client_dt.replace(tzinfo=timezone.utc)
+            server_dt = row.updated_at
+            if server_dt.tzinfo is None:
+                server_dt = server_dt.replace(tzinfo=timezone.utc)
+            if abs((server_dt - client_dt).total_seconds()) > 0.5 and server_dt > client_dt:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "project_conflict",
+                        "message": (
+                            "该项目已在其他位置被修改。刷新将获取最新数据；"
+                            "保留本地将覆盖服务器版本，对方未保存的内容会丢失。"
+                        ),
+                        "serverUpdatedAt": server_dt.isoformat(),
+                        "clientUpdatedAt": client_dt.isoformat(),
+                    },
+                )
+        except ValueError:
+            pass
+
     if chapter_ids or sections:
         # Collaboration stage B: chapter-scoped save.
         # Only the declared chapters / sections are merged; everything else keeps
@@ -433,28 +460,6 @@ async def put_project(
         await _maybe_auto_learn_style(db, row, settings, user.id)
         await db.refresh(row)
         return project_to_dict(row_to_vn(row))
-
-    if body.updated_at and not body.force:
-        client_ts = body.updated_at.replace("Z", "+00:00")
-        try:
-            client_dt = datetime.fromisoformat(client_ts)
-            if client_dt.tzinfo is None:
-                client_dt = client_dt.replace(tzinfo=timezone.utc)
-            server_dt = row.updated_at
-            if server_dt.tzinfo is None:
-                server_dt = server_dt.replace(tzinfo=timezone.utc)
-            if abs((server_dt - client_dt).total_seconds()) > 0.5 and server_dt > client_dt:
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "code": "project_conflict",
-                        "message": "项目已在别处更新。可保留本地稿覆盖，或改用服务器版本。",
-                        "serverUpdatedAt": server_dt.isoformat(),
-                        "clientUpdatedAt": client_dt.isoformat(),
-                    },
-                )
-        except ValueError:
-            pass
 
     data = dict(body.data)
     data["id"] = project_id

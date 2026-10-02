@@ -161,6 +161,18 @@ import { summarizeRpyFindings } from "../lib/rpyFindings";
 import { normalizeProject } from "../lib/vnLocal";
 import { loreLinkOptions } from "../lib/loreEntries";
 import { diffProjectAgainst } from "../lib/projectDiff";
+import {
+  PROJECT_CONFLICT_DETAIL,
+  RESTORE_DIRTY_CONFIRM,
+  RESTORE_FAILED_STATUS,
+  RESTORE_GUARD_IN_FLIGHT_UNTIL,
+  RESTORE_LOADING_STATUS,
+  clearRestoreGuard,
+  extendRestoreGuardOnSuccess,
+  isEditorDirtyVsSaved,
+  openRestoreGuardAtRequest,
+  shouldBlockPersistForRestoreGuard,
+} from "../lib/restoreGuard";
 import { EVENTS, trackOncePerUser } from "../lib/track";
 import {
   isViewDrawerWorkspaceFull,
@@ -633,6 +645,11 @@ export function StudioApp() {
   const skipNextProjectSave = useRef(false);
   /** Last project snapshot the server confirmed — diff base for scoped saves. */
   const lastSavedRef = useRef<VnProject | null>(null);
+  /** 快照恢复保护窗截止时间（epoch ms）；> now 时禁止任何 PUT。 */
+  const restoreGuardUntilRef = useRef(0);
+  const restoreGuardTimerRef = useRef<number | null>(null);
+  const restoreStatusLabelRef = useRef("");
+  const [restoreReadOnly, setRestoreReadOnly] = useState(false);
   const settingsSaveTimer = useRef<number | null>(null);
   const skipNextSettingsSave = useRef(true);
 
@@ -1331,11 +1348,48 @@ export function StudioApp() {
     };
   }, [project]);
 
+  function clearRestoreGuardUi(nextStatus?: string) {
+    restoreGuardUntilRef.current = clearRestoreGuard();
+    if (restoreGuardTimerRef.current) {
+      window.clearTimeout(restoreGuardTimerRef.current);
+      restoreGuardTimerRef.current = null;
+    }
+    setRestoreReadOnly(false);
+    if (nextStatus !== undefined) setStatus(nextStatus);
+  }
+
+  function armRestoreGuardUntil(until: number, loadingStatus: string) {
+    restoreGuardUntilRef.current = until;
+    setRestoreReadOnly(true);
+    setStatus(loadingStatus);
+    if (restoreGuardTimerRef.current) {
+      window.clearTimeout(restoreGuardTimerRef.current);
+      restoreGuardTimerRef.current = null;
+    }
+    // in-flight（API 未返回）：不设超时，等成功再满 N 秒 / 失败立即清。
+    if (until >= RESTORE_GUARD_IN_FLIGHT_UNTIL) {
+      return;
+    }
+    const delay = Math.max(0, until - Date.now());
+    restoreGuardTimerRef.current = window.setTimeout(() => {
+      restoreGuardUntilRef.current = clearRestoreGuard();
+      restoreGuardTimerRef.current = null;
+      setRestoreReadOnly(false);
+      const label = restoreStatusLabelRef.current;
+      setStatus(label ? `已回退到「${label}」` : "");
+      restoreStatusLabelRef.current = "";
+    }, delay);
+  }
+
   async function persistProject(
     p: VnProject,
     opts?: { silent?: boolean; force?: boolean }
   ) {
     const silent = opts?.silent ?? true;
+    if (shouldBlockPersistForRestoreGuard(restoreGuardUntilRef.current, Date.now())) {
+      setSaveBadge("idle");
+      return false;
+    }
     // 这次请求发出时的本地版本号：回来时若已经变过，说明用户在等待期间又改了东西，
     // 那就**不能用响应覆盖界面状态**（否则旧响应会把新改动盖掉，随后又被自动保存写回服务器）。
     const revAtRequest = projectRevRef.current;
@@ -1418,7 +1472,7 @@ export function StudioApp() {
           serverUpdatedAt: detail?.serverUpdatedAt,
         });
         setError("");
-        setStatus("发现保存冲突 — 你刚写的内容和云端已有的内容不一致（可能两处都改过同一部分），请选择保留哪一份");
+        setStatus(detail?.message || PROJECT_CONFLICT_DETAIL);
         return false;
       }
       setError(e instanceof Error ? e.message : "保存失败");
@@ -2333,6 +2387,24 @@ export function StudioApp() {
     if (!project) return;
     const snap = snapshots.find((s) => s.id === snapId);
     if (!snap) return;
+
+    const dirty = isEditorDirtyVsSaved({
+      editorText: editorRef.current,
+      saved: lastSavedRef.current,
+      chapterId,
+      mode: writeModeRef.current,
+      characters: project.characters ?? [],
+    });
+    if (dirty) {
+      const okDirty = await confirm({
+        title: "恢复快照？",
+        body: RESTORE_DIRTY_CONFIRM,
+        danger: true,
+        confirmLabel: "继续恢复",
+      });
+      if (!okDirty) return;
+    }
+
     const ok = await confirm({
       title: `回退到「${snap.label}」？`,
       body: "剧本会回到保存这个快照时的状态；从那时起新增或修改的内容都会被覆盖，无法恢复。",
@@ -2342,8 +2414,29 @@ export function StudioApp() {
     if (!ok) {
       return;
     }
+
+    // 丢掉待发的旧空稿 / 编辑器 commit，避免与 restore 竞态。
+    if (editorCommitTimer.current) {
+      window.clearTimeout(editorCommitTimer.current);
+      editorCommitTimer.current = null;
+    }
+    if (projectSaveTimer.current) {
+      window.clearTimeout(projectSaveTimer.current);
+      projectSaveTimer.current = null;
+    }
+
+    // T0：请求发出即开保护窗（API 慢时也能挡住 autosave）。
+    restoreStatusLabelRef.current = snap.label;
+    armRestoreGuardUntil(openRestoreGuardAtRequest(Date.now()), RESTORE_LOADING_STATUS);
+
     try {
       const restored = await apiRestoreSnapshot(project.id, snapId);
+      // T1：成功后再保证满 N 秒。
+      armRestoreGuardUntil(
+        extendRestoreGuardOnSuccess(restoreGuardUntilRef.current, Date.now()),
+        RESTORE_LOADING_STATUS
+      );
+      lastSavedRef.current = restored;
       skipNextProjectSave.current = true;
       setProject(restored);
       const ch = restored.chapters[0];
@@ -2351,9 +2444,10 @@ export function StudioApp() {
         setChapterId(ch.id);
         loadEditorFromChapter(ch, restored.characters, writeModeRef.current);
       }
-      setStatus(`已回退到「${snap.label}」`);
+      setError("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "回退失败");
+      clearRestoreGuardUi(RESTORE_FAILED_STATUS);
+      setError(e instanceof Error ? e.message : RESTORE_FAILED_STATUS);
     }
   }
 
@@ -3441,7 +3535,9 @@ export function StudioApp() {
                           className={styles.docTitle}
                           data-testid="chapter-doc-title"
                           value={chapter?.title ?? ""}
+                          readOnly={restoreReadOnly}
                           onChange={(e) => {
+                            if (restoreReadOnly) return;
                             const title = e.target.value;
                             updateActive((p) => ({
                               ...p,
@@ -3457,11 +3553,12 @@ export function StudioApp() {
                           textareaRef={editorTaRef}
                           frameClassName={styles.scriptEditor}
                           value={editor}
+                          readOnly={restoreReadOnly}
                         locations={project.locations ?? []}
                         marks={markRanges}
                         anchorOffset={activeMarkOffset}
                         // 中文标点自动配对只在正文模式生效（RPY 是代码，不改它的输入行为）
-                        autoPair={writeMode === "prose"}
+                        autoPair={writeMode === "prose" && !restoreReadOnly}
                         // 拼写检查同理：正文里作者需要"这个字像打错了"，代码里只会满屏波浪线
                         spellCheck={writeMode === "prose"}
                         overlay={
@@ -3517,6 +3614,7 @@ export function StudioApp() {
                             : 'Ren\'Py：旁白用 "……"，对白用 角色名 "台词"'
                         }
                         onChange={(next) => {
+                          if (restoreReadOnly) return;
                           applyEditorText(next);
                         }}
                         onBlur={rememberCaretNow}

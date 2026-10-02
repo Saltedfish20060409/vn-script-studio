@@ -1,4 +1,5 @@
 import { mascotLine } from "../lib/mascotCopy";
+import { PROJECT_CONFLICT_DETAIL } from "../lib/restoreGuard";
 import styles from "./SaveConflictDialog.module.css";
 
 export type SaveConflictChoice = "keep_local" | "take_server" | "download";
@@ -31,26 +32,26 @@ export function SaveConflictDialog({
       >
         <div className={styles.body}>
           <p className={styles.idx}>CONFLICT</p>
-          <h3 className={styles.title}>你写的内容和云端对不上</h3>
+          <h3 className={styles.title}>数据已在其他位置被修改</h3>
           <p className={styles.line}>{mascotLine("confirmSoft")}</p>
           <p className={styles.msg}>
-            「{localTitle || "当前工程"}」在服务器上已被更新过（{when}
-            ），可能是另一台设备或另一位协作者保存的。你刚才没保存的修改还在，只是还没传上去。请选择怎么处理：
+            「{localTitle || "当前工程"}」服务器时间 {when}。
+            {PROJECT_CONFLICT_DETAIL}
           </p>
           <div className={styles.actions}>
             <button
               type="button"
               className={styles.primary}
-              onClick={() => onChoose("keep_local")}
+              onClick={() => onChoose("take_server")}
             >
-              保留我这份（覆盖云端）
+              刷新（用服务器最新版）
             </button>
             <button
               type="button"
               className={styles.ghost}
-              onClick={() => onChoose("take_server")}
+              onClick={() => onChoose("keep_local")}
             >
-              用云端那份（丢弃我这版）
+              保留本地（覆盖服务器）
             </button>
             <button
               type="button"
@@ -61,7 +62,7 @@ export function SaveConflictDialog({
             </button>
           </div>
           <p className={styles.hint}>
-            「保留我这份」会用你刚写的内容盖掉云端（云端更新会丢）；「用云端那份」会丢弃你这次的改动（可先用「下载备份」留底）。下载的备份文件以后可以重新导入。
+            「刷新」丢弃本地未上传改动并载入服务器版；「保留本地」会覆盖服务器（对方未保存内容会丢）；可先「下载备份」留底。
           </p>
         </div>
       </div>
