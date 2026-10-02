@@ -246,11 +246,15 @@ function OutlineBody({
           const pending =
             rpyPendingUpdateIds instanceof Set
               ? rpyPendingUpdateIds.has(c.id)
-              : Boolean(rpyPendingUpdateIds?.includes(c.id));
+              : Array.isArray(rpyPendingUpdateIds)
+                ? rpyPendingUpdateIds.includes(c.id)
+                : false;
           const nlConflict =
             nlRpyConflictIds instanceof Set
               ? nlRpyConflictIds.has(c.id)
-              : Boolean(nlRpyConflictIds?.includes(c.id));
+              : Array.isArray(nlRpyConflictIds)
+                ? nlRpyConflictIds.includes(c.id)
+                : false;
           return (
             <button
               key={c.id}

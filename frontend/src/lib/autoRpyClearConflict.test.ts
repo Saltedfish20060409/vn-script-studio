@@ -18,6 +18,7 @@ function baseProject(over: Partial<VnProject["chapters"][number]> = {}): VnProje
   return {
     id: "p1",
     title: "t",
+    updatedAt: "2026-10-02T00:00:00Z",
     characters: [],
     chapters: [
       {
