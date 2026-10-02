@@ -141,6 +141,8 @@ npm install
 ```bash
 # 后端（backend/）
 set PYTHONPATH=.
+# 日常开发可用 --reload；长跑测试 / E2E 验收 / 盲测请去掉 --reload。
+# Windows 下频繁改文件时 reload 可能翻车：端口在听但 HTTP 无响应。
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 # 前端（frontend/）
