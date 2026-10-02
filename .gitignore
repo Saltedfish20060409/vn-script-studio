@@ -42,6 +42,14 @@ backend/.cache_agent*
 backend/.cache_*
 **/.cache_agent*
 
+# Local chapter dump backups (author drafts; never commit)
+*-backup.txt
+*-backup.meta.json
+
+# Accidental pnpm local artifacts (repo ships npm package-lock.json)
+frontend/pnpm-lock.yaml
+frontend/pnpm-workspace.yaml
+
 deploy/artifacts/
 deploy/node_modules/
 
