@@ -13,7 +13,14 @@ import {
   placeTokenAtOffset,
   tokenizeScriptLine,
 } from "../lib/mapOccurrences";
-import { lineIndexOf, lineSegments, lineStarts, locateInNodes, type MarkRange } from "../lib/markHighlight";
+import {
+  lineIndexOf,
+  lineSegments,
+  lineStarts,
+  locateInNodes,
+  withAgentSelection,
+  type MarkRange,
+} from "../lib/markHighlight";
 import { applyPairOnKey } from "../lib/editorAssist";
 import styles from "./ScriptEditor.module.css";
 
@@ -85,7 +92,11 @@ export function ScriptEditor({
   const needles = useMemo(() => buildPlaceNeedles(locations), [locations]);
   const lines = useMemo(() => value.replace(/\r\n/g, "\n").split("\n"), [value]);
   const starts = useMemo(() => lineStarts(value), [value]);
-  const markRanges = useMemo(() => marks ?? [], [marks]);
+  /** 批改标记 + Agent 选区持久高亮（DOM 选区失焦后仍靠 selectionRange 保活） */
+  const markRanges = useMemo(
+    () => withAgentSelection(marks ?? [], selectionRange),
+    [marks, selectionRange]
+  );
   // Tokenize once per (lines, needles): the mirror re-renders on every keystroke
   // but the token stream only changes when the text or location set changes.
   const tokenized = useMemo(
@@ -243,6 +254,14 @@ export function ScriptEditor({
             {lineSegments(toks, starts[li] ?? 0, markRanges).map((seg, si) =>
               seg.kind === "place" ? (
                 <span key={`${li}-${si}`} className={styles.place}>
+                  {seg.text}
+                </span>
+              ) : seg.kind === "agentSelection" ? (
+                <span
+                  key={`${li}-${si}`}
+                  className={styles.agentSelection}
+                  data-mark-id={seg.markId}
+                >
                   {seg.text}
                 </span>
               ) : seg.kind === "mark" ? (

@@ -166,6 +166,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+.rpyPending {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--warn, #a65b1a);
+  white-space: nowrap;
+}
+
 .ghost {
   min-height: 28px;
   padding: 0.2rem 0.45rem;

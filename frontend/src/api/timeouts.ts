@@ -14,9 +14,10 @@
  * 「请确认后端服务已启动」，而**后端明明活着**、只是模型慢（慢思考模型尤其如此）。
  * `/brainstorm` 最极端：前端 30s，后端是「2–3 位作家并发 + 责编综合」两次串行调用。
  *
- * ## 三条规则（`timeouts.test.ts` 会强制校验）
+ * ## 三条规则（`timeouts.test.ts` / `timeoutWiring.test.ts` 会强制校验）
  *
- * 1. **凡是会在请求内调用模型的端点，必须显式选一档预算**，不许吃 30s 默认值。
+ * 1. **凡是会在请求内调用模型的端点，必须显式选一档预算**，不许吃 30s 默认值；
+ *    并传 `timeoutKind: "llm"`（认证传 `"auth"`）。
  * 2. **前端预算 ≥ 后端最坏耗时 + 余量**——余量是为了让"后端自己的如实报错"先到，
  *    而不是让前端抢先翻译成误导文案。
  * 3. **只有数字在这里**：其它文件一律引用 `TIMEOUTS.*`，不许再写裸数字。
@@ -45,9 +46,28 @@
  * 判定死亡（见 `api/projects.ts` 的 `onActivity`）。给流式设总超时会重新引入同一类 bug。
  */
 
+/** 超时文案类型：主路径由调用点显式传入；未传时由 `resolveTimeoutKind` 兜底。 */
+export type TimeoutKind = "auth" | "api" | "llm";
+
+/** LLM 预算档（用于守卫与 kind 兜底）。 */
+export const LLM_TIMEOUT_KEYS = [
+  "probe",
+  "quick",
+  "chat",
+  "write",
+  "long",
+  "batch",
+] as const;
+export type LlmTimeoutKey = (typeof LLM_TIMEOUT_KEYS)[number];
+
 /** 预算阶梯（毫秒）。命名含义 = 「一次这类请求最多等多久」。 */
 export const TIMEOUTS = {
-  /** 非 LLM 的普通读写（列表、保存、状态查询）。 */
+  /**
+   * 认证 / 登录态探测：本地应秒级返回；给 10s 兜抖动。
+   * 不要用更长——后端卡死时用户会白等，且旧通用文案会误导成「模型慢」。
+   */
+  auth: 10_000,
+  /** 非 LLM 的普通读写（列表、保存、状态查询）。默认档；保持 30s。 */
   fast: 30_000,
   /** 设置页「测试连接」：后端 `PROBE`=30s，思考档 ×2 = 60s。 */
   probe: 120_000,
@@ -89,20 +109,49 @@ export function humanizeMs(ms: number): string {
 }
 
 /**
- * 前端主动放弃（AbortController 到点）时的文案。
+ * 未显式传 `timeoutKind` 时的兜底（主路径应显式传，勿依赖此函数）。
  *
- * 关键：**不要**说"请检查后端"——后端大概率正常，真实原因是这次调用比预算更慢。
- * 也不要说"失败了"：后台作业（自动写作 / 章节回炉）会脱离请求继续跑完，
- * 结果在运行记录里能看到；而普通同步端点会被服务端随即中止
- * （见 backend/app/core/disconnect.py），所以不要把两种情形混成一句。
+ * - `ms <= TIMEOUTS.auth` → auth
+ * - `ms === TIMEOUTS.probe` 或 `ms >= TIMEOUTS.quick` → llm
+ * - 其余 → api
  */
-export function timeoutMessage(ms: number): string {
+export function resolveTimeoutKind(
+  explicit: TimeoutKind | undefined,
+  ms: number
+): TimeoutKind {
+  if (explicit === "auth" || explicit === "api" || explicit === "llm") {
+    return explicit;
+  }
+  if (ms <= TIMEOUTS.auth) return "auth";
+  if (ms === TIMEOUTS.probe || ms >= TIMEOUTS.quick) return "llm";
+  return "api";
+}
+
+function llmTimeoutMessage(ms: number): string {
   return (
     `等待 ${humanizeMs(ms)} 仍未返回，已停止等待。` +
     `常见原因：所选模型较慢（思考档尤其慢）、本次范围偏大或上游波动。` +
     `服务端会随即停止这次生成；若是「自动写作 / 章节回炉」这类后台作业，` +
     `它会继续跑完，稍后到「运行记录」查看。也可以换非思考档、缩小范围后重试。`
   );
+}
+
+function neutralTimeoutMessage(ms: number): string {
+  return (
+    `服务端未在 ${humanizeMs(ms)} 内响应，已停止等待。` +
+    `请确认服务仍在运行后重试。`
+  );
+}
+
+/**
+ * 前端主动放弃（AbortController 到点）时的文案。
+ *
+ * - `llm`：模型/作业路径——可提思考档与运行记录。
+ * - `auth` / `api`（默认）：中性话术，禁止 Agent 作业词（登录页曾被旧文案误导）。
+ */
+export function timeoutMessage(ms: number, kind: TimeoutKind = "api"): string {
+  if (kind === "llm") return llmTimeoutMessage(ms);
+  return neutralTimeoutMessage(ms);
 }
 
 /** 连不上（DNS / 拒绝连接 / 断网 / 后端未启动）时的文案。 */

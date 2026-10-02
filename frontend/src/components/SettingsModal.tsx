@@ -27,6 +27,20 @@ import {
 import { jsonModeWarning } from "../lib/modelCapabilities";
 import { parseWindowK, readDeclaredK, windowHintText } from "../lib/modelWindow";
 import {
+  isAgentTurnDefault,
+  isClassicReviseUiEnabled,
+  isLegacyAgentToolsEnabled,
+  isLegacyAgentWriteEnabled,
+  setAgentTurnDefault,
+  setClassicReviseUiEnabled,
+  setLegacyAgentToolsEnabled,
+  setLegacyAgentWriteEnabled,
+} from "../lib/agentTurnFlags";
+import {
+  isAutoRpyAfterProseWriteEnabled,
+  setAutoRpyAfterProseWriteEnabled,
+} from "../lib/autoRpyFlag";
+import {
   loadLlmCredentials,
   loadStorageMode,
   saveLlmCredentials,
@@ -666,6 +680,80 @@ function LlmPane() {
           {t("settings.refresh")}
         </button>
       </div>
+      <hr className={styles.divider} />
+      <p className={styles.note}>
+        Agent 高级（ADR 0001）：默认写作走 Writing Turn；经典责编工具环默认隐藏。
+        仅排障 / B1 回滚时打开下面开关。
+      </p>
+      <AgentTurnAdvancedFlags />
+    </div>
+  );
+}
+
+function AgentTurnAdvancedFlags() {
+  const [turnDefault, setTurnDefault] = useState(isAgentTurnDefault);
+  const [legacyTools, setLegacyTools] = useState(isLegacyAgentToolsEnabled);
+  const [legacyWrite, setLegacyWrite] = useState(isLegacyAgentWriteEnabled);
+  const [classicRevise, setClassicRevise] = useState(isClassicReviseUiEnabled);
+  const [autoRpy, setAutoRpy] = useState(isAutoRpyAfterProseWriteEnabled);
+
+  return (
+    <div className={styles.note}>
+      <label style={{ display: "block", marginBottom: 8 }}>
+        <input
+          type="checkbox"
+          checked={turnDefault}
+          onChange={(e) => {
+            setAgentTurnDefault(e.target.checked);
+            setTurnDefault(e.target.checked);
+          }}
+        />{" "}
+        写作默认走 Writing Turn（关 = 等同 B1 倾向旧路径，仍须再开「经典写作通道」才绕过 turn）
+      </label>
+      <label style={{ display: "block", marginBottom: 8 }}>
+        <input
+          type="checkbox"
+          checked={legacyWrite}
+          onChange={(e) => {
+            setLegacyAgentWriteEnabled(e.target.checked);
+            setLegacyWrite(e.target.checked);
+          }}
+        />{" "}
+        经典写作通道（`/agent/write`，B1 回滚）
+      </label>
+      <label style={{ display: "block", marginBottom: 8 }}>
+        <input
+          type="checkbox"
+          checked={classicRevise}
+          onChange={(e) => {
+            setClassicReviseUiEnabled(e.target.checked);
+            setClassicRevise(e.target.checked);
+          }}
+        />{" "}
+        经典改稿对照（B6：开 = 写作草稿默认弹左右对照；默认关 = 气泡轻确认）
+      </label>
+      <label style={{ display: "block" }}>
+        <input
+          type="checkbox"
+          checked={legacyTools}
+          onChange={(e) => {
+            setLegacyAgentToolsEnabled(e.target.checked);
+            setLegacyTools(e.target.checked);
+          }}
+        />{" "}
+        经典责编工具环入口（`/agent/stream`；默认隐藏，不进写作主路径）
+      </label>
+      <label style={{ display: "block", marginTop: 8 }}>
+        <input
+          type="checkbox"
+          checked={autoRpy}
+          onChange={(e) => {
+            setAutoRpyAfterProseWriteEnabled(e.target.checked);
+            setAutoRpy(e.target.checked);
+          }}
+        />{" "}
+        正文档写入后自动更新脚本（P5：仅在已手动「根据剧本生成」建过 hash 且过期时后台跟随；纯 LN 永不触发；关则只提示）
+      </label>
     </div>
   );
 }

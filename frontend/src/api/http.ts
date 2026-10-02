@@ -4,7 +4,13 @@
 // runtime, so this does not create a runtime circular dependency.
 import type { TokenOut } from "./auth";
 import { applyLlmHeaders } from "../lib/llmCredentials";
-import { TIMEOUTS, networkErrorMessage, timeoutMessage } from "./timeouts";
+import {
+  TIMEOUTS,
+  networkErrorMessage,
+  resolveTimeoutKind,
+  timeoutMessage,
+  type TimeoutKind,
+} from "./timeouts";
 
 export const API_BASE = "/api/v1";
 
@@ -46,6 +52,11 @@ interface ApiFetchOptions extends RequestInit {
    * the fast default is only safe for non-LLM reads/writes (see ./timeouts.ts).
    */
   timeoutMs?: number;
+  /**
+   * 超时文案类型。主路径显式传：认证 `"auth"`、模型 `"llm"`、其余 `"api"`。
+   * 未传时由 `resolveTimeoutKind` 按预算兜底（见 ./timeouts.ts）。
+   */
+  timeoutKind?: TimeoutKind;
 }
 
 export async function readErrorPayload(
@@ -93,22 +104,38 @@ const REQUEST_TIMEOUT_MS = TIMEOUTS.fast;
 
 async function fetchWithTimeout(
   input: string,
-  init: RequestInit & { timeoutMs?: number }
+  init: RequestInit & { timeoutMs?: number; timeoutKind?: TimeoutKind }
 ): Promise<Response> {
   const timeout = init.timeoutMs ?? REQUEST_TIMEOUT_MS;
+  // kind 必须来自 resolveTimeoutKind（显式 timeoutKind 或按预算兜底），
+  // 禁止写成 timeoutMessage(timeout, "api")——否则 LLM 路径会落到中性误导文案。
+  const kind = resolveTimeoutKind(init.timeoutKind, timeout);
   const controller = new AbortController();
+  const external = init.signal;
+  if (external?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  const onExternalAbort = () => controller.abort();
+  if (external) {
+    external.addEventListener("abort", onExternalAbort, { once: true });
+  }
   const timer = window.setTimeout(() => controller.abort(), timeout);
   try {
+    // 用内部 controller：超时与外部 abort 都会触发；勿直接覆盖成只认 timeout。
     return await fetch(input, { ...init, signal: controller.signal });
   } catch (e) {
     if ((e as { name?: string })?.name === "AbortError") {
+      if (external?.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
       // NOTE: 这里**不能**说"请检查后端"。后端通常完全正常，只是这次调用比预算慢；
       // 此前写成「请确认后端服务已启动」，慢思考模型的用户被这句话带偏了很久。
-      throw new ApiError(408, timeoutMessage(timeout));
+      throw new ApiError(408, timeoutMessage(timeout, kind));
     }
     throw new ApiError(0, networkErrorMessage());
   } finally {
     window.clearTimeout(timer);
+    if (external) external.removeEventListener("abort", onExternalAbort);
   }
 }
 
@@ -202,9 +229,9 @@ async function tryRefresh(): Promise<boolean> {
   // (same-origin). No body, no local storage read.
   try {
     // A network blackhole must not leave every concurrent 401 replay waiting
-    // forever — cap the refresh round-trip at 10s.
+    // forever — cap the refresh round-trip at the auth budget.
     const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), 10_000);
+    const timer = window.setTimeout(() => controller.abort(), TIMEOUTS.auth);
     try {
       const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: "POST",

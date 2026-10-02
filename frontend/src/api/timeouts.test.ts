@@ -12,7 +12,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { JOB_POLL_TIMEOUT_MS, TIMEOUTS } from "./timeouts";
+import { JOB_POLL_TIMEOUT_MS, TIMEOUTS, timeoutMessage } from "./timeouts";
 
 const API_DIR = fileURLToPath(new URL(".", import.meta.url));
 const BACKEND_APP = fileURLToPath(new URL("../../../backend/app/", import.meta.url));
@@ -444,8 +444,41 @@ describe("报错文案指向真因", () => {
     expect(src).toContain("timeoutMessage");
   });
 
-  it("超时文案说明结果会继续跑完并指向运行记录", () => {
-    const src = readApi("timeouts.ts");
-    expect(src).toContain("运行记录");
+  it("T2：llm 文案含运行记录/思考档语义", () => {
+    const msg = timeoutMessage(TIMEOUTS.chat, "llm");
+    expect(msg).toContain("运行记录");
+    expect(msg.includes("思考档") || msg.includes("自动写作")).toBe(true);
+  });
+
+  it("T3：auth/api/默认文案不含 Agent 作业词", () => {
+    const ban = ["思考档", "自动写作", "章节回炉", "运行记录"];
+    for (const msg of [
+      timeoutMessage(TIMEOUTS.auth, "auth"),
+      timeoutMessage(TIMEOUTS.fast, "api"),
+      timeoutMessage(TIMEOUTS.fast),
+    ]) {
+      for (const w of ban) {
+        expect(msg, `不应含「${w}」: ${msg}`).not.toContain(w);
+      }
+    }
+  });
+
+  it("T5：auth 档 ≤10s 且严于 fast", () => {
+    expect(TIMEOUTS.auth).toBeLessThanOrEqual(10_000);
+    expect(TIMEOUTS.auth).toBeLessThan(TIMEOUTS.fast);
+  });
+
+  it("T6：LoginPage + auth.ts 不含 Agent 超时话术/组件", () => {
+    const login = stripComments(
+      read(fileURLToPath(new URL("../pages/LoginPage.tsx", import.meta.url)))
+    );
+    const auth = stripComments(readApi("auth.ts"));
+    for (const src of [login, auth]) {
+      expect(src).not.toContain("思考档");
+      expect(src).not.toContain("自动写作");
+      expect(src).not.toContain("章节回炉");
+      expect(src).not.toContain("softTimeoutHint");
+      expect(src).not.toContain("AgentChat");
+    }
   });
 });

@@ -33,6 +33,8 @@ type Props = {
   chapters: SceneChapter[];
   volumes: Volume[];
   activeVolumeId: string;
+  /** 脚本相对正文过期（或自动生成失败后仍 stale）的章 → 显示「脚本待更新」 */
+  rpyPendingUpdateIds?: ReadonlySet<string> | readonly string[];
   onSelectChapter: (id: string) => void;
   onAddChapter: () => void;
   onDeleteChapter: () => void;
@@ -237,6 +239,10 @@ function OutlineBody({
       >
         {shownChapters.map((c) => {
           const globalIndex = chapters.indexOf(c);
+          const pending =
+            props.rpyPendingUpdateIds instanceof Set
+              ? props.rpyPendingUpdateIds.has(c.id)
+              : Boolean(props.rpyPendingUpdateIds?.includes(c.id));
           return (
             <button
               key={c.id}
@@ -247,10 +253,16 @@ function OutlineBody({
                 c.id === chapterId ? styles.chapterOn : styles.chapter
               }
               data-testid={`chapter-chip-${globalIndex + 1}`}
+              title={pending ? "脚本待更新：正文已变或上次生成失败，请点「根据剧本生成」" : undefined}
               onClick={() => onSelectChapter(c.id)}
             >
               <em>{String(globalIndex + 1).padStart(2, "0")}</em>
               <span>{c.title || `第 ${globalIndex + 1} 章`}</span>
+              {pending ? (
+                <span className={styles.rpyPending} data-testid={`rpy-pending-${c.id}`}>
+                  脚本待更新
+                </span>
+              ) : null}
             </button>
           );
         })}

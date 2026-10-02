@@ -120,6 +120,9 @@ class AgentWriteIn(BaseModel):
 
     与 `AgentRunIn` 的分工：那条是"审阅条件"（JSON 协议 + 工具 + 规则块），
     这条是"写作条件"（writer 角色 + 风格 Skill，自由文本流式）。
+
+    ADR 0001：默认写作路径改走 `AgentTurnIn` / `POST …/agent/turn`；
+    本 schema 保留作 B1 回滚与兼容层。
     """
 
     instruction: str
@@ -127,6 +130,44 @@ class AgentWriteIn(BaseModel):
     selection: Optional[str] = None
     temperature: Optional[float] = None
     conversation_id: Optional[str] = None
+
+
+class AgentTurnIn(BaseModel):
+    """Writing Turn 统一入参（ADR 0001）。
+
+    P4：`capability` 经路由表分发；`write` 仅 continue/rewrite；
+    critique/chat/ingest 薄委托（不再对非 write 一律 501）。
+    """
+
+    capability: Literal["write", "critique", "ingest", "chat"] = "write"
+    write_op: Optional[
+        Literal[
+            "continue",
+            "rewrite",
+            "polish",
+            "expand",
+            "condense",
+            "style_transfer",
+        ]
+    ] = None
+    instruction: str = ""
+    messages: Optional[List[Dict[str, Any]]] = None
+    chapter_id: Optional[str] = None
+    selection: Optional[str] = None
+    temperature: Optional[float] = None
+    conversation_id: Optional[str] = None
+    lens_ids: Optional[List[str]] = None
+    scope: Optional[Literal["chapter_append", "selection_replace", "chapter_replace"]] = (
+        None
+    )
+    genre_override: Optional[str] = None
+    # 排障：false 时接近 P1 瘦上下文（默认 true = P2 enrichment）
+    enrich_context: bool = True
+    # P4 薄委托 critique/chat 时转发到工具环（与 AgentRunIn 对齐）
+    attachments: Optional[List[Dict[str, Any]]] = None
+    exclude_sections: Optional[List[str]] = None
+    mentor_opt_in: bool = False
+    apply_actions: bool = False
 
 
 class AgentRunIn(BaseModel):
@@ -147,6 +188,8 @@ class AgentRunIn(BaseModel):
     # 本轮**显式要**写作导师块（1.6k 字的方法论）。默认关：消融测不出收益
     # （见 core/mentors.has_explicit_selection），前端在「⚙ 资料」里勾上才发 true。
     mentor_opt_in: bool = False
+    # 写入目标面：prose | script；缺省按 prose 非空代理（见 apply_agent_actions）
+    writing_surface: Optional[str] = None
 
 
 class AgentApplyActionsIn(BaseModel):
@@ -159,6 +202,8 @@ class AgentApplyActionsIn(BaseModel):
     actions: List[Dict[str, Any]]
     chapter_id: Optional[str] = None
     conversation_id: Optional[str] = None
+    # 写入目标面：prose | script；缺省按 prose 非空代理
+    writing_surface: Optional[str] = None
 
 
 class AgentRunOut(BaseModel):
@@ -273,6 +318,8 @@ class SettingsOut(BaseModel):
     active_base_url: str = ""
     # user = account DB key; server = env fallback; client = X-LLM-* headers
     credential_source: str = "server"
+    # P4.5 运维 flag（只读，来自服务端 env；PUT 体即使带此字段也忽略）
+    enforce_prose_engine_syntax_reject: bool = True
 
 
 class SettingsPutIn(BaseModel):
@@ -368,6 +415,8 @@ class ChapterReviseApplyIn(BaseModel):
     chapter_id: Optional[str] = None
     text: str
     conversation_id: Optional[str] = None
+    # 写入目标面：prose | script；缺省按 prose 非空代理
+    writing_surface: Optional[str] = None
 
 
 class GenerateRpyIn(BaseModel):

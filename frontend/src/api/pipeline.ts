@@ -220,6 +220,7 @@ export function pipelineGate(
     // 质量门在请求内串行跑两次模型：节拍核对(QUICK) → 声线核对(CHAT)，
     // 思考档下最坏 (60+120)×2 = 360s，所以不能用 chat 档。
     timeoutMs: TIMEOUTS.write,
+    timeoutKind: "llm",
     body: JSON.stringify(body),
   });
 }
@@ -243,6 +244,7 @@ export function pipelineLedgerDigest(
   return apiFetch(`/projects/${id}/pipeline/ledger/digest`, {
     method: "POST",
     timeoutMs: TIMEOUTS.quick,
+    timeoutKind: "llm",
     body: JSON.stringify({
       chapter_id: chapterId,
       enrich: opts?.enrich !== false,

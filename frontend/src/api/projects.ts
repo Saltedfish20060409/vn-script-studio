@@ -170,6 +170,7 @@ export function getRecap(
   return apiFetch<RecapOut>(`/projects/${id}/recap`, {
     method: "POST",
     timeoutMs: TIMEOUTS.write,
+    timeoutKind: "llm",
     body: JSON.stringify({
       volume_id: body.volumeId,
       mode: body.mode ?? "before",
@@ -239,6 +240,7 @@ export function reviseMark(
   return apiFetch<MarkReviseOut>(`/projects/${id}/marks/revise`, {
     method: "POST",
     timeoutMs: TIMEOUTS.long,
+    timeoutKind: "llm",
     body: JSON.stringify({
       chapter_id: body.chapterId,
       quote: body.quote,
@@ -392,12 +394,15 @@ export async function generateRpyFromProse(
   id: string,
   chapterId: string,
   prose: string,
-  useLlm = true
+  useLlm = true,
+  signal?: AbortSignal
 ): Promise<GenerateRpyOut> {
   return apiFetch<GenerateRpyOut>(`/projects/${id}/generate-rpy`, {
     method: "POST",
+    timeoutMs: TIMEOUTS.chat,
+    timeoutKind: "llm",
+    signal,
     body: JSON.stringify({
-      timeoutMs: TIMEOUTS.chat,
       chapter_id: chapterId,
       prose,
       use_llm: useLlm,
@@ -496,6 +501,7 @@ export async function aiTranslateLocalization(
     // 这是一次真实的模型调用，默认 30s 太短：超时会让用户以为失败，
     // 而服务端其实已经写完并提交了译文（进度显示与实际不符）。
     timeoutMs: TIMEOUTS.chat,
+    timeoutKind: "llm",
   });
 }
 
@@ -936,7 +942,7 @@ export function consistencyScan(
   if (opts.maxWindows != null) params.set("max_windows", String(opts.maxWindows));
   return apiFetch<ConsistencyScanOut>(
     `/projects/${id}/analysis/consistency-scan?${params.toString()}`,
-    { method: "POST", timeoutMs: TIMEOUTS.long }
+    { method: "POST", timeoutMs: TIMEOUTS.long, timeoutKind: "llm" }
   );
 }
 
@@ -981,6 +987,7 @@ export function mapExtract(
   return apiFetch(`/projects/${id}/map/extract`, {
     method: "POST",
     timeoutMs: TIMEOUTS.chat,
+    timeoutKind: "llm",
     body: JSON.stringify({ mode: opts?.mode ?? "smart" }),
   });
 }
@@ -1102,6 +1109,11 @@ export interface AgentRunInBody {
    * 勾上「写作导师方法论」即为要——不勾就不带。
    */
   mentor_opt_in?: boolean;
+  /**
+   * P4：经 Writing Turn 薄委托 chat/critique 时填；请求打到 `/agent/turn`，
+   * 事件仍兼容工具环 stream（turn 先发 meta.delegated）。
+   */
+  turnCapability?: "critique" | "chat";
 }
 
 export type AgentAttachment = {
@@ -1126,6 +1138,7 @@ export function fetchPreQuestions(
   return apiFetch(`/projects/${projectId}/agent/pre-questions`, {
     method: "POST",
     timeoutMs: TIMEOUTS.quick,
+    timeoutKind: "llm",
     body: JSON.stringify(body),
   });
 }
@@ -1163,6 +1176,7 @@ export function ingestAttachmentSettings(
   return apiFetch(`/projects/${projectId}/agent/ingest-settings`, {
     method: "POST",
     timeoutMs: TIMEOUTS.chat,
+    timeoutKind: "llm",
     body: JSON.stringify({
       attachments: body.attachments.map((a) => ({
         filename: a.filename,
@@ -1226,6 +1240,7 @@ export function chapterRevise(
   return apiFetch(`/projects/${projectId}/agent/chapter-revise`, {
     method: "POST",
     timeoutMs: TIMEOUTS.batch,
+    timeoutKind: "llm",
     body: JSON.stringify({
       ...body,
       attachments: body.attachments?.map((a) => ({
@@ -1243,11 +1258,13 @@ export function chapterReviseApply(
     chapter_id?: string;
     text: string;
     conversation_id?: string;
+    writing_surface?: "prose" | "script";
   }
 ): Promise<{
   message: string;
   applied: string[];
   skipped: string[];
+  warnings?: string[];
   project: VnProject;
   wrote: boolean;
 }> {
@@ -1272,11 +1289,13 @@ export function applyAgentActions(
     actions: AgentAction[];
     chapter_id?: string;
     conversation_id?: string;
+    writing_surface?: "prose" | "script";
   }
 ): Promise<{
   message: string;
   applied: string[];
   skipped: string[];
+  warnings?: string[];
   project: VnProject;
   wrote: boolean;
   inbox_added?: number;
@@ -1288,9 +1307,18 @@ export function applyAgentActions(
   });
 }
 
-/** 写作通道的流式事件（与后端 `/agent/write` 的 SSE 一一对应）。 */
+/** 写作通道 / Writing Turn 的流式事件（与后端 SSE 一一对应）。 */
 export type AgentWriteStreamEvent =
+  | {
+      type: "meta";
+      capability?: string;
+      writeOp?: string | null;
+      softTimeoutS?: number;
+      hardCancelS?: number;
+      passthrough?: boolean;
+    }
   | { type: "token"; delta: string }
+  | { type: "soft_timeout"; elapsedS?: number; hardCancelS?: number; message?: string }
   | {
       type: "done";
       content: string;
@@ -1300,18 +1328,15 @@ export type AgentWriteStreamEvent =
       sourceText?: string;
       /** 恒为 false：这条通道只产出草稿，不写工程（写入由作者确认后走 apply） */
       wrote: false;
+      capability?: string;
+      writeOp?: string | null;
     }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; code?: string; elapsedS?: number };
 
 /**
  * 写作通道（流式）：走 **writer 条件**（writer 角色 + 风格 Skill），自由文本产出正文草稿。
  *
- * 为什么不复用聊天那条：聊天是"审阅条件"（JSON 协议 + 工具 + 规则块）——线上实测同一模型、
- * 同一份设计书下会退化成"把设计书抄成骨架"（1141 字，选项留成占位符、注释被当旁白），
- * 而 writer 条件给的是 2124 字的成稿。另外 JSON 模式与思考档互斥，写作不需要 JSON。
- *
- * 拿到的 `content` 是**草稿**：前端把它塞进对照面板，作者确认后才调
- * `chapterReviseApply`（替换）或 `applyAgentActions`（追加）。
+ * ADR 0001：默认请改用 `agentTurnStream`；本函数保留作 B1 回滚（经典 `/agent/write`）。
  */
 export async function agentWriteStream(
   projectId: string,
@@ -1326,7 +1351,68 @@ export async function agentWriteStream(
   signal?: AbortSignal,
   onActivity?: () => void
 ): Promise<Extract<AgentWriteStreamEvent, { type: "done" }>> {
-  const res = await fetch(`${API_BASE}/projects/${projectId}/agent/write`, {
+  return readAgentWriteSse(
+    `${API_BASE}/projects/${projectId}/agent/write`,
+    body,
+    onEvent,
+    signal,
+    onActivity
+  );
+}
+
+/** Writing Turn（ADR 0001 P1）：统一 SSE；write 透传 writer 条件并带软超时协议。 */
+export async function agentTurnStream(
+  projectId: string,
+  body: {
+    capability?: "write" | "critique" | "ingest" | "chat";
+    write_op?:
+      | "continue"
+      | "rewrite"
+      | "polish"
+      | "expand"
+      | "condense"
+      | "style_transfer";
+    instruction: string;
+    chapter_id?: string;
+    selection?: string;
+    temperature?: number;
+    conversation_id?: string;
+    messages?: { role: string; content: string }[];
+    scope?: "chapter_append" | "selection_replace" | "chapter_replace";
+    genre_override?: string;
+  },
+  onEvent: (evt: AgentWriteStreamEvent) => void,
+  signal?: AbortSignal,
+  onActivity?: () => void
+): Promise<Extract<AgentWriteStreamEvent, { type: "done" }>> {
+  return readAgentWriteSse(
+    `${API_BASE}/projects/${projectId}/agent/turn`,
+    {
+      capability: body.capability ?? "write",
+      write_op: body.write_op,
+      instruction: body.instruction,
+      chapter_id: body.chapter_id,
+      selection: body.selection,
+      temperature: body.temperature,
+      conversation_id: body.conversation_id,
+      messages: body.messages,
+      scope: body.scope,
+      genre_override: body.genre_override,
+    },
+    onEvent,
+    signal,
+    onActivity
+  );
+}
+
+async function readAgentWriteSse(
+  url: string,
+  body: Record<string, unknown>,
+  onEvent: (evt: AgentWriteStreamEvent) => void,
+  signal?: AbortSignal,
+  onActivity?: () => void
+): Promise<Extract<AgentWriteStreamEvent, { type: "done" }>> {
+  const res = await fetch(url, {
     method: "POST",
     headers: buildApiHeaders(undefined, true),
     body: JSON.stringify(body),
@@ -1419,10 +1505,32 @@ export async function runAgentStream(
   signal?: AbortSignal,
   onActivity?: () => void
 ): Promise<AgentRunOut> {
-  const res = await fetch(`${API_BASE}/projects/${id}/agent/stream`, {
+  const { turnCapability, ...streamBody } = body;
+  const useTurn =
+    (turnCapability === "critique" || turnCapability === "chat") &&
+    !streamBody.resume;
+  const url = useTurn
+    ? `${API_BASE}/projects/${id}/agent/turn`
+    : `${API_BASE}/projects/${id}/agent/stream`;
+  const payload = useTurn
+    ? {
+        capability: turnCapability,
+        instruction: "",
+        messages: streamBody.messages,
+        chapter_id: streamBody.chapter_id,
+        selection: streamBody.selection,
+        conversation_id: streamBody.conversation_id,
+        lens_ids: streamBody.lens_ids,
+        attachments: streamBody.attachments,
+        exclude_sections: streamBody.exclude_sections,
+        mentor_opt_in: streamBody.mentor_opt_in,
+        apply_actions: streamBody.apply_actions ?? false,
+      }
+    : streamBody;
+  const res = await fetch(url, {
     method: "POST",
     headers: buildApiHeaders(undefined, true),
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
     signal,
   });
   if (!res.ok || !res.body) {
@@ -1565,6 +1673,7 @@ export function voiceCheck(
   return apiFetch(`/projects/${id}/voice-check`, {
     method: "POST",
     timeoutMs: TIMEOUTS.chat,
+    timeoutKind: "llm",
     body: JSON.stringify(body),
   });
 }
@@ -1593,6 +1702,7 @@ export function consistencyAudit(
   return apiFetch(`/projects/${id}/consistency/audit`, {
     method: "POST",
     timeoutMs: TIMEOUTS.write,
+    timeoutKind: "llm",
     body: JSON.stringify(body ?? {}),
   });
 }
@@ -1608,6 +1718,7 @@ export function learnStyleMemory(id: string): Promise<StyleMemoryOut> {
   return apiFetch(`/projects/${id}/style-memory/learn`, {
     method: "POST",
     timeoutMs: TIMEOUTS.write,
+    timeoutKind: "llm",
   });
 }
 
@@ -1635,6 +1746,7 @@ export function factsReconcile(id: string): Promise<{
   return apiFetch(`/projects/${id}/analysis/facts/reconcile`, {
     method: "POST",
     timeoutMs: TIMEOUTS.chat,
+    timeoutKind: "llm",
     body: JSON.stringify({}),
   });
 }
@@ -1660,6 +1772,7 @@ export function factsScan(
   return apiFetch(`/projects/${id}/analysis/facts/scan`, {
     method: "POST",
     timeoutMs: TIMEOUTS.chat,
+    timeoutKind: "llm",
     body: JSON.stringify(body ?? {}),
   });
 }
@@ -2499,6 +2612,6 @@ export function fetchNovelAudit(
   const qs = params.toString();
   return apiFetch<NovelAuditOut>(
     `/projects/${id}/analysis/novel-audit${qs ? `?${qs}` : ""}`,
-    { method: "POST", timeoutMs: TIMEOUTS.quick }
+    { method: "POST", timeoutMs: TIMEOUTS.fast, timeoutKind: "api" }
   );
 }

@@ -98,6 +98,10 @@ import { StudioRibbon } from "./StudioRibbon";
 import { FileBackstage, StudioViewDrawer } from "./StudioChrome";
 import { ChapterOutline } from "./ChapterOutline";
 import { SCENE_SEPARATOR } from "../lib/editorAssist";
+import {
+  captureSelectionFromTextarea,
+  nextSelectionSnapshot,
+} from "../lib/editorSelectionSnapshot";
 import { TemplatePicker } from "./TemplatePicker";
 
 import { QPet } from "./QPet";
@@ -155,8 +159,23 @@ import { chapterWithRecap } from "../lib/recap";
 import type { MarkRange } from "../lib/markHighlight";
 import { blockTextRange, blocksToEditable } from "../lib/scriptCodec";
 import { insertCommandAtLine } from "../lib/insertCommand";
-import { chapterProse, proseFingerprint, rpyIsStale } from "../lib/scriptProse";
-import { flushChapterSurface } from "../lib/chapterSurfaces";
+import { proseFingerprint, rpyIsStale, scriptPreview, storedProse } from "../lib/scriptProse";
+import {
+  createClearConfirmLock,
+  resolveClearCancelRestoreText,
+} from "../lib/clearConfirmGate";
+import {
+  clearBothSurfacesConfirmBody,
+  flushChapterSurface,
+  inspectClearImpact,
+} from "../lib/chapterSurfaces";
+import {
+  applyEnforceProseFlagFromSettings,
+  isEnforceProseEngineSyntaxReject,
+  isProseEngineSettingsSyncFailed,
+  shouldShowPasteEngineHint,
+} from "../lib/proseEngineFlag";
+import { PASTE_ENGINE_HINT, textHasEngineSyntax } from "../lib/proseEngineSyntax";
 import { summarizeRpyFindings } from "../lib/rpyFindings";
 import { normalizeProject } from "../lib/vnLocal";
 import { loreLinkOptions } from "../lib/loreEntries";
@@ -467,6 +486,7 @@ export function StudioApp() {
   /** 以 overview 探测为准：避免旧会话 /me 缺 is_admin 时顶栏不显示「管理」 */
   const [adminCapable, setAdminCapable] = useState(false);
   const [selection, setSelection] = useState("");
+  const selectionRangeRef = useRef<{ from: number; to: number } | null>(null);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [saveConflict, setSaveConflict] = useState<{
@@ -641,6 +661,10 @@ export function StudioApp() {
   } | null>(null);
   const [reviseDraft, setReviseDraft] = useState<ChapterReviseDraft | null>(null);
   const editorCommitTimer = useRef<number | null>(null);
+  /** 清空两面确认：共享 in-flight（窗口期=弹窗生命周期，无固定毫秒）。 */
+  const clearConfirmLockRef = useRef(createClearConfirmLock());
+  /** 清空前编辑器最后一次非空缓冲（取消时优先恢复，含未落盘改动）。 */
+  const lastNonEmptyEditorRef = useRef("");
   const projectSaveTimer = useRef<number | null>(null);
   const skipNextProjectSave = useRef(false);
   /** Last project snapshot the server confirmed — diff base for scoped saves. */
@@ -765,10 +789,13 @@ export function StudioApp() {
         if (cancelled) return;
         setProjectsList(list);
         if (serverSettings) {
+          applyEnforceProseFlagFromSettings(serverSettings);
           const s = fromServerSettings(serverSettings);
           setSettings(s);
           applySettingsToDom(s);
           saveAppearanceCache(s);
+        } else {
+          applyEnforceProseFlagFromSettings(null);
         }
         if (list.length > 0) {
           const ws = loadWorkspace();
@@ -811,6 +838,8 @@ export function StudioApp() {
   // 另外算出「上次停在这里」的按钮要不要出现（只在真的打开这一章时算一次，不自动跳）。
   useEffect(() => {
     setSelection("");
+    selectionRangeRef.current = null;
+    setSelectionRange(null);
     if (!project || !chapterId) return;
     const ch = project.chapters.find((c) => c.id === chapterId);
     if (!ch) return;
@@ -893,6 +922,7 @@ export function StudioApp() {
    * 在"看起来改了其实没存"的状态里工作。
    */
   function applyEditorText(next: string) {
+    if (next.trim()) lastNonEmptyEditorRef.current = next;
     editorRef.current = next;
     setEditor(next);
     if (rpyPreview) {
@@ -1119,14 +1149,49 @@ export function StudioApp() {
 
   /** 把编辑器里的选区同步进状态（浮动「标记这段」按钮靠它定位）。
    *  只挂 onSelect 不够稳：程序化改选区、输入法、Ctrl+A 等情况不一定派发 select，
-   *  所以 keyup / mouseup 也顺手同步一次（同值时直接返回旧对象，不触发重渲染）。 */
+   *  所以 keyup / mouseup 也顺手同步一次（同值时直接返回旧对象，不触发重渲染）。
+   *
+   *  P4 验收修：焦点去 Agent 输入框时浏览器会折叠 DOM 选区；此时**保留**快照，
+   *  否则改写/审稿拿不到选区。见 `lib/editorSelectionSnapshot.ts`。 */
   const syncSelectionFromDom = useCallback(() => {
     const ta = editorTaRef.current;
     if (!ta) return;
     const from = ta.selectionStart ?? 0;
     const to = ta.selectionEnd ?? 0;
-    setSelection(ta.value.slice(from, to));
-    setSelectionRange((prev) => (prev && prev.from === from && prev.to === to ? prev : { from, to }));
+    const editorFocused = document.activeElement === ta;
+    setSelection((prevText) => {
+      const prevRange = selectionRangeRef.current;
+      const next = nextSelectionSnapshot({
+        prev: { text: prevText, range: prevRange },
+        domFrom: from,
+        domTo: to,
+        value: ta.value,
+        editorFocused,
+      });
+      selectionRangeRef.current = next.range;
+      setSelectionRange((prev) => {
+        if (
+          prev?.from === next.range?.from &&
+          prev?.to === next.range?.to &&
+          (prev == null) === (next.range == null)
+        ) {
+          return prev;
+        }
+        return next.range;
+      });
+      return next.text;
+    });
+  }, []);
+
+  /** Agent 输入框获得焦点前：抢在浏览器清 DOM 选区之前抓快照。 */
+  const captureEditorSelectionForAgent = useCallback(() => {
+    const ta = editorTaRef.current;
+    if (!ta) return;
+    const snap = captureSelectionFromTextarea(ta);
+    if (!snap) return;
+    selectionRangeRef.current = snap.range;
+    setSelection(snap.text);
+    setSelectionRange(snap.range);
   }, []);
 
   /** 选中一条标记：编辑器滚到它那儿并选中，卡片贴过去（定位不到就说明失效了）。 */
@@ -1611,6 +1676,16 @@ export function StudioApp() {
     [project, chapterId]
   );
 
+  /** 脚本相对正文过期 → 章节列表「脚本待更新」（切章/刷新仍可见，直到手动或自动生成成功）。 */
+  const rpyPendingUpdateIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!project) return ids;
+    for (const ch of project.chapters) {
+      if (rpyIsStale(ch)) ids.add(ch.id);
+    }
+    return ids;
+  }, [project]);
+
   /**
    * 界面用词（剧本 / 正文·分卷·投稿）。
    *
@@ -1625,12 +1700,21 @@ export function StudioApp() {
     characters: VnProject["characters"],
     mode: WriteMode
   ) {
+    // P4.5：正文档只填存盘 prose（可空）；脚本投影走只读预览，禁止回落进可编辑区。
     const text =
       mode === "prose"
-        ? chapterProse(ch, characters)
+        ? storedProse(ch)
         : blocksToEditable(ch.blocks, characters);
     editorRef.current = text;
     setEditor(text);
+    lastNonEmptyEditorRef.current = text.trim() ? text : "";
+  }
+
+  function flushChapterOpts(p: VnProject) {
+    return {
+      enforceProseEngineSyntaxReject: isEnforceProseEngineSyntaxReject(),
+      characters: p.characters,
+    };
   }
 
   function flushChapter(
@@ -1640,10 +1724,15 @@ export function StudioApp() {
     mode: WriteMode
   ): VnProject {
     // 规则与理由都写在 lib/chapterSurfaces.ts：**清空当前档时另一面也一起清**。
-    // 旧实现在这里只写当前档，于是"文本存在脚本档、作者在正文档里删掉它"这条路上，
-    // 本地 JSON 一点没变（连保存都不发），而读侧又从另一面回落 —— 作者删掉的稿子
-    // 会作为"原文"回到 Agent 手里（2026-10-01 线上事故）。
-    const { project: next, clearedOther } = flushChapterSurface(p, chId, text, mode);
+    // P4.5：enforce 开时禁止把 scriptPreview 无感落盘进 prose。
+    // 清空 UX：连带清另一面须先经 confirmClearBothSurfacesIfNeeded。
+    const { project: next, clearedOther } = flushChapterSurface(
+      p,
+      chId,
+      text,
+      mode,
+      flushChapterOpts(p)
+    );
     if (clearedOther) {
       setStatus(
         mode === "prose"
@@ -1654,7 +1743,49 @@ export function StudioApp() {
     return next;
   }
 
-  function commitEditor() {
+  function restoreEditorAfterClearCancel(savedSurfaceText: string) {
+    const restoreText = resolveClearCancelRestoreText({
+      lastNonEmptyEditor: lastNonEmptyEditorRef.current,
+      savedSurfaceText,
+    });
+    editorRef.current = restoreText;
+    setEditor(restoreText);
+    if (restoreText.trim()) lastNonEmptyEditorRef.current = restoreText;
+    setMarks((prev) => (prev.length ? refreshMarks(restoreText, prev) : prev));
+  }
+
+  /**
+   * 若清空会连带清另一面：弹确认（阻塞式 modal）。取消则恢复编辑器并返回 null。
+   * 确认或无需确认：返回 flush 后的工程。
+   * 并发调用 join 同一 in-flight，不连弹。
+   */
+  async function confirmClearBothSurfacesIfNeeded(
+    p: VnProject,
+    chId: string,
+    text: string,
+    mode: WriteMode
+  ): Promise<VnProject | null> {
+    const impact = inspectClearImpact(p, chId, text, mode, flushChapterOpts(p));
+    if (!impact.needsConfirm) {
+      return flushChapter(p, chId, text, mode);
+    }
+    return clearConfirmLockRef.current.joinOrStart(async () => {
+      const ok = await confirm({
+        title: "清空会同时清掉另一面",
+        body: clearBothSurfacesConfirmBody(impact),
+        danger: true,
+        confirmLabel: "确认清空两面",
+        cancelLabel: "取消",
+      });
+      if (!ok) {
+        restoreEditorAfterClearCancel(impact.restoreText);
+        return null;
+      }
+      return flushChapter(p, chId, text, mode);
+    });
+  }
+
+  async function commitEditor() {
     if (editorCommitTimer.current) {
       window.clearTimeout(editorCommitTimer.current);
       editorCommitTimer.current = null;
@@ -1663,28 +1794,36 @@ export function StudioApp() {
     const mode = writeModeRef.current;
     const text = editorRef.current;
     const chId = chapter.id;
-    updateActive((p) => flushChapter(p, chId, text, mode));
+    const next = await confirmClearBothSurfacesIfNeeded(project, chId, text, mode);
+    if (!next) return;
+    updateActive(() => next);
   }
 
   function applyOverlay(next: StudioOverlay) {
-    if (!isDocumentQuiet(overlay) || !isDocumentQuiet(next)) commitEditor();
+    if (!isDocumentQuiet(overlay) || !isDocumentQuiet(next)) void commitEditor();
     setOverlay(next);
   }
 
   function scheduleEditorCommit() {
     if (editorCommitTimer.current) window.clearTimeout(editorCommitTimer.current);
-    editorCommitTimer.current = window.setTimeout(() => commitEditor(), 900);
+    editorCommitTimer.current = window.setTimeout(() => void commitEditor(), 900);
   }
 
   function buildLatestProject(): VnProject | null {
     if (!project) return null;
     if (!chapter) return project;
-    return flushChapter(
+    const text = editorRef.current;
+    const mode = writeModeRef.current;
+    // 待确认的「清两面」：勿在 Agent/导出路径静默执行清空。
+    const impact = inspectClearImpact(
       project,
       chapter.id,
-      editorRef.current,
-      writeModeRef.current
+      text,
+      mode,
+      flushChapterOpts(project)
     );
+    if (impact.needsConfirm) return project;
+    return flushChapter(project, chapter.id, text, mode);
   }
 
   /**
@@ -1694,9 +1833,14 @@ export function StudioApp() {
    * 800ms 防抖、编辑器提交还有 900ms 防抖——"删掉一段、立刻让它接着写"正好落在窗口里，
    * 模型读到的就是删改之前的稿子，作者看到的现象是"它还在用我已经删掉的原文"。
    * 保存失败（如版本冲突）不拦 Agent：冲突提示由 persistProject 自己弹。
+   *
+   * 清空 UX：`await commitEditor()` 会**同步阻塞**在确认弹窗上（同一 modal，不是异步通知）。
+   * - 用户确认 → 两面已清，再 `buildLatestProject` / persist，Agent 读到清空后工程。
+   * - 用户取消 → 编辑器恢复清空前缓冲，Agent 读到恢复后内容（不会带着「空编辑器 + 旧对面」跑）。
+   * `buildLatestProject` 在仍 `needsConfirm` 时拒绝静默清两面，作为第二道闸。
    */
   async function flushBeforeAgent(): Promise<void> {
-    commitEditor();
+    await commitEditor();
     const latest = buildLatestProject() ?? project;
     if (!latest) return;
     try {
@@ -1716,18 +1860,19 @@ export function StudioApp() {
     }
   }
 
-  function switchWriteMode(next: WriteMode) {
+  async function switchWriteMode(next: WriteMode) {
     if (!project || !chapter || next === writeModeRef.current) return;
     if (editorCommitTimer.current) {
       window.clearTimeout(editorCommitTimer.current);
       editorCommitTimer.current = null;
     }
-    const flushed = flushChapter(
+    const flushed = await confirmClearBothSurfacesIfNeeded(
       project,
       chapter.id,
       editorRef.current,
       writeModeRef.current
     );
+    if (!flushed) return;
     updateActive(() => flushed);
     persistWriteMode(next);
     const ch = flushed.chapters.find((c) => c.id === chapter.id);
@@ -1740,31 +1885,44 @@ export function StudioApp() {
       window.clearTimeout(editorCommitTimer.current);
       editorCommitTimer.current = null;
     }
-    const flushed = flushChapter(
+    const flushed = await confirmClearBothSurfacesIfNeeded(
       project,
       chapter.id,
       editorRef.current,
       writeModeRef.current
     );
+    if (!flushed) return;
+    updateActive(() => flushed);
     const ch = flushed.chapters.find((c) => c.id === chapter.id);
-    const prose = (ch?.prose || "").trim() || chapterProse(ch, flushed.characters);
-    if (!prose.trim()) {
+    const stored = storedProse(ch).trim();
+    const preview = scriptPreview(ch, flushed.characters);
+    // 转换源可用预览；禁止把预览写回 prose（P4.5）
+    const convertSource = stored || preview;
+    if (!convertSource.trim()) {
       setError("本章还没有可转换的内容。请先在编辑器里写一段正文或对白（对白写成「角色名：台词」），写完再点一次生成。");
       return;
     }
     setGeneratingRpy(true);
     setError("");
     try {
-      const out = await generateRpyFromProse(project.id, chapter.id, prose, true);
+      const out = await generateRpyFromProse(project.id, chapter.id, convertSource, true);
       const next: VnProject = {
         ...flushed,
         chapters: flushed.chapters.map((c) =>
           c.id === chapter.id
             ? {
                 ...c,
-                prose,
-                blocks: out.blocks,
-                rpyFromProseHash: proseFingerprint(prose),
+                // 只更新 blocks；有存盘 prose 才写 hash；勿把 preview 赋给 prose
+                ...(stored
+                  ? {
+                      prose: storedProse(c),
+                      blocks: out.blocks,
+                      rpyFromProseHash: proseFingerprint(stored),
+                    }
+                  : {
+                      blocks: out.blocks,
+                      rpyFromProseHash: undefined,
+                    }),
               }
             : c
         ),
@@ -1817,7 +1975,7 @@ export function StudioApp() {
     }
     const latest = buildLatestProject();
     if (!latest) return;
-    commitEditor();
+    void commitEditor();
     try {
       await persistProject(latest);
       if (writeModeRef.current === "rpy") {
@@ -1843,7 +2001,7 @@ export function StudioApp() {
     if (!project) return;
     const latest = buildLatestProject();
     if (!latest) return;
-    commitEditor();
+    void commitEditor();
     try {
       setStatus("生成导出中…");
       setError("");
@@ -1864,7 +2022,7 @@ export function StudioApp() {
 
   async function switchProject(id: string) {
     if (id === project?.id) return;
-    commitEditor();
+    void commitEditor();
     applyOverlay(null);
     try {
       await loadProjectInto(id);
@@ -2113,7 +2271,7 @@ export function StudioApp() {
         },
       ],
     }));
-    commitEditor();
+    void commitEditor();
     setChapterId(id);
   }
 
@@ -2256,7 +2414,7 @@ export function StudioApp() {
 
   async function extractLocs(mode: "smart" | "rules" = "smart") {
     if (!project) return;
-    commitEditor();
+    void commitEditor();
     try {
       setStatus(mode === "smart" ? "智能提取地图中…" : "按场景标签提取中…");
       const latest = buildLatestProject();
@@ -2322,7 +2480,7 @@ export function StudioApp() {
 
   async function archiveLongMemory() {
     if (!project) return;
-    commitEditor();
+    void commitEditor();
     try {
       setStatus("正在把前面的章节整理成记忆存档…");
       const latest = buildLatestProject();
@@ -2363,7 +2521,7 @@ export function StudioApp() {
 
   async function takeSnapshot() {
     if (!project) return;
-    commitEditor();
+    void commitEditor();
     const label = snapLabel.trim() || `快照 ${new Date().toLocaleString()}`;
     try {
       const latest = buildLatestProject();
@@ -2464,7 +2622,7 @@ export function StudioApp() {
 
   async function compareSnapshotById(snapId: string) {
     if (!project) return;
-    commitEditor();
+    void commitEditor();
     setCompareBusy(true);
     setCompareAgainstId(snapId);
     setCompareResult(null);
@@ -2488,7 +2646,7 @@ export function StudioApp() {
 
   async function createShareLink() {
     if (!project) return;
-    commitEditor();
+    void commitEditor();
     try {
       const latest = buildLatestProject();
       if (latest) {
@@ -2540,7 +2698,7 @@ export function StudioApp() {
 
   async function downloadJson() {
     if (!project) return;
-    commitEditor();
+    void commitEditor();
     try {
       setStatus("导出工程中…");
       setError("");
@@ -2562,7 +2720,7 @@ export function StudioApp() {
 
   async function downloadMarkdown() {
     if (!project) return;
-    commitEditor();
+    void commitEditor();
     try {
       setStatus("导出 Markdown…");
       setError("");
@@ -2577,7 +2735,7 @@ export function StudioApp() {
 
   async function downloadDocxFile() {
     if (!project) return;
-    commitEditor();
+    void commitEditor();
     try {
       setStatus("导出 Word…");
       setError("");
@@ -2592,7 +2750,7 @@ export function StudioApp() {
 
   async function downloadSubmission(opts: SubmissionOptions) {
     if (!project) return;
-    commitEditor();
+    void commitEditor();
     setSubmissionBusy(true);
     try {
       setStatus(opts.split ? "打包投稿分章稿…" : "导出投稿稿…");
@@ -2615,7 +2773,7 @@ export function StudioApp() {
 
   async function downloadRenpyBundle() {
     if (!project) return;
-    commitEditor();
+    void commitEditor();
     setBundleBusy(true);
     try {
       setStatus("打包 Ren'Py 项目…");
@@ -3028,8 +3186,10 @@ export function StudioApp() {
                 draft={editor}
                 prepareProject={() => buildLatestProject() ?? project}
                 beforeAgentRun={flushBeforeAgent}
-                onProjectChange={(next) => {
+                onCaptureEditorSelection={captureEditorSelectionForAgent}
+                onProjectChange={(next, opts) => {
                   applyRemoteProject(next);
+                  if (opts?.skipEditorReload) return;
                   const ch = next.chapters.find((c) => c.id === chapterId) ?? next.chapters[0];
                   if (ch) {
                     setChapterId(ch.id);
@@ -3259,7 +3419,7 @@ export function StudioApp() {
           showFocusToggle={writeQuiet && !focusMode}
           writeMode={writeMode}
           rpyStale={rpyIsStale({
-            prose: writeMode === "prose" ? editor : chapter?.prose,
+            prose: chapter ? storedProse(chapter) : "",
             rpyFromProseHash: chapter?.rpyFromProseHash,
           })}
           generating={generatingRpy}
@@ -3304,7 +3464,7 @@ export function StudioApp() {
           onOpenViewPanel={(panel) => applyOverlay({ type: "view", panel })}
           onOpenAnalysis={() => {
             void (async () => {
-              commitEditor();
+              void commitEditor();
               await flushPendingSave();
               applyOverlay({ type: "analysis" });
             })();
@@ -3315,7 +3475,7 @@ export function StudioApp() {
             if (showDesktop) openDesktopApp("agent");
             else setAgentOpenTick((t) => t + 1);
           }}
-          onWriteModeChange={switchWriteMode}
+          onWriteModeChange={(m) => void switchWriteMode(m)}
           onGenerateRpy={() => void generateRpyFromManuscript()}
           onFind={openFind}
           onOpenRevise={() => {
@@ -3356,6 +3516,7 @@ export function StudioApp() {
                 chapters={project.chapters}
                 volumes={project.volumes ?? []}
                 activeVolumeId={activeVolumeId}
+                rpyPendingUpdateIds={rpyPendingUpdateIds}
                 onSelectVolume={setActiveVolumeId}
                 onAddVolume={() => void addVolumeFlow()}
                 onRenameVolume={(id) => void renameVolumeFlow(id)}
@@ -3366,7 +3527,7 @@ export function StudioApp() {
                 onSelectChapter={(id) => {
                   if (id === chapterId) return;
                   rememberCaretNow();
-                  commitEditor();
+                  void commitEditor();
                   setChapterId(id);
                 }}
                 onAddChapter={() => void addChapter()}
@@ -3417,12 +3578,12 @@ export function StudioApp() {
                       copy={copy}
                       writeMode={writeMode}
                       rpyStale={rpyIsStale({
-                        prose: writeMode === "prose" ? editor : chapter?.prose,
+                        prose: chapter ? storedProse(chapter) : "",
                         rpyFromProseHash: chapter?.rpyFromProseHash,
                       })}
                       generating={generatingRpy}
                       showReviseActions={Boolean(reviseDraft)}
-                      onWriteModeChange={switchWriteMode}
+                      onWriteModeChange={(m) => void switchWriteMode(m)}
                       onGenerateRpy={() => void generateRpyFromManuscript()}
                       onFind={openFind}
                       onOpenRevise={() => {
@@ -3549,6 +3710,27 @@ export function StudioApp() {
                           aria-label="章节名"
                           placeholder="章节名"
                         />
+                        {writeMode === "prose" &&
+                        chapter &&
+                        !storedProse(chapter).trim() &&
+                        scriptPreview(chapter, project.characters ?? []).trim() ? (
+                          <div
+                            className={styles.scriptPreviewBanner}
+                            data-testid="script-preview-banner"
+                          >
+                            <p className={styles.scriptPreviewLead}>
+                              当前是脚本预览，不是正文档。在下方输入才会创建正文档。
+                            </p>
+                            <pre className={styles.scriptPreviewBody} aria-readonly>
+                              {scriptPreview(chapter, project.characters ?? [])}
+                            </pre>
+                          </div>
+                        ) : null}
+                        {isProseEngineSettingsSyncFailed() ? (
+                          <p className={styles.settingsSyncHint} role="status">
+                            配置未同步（护栏保持开启）
+                          </p>
+                        ) : null}
                         <ScriptEditor
                           textareaRef={editorTaRef}
                           frameClassName={styles.scriptEditor}
@@ -3561,6 +3743,19 @@ export function StudioApp() {
                         autoPair={writeMode === "prose" && !restoreReadOnly}
                         // 拼写检查同理：正文里作者需要"这个字像打错了"，代码里只会满屏波浪线
                         spellCheck={writeMode === "prose"}
+                        onPaste={
+                          writeMode === "prose"
+                            ? (e) => {
+                                const clip = e.clipboardData?.getData("text") || "";
+                                if (
+                                  textHasEngineSyntax(clip) &&
+                                  shouldShowPasteEngineHint(clip)
+                                ) {
+                                  setStatus(PASTE_ENGINE_HINT);
+                                }
+                              }
+                            : undefined
+                        }
                         overlay={
                           activeMark ? (
                             <MarkCard
@@ -3603,7 +3798,7 @@ export function StudioApp() {
                           ) : null
                         }
                         onPlaceClick={(locationId, label) => {
-                          commitEditor();
+                          void commitEditor();
                           setMapFocus({ id: locationId, tick: Date.now() });
                           applyOverlay({ type: "view", panel: "map" });
                           setStatus(`已在地图定位「${label}」`);
@@ -3719,7 +3914,7 @@ export function StudioApp() {
                         type="button"
                         className={styles.primary}
                         onClick={() => {
-                          commitEditor();
+                          void commitEditor();
                           const latest = buildLatestProject();
                           const ch =
                             latest?.chapters.find((c) => c.id === chapterId) ??
@@ -3861,7 +4056,7 @@ export function StudioApp() {
                     updateActive((p) => ({ ...p, mapMeasure }))
                   }
                   onJumpToChapter={(id, blockIndex) => {
-                    commitEditor();
+                    void commitEditor();
                     if (typeof blockIndex === "number") {
                       persistWriteMode("rpy");
                       pendingEditorFocus.current = { chapterId: id, blockIndex };
@@ -3915,8 +4110,10 @@ export function StudioApp() {
               openRequest={agentOpenTick}
               prepareProject={() => buildLatestProject() ?? project}
               beforeAgentRun={flushBeforeAgent}
-              onProjectChange={(p) => {
+              onCaptureEditorSelection={captureEditorSelectionForAgent}
+              onProjectChange={(p, opts) => {
                 applyRemoteProject(p);
+                if (opts?.skipEditorReload) return;
                 const ch = p.chapters.find((c) => c.id === chapterId) ?? p.chapters[0];
                 if (ch) {
                   setChapterId(ch.id);

@@ -109,6 +109,18 @@
   text-underline-offset: 0.18em;
 }
 
+/* Agent 选区持久高亮：焦点离开后 ::selection 消失，用镜像底色接续同一观感 */
+.agentSelection {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  background: color-mix(in srgb, #7c3aed 55%, #ec4899 12%);
+  color: inherit;
+}
+
 /* 贴着活动标记行的浮层（标记批改卡片）：跟着滚动走，坐标由组件算 */
 .overlay {
   position: absolute;

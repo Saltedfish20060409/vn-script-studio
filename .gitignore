@@ -58,6 +58,8 @@ restore-ui.ps1
 # 例外：下面两份是**对外**的技术记录，README 里直接链接它们——
 # 整目录忽略会让 README 的链接在仓库里变成死链。新增对外文档请在这里加白名单。
 docs/*
+!docs/adr/
+!docs/adr/**
 !docs/longrange-consistency-and-eval.md
 !docs/llm-timeout-budget.md
 !docs/long-context-policy.md

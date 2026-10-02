@@ -1,4 +1,5 @@
 import { apiFetch, setToken } from "./http";
+import { TIMEOUTS } from "./timeouts";
 
 export interface TokenOut {
   access_token: string;
@@ -36,6 +37,8 @@ export async function register(
     method: "POST",
     body: JSON.stringify({ username, password, email }),
     skipAuthRedirect: true,
+    timeoutMs: TIMEOUTS.auth,
+    timeoutKind: "auth",
   });
 }
 
@@ -44,6 +47,8 @@ export async function login(username: string, password: string): Promise<TokenOu
     method: "POST",
     body: JSON.stringify({ username, password }),
     skipAuthRedirect: true,
+    timeoutMs: TIMEOUTS.auth,
+    timeoutKind: "auth",
   });
   // Refresh token arrives as an HttpOnly cookie; only the access token is
   // kept (in memory) by the HTTP layer.
@@ -55,6 +60,8 @@ export function logout(): Promise<OkMessageOut> {
   return apiFetch<OkMessageOut>("/auth/logout", {
     method: "POST",
     skipAuthRedirect: true,
+    timeoutMs: TIMEOUTS.auth,
+    timeoutKind: "auth",
   });
 }
 
@@ -64,6 +71,8 @@ export function me(): Promise<UserOut> {
   // 一挂载就因未登录被踢去 /login，验证/重置流程无法执行。
   return apiFetch<UserOut>("/auth/me", {
     skipAuthRedirect: true,
+    timeoutMs: TIMEOUTS.auth,
+    timeoutKind: "auth",
   });
 }
 
@@ -72,6 +81,8 @@ export function verifyEmail(token: string): Promise<OkMessageOut> {
     method: "POST",
     body: JSON.stringify({ token }),
     skipAuthRedirect: true,
+    timeoutMs: TIMEOUTS.auth,
+    timeoutKind: "auth",
   });
 }
 
@@ -80,6 +91,8 @@ export function resendVerification(email: string): Promise<OkMessageOut> {
     method: "POST",
     body: JSON.stringify({ email }),
     skipAuthRedirect: true,
+    timeoutMs: TIMEOUTS.auth,
+    timeoutKind: "auth",
   });
 }
 
@@ -88,6 +101,8 @@ export function forgotPassword(email: string): Promise<OkMessageOut> {
     method: "POST",
     body: JSON.stringify({ email }),
     skipAuthRedirect: true,
+    timeoutMs: TIMEOUTS.auth,
+    timeoutKind: "auth",
   });
 }
 
@@ -96,5 +111,7 @@ export function resetPassword(token: string, password: string): Promise<OkMessag
     method: "POST",
     body: JSON.stringify({ token, password }),
     skipAuthRedirect: true,
+    timeoutMs: TIMEOUTS.auth,
+    timeoutKind: "auth",
   });
 }

@@ -61,14 +61,34 @@ export function blocksToProse(
   return out.join("\n\n");
 }
 
+/** 存盘正文档（可空）。可编辑区只应填这个，不要回落 blocks。 */
+export function storedProse(
+  chapter: { prose?: string } | undefined
+): string {
+  if (!chapter) return "";
+  return chapter.prose || "";
+}
+
+/** 脚本档投影成可读稿（供只读「脚本预览」；禁止无感写进 prose）。 */
+export function scriptPreview(
+  chapter: { blocks?: ScriptBlock[] } | undefined,
+  characters: Character[]
+): string {
+  if (!chapter) return "";
+  return blocksToProse(chapter.blocks, characters);
+}
+
+/**
+ * @deprecated P4.5：生产路径请用 `storedProse` / `scriptPreview`。
+ * 别名保留以免漏网 import 立刻炸；wiring 守卫禁止生产代码新调用。
+ */
 export function chapterProse(
   chapter: { prose?: string; blocks: ScriptBlock[] } | undefined,
   characters: Character[]
 ): string {
-  if (!chapter) return "";
-  const stored = (chapter.prose || "").trim();
-  if (stored) return chapter.prose || "";
-  return blocksToProse(chapter.blocks, characters);
+  const stored = storedProse(chapter).trim();
+  if (stored) return storedProse(chapter);
+  return scriptPreview(chapter, characters);
 }
 
 export function rpyIsStale(

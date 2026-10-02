@@ -30,10 +30,12 @@ import {
   ingestAttachmentSettings,
   applyAgentActions,
   agentWriteStream,
+  agentTurnStream,
   chapterRevise,
   chapterReviseApply,
   factsScan,
   fetchPreQuestions,
+  generateRpyFromProse,
   type AgentAttachment,
   type AgentConversationOut,
   type AgentConversationSummary,
@@ -41,6 +43,19 @@ import {
   type PipelineRunResult,
 } from "../api/client";
 import { inferAgentIntent } from "../lib/agentIntent";
+import {
+  applyWriteDraftScope,
+  inferDefaultWriteScope,
+  mapIntentToTurnRoute,
+  type WriteDraftScope,
+} from "../lib/agentTurnRoute";
+import {
+  classifyWriteApplyBlocked,
+  isClassicReviseUiEnabled,
+  resolveWritingSurface,
+  shouldUseAgentTurnForWrite,
+  writeApplyBlockedMessage,
+} from "../lib/agentTurnFlags";
 import { attachmentLines, flowUserMessage } from "../lib/agentFlowMessage";
 import {
   planForFactsScan,
@@ -71,6 +86,16 @@ import {
   type ChapterReviseDraft,
 } from "../lib/chapterReviseDraft";
 import { blocksToEditable } from "../lib/scriptCodec";
+import { proseFingerprint, storedProse } from "../lib/scriptProse";
+import {
+  autoRpySkippedBySettingMessage,
+  shouldAutoGenerateRpyAfterProseWrite,
+} from "../lib/autoRpyAfterWrite";
+import { isAutoRpyAfterProseWriteEnabled } from "../lib/autoRpyFlag";
+import {
+  createAutoRpyInflight,
+  isAutoRpyAbortError,
+} from "../lib/autoRpyInflight";
 import { buildWriterCards, DEFAULT_WRITER } from "../lib/agentWriterCards";
 import type {
   AgentAction,
@@ -126,7 +151,14 @@ type Props = {
    * （2026-10-01 线上事故：作者删掉的原文又出现在生成结果里）。失败不拦流程。
    */
   beforeAgentRun?: () => Promise<void>;
-  onProjectChange: (project: VnProject) => void;
+  /**
+   * 工程更新。`skipEditorReload`：仅同步 project（如后台自动 RPY），
+   * 不重载编辑器，避免与「清空两面」确认闸抢编辑器空串状态。
+   */
+  onProjectChange: (
+    project: VnProject,
+    opts?: { skipEditorReload?: boolean }
+  ) => void;
   onChapterFocus?: (chapterId: string) => void;
   /**
    * 写后闸失败段 → 在正文建「标记批改」（不自动跑模型）。
@@ -143,6 +175,8 @@ type Props = {
   compact?: boolean;
   /** Hidden when float is minimized — keep mounted so state survives */
   hidden?: boolean;
+  /** 点击 Agent 输入区前抓写作区选区快照 */
+  onCaptureEditorSelection?: () => void;
 };
 
 /**
@@ -259,6 +293,7 @@ export function AgentChat({
   onCreateMarksFromHints,
   compact,
   hidden,
+  onCaptureEditorSelection,
 }: Props) {
   const projectId = project.id;
 
@@ -397,6 +432,8 @@ export function AgentChat({
     !busy && input.trim() === "" && !messages.some((m) => m.role === "user");
   const [error, setError] = useState("");
   const [lastContext, setLastContext] = useState<string>("");
+  /** P5-B：自动 RPY 单飞；新写入 abort 旧任务。 */
+  const autoRpyInflightRef = useRef(createAutoRpyInflight());
   /** 同一份元信息的折叠态摘要（见 lib/agentRunInfo.ts）——默认收起，落盘记住 */
   const [lastContextCompact, setLastContextCompact] = useState<string>("");
   const [runInfoOpen, setRunInfoOpen] = useState<boolean>(() => readRunInfoOpen());
@@ -443,6 +480,8 @@ export function AgentChat({
     events: AgentTraceEvent[];
     text: string;
   } | null>(null);
+  /** P3：软超时提示（写作流式气泡旁） */
+  const [softTimeoutHint, setSoftTimeoutHint] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [personaOpen, setPersonaOpen] = useState(false);
   const [harnessPrefs, setHarnessPrefsState] = useState<HarnessPrefs>(() =>
@@ -841,6 +880,67 @@ export function AgentChat({
     setError("");
   }
 
+  function handleCancelStream() {
+    streamAbortRef.current?.abort();
+  }
+
+  function handleConfirmWriteDraft(
+    chapterId: string,
+    scope?: WriteDraftScope
+  ) {
+    const draft =
+      pendingRevise?.chapterId === chapterId
+        ? pendingRevise
+        : getChapterReviseDraft(projectId, chapterId);
+    if (!draft) {
+      setError("草稿已写入或已丢弃。");
+      return;
+    }
+    if (pendingRevise?.chapterId !== chapterId) {
+      setPendingReviseState(draft);
+    }
+    const resolved =
+      scope ||
+      inferDefaultWriteScope({
+        originalText: draft.originalText || "",
+        revisedText: draft.revisedText || "",
+        selection,
+      });
+    const body = applyWriteDraftScope({
+      scope: resolved,
+      originalText: draft.originalText || "",
+      revisedText: draft.revisedText || "",
+      selection,
+    });
+    void applyChapterRevise(body, draft);
+  }
+
+  function handleDiscardWriteDraft(chapterId: string) {
+    setPendingRevise(null, { clearChapterId: chapterId });
+    setReviseReviewOpen(false);
+    const cleared = messagesRef.current.map((m) =>
+      m.action?.type === "confirm_write_draft" ||
+      m.action?.type === "open_revise_review"
+        ? { role: m.role, content: m.content }
+        : m
+    );
+    const next = [
+      ...cleared,
+      {
+        role: "assistant" as const,
+        content: "已放弃本次草稿（正文未改动）。",
+      },
+    ].slice(-120);
+    setMessages(next);
+    messagesRef.current = next;
+    setLastContext("草稿已放弃");
+    if (conversationId) {
+      void putAgentConversation(projectId, conversationId, {
+        messages: next,
+      }).catch(() => undefined);
+    }
+  }
+
   function handleResizeStart(e: ReactPointerEvent<HTMLDivElement>) {
     e.preventDefault();
     resizing.current = true;
@@ -935,6 +1035,7 @@ export function AgentChat({
     nextMessages: AgentChatMessage[];
     task?: AgentTaskKind;
     attachments?: AgentAttachment[];
+    turnCapability?: "critique" | "chat";
   }) {
     const convId = conversationId;
     if (!convId) return;
@@ -999,6 +1100,10 @@ export function AgentChat({
           // 「写作导师方法论」默认关（1.6k 字 / 每轮，消融测不出收益，见 agentSections.ts）。
           // 后端只认"显式要"：作者在 ⚙ 资料 里把它勾上（= 不在 excluded 里）就算要。
           mentor_opt_in: !excluded.includes("mentor"),
+          turnCapability:
+            !opts.resume && shouldUseAgentTurnForWrite()
+              ? opts.turnCapability
+              : undefined,
           attachments: opts.resume
             ? undefined
             : pendingAttach.map((a) => ({
@@ -1407,6 +1512,7 @@ export function AgentChat({
         actions,
         chapter_id: chapterId,
         conversation_id: convId,
+        writing_surface: resolveWritingSurface(),
       });
       undoStack.current = [
         ...undoStack.current,
@@ -1476,7 +1582,11 @@ export function AgentChat({
       return;
     }
     if (intent.kind === "write_to_script") {
-      await runWriteChannel(userVisible);
+      const route = mapIntentToTurnRoute(intent, {
+        selection,
+        instruction: userVisible,
+      });
+      await runWriteChannel(userVisible, route.writeOp || "continue");
       return;
     }
     if (intent.kind === "chapter_lock_name") {
@@ -1519,9 +1629,8 @@ export function AgentChat({
       return;
     }
     if (intent.kind === "chapter_polish") {
-      await runChapterReviseFlow(intent.note || "再润一版，轻润不改结构", {
-        mode: "light_touch",
-      });
+      // P5：轻润进 Writing Turn write_op=polish（气泡轻确认），不再默认多窗口回炉。
+      await runWriteChannel(intent.note || userVisible, "polish");
       return;
     }
     if (intent.kind === "revise_pick") {
@@ -1531,13 +1640,9 @@ export function AgentChat({
       return;
     }
     if (intent.kind === "targeted_revise") {
-      // 定点改：走 Agent 的 ops 路径（模型只需给"哪句改成哪句" → `patch_script`，
-      // 其余正文一个字不动），产出进方案卡片的**逐条勾选表**，勾中的才写。
-      //
-      // **不走 `runChapterReviseFlow`**：那条路（整章回炉/写作通道）只会产出一整章新写法，
-      // 作者说的"其他地方不动"在那边无处落脚——线上就是这么变成"改 7 处、重写全章"的
-      // （见 lib/agentIntent.ts 里那段实测）。
-      await sendText(userVisible, "rewrite");
+      // P4：定点改走 Writing Turn write_op=rewrite（草稿 → 气泡轻确认），
+      // 不再默认进工具环 patch 路径。
+      await runWriteChannel(userVisible, "rewrite");
       return;
     }
     if (intent.kind === "chapter_revise") {
@@ -1591,8 +1696,14 @@ export function AgentChat({
 
     let outbound = userVisible;
     const runTask = task;
+    let turnCapability: "critique" | "chat" | undefined = "chat";
     if (intent.kind === "critique_only") {
       outbound = `${userVisible}\n\n（本轮只做文字审稿，不要直接改动正文：把完整意见写进回复；除非用户明确说「写入」，否则不要修改章节内容。）`;
+      turnCapability = "critique";
+    }
+    const route = mapIntentToTurnRoute(intent, { selection });
+    if (route.capability === "critique" || route.capability === "chat") {
+      turnCapability = route.capability;
     }
 
     setError("");
@@ -1622,6 +1733,7 @@ export function AgentChat({
       nextMessages,
       task: runTask,
       attachments: pendingAttach,
+      turnCapability,
     });
   }
 
@@ -1636,9 +1748,27 @@ export function AgentChat({
    * 闸没有变：这条通道**一个字都不写工程**，草稿进对照面板，作者确认后才 apply
    * （可撤回），不想要就丢弃。
    */
-  async function runWriteChannel(instruction: string) {
+  async function runWriteChannel(
+    instruction: string,
+    writeOp:
+      | "continue"
+      | "rewrite"
+      | "polish"
+      | "expand"
+      | "condense"
+      | "style_transfer" = "continue"
+  ) {
     if (busy || !conversationId) return;
     const ask = instruction.trim() || "请按设定与已有内容写一段可上演的正文";
+    const resolvedOp = writeOp;
+    const opLabel: Record<typeof resolvedOp, string> = {
+      continue: "写正文",
+      rewrite: "改写",
+      polish: "润色",
+      expand: "扩写",
+      condense: "缩写",
+      style_transfer: "风格迁移",
+    };
     // 写作通道的"当前章"由服务端读库，所以先把本地改动落盘——否则刚删掉的段落
     // 会作为"章末那一拍"被接着写（2026-10-01 线上事故）。
     await settleLocalEdits();
@@ -1646,38 +1776,81 @@ export function AgentChat({
       ...messagesRef.current,
       {
         role: "user" as const,
-        content: flowUserMessage("【写正文】走写作条件产出草稿（未写入）。", ask),
+        content: flowUserMessage(
+          `【${opLabel[resolvedOp]}】走写作条件产出草稿（未写入）。`,
+          ask
+        ),
       },
     ].slice(-120);
     setMessages(withUser);
     messagesRef.current = withUser;
     setError("");
     setBusy(true);
-    setThinking("正在按写作条件写…");
-    setLastContext("写作通道 · 生成草稿（未写入）");
+    setThinking(`正在按${opLabel[resolvedOp]}条件写…`);
+    setSoftTimeoutHint(null);
+    setLiveStream({ events: [], text: "" });
+    setLastContext(
+      shouldUseAgentTurnForWrite()
+        ? `Writing Turn · ${resolvedOp} 草稿（未写入）`
+        : "写作通道 · 生成草稿（未写入）"
+    );
     let live = "";
     try {
       streamAbortRef.current?.abort();
       const controller = new AbortController();
       streamAbortRef.current = controller;
-      const done = await agentWriteStream(
-        projectId,
-        {
-          instruction: ask,
-          chapter_id: chapterId,
-          selection: selection || undefined,
-          conversation_id: conversationId,
-        },
-        (evt) => {
-          if (evt.type === "token") {
-            live += evt.delta;
-            setThinking(`正在按写作条件写…（${live.length} 字）`);
-          }
-        },
-        controller.signal,
-        () => undefined
-      );
-      const draft = (done.content || "").trim();
+      const writeBody = {
+        instruction: ask,
+        chapter_id: chapterId,
+        selection: selection || undefined,
+        conversation_id: conversationId,
+      };
+      const history = messagesRef.current
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .slice(-16)
+        .map((m) => ({ role: m.role, content: m.content }));
+      const onEvt = (evt: {
+        type: string;
+        delta?: string;
+        message?: string;
+        hardCancelS?: number;
+      }) => {
+        if (evt.type === "token" && evt.delta) {
+          live += evt.delta;
+          setThinking(`正在写…（${live.length} 字）`);
+          setLiveStream({ events: [], text: live });
+        } else if (evt.type === "soft_timeout") {
+          const hint =
+            (evt.message || "已超过软上限，仍可继续等待或点「取消」停止。") +
+            (typeof evt.hardCancelS === "number"
+              ? `（硬取消约 ${Math.round(evt.hardCancelS)}s）`
+              : "") +
+            ` · 已生成 ${live.length} 字`;
+          setSoftTimeoutHint(hint);
+          setThinking(`仍在写…（${live.length} 字 · 已过软上限）`);
+        }
+      };
+      const done = shouldUseAgentTurnForWrite()
+        ? await agentTurnStream(
+            projectId,
+            {
+              ...writeBody,
+              capability: "write",
+              write_op: resolvedOp,
+              messages: history,
+            },
+            onEvt,
+            controller.signal,
+            () => undefined
+          )
+        : await agentWriteStream(
+            projectId,
+            writeBody,
+            onEvt,
+            controller.signal,
+            () => undefined
+          );
+      const draft = (done.content || live || "").trim();
       if (!draft) {
         throw new Error("写作通道没有返回正文，请重试");
       }
@@ -1689,19 +1862,41 @@ export function AgentChat({
         chapterTitle: done.chapterTitle,
         savedAt: Date.now(),
       });
-      setReviseReviewOpen(true);
+      const useClassic = isClassicReviseUiEnabled();
+      if (useClassic) {
+        setReviseReviewOpen(true);
+      }
+      const preview =
+        draft.length > 2400 ? `${draft.slice(0, 2400)}\n\n…（全文 ${draft.length} 字，确认后写入）` : draft;
       const next = [
         ...messagesRef.current,
         {
           role: "assistant" as const,
           content:
-            `草稿写好了（${draft.length} 字，模型 ${done.model || "未知"}），**还没有写进正文**。` +
-            "已打开左右对照：逐段挑「改稿 / 原文」，满意再点「写入」；不想要就点「放弃」，正文保持原样。",
+            `草稿写好了（${draft.length} 字，模型 ${done.model || "未知"}），**还没有写进正文**。\n\n` +
+            (useClassic
+              ? "已打开经典左右对照：逐段挑「改稿 / 原文」，满意再点「写入」。\n\n"
+              : "点下方 **写入** 将草稿落入工程（可先切换：章末追加 / 替换选区 / 替换整章）；或 **放弃**。需要逐段对照可开「经典对照」。\n\n") +
+            "---\n\n" +
+            preview,
+          action: useClassic
+            ? {
+                type: "open_revise_review" as const,
+                chapterId: targetId,
+                label: "打开改稿对照",
+              }
+            : {
+                type: "confirm_write_draft" as const,
+                chapterId: targetId,
+                label: "写入",
+              },
         },
       ].slice(-120);
       setMessages(next);
       messagesRef.current = next;
-      setLastContext("写作通道 · 草稿待确认");
+      setLastContext(
+        useClassic ? "写作通道 · 草稿待对照" : "Writing Turn · 草稿待确认"
+      );
       await putAgentConversation(projectId, conversationId, {
         messages: next,
         undo_stack: undoStack.current.slice(-20),
@@ -1714,6 +1909,16 @@ export function AgentChat({
         streamAbortRef.current?.signal.aborted ||
         (e instanceof Error && e.name === "AbortError")
       ) {
+        const cancelled = [
+          ...messagesRef.current,
+          {
+            role: "assistant" as const,
+            content: "已取消本次写作（正文未改动）。",
+          },
+        ].slice(-120);
+        setMessages(cancelled);
+        messagesRef.current = cancelled;
+        setLastContext("写作已取消");
         return;
       }
       setError(msg);
@@ -1724,6 +1929,8 @@ export function AgentChat({
     } finally {
       setBusy(false);
       setThinking("");
+      setSoftTimeoutHint(null);
+      setLiveStream(null);
     }
   }
 
@@ -2490,10 +2697,18 @@ export function AgentChat({
     }
   }
 
-  async function applyChapterRevise(text?: string) {
-    if (!pendingRevise || busy) return;
+  async function applyChapterRevise(
+    text?: string,
+    draftOverride?: ChapterReviseDraft | null
+  ) {
+    const draft = draftOverride ?? pendingRevise;
+    const blocked = classifyWriteApplyBlocked(draft, busy);
+    if (blocked) {
+      setError(writeApplyBlockedMessage(blocked));
+      return;
+    }
     const snapshot = prepareProject ? prepareProject() : project;
-    const bodyText = (text ?? pendingRevise.revisedText).trim();
+    const bodyText = (text ?? draft!.revisedText).trim();
     if (bodyText.length < 40) {
       setError("合并后的正文过短，请再挑选几段");
       return;
@@ -2501,11 +2716,14 @@ export function AgentChat({
     setError("");
     setBusy(true);
     setThinking("正在写入改稿…");
+    /** 写入成功后再后台跑；声明在 try 外，finally 清完 busy 再启动。 */
+    let pendingAutoRpy: { chapterId: string; prose: string } | null = null;
     try {
       const res = await chapterReviseApply(projectId, {
-        chapter_id: pendingRevise.chapterId,
+        chapter_id: draft!.chapterId,
         text: bodyText,
         conversation_id: conversationId || undefined,
+        writing_surface: resolveWritingSurface(),
       });
       if (res.wrote && res.project) {
         undoStack.current = [
@@ -2513,35 +2731,115 @@ export function AgentChat({
           { label: "改稿写入", project: snapshot },
         ].slice(-20);
         setUndoCount(undoStack.current.length);
-        onProjectChange(res.project);
-        if (onChapterFocus) onChapterFocus(pendingRevise.chapterId);
-      }
-      setPendingRevise(null, { clearChapterId: pendingRevise.chapterId });
-      setReviseReviewOpen(false);
-      const assistantMsg: AgentChatMessage = {
-        role: "assistant",
-        content: `${res.message}\n\n可用「撤回编辑」回滚（当前对话内 ${undoStack.current.length} 步）。`,
-      };
-      // Drop stale「打开对照」chips once written
-      const cleared = messagesRef.current.map((m) =>
-        m.action?.type === "open_revise_review"
-          ? { role: m.role, content: m.content }
-          : m
-      );
-      const finalMessages = [...cleared, assistantMsg].slice(-120);
-      setMessages(finalMessages);
-      messagesRef.current = finalMessages;
-      setLastContext("改稿已写入");
-      if (conversationId) {
-        await putAgentConversation(projectId, conversationId, {
-          messages: finalMessages,
-        }).catch(() => undefined);
+        const nextProject = res.project;
+        let autoRpyNote = "改稿已写入";
+        // P5-B：正文档写入后，条件自动更新脚本（失败不回滚 prose）。
+        if (resolveWritingSurface() === "prose") {
+          const ch = nextProject.chapters.find((c) => c.id === draft!.chapterId);
+          if (ch && shouldAutoGenerateRpyAfterProseWrite(ch)) {
+            if (!isAutoRpyAfterProseWriteEnabled()) {
+              autoRpyNote = autoRpySkippedBySettingMessage();
+            } else {
+              const prose = storedProse(ch).trim();
+              if (prose) {
+                autoRpyNote = "正文档已写入；正在后台更新脚本…";
+                pendingAutoRpy = { chapterId: draft!.chapterId, prose };
+              }
+            }
+          } else if (ch) {
+            // 纯 LN：不自动、不刷屏提示（需要脚本时用户会点「根据剧本生成」）
+            autoRpyNote = "改稿已写入";
+          }
+        }
+        // 先落 prose 写入并重载编辑器；自动 RPY 用 skipEditorReload
+        onProjectChange(nextProject);
+        if (onChapterFocus) onChapterFocus(draft!.chapterId);
+        setPendingRevise(null, { clearChapterId: draft!.chapterId });
+        setReviseReviewOpen(false);
+        const assistantMsg: AgentChatMessage = {
+          role: "assistant",
+          content: `${res.message}\n\n可用「撤回编辑」回滚（当前对话内 ${undoStack.current.length} 步）。`,
+        };
+        // Drop stale「打开对照 / 轻确认」chips once written
+        const cleared = messagesRef.current.map((m) =>
+          m.action?.type === "open_revise_review" ||
+          m.action?.type === "confirm_write_draft"
+            ? { role: m.role, content: m.content }
+            : m
+        );
+        const finalMessages = [...cleared, assistantMsg].slice(-120);
+        setMessages(finalMessages);
+        messagesRef.current = finalMessages;
+        setLastContext(autoRpyNote);
+        if (conversationId) {
+          await putAgentConversation(projectId, conversationId, {
+            messages: finalMessages,
+          }).catch(() => undefined);
+        }
+      } else {
+        setPendingRevise(null, { clearChapterId: draft!.chapterId });
+        setReviseReviewOpen(false);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "写入失败");
     } finally {
       setBusy(false);
       setThinking("");
+    }
+    // 写入已完成（busy=false）；后台生成不阻塞编辑器，且 skipEditorReload 不抢清空闸。
+    // 新任务 abort 旧任务，避免两路并发写 blocks / hash。
+    if (pendingAutoRpy) {
+      const job = autoRpyInflightRef.current.begin(
+        pendingAutoRpy.chapterId,
+        pendingAutoRpy.prose
+      );
+      void (async () => {
+        setThinking("正在根据剧本更新脚本…");
+        try {
+          const out = await generateRpyFromProse(
+            projectId,
+            job.chapterId,
+            job.prose,
+            true,
+            job.signal
+          );
+          if (!autoRpyInflightRef.current.isCurrent(job.id)) return;
+          const latest = prepareProject ? prepareProject() : project;
+          const merged: VnProject = {
+            ...latest,
+            chapters: latest.chapters.map((c) =>
+              c.id === job.chapterId
+                ? {
+                    ...c,
+                    blocks: out.blocks,
+                    rpyFromProseHash: proseFingerprint(job.prose),
+                  }
+                : c
+            ),
+          };
+          onProjectChange(merged, { skipEditorReload: true });
+          setLastContext("正文档已写入，脚本已更新");
+        } catch (e) {
+          if (
+            isAutoRpyAbortError(e) ||
+            job.signal.aborted ||
+            !autoRpyInflightRef.current.isCurrent(job.id)
+          ) {
+            return;
+          }
+          setError(
+            e instanceof Error
+              ? `正文已保存；脚本未更新：${e.message}。可点「根据剧本生成」重试。`
+              : "正文已保存；脚本未更新。可点「根据剧本生成」重试。"
+          );
+          setLastContext("正文档已写入；脚本更新失败（章节列表已标「脚本待更新」）");
+        } finally {
+          autoRpyInflightRef.current.end(job.id);
+          if (!autoRpyInflightRef.current.hasActive()) {
+            setThinking("");
+          }
+        }
+      })();
     }
   }
 
@@ -2617,6 +2915,15 @@ export function AgentChat({
             busy={busy}
             thinking={thinking}
             liveStream={liveStream}
+            softTimeoutHint={softTimeoutHint}
+            onCancelStream={handleCancelStream}
+            onConfirmWriteDraft={handleConfirmWriteDraft}
+            onDiscardWriteDraft={handleDiscardWriteDraft}
+            writeDraftAlive={Boolean(
+              pendingRevise &&
+                getChapterReviseDraft(projectId, pendingRevise.chapterId)
+            )}
+            showClassicReviseAction={isClassicReviseUiEnabled()}
             showEmptyStage={showEmptyStage}
             personaLabel={personaLabel}
             activeLensIds={activeLensIds}
@@ -2936,6 +3243,7 @@ export function AgentChat({
             attachBusy={attachBusy}
             fileInputRef={fileInputRef}
             onPickFiles={(files) => void onPickFiles(files)}
+            onPointerDownCapture={onCaptureEditorSelection}
           />
 
           {personaOpen ? (

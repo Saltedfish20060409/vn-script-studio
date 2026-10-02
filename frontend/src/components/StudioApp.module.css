@@ -1201,6 +1201,40 @@
   min-width: 0;
 }
 
+.scriptPreviewBanner {
+  margin: 0.35rem 0 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--line));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.scriptPreviewLead {
+  margin: 0 0 0.45rem;
+  font-size: 0.82rem;
+  color: var(--muted, var(--ink));
+  opacity: 0.9;
+}
+
+.scriptPreviewBody {
+  margin: 0;
+  max-height: 10rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--ink);
+  opacity: 0.85;
+}
+
+.settingsSyncHint {
+  margin: 0.25rem 0 0.35rem;
+  font-size: 0.78rem;
+  color: var(--muted, var(--ink));
+  opacity: 0.85;
+}
+
 .docTitle {
   width: 100%;
   box-sizing: border-box;

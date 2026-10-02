@@ -2,14 +2,78 @@
 from __future__ import annotations
 
 import time
+from typing import Any, List, Mapping, Sequence
 
 from app.domain.types import VnProject
 
 from .project import normalize_project
 
 
+def manuscript_prose_from_blocks(
+    blocks: Sequence[Any] | None,
+    name_by_id: Mapping[str, str],
+) -> str:
+    """把脚本块投影成正文档自然语言（无 Ren'Py / label / jump / scene 资产名）。
+
+    口径：旁白原文、对白「角色名：台词」、选项列表——对齐剧本页写作习惯。
+    """
+    out: List[str] = []
+
+    def walk(items: Sequence[Any]) -> None:
+        for b in items or []:
+            if isinstance(b, dict):
+                raw = b
+                btype = b.get("type")
+            else:
+                raw = b.model_dump(mode="json") if hasattr(b, "model_dump") else {}
+                btype = raw.get("type")
+            if btype == "narration":
+                text = str(raw.get("text") or "").strip()
+                if text:
+                    out.append(text)
+            elif btype == "dialogue":
+                text = str(raw.get("text") or "").strip()
+                if not text:
+                    continue
+                cid = str(raw.get("characterId") or "")
+                who = name_by_id.get(cid) or cid or "——"
+                out.append(f"{who}：{text}")
+            elif btype == "menu":
+                prompt = str(raw.get("prompt") or "").strip()
+                if prompt:
+                    out.append(f"选项：{prompt}")
+                for choice in raw.get("choices") or []:
+                    if not isinstance(choice, dict):
+                        continue
+                    ct = str(choice.get("text") or "").strip()
+                    if ct:
+                        out.append(f"- {ct}")
+                    child = choice.get("blocks") or []
+                    if child:
+                        walk(child)
+            # label / jump / scene / show / hide / raw → 正文档不写引擎语
+
+    walk(list(blocks or []))
+    return "\n\n".join(out)
+
+
+def _with_manuscript_prose(project: VnProject) -> VnProject:
+    names = {
+        c.id: (c.displayName or c.defineName or c.id)
+        for c in (project.characters or [])
+    }
+    chapters = [
+        ch.model_copy(
+            update={"prose": manuscript_prose_from_blocks(ch.blocks, names)}
+        )
+        for ch in (project.chapters or [])
+    ]
+    return project.model_copy(update={"chapters": chapters})
+
+
 def create_demo_project() -> VnProject:
-    return normalize_project(
+    return _with_manuscript_prose(
+        normalize_project(
         {
             "id": "demo-rainy-station",
             "title": "雨夜车站",
@@ -489,6 +553,7 @@ def create_demo_project() -> VnProject:
                 },
             ],
         }
+        )
     )
 
 

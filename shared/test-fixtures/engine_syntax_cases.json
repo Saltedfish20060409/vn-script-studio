@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "reject": [
+    {
+      "id": "L1-label",
+      "text": "label start:\n雪菜：「你好。」",
+      "hit": "L1"
+    },
+    {
+      "id": "L2-menu",
+      "text": "menu:\n    \"走\":\n        jump a",
+      "hit": "L2"
+    },
+    {
+      "id": "L3-define",
+      "text": "define yukina = Character(\"雪菜\")",
+      "hit": "L3"
+    },
+    {
+      "id": "L4-jump",
+      "text": "jump lab_core",
+      "hit": "L4"
+    },
+    {
+      "id": "L5-scene",
+      "text": "scene lab_core with fade",
+      "hit": "L5"
+    },
+    {
+      "id": "L5-show",
+      "text": "show aoi at center",
+      "hit": "L5"
+    },
+    {
+      "id": "L6-with-fade",
+      "text": "with fade",
+      "hit": "L6"
+    },
+    {
+      "id": "L7-dollar",
+      "text": "$ player_name = renpy.input(\"名字\", length=12)",
+      "hit": "L7"
+    },
+    {
+      "id": "L8-if-not",
+      "text": "if not player_name:",
+      "hit": "L8"
+    },
+    {
+      "id": "L8-if-ident",
+      "text": "if player_name:",
+      "hit": "L8"
+    },
+    {
+      "id": "L9-bracket-label",
+      "text": "[label start]\n旁白。",
+      "hit": "L9"
+    },
+    {
+      "id": "L10-scene-colon",
+      "text": "[场景：lab_core]",
+      "hit": "L10"
+    },
+    {
+      "id": "L10-scene-space",
+      "text": "[场景 lab_core]",
+      "hit": "L10"
+    },
+    {
+      "id": "L10-appear",
+      "text": "[出现：上杉葵]",
+      "hit": "L10"
+    },
+    {
+      "id": "L11-renpy-input",
+      "text": "名字 = renpy.input(\"…\")",
+      "hit": "L11"
+    }
+  ],
+  "allow": [
+    {
+      "id": "W08-032332",
+      "source": "docs/blindtest-runs/20261002-032332/run.json#results.W08.content"
+    },
+    {
+      "id": "W09-032332",
+      "source": "docs/blindtest-runs/20261002-032332/run.json#results.W09.content"
+    },
+    {
+      "id": "neg-if-english",
+      "text": "if you must know, she left."
+    },
+    {
+      "id": "neg-scene-chinese",
+      "text": "scene 这个词很少有人当真。"
+    },
+    {
+      "id": "neg-show-tell",
+      "text": "show 不要 tell，她只把伞递过去。"
+    },
+    {
+      "id": "neg-dollar-price",
+      "text": "他口袋里只剩 $3。"
+    },
+    {
+      "id": "neg-dollar-in-dialogue",
+      "text": "雪菜：「别叫我 $ 什么的。」"
+    },
+    {
+      "id": "neg-vn-paren",
+      "text": "（她没回头。）\n雪菜：「……别叫我。」"
+    },
+    {
+      "id": "neg-label-word",
+      "text": "label 这个词很难听。"
+    },
+    {
+      "id": "neg-menu-word",
+      "text": "menu 上没有今日特供。"
+    },
+    {
+      "id": "neg-scene-bare",
+      "text": "[场景]"
+    },
+    {
+      "id": "neg-focus-bracket",
+      "text": "她说：「[重点]别忘了。」"
+    }
+  ],
+  "known_false_positives": [
+    {
+      "id": "L8-if-you-must-colon",
+      "text": "if you:",
+      "rule": "L8",
+      "note": "已知误杀：英文「if + 单字 + 冒号」（如 if you:）。接受；不修。发现时勿当回归。原讨论例「if you must:」因中间多词不会命中。"
+    }
+  ],
+  "messages": {
+    "append_replace": "这段含引擎语法（如 label / $ / with fade），正文档只接受自然语言。若要生成 Ren'Py 脚本，请切到 RPY 面或使用「根据剧本生成」。",
+    "patch_edit": "第 {n} 条改写含引擎语法（如 label / $ / with fade），正文档只接受自然语言。若要生成 Ren'Py 脚本，请切到 RPY 面或使用「根据剧本生成」。该条未写入；其余条目仍按定点规则处理。",
+    "paste_hint": "这段内容含引擎语法，是否要粘贴到 RPY 面？"
+  }
+}

@@ -82,6 +82,9 @@ def settings_to_out(row: UserSettings) -> SettingsOut:
         active_model=active_model,
         active_base_url=active_base_url,
         credential_source="user" if api_key else "server",
+        enforce_prose_engine_syntax_reject=bool(
+            getattr(settings, "enforce_prose_engine_syntax_reject", True)
+        ),
     )
 
 

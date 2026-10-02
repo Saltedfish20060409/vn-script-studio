@@ -319,6 +319,7 @@ async def _agent_steps(
                 actions,
                 defaultChapterId=request.chapterId,
                 forbid_replace_script=forbid_replace_script,
+                writing_surface=getattr(request, "writingSurface", None),
             )
             working = apply_res.project
             trace.append(

@@ -168,14 +168,75 @@ const WIRINGS: Wiring[] = [
     },
   },
   {
-    // 写作通道：正文必须走 writer 条件（`/agent/write`），不能再回到聊天那条"审阅条件"
-    // （JSON 协议 + 工具 + 规则块）。线上实测同一模型同一份设计书：审阅条件退化成把设计书
-    // 抄成骨架（1141 字、选项留成占位符），writer 条件给 2124 字成稿。
-    name: "写作通道：写正文走 writer 条件，不走聊天",
-    backend: { file: "backend/app/api/v1/projects.py", needle: "/agent/write" },
+    // ADR 0001：写作默认走 Writing Turn；旧 `/agent/write` 仅 B1 回滚。
+    name: "写作通道：写正文走 Writing Turn（可回滚旧 write）",
+    backend: { file: "backend/app/api/v1/projects.py", needle: "/agent/turn" },
     frontend: {
-      files: ["frontend/src/components/AgentChat.tsx"],
-      pattern: /await agentWriteStream\(/,
+      files: [
+        "frontend/src/components/AgentChat.tsx",
+        "frontend/src/api/projects.ts",
+        "frontend/src/lib/agentTurnFlags.ts",
+      ],
+      pattern: /agentTurnStream\(/,
+    },
+  },
+  {
+    // ADR 0001 P3：草稿进气泡轻确认；取消 + 软超时；经典对照 B6 默认关。
+    name: "写作草稿：气泡轻确认 + 取消/软超时（经典对照降级）",
+    backend: { file: "backend/app/api/v1/projects.py", needle: "soft_timeout" },
+    frontend: {
+      files: [
+        "frontend/src/components/AgentChat.tsx",
+        "frontend/src/components/AgentMessagesList.tsx",
+        "frontend/src/lib/agentTurnFlags.ts",
+      ],
+      pattern: /confirm_write_draft/,
+    },
+  },
+  {
+    // P3 写入面：确认落库必须传 writing_surface；无草稿/busy 不可静默 return。
+    name: "写入面：apply 传 writing_surface + classifyWriteApplyBlocked",
+    backend: {
+      file: "backend/app/core/agent.py",
+      needle: "writing_surface",
+    },
+    frontend: {
+      files: [
+        "frontend/src/components/AgentChat.tsx",
+        "frontend/src/api/projects.ts",
+        "frontend/src/lib/agentTurnFlags.ts",
+      ],
+      pattern:
+        /classifyWriteApplyBlocked[\s\S]*setError[\s\S]*writing_surface:\s*resolveWritingSurface/,
+    },
+  },
+  {
+    name: "P4 Capability 路由：后端表 + 前端 write_op / mapIntent",
+    backend: {
+      file: "backend/app/core/capability_router.py",
+      needle: "P4_WRITE_OPS",
+    },
+    frontend: {
+      files: [
+        "frontend/src/lib/agentTurnRoute.ts",
+        "frontend/src/components/AgentChat.tsx",
+      ],
+      pattern: /mapIntentToTurnRoute[\s\S]*write_op:\s*resolvedOp/,
+    },
+  },
+  {
+    name: "P4.5：settings 下发 enforce_prose_engine_syntax_reject + 前端消费",
+    backend: {
+      file: "backend/app/schemas/__init__.py",
+      needle: "enforce_prose_engine_syntax_reject",
+    },
+    frontend: {
+      files: [
+        "frontend/src/lib/proseEngineFlag.ts",
+        "frontend/src/components/StudioApp.tsx",
+        "frontend/src/lib/settings.ts",
+      ],
+      pattern: /applyEnforceProseFlagFromSettings[\s\S]*isEnforceProseEngineSyntaxReject/,
     },
   },
 ];

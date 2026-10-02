@@ -206,6 +206,44 @@ def _text_to_blocks(text: str) -> List[ScriptBlock]:
     return blocks
 
 
+def resolve_writing_surface(
+    requested: Optional[str],
+    chapter_prose: Optional[str],
+    *,
+    warnings: Optional[List[str]] = None,
+) -> str:
+    """判定 append/replace 写哪一面。
+
+    优先级：显式 ``prose`` / ``script`` > 「prose 非空 → prose，否则 script」代理。
+    非法值不 400：静默代理，并往 ``warnings`` 留痕（若传入）。
+    """
+    prose_nonempty = bool(str(chapter_prose or "").strip())
+    proxy = "prose" if prose_nonempty else "script"
+    if requested is None:
+        return proxy
+    raw = str(requested).strip().lower()
+    if not raw:
+        return proxy
+    if raw in ("prose", "script"):
+        return raw
+    if warnings is not None:
+        note = "writing_surface 非法，已按 prose 非空代理"
+        if note not in warnings:
+            warnings.append(note)
+    return proxy
+
+
+def _append_prose_text(old_prose: Optional[str], segment: str) -> str:
+    """章末追加：原 prose 非空时用空行衔接。"""
+    base = str(old_prose or "").rstrip()
+    piece = str(segment or "").strip("\n")
+    if not base:
+        return piece
+    if not piece:
+        return base
+    return f"{base}\n\n{piece}"
+
+
 # ---------------------------------------------------------------- patch_script
 #
 # 为什么需要这个 op（2026-10，线上取证）：
@@ -658,6 +696,8 @@ class ApplyAgentResult:
     skipped: List[str]
     inbox_proposals: List[Dict[str, Any]] = field(default_factory=list)
     scan_request: Optional[Dict[str, Any]] = None
+    #: 非跳过类提示（如 writing_surface 非法已代理）。与 skipped 分列，避免 UI「未执行」误读。
+    warnings: List[str] = field(default_factory=list)
 
 
 def apply_agent_actions(
@@ -666,10 +706,13 @@ def apply_agent_actions(
     defaultChapterId: Optional[str] = None,
     *,
     forbid_replace_script: bool = False,
+    writing_surface: Optional[str] = None,
 ) -> ApplyAgentResult:
     """Apply agent actions immutably to a project.
 
     `forbid_replace_script`：定点落实时硬拒整章替换（见 `surgical_revise`）。
+    `writing_surface`：``prose`` | ``script``；缺省/非法按 prose 非空代理（见
+    ``resolve_writing_surface``）。append/replace 共用；forbid 仍只拦 replace。
     """
     from app.core.fact_extract import (
         accept_character_link,
@@ -680,7 +723,15 @@ def apply_agent_actions(
         timeline_dedupe_key,
         weak_sync_relationships,
     )
+    from app.core.prose_engine_syntax import (
+        PROSE_ENGINE_PATCH_MSG,
+        PROSE_ENGINE_REJECT_MSG,
+        prose_engine_reject_enabled,
+        text_has_engine_syntax,
+    )
     from app.core.surgical_revise import replace_script_reject_note
+
+    enforce_prose_reject = prose_engine_reject_enabled()
 
     next_project = project.model_copy(deep=True)
     if next_project.locations is None:
@@ -696,6 +747,7 @@ def apply_agent_actions(
 
     applied: List[str] = []
     skipped: List[str] = []
+    warnings: List[str] = []
     inbox_proposals: List[Dict[str, Any]] = []
     scan_request: Optional[Dict[str, Any]] = None
 
@@ -896,16 +948,47 @@ def apply_agent_actions(
                 if text is None or not str(text).strip():
                     skipped.append("append_script 缺少正文 text（模型未返回可写入内容）")
                     continue
-                blocks = _text_to_blocks(str(text))
-                if not blocks:
+                surface = resolve_writing_surface(
+                    writing_surface, getattr(ch, "prose", None), warnings=warnings
+                )
+                if (
+                    enforce_prose_reject
+                    and surface == "prose"
+                    and text_has_engine_syntax(str(text))
+                ):
+                    skipped.append(PROSE_ENGINE_REJECT_MSG)
+                    continue
+                seg_blocks = _text_to_blocks(str(text))
+                if not seg_blocks and surface == "script":
                     skipped.append("append_script 正文为空")
                     continue
-                next_project.chapters = [
-                    c.model_copy(update={"blocks": [*c.blocks, *blocks]})
-                    if c.id == ch.id
-                    else c
-                    for c in next_project.chapters
-                ]
+                if surface == "prose":
+                    # 保留原 blocks 结构；只把新增段转 raw 接到末尾（不全文重排）。
+                    new_prose = _append_prose_text(getattr(ch, "prose", None), str(text))
+                    if not new_prose.strip():
+                        skipped.append("append_script 正文为空")
+                        continue
+                    next_project.chapters = [
+                        c.model_copy(
+                            update={
+                                "prose": new_prose,
+                                "blocks": [*c.blocks, *seg_blocks],
+                            }
+                        )
+                        if c.id == ch.id
+                        else c
+                        for c in next_project.chapters
+                    ]
+                else:
+                    if not seg_blocks:
+                        skipped.append("append_script 正文为空")
+                        continue
+                    next_project.chapters = [
+                        c.model_copy(update={"blocks": [*c.blocks, *seg_blocks]})
+                        if c.id == ch.id
+                        else c
+                        for c in next_project.chapters
+                    ]
                 applied.append(f"向「{ch.title}」写入剧情")
                 continue
 
@@ -922,19 +1005,42 @@ def apply_agent_actions(
                 if text is None:
                     skipped.append("replace_script 缺少正文 text")
                     continue
+                surface = resolve_writing_surface(
+                    writing_surface, getattr(ch, "prose", None), warnings=warnings
+                )
+                if (
+                    enforce_prose_reject
+                    and surface == "prose"
+                    and text_has_engine_syntax(str(text))
+                ):
+                    skipped.append(PROSE_ENGINE_REJECT_MSG)
+                    continue
                 blocks = _text_to_blocks(str(text))
-                next_project.chapters = [
-                    c.model_copy(
-                        update={
-                            "blocks": blocks
-                            if blocks
-                            else [{"type": "label", "id": "start", "name": "start"}]
-                        }
-                    )
-                    if c.id == ch.id
-                    else c
-                    for c in next_project.chapters
-                ]
+                fallback_blocks: List[ScriptBlock] = (
+                    blocks
+                    if blocks
+                    else [{"type": "label", "id": "start", "name": "start"}]
+                )
+                if surface == "prose":
+                    next_project.chapters = [
+                        c.model_copy(
+                            update={
+                                "prose": str(text),
+                                "blocks": fallback_blocks,
+                            }
+                        )
+                        if c.id == ch.id
+                        else c
+                        for c in next_project.chapters
+                    ]
+                else:
+                    # script 面：只写 blocks，不污染 prose
+                    next_project.chapters = [
+                        c.model_copy(update={"blocks": fallback_blocks})
+                        if c.id == ch.id
+                        else c
+                        for c in next_project.chapters
+                    ]
                 applied.append(f"重写「{ch.title}」")
                 continue
 
@@ -961,7 +1067,21 @@ def apply_agent_actions(
                         "条目这么多就该整章重写了，而那要先得到作者明确同意"
                     )
                     continue
-                update, why = _patch_chapter(ch, edits)
+                # P4.5：prose 面按条过滤含引擎语法的 replace（非整 op）
+                patch_surface = resolve_writing_surface(
+                    writing_surface, getattr(ch, "prose", None), warnings=warnings
+                )
+                usable_edits = edits
+                if enforce_prose_reject and patch_surface == "prose":
+                    usable_edits = []
+                    for idx, edit in enumerate(edits, start=1):
+                        if text_has_engine_syntax(str(edit.get("replace") or "")):
+                            skipped.append(PROSE_ENGINE_PATCH_MSG.format(n=idx))
+                            continue
+                        usable_edits.append(edit)
+                    if not usable_edits:
+                        continue
+                update, why = _patch_chapter(ch, usable_edits)
                 if update is None:
                     skipped.append(f"patch_script 未落地：{why}")
                     continue
@@ -969,7 +1089,9 @@ def apply_agent_actions(
                     c.model_copy(update=update) if c.id == ch.id else c
                     for c in next_project.chapters
                 ]
-                applied.append(f"定点改写「{ch.title}」{len(edits)} 处（{why}）")
+                applied.append(
+                    f"定点改写「{ch.title}」{len(usable_edits)} 处（{why}）"
+                )
                 continue
 
             if op == "update_bible":
@@ -1260,4 +1382,5 @@ def apply_agent_actions(
         skipped=skipped,
         inbox_proposals=inbox_proposals,
         scan_request=scan_request,
+        warnings=warnings,
     )

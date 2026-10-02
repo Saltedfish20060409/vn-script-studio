@@ -13,8 +13,8 @@ from app.core.harness.ai_flavor import (
     summarize_issues,
 )
 from app.core.harness.roles import build_role_system
-from app.core.pipeline.rewrite_contract import rewrite_contract_block
 from app.core.llm_http import chat_completions, content_from_response
+from app.core.pipeline.rewrite_contract import rewrite_contract_block
 from app.core.renpy import project_to_context
 from app.domain.types import VnProject
 from app.llm_models import DEFAULT_LLM_MODEL
@@ -126,9 +126,11 @@ def build_writer_user_prompt(
     chapter_tail: str = "",
     long_memory: str = "",
     lore_craft: str = "",
+    chat_history: str = "",
 ) -> str:
     parts = [
         instruction.strip() or "请续写下一小段可上演内容。",
+        chat_history.strip(),
         f"## 当前章末尾\n{chapter_tail}" if chapter_tail.strip() else "",
         f"## 选区\n{selection}" if selection.strip() else "",
         long_memory.strip(),

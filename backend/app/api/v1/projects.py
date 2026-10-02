@@ -57,6 +57,7 @@ from app.schemas import (
     AgentRunOut,
     AgentSessionOut,
     AgentSessionPutIn,
+    AgentTurnIn,
     AgentWriteIn,
     AiRunIn,
     ChapterReviseApplyIn,
@@ -2400,6 +2401,7 @@ async def agent_chapter_revise_apply(
         vn,
         [{"op": "replace_script", "chapterRef": body.chapter_id, "text": text}],
         defaultChapterId=body.chapter_id,
+        writing_surface=body.writing_surface,
     )
     if not apply_result.applied:
         detail = "；".join(apply_result.skipped) or "写入失败"
@@ -2412,6 +2414,7 @@ async def agent_chapter_revise_apply(
         "message": "已将回炉稿写入当前章。",
         "applied": list(apply_result.applied),
         "skipped": list(apply_result.skipped),
+        "warnings": list(apply_result.warnings or []),
         "project": project_to_dict(row_to_vn(row)),
         "wrote": True,
     }
@@ -2626,6 +2629,7 @@ async def _build_agent_request(
         selfReview=settings.agent_self_review,
         lensIds=body.lens_ids,
         criticApiKey=creds.get("critic_api_key") or None,
+        writingSurface=body.writing_surface,
         criticApiBaseUrl=creds.get("critic_base_url") or None,
         criticApiModel=creds.get("critic_model") or None,
         apiKey=creds["api_key"],
@@ -2645,13 +2649,17 @@ async def _apply_action_list(
     last_user: str = "",
     attachments: Optional[list] = None,
     sess: Any = None,
-) -> tuple[VnProject, list[str], list[str], int]:
-    """把 actions 落到工程上，返回（新工程、已落地、跳过与警告、待审候选数）。
+    writing_surface: Optional[str] = None,
+) -> tuple[VnProject, list[str], list[str], int, list[str]]:
+    """把 actions 落到工程上，返回（新工程、已落地、跳过、待审候选数、软警告）。
 
     为什么从 `_finalize_agent_run` 里拆出来（2026-xx「先给方案、确认后才写」）：
     方案阶段用 `apply_actions=false` 只拿 actions、不写；作者点确认后走
     `/agent/apply-actions`。两处必须是**同一条**写入路径——否则闸门只是把
     "不写"做了一遍，确认那一下会走另一条谁都没测过的分支。
+
+    返回第 5 项 ``soft_warnings``：非跳过类提示（如 writing_surface 非法已代理），
+    与 skipped 分列，落在响应 ``warnings``（skipped 旁），不新增破坏性字段语义。
     """
     from app.core.fact_extract import (
         build_scan_candidates,
@@ -2670,9 +2678,11 @@ async def _apply_action_list(
         actions,
         defaultChapterId=chapter_id,
         forbid_replace_script=is_surgical_revise(last_user),
+        writing_surface=writing_surface,
     )
     new_vn = apply_result.project
-    warnings = list(apply_result.skipped or [])
+    skipped = list(apply_result.skipped or [])
+    soft_warnings = list(apply_result.warnings or [])
     inbox_added = 0
 
     proposals = inbox_svc.proposals_from_agent(apply_result.inbox_proposals or [])
@@ -2716,9 +2726,15 @@ async def _apply_action_list(
         inbox_added += len(created)
         new_vn = new_vn.model_copy(update={"analysisMeta": fresh_meta})
         if created:
-            warnings.append(f"事实扫描新增 {len(created)} 条待审候选")
+            skipped.append(f"事实扫描新增 {len(created)} 条待审候选")
 
-    return new_vn, list(apply_result.applied or []), warnings, inbox_added
+    return (
+        new_vn,
+        list(apply_result.applied or []),
+        skipped,
+        inbox_added,
+        soft_warnings,
+    )
 
 
 async def _finalize_agent_run(
@@ -2749,7 +2765,7 @@ async def _finalize_agent_run(
     out_project = None
     inbox_added = 0
     if body.apply_actions and actions:
-        new_vn, _applied, warnings, inbox_added = await _apply_action_list(
+        new_vn, _applied, skipped, inbox_added, soft_warnings = await _apply_action_list(
             db,
             project_id,
             vn,
@@ -2758,7 +2774,9 @@ async def _finalize_agent_run(
             last_user=last_user,
             attachments=body.attachments,
             sess=sess,
+            writing_surface=body.writing_surface,
         )
+        warnings = list(skipped) + list(soft_warnings)
         await sync_chapter_rows_from_vn(db, row, new_vn)
         applied = True
         out_project = None  # set after commit
@@ -2882,7 +2900,7 @@ async def agent_apply_actions(
         except Exception:  # noqa: BLE001
             last_user = ""
 
-    new_vn, applied, warnings, inbox_added = await _apply_action_list(
+    new_vn, applied, skipped, inbox_added, soft_warnings = await _apply_action_list(
         db,
         project_id,
         vn,
@@ -2890,11 +2908,12 @@ async def agent_apply_actions(
         chapter_id=body.chapter_id,
         last_user=last_user,
         sess=sess,
+        writing_surface=body.writing_surface,
     )
     if not applied:
         raise HTTPException(
             status_code=400,
-            detail="；".join(warnings) or "写入失败：方案里的动作全部被跳过",
+            detail="；".join(skipped) or "写入失败：方案里的动作全部被跳过",
         )
 
     await sync_chapter_rows_from_vn(db, row, new_vn)
@@ -2909,42 +2928,53 @@ async def agent_apply_actions(
     return {
         "message": message,
         "applied": applied,
-        "skipped": warnings,
+        "skipped": skipped,
+        "warnings": soft_warnings,
         "project": project_to_dict(row_to_vn(row)),
         "wrote": True,
         "inbox_added": inbox_added,
     }
 
 
-@router.post("/{project_id}/agent/write")
-async def agent_write_stream(
+async def _streaming_writer_draft(
+    *,
     project_id: str,
-    body: AgentWriteIn,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
-):
-    """写作通道（SSE）：走 **writer 条件**，自由文本流式产出正文草稿。**不落库。**
+    instruction: str,
+    chapter_id: Optional[str],
+    selection: Optional[str],
+    temperature: Optional[float],
+    user: User,
+    db: AsyncSession,
+    settings: Settings,
+    capability: str = "write",
+    write_op: Optional[str] = None,
+    emit_turn_meta: bool = False,
+    conversation_id: Optional[str] = None,
+    messages: Optional[List[Dict[str, Any]]] = None,
+    lens_ids: Optional[List[str]] = None,
+    enrich_context: bool = True,
+    scope: Optional[str] = None,
+) -> StreamingResponse:
+    """共用写作草稿 SSE：`/agent/turn`（默认）与旧 `/agent/write`（兼容层）。
 
-    为什么单开这条（2026-09-30 线上实测，作者账号「搁浅de咸鱼」）：
-    聊天那条路是**审阅条件**——JSON 输出协议、工具目录、craft/导师/透镜规则块、15k 上下文。
-    同一模型、同一份设计书，只换条件的结果是：
-
-    - 审阅条件（`/agent/stream`）：1141 字，退化成"把设计书抄成骨架"——选项留成
-      「[选项1][选项2][选项3]」、把作者的注释当旁白抄进正文、用摘要代替戏；
-    - 写作条件（`stage_write`：writer 角色 + 风格 Skill + 节拍/意图）：2124 字成稿，
-      两组选项有真内容。
-
-    另外 JSON 模式与 `deepseek-flash-think`（思考档）互斥，而写作不需要 JSON——
-    把写作从 JSON 里拿出来，思考档才可能用得上。
-
-    **本接口不写工程**：产出的是草稿，作者在前端对照/确认后才走
-    `/agent/chapter-revise/apply`（替换本章）或 `/agent/apply-actions`（追加）。
+    ADR 0001 P2：默认 enrich 对话史 + 作品记忆；旧路由保留不删除（兼容层）。
+    软超时 / 硬取消仍在协议层。
     """
+    import time
+
     from app.core.agent_context import chapter_plain
+    from app.core.agent_turn import (
+        WRITE_HARD_CANCEL_S,
+        WRITE_SOFT_TIMEOUT_S,
+        hard_timeout_error,
+        plan_next_wait,
+        soft_timeout_event,
+        turn_meta_event,
+    )
     from app.core.pipeline.orchestrator import stage_write
     from app.core.rate_limit import require_rate
     from app.core.usage import ensure_under_quota
+    from app.core.write_context import messages_from_raw
     from app.llm_models import resolve_write_model
 
     require_rate(
@@ -2961,9 +2991,6 @@ async def agent_write_stream(
     if not creds["api_key"]:
         raise HTTPException(status_code=400, detail="未配置模型 Key，请先在「设置 → 模型」填写")
     await ensure_under_quota(db, user.id, settings, creds)
-    # 写作通道默认**开思考**（settings.write_thinking=auto，见 llm_models.resolve_write_model）：
-    # 同一份材料在网页版是深度思考档写出来的，而我们此前一律下发 thinking:disabled。
-    # 这条通道是自由文本，不需要 JSON，所以思考档可用（聊天那条路有 JSON 互斥，用不了）。
     cfg = DeepSeekConfig(
         apiKey=creds["api_key"],
         baseUrl=creds["base_url"],
@@ -2971,10 +2998,26 @@ async def agent_write_stream(
     )
 
     chapter = None
-    if body.chapter_id:
-        chapter = next((c for c in vn.chapters if c.id == body.chapter_id), None)
+    if chapter_id:
+        chapter = next((c for c in vn.chapters if c.id == chapter_id), None)
     source_text = chapter_plain(chapter, vn.characters) if chapter is not None else ""
     chapter_title = (chapter.title or chapter.id) if chapter is not None else ""
+
+    # 对话史：请求体优先；否则从会话表读取（修复 conversation_id 空转）
+    hist = messages_from_raw(messages)
+    chat_memory = ""
+    if conversation_id:
+        try:
+            sess = await _get_session(db, project_id, conversation_id)
+            chat_memory = (sess.chat_memory or "").strip()
+            if not hist:
+                hist = messages_from_raw(sess.messages)
+        except Exception:  # noqa: BLE001
+            pass
+
+    continuity = await get_latest_continuity(db, project_id) or {}
+    long_memory = str(continuity.get("agentBlock") or "")
+    global_memory = _global_memory_block(vn) or ""
 
     queue: "asyncio.Queue[dict]" = asyncio.Queue()
 
@@ -2988,21 +3031,74 @@ async def agent_write_stream(
         return await stage_write(
             cfg,
             vn,
-            instruction=body.instruction,
-            chapter_id=body.chapter_id,
-            selection=body.selection or "",
+            instruction=instruction,
+            chapter_id=chapter_id,
+            selection=selection or "",
             on_token=on_token,
-            temperature=body.temperature if body.temperature is not None else 0.75,
+            temperature=temperature if temperature is not None else 0.75,
+            messages=hist,
+            chat_memory=chat_memory,
+            long_memory=long_memory,
+            global_memory=global_memory,
+            lens_ids=lens_ids,
+            enrich_context=enrich_context,
+            db_continuity=continuity if continuity else None,
+            write_op=write_op,
         )
 
     async def event_stream():
+        started = time.monotonic()
+        soft_emitted = False
+        if emit_turn_meta:
+            meta = turn_meta_event(
+                capability=capability,
+                write_op=write_op,
+                soft_timeout_s=WRITE_SOFT_TIMEOUT_S,
+                hard_cancel_s=WRITE_HARD_CANCEL_S,
+                # P2：不再是纯透传；保留兼容层语义字段
+                passthrough=False,
+                scope=scope,
+            )
+            meta["compatLayer"] = True
+            meta["enrichContext"] = enrich_context
+            yield await _sse(meta)
         runner = asyncio.create_task(_run_stage())
         try:
             while True:
+                elapsed = time.monotonic() - started
+                plan = plan_next_wait(
+                    elapsed_s=elapsed,
+                    soft_timeout_s=WRITE_SOFT_TIMEOUT_S,
+                    hard_cancel_s=WRITE_HARD_CANCEL_S,
+                    keepalive_s=_SSE_KEEPALIVE_SECONDS,
+                    soft_already_emitted=soft_emitted,
+                )
+                if plan.hard_cancel:
+                    if not runner.done():
+                        runner.cancel()
+                        try:
+                            await runner
+                        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                            pass
+                    yield await _sse(
+                        hard_timeout_error(
+                            elapsed_s=elapsed, hard_cancel_s=WRITE_HARD_CANCEL_S
+                        )
+                    )
+                    return
+                if plan.emit_soft_timeout:
+                    soft_emitted = True
+                    yield await _sse(
+                        soft_timeout_event(
+                            elapsed_s=elapsed, hard_cancel_s=WRITE_HARD_CANCEL_S
+                        )
+                    )
+                    continue
+
                 getter = asyncio.create_task(queue.get())
                 done, _pending = await asyncio.wait(
                     {getter, runner},
-                    timeout=_SSE_KEEPALIVE_SECONDS,
+                    timeout=plan.wait_s,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 if getter in done:
@@ -3026,11 +3122,13 @@ async def agent_write_stream(
                 "type": "done",
                 "content": (result.get("content") or "").strip(),
                 "model": result.get("model"),
-                "chapterId": body.chapter_id,
+                "chapterId": chapter_id,
                 "chapterTitle": chapter_title,
                 "sourceText": source_text,
-                # 说清楚这条通道不落库：前端拿它当草稿，写入仍要作者确认
                 "wrote": False,
+                "capability": capability,
+                "writeOp": write_op,
+                "contextIncluded": result.get("contextIncluded") or [],
             }
         )
 
@@ -3042,6 +3140,219 @@ async def agent_write_stream(
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
+    )
+
+
+
+async def _streaming_turn_ingest_delegate(
+    *,
+    capability: str,
+    instruction: str,
+) -> StreamingResponse:
+    """P4 ingest 薄委托：不静默直写；引导走 Diff 确认（附件入库方案卡片）。"""
+    from app.core.agent_turn import turn_meta_event
+
+    async def event_stream():
+        meta = turn_meta_event(
+            capability=capability,
+            write_op=None,
+            passthrough=False,
+            delegated=True,
+        )
+        meta["compatLayer"] = True
+        meta["delegate"] = "settings_ingest_diff"
+        yield f"data: {json.dumps(meta, ensure_ascii=False)}\n\n"
+        note = f"\n\n你的指令：{instruction}" if instruction else ""
+        done = {
+            "type": "done",
+            "content": (
+                "已路由到设定入库（ingest）。请附上资料后说「写入设定」，"
+                "会先出 Diff 方案卡片，点确认才写进工程（不会静默直写）。"
+                + note
+            ),
+            "wrote": False,
+            "capability": capability,
+            "delegated": True,
+            "delegate": "settings_ingest_diff",
+        }
+        yield f"data: {json.dumps(done, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+async def _streaming_turn_agent_delegate(
+    *,
+    project_id: str,
+    body: AgentTurnIn,
+    instruction: str,
+    user: User,
+    db: AsyncSession,
+    settings: Settings,
+) -> StreamingResponse:
+    """P4 critique/chat 薄委托：先发 turn meta，再跑既有责编工具环 stream。"""
+    from app.core.agent_turn import turn_meta_event
+
+    run_body = AgentRunIn(
+        messages=body.messages
+        or ([{"role": "user", "content": instruction}] if instruction else []),
+        chapter_id=body.chapter_id,
+        selection=body.selection,
+        task="chat" if body.capability == "chat" else None,
+        conversation_id=body.conversation_id,
+        apply_actions=body.apply_actions
+        if body.capability != "critique"
+        else False,
+        lens_ids=body.lens_ids,
+        attachments=body.attachments,
+        exclude_sections=body.exclude_sections,
+        mentor_opt_in=body.mentor_opt_in,
+    )
+    if not run_body.messages:
+        raise HTTPException(status_code=400, detail="请提供 instruction 或 messages")
+
+    inner = await run_project_agent_stream(
+        project_id, run_body, user, db, settings
+    )
+
+    async def event_stream():
+        meta = turn_meta_event(
+            capability=body.capability,
+            write_op=None,
+            passthrough=False,
+            delegated=True,
+            scope=body.scope,
+        )
+        meta["compatLayer"] = True
+        meta["delegate"] = "agent_stream"
+        yield f"data: {json.dumps(meta, ensure_ascii=False)}\n\n"
+        async for chunk in inner.body_iterator:
+            if isinstance(chunk, bytes):
+                yield chunk.decode("utf-8", errors="replace")
+            else:
+                yield chunk
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/{project_id}/agent/turn")
+async def agent_turn_stream(
+    project_id: str,
+    body: AgentTurnIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Writing Turn（ADR 0001 P4）：Capability 路由统一 SSE 入口。
+
+    - write：仅 continue / rewrite（P5 ops → 400）
+    - critique / chat：薄委托既有责编工具环 stream（先发 turn meta）
+    - ingest：薄委托说明（Diff 确认路径；不静默直写）
+    """
+    from app.core.capability_router import (
+        assert_known_capability,
+        resolve_write_op,
+    )
+
+    try:
+        assert_known_capability(body.capability)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    instruction = (body.instruction or "").strip()
+    if not instruction and body.messages:
+        for msg in reversed(body.messages):
+            if isinstance(msg, dict) and msg.get("role") == "user":
+                instruction = str(msg.get("content") or "").strip()
+                if instruction:
+                    break
+
+    if body.capability == "write":
+        if not instruction:
+            raise HTTPException(
+                status_code=400, detail="请提供 instruction 或 messages 中的用户指令"
+            )
+        resolved = resolve_write_op(body.write_op, selection=body.selection)
+        if not resolved.ok:
+            raise HTTPException(status_code=400, detail=resolved.error or "非法 write_op")
+        return await _streaming_writer_draft(
+            project_id=project_id,
+            instruction=instruction,
+            chapter_id=body.chapter_id,
+            selection=body.selection,
+            temperature=body.temperature,
+            user=user,
+            db=db,
+            settings=settings,
+            capability="write",
+            write_op=resolved.write_op,
+            emit_turn_meta=True,
+            conversation_id=body.conversation_id,
+            messages=body.messages,
+            lens_ids=body.lens_ids,
+            enrich_context=body.enrich_context,
+            scope=body.scope,
+        )
+
+    if body.capability == "ingest":
+        return await _streaming_turn_ingest_delegate(
+            capability=body.capability,
+            instruction=instruction,
+        )
+
+    # critique / chat → 薄委托既有 /agent/stream
+    return await _streaming_turn_agent_delegate(
+        project_id=project_id,
+        body=body,
+        instruction=instruction,
+        user=user,
+        db=db,
+        settings=settings,
+    )
+
+
+@router.post("/{project_id}/agent/write")
+async def agent_write_stream(
+    project_id: str,
+    body: AgentWriteIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """写作通道（SSE）兼容层：与 turn 共用 enrichment + 软超时。
+
+    ADR 0001：默认写作路径走 `POST …/agent/turn`；本路由保留作 B1 回滚，**不删除**。
+    """
+    return await _streaming_writer_draft(
+        project_id=project_id,
+        instruction=body.instruction,
+        chapter_id=body.chapter_id,
+        selection=body.selection,
+        temperature=body.temperature,
+        user=user,
+        db=db,
+        settings=settings,
+        capability="write",
+        write_op=None,
+        emit_turn_meta=False,
+        conversation_id=body.conversation_id,
+        messages=None,
+        enrich_context=True,
     )
 
 

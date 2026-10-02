@@ -173,6 +173,26 @@ def _validation_flaw(rpy: str) -> Optional[str]:
     return err.message if err else None
 
 
+def sanitize_rpy_blocks(blocks: List[ScriptBlock]) -> List[ScriptBlock]:
+    """Strip `raw` blocks. P5：禁止静默落 raw。"""
+    return [b for b in (blocks or []) if b.get("type") != "raw"]
+
+
+def _require_stageable_blocks(blocks: List[ScriptBlock], *, context: str) -> List[ScriptBlock]:
+    cleaned = sanitize_rpy_blocks(blocks)
+    has_body = any(
+        b.get("type") in ("narration", "dialogue", "menu", "scene", "show")
+        for b in cleaned
+    )
+    if not cleaned or not has_body:
+        raise ValueError(
+            f"{context}：未能得到可上演的脚本块（禁止静默写入 raw）。请重试或改写正文后再生成。"
+        )
+    if not any(b.get("type") == "label" for b in cleaned):
+        cleaned = [{"type": "label", "id": "start", "name": "start"}, *cleaned]
+    return cleaned
+
+
 async def generate_rpy_from_prose(
     project: VnProject,
     prose: str,
@@ -197,11 +217,12 @@ async def generate_rpy_from_prose(
         flaw = _rpy_has_structural_flaws(rpy) or _validation_flaw(rpy)
         if flaw:
             fallback = parse_prose_to_blocks(text, project.characters)
-            if fallback:
-                return blocks_to_rpy_text(fallback, project.characters), fallback
-            raise ValueError(f"模型输出有结构缺陷（{flaw}），自动修复失败，请重试一次")
-        return (rpy if rpy.endswith("\n") else rpy + "\n"), blocks
+            cleaned = _require_stageable_blocks(
+                fallback, context=f"模型输出有结构缺陷（{flaw}），确定性回退"
+            )
+            return blocks_to_rpy_text(cleaned, project.characters), cleaned
+        cleaned = _require_stageable_blocks(blocks, context="模型脚本解析")
+        return (rpy if rpy.endswith("\n") else rpy + "\n"), cleaned
     blocks = parse_prose_to_blocks(text, project.characters)
-    if not blocks:
-        raise ValueError("无法从剧本文稿解析出脚本")
-    return blocks_to_rpy_text(blocks, project.characters), blocks
+    cleaned = _require_stageable_blocks(blocks, context="确定性转换")
+    return blocks_to_rpy_text(cleaned, project.characters), cleaned

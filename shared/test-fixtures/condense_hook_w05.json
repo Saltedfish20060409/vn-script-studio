@@ -1,0 +1,15 @@
+{
+  "id": "p2.5-w05-condense-hook",
+  "title": "P2.5 W05 / P5 condense：缩写不得压掉未回收钩子",
+  "acceptance": {
+    "unit": "write_op_framing(condense) 含「未回收钩子 > 因果主干 > 细节描写」；本 fixture 的 must_retain 句在缩写后须仍出现",
+    "hand_or_llm": "对 sample_prose 跑 condense 后，must_retain 每条子串仍在输出中，或语义等价（雨里、有人叫她旧名字）；可删 sample_expendable 中的铺陈。不含 → 不通过；处理：改 prompt / 换锚句 / 接受并记 ADR",
+    "not_in_scope": "不做全文 embedding 相似度门禁；LLM 输出波动用 must_retain 硬锚"
+  },
+  "must_retain": ["雨里有人叫了她的旧名字"],
+  "sample_expendable": [
+    "路灯把积水照成碎玻璃。",
+    "她把伞往肩上挪了挪，袖口已经湿透。"
+  ],
+  "sample_prose": "路灯把积水照成碎玻璃。她把伞往肩上挪了挪，袖口已经湿透。远处车灯扫过，雨里有人叫了她的旧名字。她没有回头。"
+}

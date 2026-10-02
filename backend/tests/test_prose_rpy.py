@@ -3,6 +3,8 @@
 import asyncio
 import types
 
+import pytest
+
 from app.core.prose_rpy import (
     _rpy_has_structural_flaws,
     generate_rpy_from_prose,
@@ -356,3 +358,49 @@ def test_export_keeps_spaced_image_names():
     assert "scene bg overpass_rain" in out
     assert "show linxia neutral" in out
     assert "scene unnamed" not in out
+
+def test_sanitize_rpy_blocks_drops_raw():
+    from app.core.prose_rpy import sanitize_rpy_blocks
+    blocks = [
+        {"type": "label", "id": "start", "name": "start"},
+        {"type": "raw", "code": "$ foo = 1"},
+        {"type": "narration", "text": "雨。"},
+    ]
+    cleaned = sanitize_rpy_blocks(blocks)
+    assert all(b.get("type") != "raw" for b in cleaned)
+    assert any(b.get("type") == "narration" for b in cleaned)
+
+
+def test_generate_rejects_raw_only_fallback(monkeypatch):
+    """回退若只剩 raw → 必须失败，不得静默落盘。"""
+    import app.core.prose_rpy as pr
+
+    async def fake_llm(project, prose, config):
+        return "scene"  # structural flaw → fallback
+
+    monkeypatch.setattr(pr, "llm_prose_to_rpy", fake_llm)
+    monkeypatch.setattr(
+        pr,
+        "parse_prose_to_blocks",
+        lambda prose, characters=None: [
+            {"type": "label", "id": "start", "name": "start"},
+            {"type": "raw", "code": "bad"},
+        ],
+    )
+    cfg = types.SimpleNamespace(apiKey="k", baseUrl="", model="m")
+    with pytest.raises(ValueError, match="禁止静默写入 raw"):
+        asyncio.run(generate_rpy_from_prose(_proj(), "林夏：你好。", cfg))
+
+
+def test_generate_without_llm_no_raw_in_output():
+    rpy, blocks = asyncio.run(
+        generate_rpy_from_prose(
+            _proj(),
+            "林夏：你好。\n雨还在下。",
+            None,
+            use_llm=False,
+        )
+    )
+    assert all(b.get("type") != "raw" for b in blocks)
+    assert any(b.get("type") in ("dialogue", "narration") for b in blocks)
+

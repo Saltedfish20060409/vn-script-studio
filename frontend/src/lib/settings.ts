@@ -168,6 +168,11 @@ export interface ServerSettingsOut {  theme: string;
   active_model?: string;
   active_base_url?: string;
   credential_source?: "user" | "server" | "client";
+  /**
+   * P4.5 运维 flag（只读，来自服务端 env）。
+   * PUT 体即使带此字段也忽略；变更后需刷新页面。
+   */
+  enforce_prose_engine_syntax_reject?: boolean;
 }
 
 export function fromServerSettings(out: ServerSettingsOut): AppSettings {

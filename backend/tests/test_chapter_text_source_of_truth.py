@@ -6,7 +6,9 @@
 
 根因是同一章有**两份存储**（正文档 `prose` / 脚本档 `blocks`），而读写两侧的口径不齐：
 
-- 写：编辑器的正文档只写 `prose`、脚本档只写 `blocks`；Agent 的 `append_script` 只写 `blocks`。
+- 写：编辑器的正文档只写 `prose`、脚本档只写 `blocks`；Agent 的
+  `append_script` / `replace_script` 按 `writing_surface`（或缺省 prose 非空代理）
+  写 prose 和/或 blocks。
 - 读：`chapter_plain` 是 **prose 优先、prose 为空回落 blocks**——这个回落本身必要
   （纯脚本档工程的 `prose` 一直是空的），但它让"作者删掉的那一面"从另一面复活。
 

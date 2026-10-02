@@ -87,6 +87,7 @@ export function generateCharacterVoice(
   return apiFetch(`/projects/${projectId}/characters/${characterId}/voice/generate`, {
     method: "POST",
     timeoutMs: TIMEOUTS.chat,
+    timeoutKind: "llm",
     body: JSON.stringify(body),
   });
 }
@@ -157,6 +158,7 @@ export function synthesizeCharacterVoiceMind(
   return apiFetch(`/projects/${projectId}/characters/${characterId}/voice/synthesize`, {
     method: "POST",
     timeoutMs: TIMEOUTS.chat,
+    timeoutKind: "llm",
     body: JSON.stringify(body),
   });
 }
@@ -269,6 +271,7 @@ export function workshopChat(
   return apiFetch(`/projects/${projectId}/characters/${characterId}/workshop/chat`, {
     method: "POST",
     timeoutMs: TIMEOUTS.chat,
+    timeoutKind: "llm",
     body: JSON.stringify(body),
   });
 }

@@ -651,7 +651,8 @@ export interface AgentChatMessage {
   content: string;
   /** Optional action chip under assistant bubble (persisted with conversation). */
   action?: {
-    type: "open_revise_review";
+    /** open_revise_review = 经典对照；confirm_write_draft = P3 气泡轻确认待写入 */
+    type: "open_revise_review" | "confirm_write_draft";
     chapterId: string;
     label?: string;
   };

@@ -757,6 +757,8 @@ class AgentRequest(BaseModel):
     # Optional separate critic model (cross-model review reduces self-bias)
     criticApiKey: Optional[str] = None
     criticApiBaseUrl: Optional[str] = None
+    # Target writing surface for append/replace: prose | script (proxy if omitted)
+    writingSurface: Optional[str] = None
     criticApiModel: Optional[str] = None
     # Optional client-provided credentials (override server env)
     apiKey: Optional[str] = None

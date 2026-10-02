@@ -13,6 +13,8 @@ type Props = {
   attachBusy: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
   onPickFiles: (files: FileList | null) => void;
+  /** 焦点进入输入区前抓写作区选区（避免浏览器清 DOM 选区） */
+  onPointerDownCapture?: () => void;
 };
 
 /**
@@ -31,9 +33,10 @@ export function AgentComposerBox({
   attachBusy,
   fileInputRef,
   onPickFiles,
+  onPointerDownCapture,
 }: Props) {
   return (
-    <div className={styles.composer}>
+    <div className={styles.composer} onPointerDownCapture={onPointerDownCapture}>
       <textarea
         rows={compact ? 2 : 3}
         value={value}

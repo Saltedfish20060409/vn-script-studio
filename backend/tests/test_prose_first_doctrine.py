@@ -99,8 +99,10 @@ def _vn_project():
 def test_reviewer_system_carries_the_doctrine():
     assert "写作面与转换面分开" in AGENT_SYSTEM
     assert "没有自然语言剧本之前，不要考虑 RPY" in AGENT_SYSTEM
+    assert "根据剧本生成" in AGENT_SYSTEM
+    assert "不是生成 .rpy 的入口" in AGENT_SYSTEM
     # 也要写清"什么时候才可以落引擎语法"，否则模型会把整条路当成禁止
-    assert "作者明确" in AGENT_SYSTEM and "rpy" in AGENT_SYSTEM.replace("RPY", "rpy")
+    assert "作者" in AGENT_SYSTEM and "rpy" in AGENT_SYSTEM.replace("RPY", "rpy")
 
 
 def test_writer_channel_role_carries_the_doctrine():
@@ -109,6 +111,7 @@ def test_writer_channel_role_carries_the_doctrine():
     system = build_role_system("writer", extra="作品上下文（节选）：…")
     assert "自然语言剧本" in system
     assert "没有自然语言剧本就不要碰 RPY" in system
+    assert "根据剧本生成" in system
     # 旧的输出约定已经删掉
     assert "可粘贴的 Ren'Py 风格片段" not in system
 
@@ -197,5 +200,7 @@ def test_conversion_side_still_exists():
     from app.core.prose_rpy import generate_rpy_from_prose  # noqa: F401
     from app.core.renpy import export_script_rpy  # noqa: F401
 
-    assert "作者明确" in AGENT_SYSTEM
-    assert "生成脚本" in build_writing_craft_prompt("continue", "full")
+    assert "根据剧本生成" in AGENT_SYSTEM
+    assert "生成脚本" in build_writing_craft_prompt("continue", "full") or (
+        "根据剧本生成" in build_writing_craft_prompt("continue", "full")
+    )

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  AGENT_SELECTION_MARK_ID,
+  agentSelectionMark,
   lineIndexOf,
   lineSegments,
   lineStarts,
   locateInNodes,
+  withAgentSelection,
   type BaseToken,
   type MarkRange,
 } from "./markHighlight";
@@ -133,5 +136,38 @@ describe("lineSegments：标记区间叠加", () => {
     const text = tokens.map((t) => t.value).join("");
     const segs = lineSegments(tokens, 0, marks);
     expect(segs.map((s) => s.text).join("")).toBe(text);
+  });
+
+  it("agentSelection 角色 → kind 为 agentSelection", () => {
+    const marks: MarkRange[] = [
+      { id: AGENT_SELECTION_MARK_ID, from: 1, to: 4, active: true, role: "agentSelection" },
+    ];
+    const segs = lineSegments([plain("012345")], 0, marks);
+    expect(segs.map((s) => [s.text, s.kind])).toEqual([
+      ["0", "plain"],
+      ["123", "agentSelection"],
+      ["45", "plain"],
+    ]);
+  });
+});
+
+describe("withAgentSelection：选区快照驱动持久高亮", () => {
+  it("选中 → 点 Agent 输入框（快照保留）→ 高亮区间仍在", () => {
+    // 与 editorSelectionSnapshot「失焦折叠保留」同一契约：range 仍在则高亮仍在
+    const range = { from: 0, to: 3 };
+    const highlights = withAgentSelection([], range);
+    expect(highlights).toEqual([
+      {
+        id: AGENT_SELECTION_MARK_ID,
+        from: 0,
+        to: 3,
+        active: true,
+        role: "agentSelection",
+      },
+    ]);
+    expect(agentSelectionMark(null)).toBeNull();
+    expect(withAgentSelection([{ id: "m1", from: 5, to: 7 }], null)).toEqual([
+      { id: "m1", from: 5, to: 7 },
+    ]);
   });
 });

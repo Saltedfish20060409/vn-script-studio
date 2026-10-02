@@ -83,6 +83,13 @@ class Settings(BaseSettings):
     # 可用（"JSON 模式与思考档互斥"只锁住聊天那条路）。
     # auto = 只把我们自己的默认非思考档换成同族思考档；别的厂商/别的模型一律不动。
     write_thinking: Literal["auto", "on", "off"] = "auto"
+    # ADR 0001 P1：写作默认走 `/agent/turn`。false = B1 回滚，前端应改指旧 `/agent/write`。
+    # 旧路由始终保留；本开关只影响「默认路径」口径与探测接口。
+    agent_turn_default: bool = True
+    # P4.5：正文档引擎语法硬拒 + 前端禁止回落落盘（同一语义单元）。
+    # false = 紧急回滚整段 P4.5（后端硬拒与前端 flush/粘贴护栏一并关）。
+    # 变更后前端需刷新页面才读到新值。
+    enforce_prose_engine_syntax_reject: bool = True
     # 文风记忆自动学习（默认开）：攒够跨度且没学过/过期时自动学一次，只用作者自己的 Key
     style_auto_learn: bool = True
 

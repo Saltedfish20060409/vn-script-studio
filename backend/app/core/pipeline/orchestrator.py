@@ -106,8 +106,29 @@ async def stage_write(
     db_continuity: Optional[Dict[str, Any]] = None,
     on_token: Optional[Callable[[str], None]] = None,
     temperature: float = 0.75,
+    messages: Optional[List[Any]] = None,
+    chat_memory: str = "",
+    global_memory: str = "",
+    lens_ids: Optional[List[str]] = None,
+    enrich_context: bool = True,
+    write_op: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """写作条件成稿。
+
+    ADR 0001 P2：默认 `enrich_context=True` 注入对话史 / bible / 透镜 / style_skill /
+    长程与全局记忆。旧调用方不传新参数时行为增强但仍兼容；`enrich_context=False`
+    可回到接近 P1 的瘦上下文（兼容层排障用）。
+
+    P4：`write_op` 为 `continue` / `rewrite` 时注入不同 framing。
+    """
+    from app.core.capability_router import write_op_framing
+    from app.core.write_context import (
+        CHAPTER_TAIL_MAX_CHARS,
+        assemble_write_context,
+    )
+
     chapter_tail = ""
+    tail_limit = CHAPTER_TAIL_MAX_CHARS if enrich_context else 1200
     if chapter_id:
         ch = next((c for c in project.chapters if c.id == chapter_id), None)
         if ch:
@@ -116,39 +137,66 @@ async def stage_write(
             # 改/删的这一章，写作通道却拿着脚本档里那份旧文当"当前章末尾"接着写
             # （2026-10-01 线上事故：删掉的原文又出现在生成结果里）。
             plain = chapter_plain(ch, project.characters)
-            chapter_tail = (plain or "")[-1200:]
+            chapter_tail = (plain or "")[-tail_limit:]
     ledger_block = format_ledger_for_agent(get_ledger(project), chapters=project.chapters)
     mem = long_memory
     if not mem and db_continuity:
         mem = db_continuity.get("agentBlock") or ""
+
+    ctx = (
+        assemble_write_context(
+            project,
+            messages=messages,
+            chat_memory=chat_memory,
+            long_memory=mem,
+            global_memory=global_memory,
+            lens_ids=lens_ids,
+        )
+        if enrich_context
+        else None
+    )
+    if ctx is not None:
+        mem = ctx.long_memory or mem
+        # 全局记忆并进 long_memory 槽位下游（user prompt 已有 long_memory 段）
+        if ctx.global_memory:
+            mem = (mem + "\n\n" + ctx.global_memory).strip() if mem else ctx.global_memory
+
     beat_txt = ""
     if beat_sheet:
         beat_txt = "## 已确认节拍表\n" + json.dumps(beat_sheet, ensure_ascii=False)
     elif instruction:
         beat_txt = f"## 意图\n{instruction}"
+
+    op_frame = write_op_framing(write_op or "continue")
+    chat_for_user = ctx.chat_block if ctx else ""
     user = build_writer_user_prompt(
+        f"{op_frame}"
         f"{_length_line(instruction)}"
         "请严格按节拍表写**可演的自然语言剧本**（对白一行一句 + 短旁白 + "
         "括号里的动作）。不要写 label / jump / menu: / scene / show / $ 这类引擎语法——"
-        "RPY 由「生成脚本 / 导出 .rpy」那一步从这份剧本转换。\n"
+        "RPY 由工具栏「根据剧本生成」从正文档转换；脚本面 / Agent 都不是生成 .rpy 的入口。\n"
         f"{beat_txt}",
         selection=selection,
         chapter_tail=chapter_tail,
         long_memory=mem,
         lore_craft=ledger_block,
+        chat_history=chat_for_user,
     )
-    # 这里以前又拼了一遍 `prompt_block(max_chars=2000)`：同一份负面清单在同一请求里出现两次
-    # （system 走 roles.py 的 writer 块，user 走这里），两次都被尾部截断。
-    # 生成侧现在不带任何风格规范块，user 侧自然也不再重复。
 
+    ctx_limit = (
+        ctx.project_context_limit if ctx is not None else 3500
+    )
     if on_token is not None:
-        # Token-level streaming: same prompt, SSE deltas forwarded to the sink.
         from app.core.harness.roles import build_role_system
         from app.core.llm_http import stream_chat_completions
         from app.core.renpy import project_to_context
 
-        extra = "作品上下文（节选）：\n" + project_to_context(project)[:3500]
-        system = build_role_system("writer", extra=extra, project=project)
+        extra_parts = ["作品上下文（节选）：\n" + project_to_context(project)[:ctx_limit]]
+        if ctx and ctx.system_extra:
+            extra_parts.insert(0, ctx.system_extra)
+        system = build_role_system(
+            "writer", extra="\n\n".join(extra_parts), project=project
+        )
         chunks: List[str] = []
         async for delta in stream_chat_completions(
             cfg,
@@ -157,8 +205,6 @@ async def stage_write(
                 {"role": "user", "content": user},
             ],
             temperature=temperature,
-            # 流式的 timeout 是"多久没有新字节"的空闲上限（不是整段生成的预算），
-            # 所以正文章节可以写很久；命名常量见 app/core/llm_budget.py。
             timeout=llm_budget.WRITE,
         ):
             chunks.append(delta)
@@ -169,8 +215,16 @@ async def stage_write(
         content = "".join(chunks)
         model = cfg.model or DEFAULT_LLM_MODEL
     else:
+        # 非流式：把 system_extra 并进 user 前缀，避免改 run_harness_llm 签名
+        prefixed = user
+        if ctx and ctx.system_extra:
+            prefixed = ctx.system_extra + "\n\n" + user
         llm = await run_harness_llm(
-            cfg, role="writer", user_prompt=user, project=project, temperature=temperature
+            cfg,
+            role="writer",
+            user_prompt=prefixed,
+            project=project,
+            temperature=temperature,
         )
         content = llm.get("content") or ""
         model = llm.get("model")
@@ -180,6 +234,7 @@ async def stage_write(
         "content": content,
         "model": model,
         "styleConfirmed": True,
+        "contextIncluded": list(ctx.included) if ctx else ["chapter_tail", "ledger"],
     }
 
 
@@ -268,8 +323,8 @@ async def stage_revise(
         f"{rewrite_contract_block()}\n\n"
         "根据检查报告做**最小化改动**修正。保持剧情意图与节拍。"
         "先列仍须注意的点（短），再给出完整改写正文。"
-        "**与来稿同形态**：来稿是自然语言剧本就还它自然语言剧本（不要顺手加上引擎语法）；"
-        "来稿本身就带引擎语法时才用 ```renpy 代码块。\n\n"
+        "**与来稿同形态**：来稿是自然语言剧本就还它自然语言剧本（不要顺手加上引擎语法）。"
+        "脚本面 / Agent 都不是生成 .rpy 的入口——请作者用正文档 + 工具栏「根据剧本生成」。\n\n"
         f"## 检查报告\n{json.dumps(issues[:24], ensure_ascii=False)}\n\n"
         f"## 原文\n{draft[:8000]}"
     )

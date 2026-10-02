@@ -208,6 +208,7 @@ export function runBrainstorm(
   return apiFetch(`/projects/${id}/brainstorm`, {
     method: "POST",
     timeoutMs: TIMEOUTS.long,
+    timeoutKind: "llm",
     body: JSON.stringify(body),
   });
 }
@@ -331,7 +332,8 @@ export function testLlm(body: {
     {
       method: "POST",
       body: JSON.stringify(body),
-    timeoutMs: TIMEOUTS.probe,
+      timeoutMs: TIMEOUTS.probe,
+      timeoutKind: "llm",
     }
   );
 }

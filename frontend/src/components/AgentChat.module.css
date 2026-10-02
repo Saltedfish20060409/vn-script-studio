@@ -1294,6 +1294,38 @@ html[data-panel-glass="ink"] .stageOverlay {
   margin-top: 0.55rem;
 }
 
+.scopeSwitch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  width: 100%;
+  margin-bottom: 0.15rem;
+}
+
+.scopeSwitchBtn,
+.scopeSwitchBtnActive {
+  appearance: none;
+  border: 1px solid var(--line, #3a3a3a);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.scopeSwitchBtnActive {
+  border-color: var(--accent);
+  opacity: 1;
+}
+
+.scopeSwitchBtn:disabled,
+.scopeSwitchBtnActive:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .msgActionBtn {
   border: 1px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -1396,6 +1428,54 @@ html[data-panel-glass="ink"] .stageOverlay {
   align-items: center;
   gap: 0.55rem;
   margin-top: 0.35rem;
+}
+
+.streamCancelBtn {
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.streamCancelBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.softTimeoutHint {
+  margin: 0.25rem 0 0;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.msgActionBtnGhost {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 550;
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.msgActionBtnGhost:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.msgActionBtnGhost:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .thinking {

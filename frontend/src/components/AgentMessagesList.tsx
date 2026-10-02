@@ -1,6 +1,11 @@
 import { useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { getChapterReviseDraft } from "../lib/chapterReviseDraft";
+import {
+  inferDefaultWriteScope,
+  selectionReplaceEnabled,
+  type WriteDraftScope,
+} from "../lib/agentTurnRoute";
 import { describeActions } from "../lib/agentFormat";
 import { copyFor, type GenreCopy } from "../lib/genreCopy";
 import type { AgentChatMessage, AgentTraceEvent } from "../types/vn";
@@ -93,6 +98,18 @@ type Props = {
   busy: boolean;
   thinking: string;
   liveStream: { events: AgentTraceEvent[]; text: string } | null;
+  /** P3：软超时提示（气泡内持久展示，直到本轮结束） */
+  softTimeoutHint?: string | null;
+  /** P3：取消当前流式请求 */
+  onCancelStream?: () => void;
+  /** P3/P4：气泡轻确认——写入草稿（可带作用域） */
+  onConfirmWriteDraft?: (chapterId: string, scope?: WriteDraftScope) => void;
+  /** P3：气泡轻确认——放弃草稿 */
+  onDiscardWriteDraft?: (chapterId: string) => void;
+  /** 是否有未写入的写作草稿（用于启用轻确认按钮） */
+  writeDraftAlive?: boolean;
+  /** 是否提供「打开经典对照」高级入口（B6 或显式） */
+  showClassicReviseAction?: boolean;
   showEmptyStage: boolean;
   personaLabel: string;
   activeLensIds: string[];
@@ -132,6 +149,12 @@ export function AgentMessagesList({
   busy,
   thinking,
   liveStream,
+  softTimeoutHint = null,
+  onCancelStream,
+  onConfirmWriteDraft,
+  onDiscardWriteDraft,
+  writeDraftAlive = false,
+  showClassicReviseAction = false,
   showEmptyStage,
   personaLabel,
   activeLensIds,
@@ -203,12 +226,14 @@ export function AgentMessagesList({
               <span className={styles.emptySlash} />
               <span className={styles.emptyShard} />
             </div>
-            <p className={styles.emptyHint}>直接输入需求开始聊，例如：「帮我改这一章」「给这段挑毛病」「续写下一场」。会改工程的活儿都先出一张方案卡片，点确认才写；改稿另有左右对照。只想听意见就加一句「先别改，只给意见」。</p>
+            <p className={styles.emptyHint}>直接输入需求开始聊，例如：「帮我改这一章」「给这段挑毛病」「续写下一场」。会改工程的活儿都先出一张方案卡片，点确认才写；写作草稿先进气泡、点「写入」才落库（高级设置可开经典左右对照）。只想听意见就加一句「先别改，只给意见」。</p>
           </div>
         ) : null}
         {messages.map((m, i) => {
           const reviseAction =
-            m.role === "assistant" && m.action?.type === "open_revise_review"
+            m.role === "assistant" &&
+            (m.action?.type === "open_revise_review" ||
+              m.action?.type === "confirm_write_draft")
               ? m.action
               : null;
           const reviseDraftAlive = reviseAction
@@ -240,21 +265,35 @@ export function AgentMessagesList({
               ) : null}
               {reviseAction ? (
                 <div className={styles.msgActions}>
-                  <button
-                    type="button"
-                    className={styles.msgActionBtn}
-                    disabled={busy || !reviseDraftAlive}
-                    title={
-                      reviseDraftAlive
-                        ? "打开未写入的改稿对照"
-                        : "预览已写入或已丢弃"
-                    }
-                    onClick={() => onOpenReviseReview(reviseAction.chapterId)}
-                  >
-                    {reviseDraftAlive
-                      ? reviseAction.label || "打开改稿对照"
-                      : "对照已结束"}
-                  </button>
+                  {reviseAction.type === "confirm_write_draft" ? (
+                    <WriteDraftScopeActions
+                      chapterId={reviseAction.chapterId}
+                      projectId={projectId}
+                      selection={selection}
+                      busy={busy}
+                      writeDraftAlive={Boolean(writeDraftAlive)}
+                      showClassicReviseAction={Boolean(showClassicReviseAction)}
+                      onConfirmWriteDraft={onConfirmWriteDraft}
+                      onDiscardWriteDraft={onDiscardWriteDraft}
+                      onOpenReviseReview={onOpenReviseReview}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.msgActionBtn}
+                      disabled={busy || !reviseDraftAlive}
+                      title={
+                        reviseDraftAlive
+                          ? "打开未写入的改稿对照"
+                          : "预览已写入或已丢弃"
+                      }
+                      onClick={() => onOpenReviseReview(reviseAction.chapterId)}
+                    >
+                      {reviseDraftAlive
+                        ? reviseAction.label || "打开改稿对照"
+                        : "对照已结束"}
+                    </button>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -270,12 +309,31 @@ export function AgentMessagesList({
                 <i />
               </span>
             </p>
+            {onCancelStream ? (
+              <button
+                type="button"
+                className={styles.streamCancelBtn}
+                data-testid="agent-stream-cancel"
+                onClick={onCancelStream}
+              >
+                取消
+              </button>
+            ) : null}
           </div>
         )}
+        {busy && softTimeoutHint ? (
+          <p
+            className={styles.softTimeoutHint}
+            role="status"
+            data-testid="agent-soft-timeout"
+          >
+            {softTimeoutHint}
+          </p>
+        ) : null}
         {busy &&
           liveStream &&
           (liveStream.events.length > 0 || liveStream.text) && (
-            <div className={styles.liveStream}>
+            <div className={styles.liveStream} data-testid="agent-live-draft">
               {liveStream.events.length > 0 && (
                 <AgentTracePanel events={liveStream.events} copy={copy} />
               )}
@@ -329,6 +387,128 @@ export function AgentMessagesList({
         </div>
       )}
       {error && <p className={styles.error}>{error}</p>}
+    </>
+  );
+}
+
+function WriteDraftScopeActions({
+  chapterId,
+  projectId,
+  selection,
+  busy,
+  writeDraftAlive,
+  showClassicReviseAction,
+  onConfirmWriteDraft,
+  onDiscardWriteDraft,
+  onOpenReviseReview,
+}: {
+  chapterId: string;
+  projectId: string;
+  selection: string;
+  busy: boolean;
+  writeDraftAlive: boolean;
+  showClassicReviseAction: boolean;
+  onConfirmWriteDraft?: (chapterId: string, scope?: WriteDraftScope) => void;
+  onDiscardWriteDraft?: (chapterId: string) => void;
+  onOpenReviseReview: (chapterId: string) => void;
+}) {
+  const draft = getChapterReviseDraft(projectId, chapterId);
+  const original = draft?.originalText || "";
+  const revised = draft?.revisedText || "";
+  const canReplaceSelection = selectionReplaceEnabled(original, selection);
+  const [scope, setScope] = useState<WriteDraftScope>(() =>
+    inferDefaultWriteScope({
+      originalText: original,
+      revisedText: revised,
+      selection,
+    })
+  );
+  const effectiveScope: WriteDraftScope =
+    scope === "selection_replace" && !canReplaceSelection
+      ? inferDefaultWriteScope({
+          originalText: original,
+          revisedText: revised,
+          selection: "",
+        })
+      : scope;
+
+  return (
+    <>
+      <div
+        className={styles.scopeSwitch}
+        role="group"
+        aria-label="写入作用域"
+        data-testid="agent-write-scope"
+      >
+        {(
+          [
+            ["chapter_append", "章末追加"],
+            ["selection_replace", "替换选区"],
+            ["chapter_replace", "替换整章"],
+          ] as const
+        ).map(([value, label]) => {
+          const disabled =
+            busy ||
+            !writeDraftAlive ||
+            (value === "selection_replace" && !canReplaceSelection);
+          return (
+            <button
+              key={value}
+              type="button"
+              className={
+                effectiveScope === value
+                  ? styles.scopeSwitchBtnActive
+                  : styles.scopeSwitchBtn
+              }
+              data-testid={`agent-write-scope-${value}`}
+              disabled={disabled}
+              title={
+                value === "selection_replace" && !canReplaceSelection
+                  ? "当前没有可命中的选区"
+                  : label
+              }
+              onClick={() => setScope(value)}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      <button
+        type="button"
+        className={styles.msgActionBtn}
+        data-testid="agent-write-confirm"
+        disabled={busy || !writeDraftAlive}
+        title={
+          writeDraftAlive
+            ? "把草稿写入当前章（可撤回）"
+            : "草稿已写入或已放弃"
+        }
+        onClick={() => onConfirmWriteDraft?.(chapterId, effectiveScope)}
+      >
+        {writeDraftAlive ? "写入" : "已处理"}
+      </button>
+      <button
+        type="button"
+        className={styles.msgActionBtnGhost}
+        data-testid="agent-write-discard"
+        disabled={busy || !writeDraftAlive}
+        onClick={() => onDiscardWriteDraft?.(chapterId)}
+      >
+        放弃
+      </button>
+      {showClassicReviseAction || writeDraftAlive ? (
+        <button
+          type="button"
+          className={styles.msgActionBtnGhost}
+          data-testid="agent-write-classic-revise"
+          disabled={busy || !writeDraftAlive}
+          title="高级：打开左右对照逐段挑选"
+          onClick={() => onOpenReviseReview(chapterId)}
+        >
+          经典对照
+        </button>
+      ) : null}
     </>
   );
 }

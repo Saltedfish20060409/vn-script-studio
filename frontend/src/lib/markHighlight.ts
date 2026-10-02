@@ -15,15 +15,49 @@ export type MarkRange = {
   from: number;
   to: number;
   active?: boolean;
+  /**
+   * mark = 批改标记（默认）；
+   * agentSelection = 给 Agent 的持久选区高亮（非原生 DOM 选区）。
+   */
+  role?: "mark" | "agentSelection";
 };
 
 export type Segment = {
   text: string;
-  /** plain | place（地点词）| mark（被标记的正文） */
-  kind: "plain" | "place" | "mark";
+  /** plain | place（地点词）| mark（批改）| agentSelection（Agent 选区） */
+  kind: "plain" | "place" | "mark" | "agentSelection";
   markId?: string;
   active?: boolean;
 };
+
+/** 镜像高亮用的选区 mark id（与批改标记区分）。 */
+export const AGENT_SELECTION_MARK_ID = "__agent_selection__";
+
+/** 非空选区 → 一条 agentSelection 高亮区间；折叠/空 → null。 */
+export function agentSelectionMark(
+  range: { from: number; to: number } | null | undefined
+): MarkRange | null {
+  if (!range || range.from >= range.to) return null;
+  return {
+    id: AGENT_SELECTION_MARK_ID,
+    from: range.from,
+    to: range.to,
+    active: true,
+    role: "agentSelection",
+  };
+}
+
+/**
+ * 把 Agent 选区叠进批改标记列表（选区优先，便于与「选区 N 字」对齐可见）。
+ * 焦点离开编辑器后 DOM 选区会消失，但 React 快照仍在时靠这条高亮保活。
+ */
+export function withAgentSelection(
+  marks: MarkRange[],
+  range: { from: number; to: number } | null | undefined
+): MarkRange[] {
+  const sel = agentSelectionMark(range);
+  return sel ? [sel, ...marks] : marks;
+}
 
 function coveringMark(marks: MarkRange[], absFrom: number, absTo: number): MarkRange | null {
   for (const mark of marks) {
@@ -65,9 +99,16 @@ export function lineSegments(
       if (inMark) end = Math.min(tokenEnd, mark.to);
       else if (mark.from > pos && mark.from < tokenEnd) end = mark.from;
       else end = tokenEnd;
+      const kind = inMark
+        ? mark.role === "agentSelection"
+          ? "agentSelection"
+          : "mark"
+        : token.type === "place"
+          ? "place"
+          : "plain";
       out.push({
         text: token.value.slice(pos - tokenStart, end - tokenStart),
-        kind: inMark ? "mark" : token.type === "place" ? "place" : "plain",
+        kind,
         ...(inMark ? { markId: mark.id, active: Boolean(mark.active) } : {}),
       });
       pos = end;
