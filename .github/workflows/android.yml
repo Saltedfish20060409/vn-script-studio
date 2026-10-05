@@ -1,0 +1,59 @@
+name: android
+
+# Android 客户端 CI：单测 + lint + 组装 debug APK。
+# 刻意不做：release 签名构建（需要 keystore 密钥）、仪器测试（需要模拟器）。
+# 与 ci.yml 相同的原则——只跑「干净环境必然能过」的检查。
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    paths:
+      - "android/**"
+      - "shared/test-fixtures/**"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - "shared/test-fixtures/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: unit tests + lint + assembleDebug
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests (shared fixtures included)
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Lint
+        run: ./gradlew lintDebug --stacktrace
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-reports
+          path: |
+            android/**/build/reports/**
+            android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: ignore

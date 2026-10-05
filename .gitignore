@@ -17,6 +17,7 @@ data/
 .npm-cache/
 .npmrc
 .cursor/
+/.idea/
 *.tsbuildinfo
 
 # Python

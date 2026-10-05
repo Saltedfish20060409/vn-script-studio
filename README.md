@@ -58,6 +58,8 @@ vn-script-studio/
 ├── docker-compose.yml   # PostgreSQL 16
 ├── backend/             # FastAPI + 全部业务逻辑（原 @vnss/core）
 ├── frontend/            # Vite + React SPA
+├── android/             # 原生 Android 客户端（Kotlin + Compose，「移动伴侣」，见 android/README.md）
+├── shared/test-fixtures # 跨端一致性夹具（Web / Android / 后端共用同一份）
 └── examples/            # 示例工程
 ```
 
@@ -403,6 +405,7 @@ pytest tests/ -q
 |---|---|---|
 | `integration.yml` | **自动（backend/** 变化）+ 可手动** | Postgres service（工作流自己起）+ 真库跑 `tests/`；第一步显式确认测试库可达，避免用例静默 skip；并在**全新空库**上跑一遍 `alembic upgrade head` |
 | `e2e.yml` | **自动（frontend/** 变化）+ 可手动** | Postgres + 后端 + 前端构建 + Playwright 浏览器（注册走 `AUTH_AUTO_VERIFY=true` 免发信） |
+| `android.yml` | **自动（android/** 或 shared/test-fixtures/** 变化）+ 可手动** | JDK 17 + Android SDK；单测（含与 Web 共用的夹具）+ lint + `assembleDebug`；不做 release 签名与仪器测试 |
 
 > 2026-09 调整（两条）：
 > ① `integration.yml` 从"仅手动"改为**后端改动时自动跑**——本层用例才抓得住真实缺陷

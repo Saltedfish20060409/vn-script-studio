@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Optional
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -17,6 +18,7 @@ from app.schemas import (
     ForgotPasswordIn,
     LoginIn,
     OkMessageOut,
+    RefreshIn,
     RegisterIn,
     RegisterOut,
     ResendVerifyIn,
@@ -87,6 +89,17 @@ def _client_ip(request: Request) -> str:
     if fwd:
         return fwd.split(",")[0].strip()
     return request.client.host if request.client else ""
+
+
+def _is_native_client(request: Request) -> bool:
+    """原生客户端（Android）标记：`X-Client: android`。
+
+    为什么需要：Web 端的 refresh token 放在 HttpOnly Cookie 里（M-4，防 XSS 外泄）。
+    原生 App 没有「JS 可读」这个威胁面，Cookie 反而不好管（CookieJar 持久化、路径限定、
+    SameSite=Strict 都是浏览器语义）。所以原生客户端改走响应体 / 请求体，
+    由客户端放进 Keystore 加密存储。**不带该头的请求行为完全不变**（Web 端不受影响）。
+    """
+    return (request.headers.get("x-client") or "").strip().lower() == "android"
 
 
 def _tokens(user: User, settings: Settings) -> TokenOut:
@@ -303,11 +316,13 @@ async def login(
 
     await ensure_admin_access(user, settings, db)
     tokens = _tokens(user, settings)
-    _set_refresh_cookie(
-        response,
-        create_refresh_token(user.id, settings, token_version=(user.token_version or 0)),
-        settings,
+    refresh_token = create_refresh_token(
+        user.id, settings, token_version=(user.token_version or 0)
     )
+    if _is_native_client(request):
+        tokens.refresh_token = refresh_token
+    else:
+        _set_refresh_cookie(response, refresh_token, settings)
     return tokens
 
 
@@ -453,15 +468,26 @@ async def reset_password(
 async def refresh(
     request: Request,
     response: Response,
+    body: Optional[RefreshIn] = None,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    """Exchange the HttpOnly refresh cookie for a fresh access token (+ rotated cookie)."""
+    """Exchange the refresh token for a fresh access token (+ rotated refresh token).
+
+    - Web：令牌来自 HttpOnly Cookie，轮换后写回 Cookie；
+    - 原生（`X-Client: android`）：令牌来自请求体 ``refresh_token``，轮换后在响应体返回，
+      不设 Cookie。请求体令牌**只对原生客户端生效**，Web 路径保持 Cookie-only。
+    """
     if not check_rate(
         _client_ip(request), "refresh", limit=60, enabled=settings.rate_limit_enabled
     ):
         raise HTTPException(status_code=429, detail="刷新过于频繁，请稍后再试")
-    rt = request.cookies.get("vnss_refresh")
+    native = _is_native_client(request)
+    rt = None
+    if native and body is not None and body.refresh_token:
+        rt = body.refresh_token
+    if not rt:
+        rt = request.cookies.get("vnss_refresh")
     if not rt:
         raise HTTPException(status_code=401, detail="刷新令牌缺失")
     try:
@@ -483,11 +509,13 @@ async def refresh(
     if isinstance(claimed, int) and claimed != (user.token_version or 0):
         raise HTTPException(status_code=401, detail="刷新令牌已失效，请重新登录")
     tokens = _tokens(user, settings)
-    _set_refresh_cookie(
-        response,
-        create_refresh_token(user.id, settings, token_version=(user.token_version or 0)),
-        settings,
+    new_refresh = create_refresh_token(
+        user.id, settings, token_version=(user.token_version or 0)
     )
+    if native:
+        tokens.refresh_token = new_refresh
+    else:
+        _set_refresh_cookie(response, new_refresh, settings)
     return tokens
 
 

@@ -1,0 +1,61 @@
+{
+  "_comment": "Android 客户端依赖的后端 API 契约。后端测试 backend/tests/test_android_contract.py 用 OpenAPI 校验它；Android 侧 ApiContractTest 校验 Retrofit 接口声明与它一致。改接口时两边一起红，这是唯一目的。路径参数名在比较时统一成 {}。",
+  "operations": [
+    { "method": "post", "path": "/api/v1/auth/login" },
+    { "method": "post", "path": "/api/v1/auth/register" },
+    { "method": "post", "path": "/api/v1/auth/refresh" },
+    { "method": "post", "path": "/api/v1/auth/resend-verification" },
+    { "method": "post", "path": "/api/v1/auth/forgot-password" },
+    { "method": "get", "path": "/api/v1/auth/me" },
+
+    { "method": "get", "path": "/api/v1/projects" },
+    { "method": "post", "path": "/api/v1/projects" },
+    { "method": "get", "path": "/api/v1/projects/{}" },
+    { "method": "put", "path": "/api/v1/projects/{}" },
+
+    { "method": "get", "path": "/api/v1/projects/{}/agent/conversations" },
+    { "method": "post", "path": "/api/v1/projects/{}/agent/conversations" },
+    { "method": "get", "path": "/api/v1/projects/{}/agent/conversations/{}" },
+    { "method": "put", "path": "/api/v1/projects/{}/agent/conversations/{}" },
+
+    { "method": "get", "path": "/api/v1/projects/{}/members" },
+    { "method": "get", "path": "/api/v1/projects/{}/locks" },
+    { "method": "get", "path": "/api/v1/projects/{}/comments" },
+    { "method": "post", "path": "/api/v1/projects/{}/comments" },
+    { "method": "patch", "path": "/api/v1/projects/{}/comments/{}" },
+    { "method": "delete", "path": "/api/v1/projects/{}/comments/{}" },
+
+    { "method": "get", "path": "/api/v1/settings" },
+    { "method": "put", "path": "/api/v1/settings" },
+    { "method": "post", "path": "/api/v1/settings/test-llm" },
+    { "method": "get", "path": "/api/v1/usage" }
+  ],
+  "streams": [
+    { "method": "post", "path": "/api/v1/projects/{}/agent/stream" },
+    { "method": "get", "path": "/api/v1/projects/{}/events" }
+  ],
+  "schemas": {
+    "TokenOut": ["access_token", "refresh_token", "expires_in"],
+    "LoginIn": ["username", "password"],
+    "RegisterIn": ["username", "password", "email"],
+    "RegisterOut": ["ok", "message", "email"],
+    "RefreshIn": ["refresh_token"],
+    "ForgotPasswordIn": ["email"],
+    "ResendVerifyIn": ["email"],
+    "OkMessageOut": ["ok", "message"],
+    "UserOut": ["id", "username", "email", "email_verified", "is_admin"],
+    "ProjectSummary": ["id", "title", "logline", "genre", "updated_at", "created_at", "chapters_count"],
+    "ProjectCreateIn": ["title", "from_demo", "template_id"],
+    "ProjectPutIn": ["data", "updated_at", "force", "chapter_ids", "sections"],
+    "AgentRunIn": ["messages", "chapter_id", "selection", "conversation_id", "apply_actions", "resume", "writing_surface"],
+    "AgentConversationSummary": ["id", "title", "message_count", "updated_at"],
+    "AgentConversationOut": ["id", "title", "messages", "chat_memory", "run_state"],
+    "AgentConversationCreateIn": ["title"],
+    "AgentConversationPutIn": ["messages"],
+    "CommentIn": ["chapter_id", "anchor", "text", "parent_id"],
+    "CommentUpdateIn": ["text", "resolved"],
+    "SettingsOut": ["has_api_key", "api_key_masked", "api_base_url", "api_model", "active_model", "active_base_url", "credential_source"],
+    "SettingsPutIn": ["api_key", "api_base_url", "api_model"],
+    "TestLlmIn": ["api_key", "base_url", "model"]
+  }
+}

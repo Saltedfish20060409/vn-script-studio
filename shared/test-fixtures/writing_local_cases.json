@@ -1,0 +1,1704 @@
+{
+  "_comment": "由 frontend/scripts/gen_writing_local_cases.ts 生成，请勿手改。Web 端与 Android 端都对这份夹具断言。",
+  "sceneSeparator": "◇◇◇",
+  "ruleBasis": {
+    "quote_unbalanced": "GB/T 15834-2011《标点符号用法》（引号、括号成对使用）",
+    "quote_nested_level": "GB/T 15834-2011《标点符号用法》（引号里面还要用引号时，外面用双引号、里面用单引号）",
+    "title_mark_nested": "GB/T 15834-2011《标点符号用法》（书名号里面还要用书名号时用单书名号）；W3C《中文排版需求》(clreq)",
+    "punct_half_full_adjacent": "GB/T 15834-2011《标点符号用法》（标点符号的写法）；W3C《中文排版需求》(clreq)（标点的比例与位置）",
+    "punct_halfwidth_near_cjk": "GB/T 15834-2011《标点符号用法》；CY/T 154-2017《中文出版物夹用英文的编辑规范》",
+    "dash_ascii_double": "GB/T 15834-2011《标点符号用法》（破折号）",
+    "dash_single_em": "GB/T 15834-2011《标点符号用法》（破折号占两个字的位置）",
+    "dash_ascii_range": "GB/T 15834-2011《标点符号用法》（连接号）；GB/T 15835-2011《出版物上数字用法》（数值范围）",
+    "cjk_year_digits": "GB/T 15835-2011《出版物上数字用法》（公历年份用阿拉伯数字）",
+    "arabic_with_ji": "GB/T 15835-2011《出版物上数字用法》（「几」表示约数时用汉字数字）",
+    "arabic_dunhao_range": "GB/T 15835-2011《出版物上数字用法》（相邻数字并列连用表示概数时用汉字、不用顿号）",
+    "ellipsis_ascii_dots": "GB/T 15834-2011《标点符号用法》（省略号）",
+    "ellipsis_fullwidth_period": "GB/T 15834-2011《标点符号用法》（省略号）",
+    "ellipsis_with_deng": "编辑规范补充规则（省略号与「等」不宜并用）——不是国标正文，故只报 info",
+    "space_between_cjk": "W3C《中文排版需求》(clreq)（中文正文的间距）；也可能是导入稿子带进来的",
+    "trailing_space": "无规范依据（纯清洁度）：行尾空格不影响阅读，只影响 diff 与导出",
+    "typo_confusion": "成语/固定搭配的通用写法（零歧义词表，见 lib/typoRules.ts）"
+  },
+  "pairMap": {
+    "「": "」",
+    "『": "』",
+    "“": "”",
+    "‘": "’",
+    "（": "）",
+    "【": "】",
+    "《": "》",
+    "〔": "〕",
+    "(": ")",
+    "[": "]",
+    "{": "}",
+    "\"": "\"",
+    "'": "'"
+  },
+  "typoRules": [
+    {
+      "wrong": "迫不急待",
+      "right": "迫不及待",
+      "kind": "成语"
+    },
+    {
+      "wrong": "一如继往",
+      "right": "一如既往",
+      "kind": "成语"
+    },
+    {
+      "wrong": "按耐不住",
+      "right": "按捺不住",
+      "kind": "成语"
+    },
+    {
+      "wrong": "不径而走",
+      "right": "不胫而走",
+      "kind": "成语"
+    },
+    {
+      "wrong": "草管人命",
+      "right": "草菅人命",
+      "kind": "成语"
+    },
+    {
+      "wrong": "重蹈复辙",
+      "right": "重蹈覆辙",
+      "kind": "成语"
+    },
+    {
+      "wrong": "穿流不息",
+      "right": "川流不息",
+      "kind": "成语"
+    },
+    {
+      "wrong": "打报不平",
+      "right": "打抱不平",
+      "kind": "成语"
+    },
+    {
+      "wrong": "甘败下风",
+      "right": "甘拜下风",
+      "kind": "成语"
+    },
+    {
+      "wrong": "各行其事",
+      "right": "各行其是",
+      "kind": "成语"
+    },
+    {
+      "wrong": "鬼计多端",
+      "right": "诡计多端",
+      "kind": "成语"
+    },
+    {
+      "wrong": "汗流夹背",
+      "right": "汗流浃背",
+      "kind": "成语"
+    },
+    {
+      "wrong": "好高鹜远",
+      "right": "好高骛远",
+      "kind": "成语"
+    },
+    {
+      "wrong": "既往不究",
+      "right": "既往不咎",
+      "kind": "成语"
+    },
+    {
+      "wrong": "娇揉造作",
+      "right": "矫揉造作",
+      "kind": "成语"
+    },
+    {
+      "wrong": "竭泽而鱼",
+      "right": "竭泽而渔",
+      "kind": "成语"
+    },
+    {
+      "wrong": "金榜提名",
+      "right": "金榜题名",
+      "kind": "成语"
+    },
+    {
+      "wrong": "举一返三",
+      "right": "举一反三",
+      "kind": "成语"
+    },
+    {
+      "wrong": "开源截流",
+      "right": "开源节流",
+      "kind": "成语"
+    },
+    {
+      "wrong": "空前决后",
+      "right": "空前绝后",
+      "kind": "成语"
+    },
+    {
+      "wrong": "脍灸人口",
+      "right": "脍炙人口",
+      "kind": "成语"
+    },
+    {
+      "wrong": "滥芋充数",
+      "right": "滥竽充数",
+      "kind": "成语"
+    },
+    {
+      "wrong": "礼上往来",
+      "right": "礼尚往来",
+      "kind": "成语"
+    },
+    {
+      "wrong": "名列前矛",
+      "right": "名列前茅",
+      "kind": "成语"
+    },
+    {
+      "wrong": "明辩是非",
+      "right": "明辨是非",
+      "kind": "成语"
+    },
+    {
+      "wrong": "默守成规",
+      "right": "墨守成规",
+      "kind": "成语"
+    },
+    {
+      "wrong": "弄巧成绌",
+      "right": "弄巧成拙",
+      "kind": "成语"
+    },
+    {
+      "wrong": "旁证博引",
+      "right": "旁征博引",
+      "kind": "成语"
+    },
+    {
+      "wrong": "披星带月",
+      "right": "披星戴月",
+      "kind": "成语"
+    },
+    {
+      "wrong": "迫在眉捷",
+      "right": "迫在眉睫",
+      "kind": "成语"
+    },
+    {
+      "wrong": "千锤百练",
+      "right": "千锤百炼",
+      "kind": "成语"
+    },
+    {
+      "wrong": "前扑后继",
+      "right": "前仆后继",
+      "kind": "成语"
+    },
+    {
+      "wrong": "情不自尽",
+      "right": "情不自禁",
+      "kind": "成语"
+    },
+    {
+      "wrong": "如法泡制",
+      "right": "如法炮制",
+      "kind": "成语"
+    },
+    {
+      "wrong": "如火如茶",
+      "right": "如火如荼",
+      "kind": "成语"
+    },
+    {
+      "wrong": "世外桃园",
+      "right": "世外桃源",
+      "kind": "成语"
+    },
+    {
+      "wrong": "首曲一指",
+      "right": "首屈一指",
+      "kind": "成语"
+    },
+    {
+      "wrong": "谈笑风声",
+      "right": "谈笑风生",
+      "kind": "成语"
+    },
+    {
+      "wrong": "提心掉胆",
+      "right": "提心吊胆",
+      "kind": "成语"
+    },
+    {
+      "wrong": "天翻地复",
+      "right": "天翻地覆",
+      "kind": "成语"
+    },
+    {
+      "wrong": "枉废心机",
+      "right": "枉费心机",
+      "kind": "成语"
+    },
+    {
+      "wrong": "委屈求全",
+      "right": "委曲求全",
+      "kind": "成语"
+    },
+    {
+      "wrong": "无微不致",
+      "right": "无微不至",
+      "kind": "成语"
+    },
+    {
+      "wrong": "心浮气燥",
+      "right": "心浮气躁",
+      "kind": "成语"
+    },
+    {
+      "wrong": "兴高彩烈",
+      "right": "兴高采烈",
+      "kind": "成语"
+    },
+    {
+      "wrong": "悬梁刺骨",
+      "right": "悬梁刺股",
+      "kind": "成语"
+    },
+    {
+      "wrong": "一愁莫展",
+      "right": "一筹莫展",
+      "kind": "成语"
+    },
+    {
+      "wrong": "一诺千斤",
+      "right": "一诺千金",
+      "kind": "成语"
+    },
+    {
+      "wrong": "义气用事",
+      "right": "意气用事",
+      "kind": "成语"
+    },
+    {
+      "wrong": "应接不遐",
+      "right": "应接不暇",
+      "kind": "成语"
+    },
+    {
+      "wrong": "永保青春",
+      "right": "永葆青春",
+      "kind": "成语"
+    },
+    {
+      "wrong": "有持无恐",
+      "right": "有恃无恐",
+      "kind": "成语"
+    },
+    {
+      "wrong": "再所不惜",
+      "right": "在所不惜",
+      "kind": "成语"
+    },
+    {
+      "wrong": "再接再励",
+      "right": "再接再厉",
+      "kind": "成语"
+    },
+    {
+      "wrong": "责无旁代",
+      "right": "责无旁贷",
+      "kind": "成语"
+    },
+    {
+      "wrong": "坐阵指挥",
+      "right": "坐镇指挥",
+      "kind": "成语"
+    },
+    {
+      "wrong": "走头无路",
+      "right": "走投无路",
+      "kind": "成语"
+    },
+    {
+      "wrong": "专心至志",
+      "right": "专心致志",
+      "kind": "成语"
+    },
+    {
+      "wrong": "莫明其妙",
+      "right": "莫名其妙",
+      "kind": "成语"
+    },
+    {
+      "wrong": "不知所错",
+      "right": "不知所措",
+      "kind": "成语"
+    },
+    {
+      "wrong": "部份",
+      "right": "部分",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "松驰",
+      "right": "松弛",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "气慨",
+      "right": "气概",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "幅射",
+      "right": "辐射",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "报歉",
+      "right": "抱歉",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "布署",
+      "right": "部署",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "罗嗦",
+      "right": "啰嗦",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "家俱",
+      "right": "家具",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "亲睐",
+      "right": "青睐",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "竞然",
+      "right": "竟然",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "峻工",
+      "right": "竣工",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "渡假",
+      "right": "度假",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "精采",
+      "right": "精彩",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "装璜",
+      "right": "装潢",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "蓝球",
+      "right": "篮球",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "决对",
+      "right": "绝对",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "沉缅",
+      "right": "沉湎",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "好象",
+      "right": "好像",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "既使",
+      "right": "即使",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "竟争",
+      "right": "竞争",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "凋弊",
+      "right": "凋敝",
+      "kind": "固定搭配"
+    },
+    {
+      "wrong": "梦餍",
+      "right": "梦魇",
+      "kind": "固定搭配"
+    }
+  ],
+  "wordCount": [
+    {
+      "text": "",
+      "count": 0
+    },
+    {
+      "text": "你好世界",
+      "count": 4
+    },
+    {
+      "text": "Hello world 123",
+      "count": 3
+    },
+    {
+      "text": "混合abc中文123",
+      "count": 6
+    },
+    {
+      "text": "ＡＢＣ全角字母",
+      "count": 4
+    },
+    {
+      "text": "ひらがなカタカナ",
+      "count": 0
+    },
+    {
+      "text": "a_b-c d.e",
+      "count": 5
+    },
+    {
+      "text": "😀表情符号",
+      "count": 4
+    },
+    {
+      "text": "  \n\t ",
+      "count": 0
+    },
+    {
+      "text": "第1章 开端",
+      "count": 5
+    }
+  ],
+  "formatWords": [
+    {
+      "words": 0,
+      "text": "0"
+    },
+    {
+      "words": 999,
+      "text": "999"
+    },
+    {
+      "words": 9999,
+      "text": "9999"
+    },
+    {
+      "words": 10000,
+      "text": "1.0万"
+    },
+    {
+      "words": 10050,
+      "text": "1.0万"
+    },
+    {
+      "words": 11500,
+      "text": "1.1万"
+    },
+    {
+      "words": 12345,
+      "text": "1.2万"
+    },
+    {
+      "words": 12500,
+      "text": "1.3万"
+    },
+    {
+      "words": 99999,
+      "text": "10.0万"
+    },
+    {
+      "words": 100000,
+      "text": "10万"
+    },
+    {
+      "words": 123456,
+      "text": "12万"
+    }
+  ],
+  "lintProse": [
+    {
+      "text": "",
+      "issues": []
+    },
+    {
+      "text": "今天天气很好。他说：「我们走吧。」",
+      "issues": []
+    },
+    {
+      "text": "他说：「今天不写了。\n所以呢。",
+      "issues": [
+        {
+          "code": "quote_unbalanced",
+          "level": "error",
+          "message": "引号不配对：这一段有 1 个「「」、0 个「」」，请检查漏写或多写",
+          "offset": 3,
+          "length": 1,
+          "line": 1,
+          "snippet": "「",
+          "basis": "GB/T 15834-2011《标点符号用法》（引号、括号成对使用）"
+        }
+      ]
+    },
+    {
+      "text": "你好,世界",
+      "issues": [
+        {
+          "code": "punct_halfwidth_near_cjk",
+          "level": "warn",
+          "message": "中文里混用了半角标点「好,」，中文标点通常写作 ，；：！？（）",
+          "offset": 1,
+          "length": 2,
+          "line": 1,
+          "snippet": "好,",
+          "basis": "GB/T 15834-2011《标点符号用法》；CY/T 154-2017《中文出版物夹用英文的编辑规范》"
+        }
+      ]
+    },
+    {
+      "text": "你好，世界!",
+      "issues": [
+        {
+          "code": "punct_halfwidth_near_cjk",
+          "level": "warn",
+          "message": "中文里混用了半角标点「界!」，中文标点通常写作 ，；：！？（）",
+          "offset": 4,
+          "length": 2,
+          "line": 1,
+          "snippet": "界!",
+          "basis": "GB/T 15834-2011《标点符号用法》；CY/T 154-2017《中文出版物夹用英文的编辑规范》"
+        }
+      ]
+    },
+    {
+      "text": "他说--不对",
+      "issues": [
+        {
+          "code": "dash_ascii_double",
+          "level": "warn",
+          "message": "用两个半角连字符 `--` 代替破折号了，中文破折号是 `——`",
+          "offset": 2,
+          "length": 2,
+          "line": 1,
+          "snippet": "--",
+          "basis": "GB/T 15834-2011《标点符号用法》（破折号）"
+        }
+      ]
+    },
+    {
+      "text": "分隔线\n---\n后文",
+      "issues": []
+    },
+    {
+      "text": "他—走了",
+      "issues": [
+        {
+          "code": "dash_single_em",
+          "level": "warn",
+          "message": "这个破折号只有一个 `—`，中文破折号通常成双写 `——`",
+          "offset": 1,
+          "length": 1,
+          "line": 1,
+          "snippet": "—",
+          "basis": "GB/T 15834-2011《标点符号用法》（破折号占两个字的位置）"
+        }
+      ]
+    },
+    {
+      "text": "她说：2019—2020 年间——结束",
+      "issues": []
+    },
+    {
+      "text": "她说...",
+      "issues": [
+        {
+          "code": "ellipsis_ascii_dots",
+          "level": "warn",
+          "message": "用半角句点写省略号了，中文省略号是 `……`（两个）",
+          "offset": 2,
+          "length": 3,
+          "line": 1,
+          "snippet": "...",
+          "basis": "GB/T 15834-2011《标点符号用法》（省略号）"
+        }
+      ]
+    },
+    {
+      "text": "English sentence... stays quiet",
+      "issues": []
+    },
+    {
+      "text": "好的。。。",
+      "issues": [
+        {
+          "code": "ellipsis_fullwidth_period",
+          "level": "warn",
+          "message": "用句号 `。。。` 代替省略号了，中文省略号是 `……`",
+          "offset": 2,
+          "length": 3,
+          "line": 1,
+          "snippet": "。。。",
+          "basis": "GB/T 15834-2011《标点符号用法》（省略号）"
+        }
+      ]
+    },
+    {
+      "text": "他 说了一句。",
+      "issues": [
+        {
+          "code": "space_between_cjk",
+          "level": "info",
+          "message": "汉字之间多了空格（导入的稿子常见），确认是无意的就删掉",
+          "offset": 0,
+          "length": 3,
+          "line": 1,
+          "snippet": "他 说",
+          "basis": "W3C《中文排版需求》(clreq)（中文正文的间距）；也可能是导入稿子带进来的"
+        }
+      ]
+    },
+    {
+      "text": "他 说了一句。   ",
+      "issues": [
+        {
+          "code": "space_between_cjk",
+          "level": "info",
+          "message": "汉字之间多了空格（导入的稿子常见），确认是无意的就删掉",
+          "offset": 0,
+          "length": 3,
+          "line": 1,
+          "snippet": "他 说",
+          "basis": "W3C《中文排版需求》(clreq)（中文正文的间距）；也可能是导入稿子带进来的"
+        },
+        {
+          "code": "trailing_space",
+          "level": "info",
+          "message": "行尾有多余空格",
+          "offset": 7,
+          "length": 3,
+          "line": 1,
+          "snippet": "   ",
+          "basis": "无规范依据（纯清洁度）：行尾空格不影响阅读，只影响 diff 与导出"
+        }
+      ]
+    },
+    {
+      "text": "2019-2020 年间",
+      "issues": [
+        {
+          "code": "dash_ascii_range",
+          "level": "info",
+          "message": "起止数字之间按规范用一字线「—」或浪纹线「～」，不要用半角 -",
+          "offset": 4,
+          "length": 1,
+          "line": 1,
+          "snippet": "-",
+          "basis": "GB/T 15834-2011《标点符号用法》（连接号）；GB/T 15835-2011《出版物上数字用法》（数值范围）"
+        }
+      ]
+    },
+    {
+      "text": "二〇一九年的秋天",
+      "issues": [
+        {
+          "code": "cjk_year_digits",
+          "level": "info",
+          "message": "公历年份按规范用阿拉伯数字（「2019 年」），汉字年份多见于书法/仿古文体",
+          "offset": 0,
+          "length": 5,
+          "line": 1,
+          "snippet": "二〇一九年",
+          "basis": "GB/T 15835-2011《出版物上数字用法》（公历年份用阿拉伯数字）"
+        }
+      ]
+    },
+    {
+      "text": "大约10几个人",
+      "issues": [
+        {
+          "code": "arabic_with_ji",
+          "level": "info",
+          "message": "「几」表示约数时用汉字数字（「十几个人」），或用「多」（「10 多个人」）",
+          "offset": 2,
+          "length": 3,
+          "line": 1,
+          "snippet": "10几",
+          "basis": "GB/T 15835-2011《出版物上数字用法》（「几」表示约数时用汉字数字）"
+        }
+      ]
+    },
+    {
+      "text": "那是3、4年前的事",
+      "issues": [
+        {
+          "code": "arabic_dunhao_range",
+          "level": "info",
+          "message": "概数按规范用汉字且不用顿号（「三四年」）；若是并列编号，请在前面加「第」",
+          "offset": 2,
+          "length": 3,
+          "line": 1,
+          "snippet": "3、4",
+          "basis": "GB/T 15835-2011《出版物上数字用法》（相邻数字并列连用表示概数时用汉字、不用顿号）"
+        }
+      ]
+    },
+    {
+      "text": "第3、4章很精彩",
+      "issues": []
+    },
+    {
+      "text": "带来了……等等东西",
+      "issues": [
+        {
+          "code": "ellipsis_with_deng",
+          "level": "info",
+          "message": "省略号与「等」都表示列举未尽，通常留一个即可",
+          "offset": 3,
+          "length": 3,
+          "line": 1,
+          "snippet": "……等",
+          "basis": "编辑规范补充规则（省略号与「等」不宜并用）——不是国标正文，故只报 info"
+        }
+      ]
+    },
+    {
+      "text": "我在读《钟声与《第七个抽屉》》。",
+      "issues": [
+        {
+          "code": "title_mark_nested",
+          "level": "warn",
+          "message": "书名号里再用书名号时应改为单书名号「〈〉」",
+          "offset": 7,
+          "length": 1,
+          "line": 1,
+          "snippet": "《",
+          "basis": "GB/T 15834-2011《标点符号用法》（书名号里面还要用书名号时用单书名号）；W3C《中文排版需求》(clreq)"
+        }
+      ]
+    },
+    {
+      "text": "他说：“她叫我“小澪”。”",
+      "issues": [
+        {
+          "code": "quote_nested_level",
+          "level": "warn",
+          "message": "引号里再用引号时应降一级（“” 里用单引号）",
+          "offset": 7,
+          "length": 1,
+          "line": 1,
+          "snippet": "“",
+          "basis": "GB/T 15834-2011《标点符号用法》（引号里面还要用引号时，外面用双引号、里面用单引号）"
+        }
+      ]
+    },
+    {
+      "text": "他迫不急待地推开门，一如继往地按耐不住。",
+      "issues": [
+        {
+          "code": "typo_confusion",
+          "level": "warn",
+          "message": "疑是别字：「迫不急待」通常写作「迫不及待」（成语）",
+          "offset": 1,
+          "length": 4,
+          "line": 1,
+          "snippet": "迫不急待",
+          "basis": "成语/固定搭配的通用写法（零歧义词表，见 lib/typoRules.ts）"
+        },
+        {
+          "code": "typo_confusion",
+          "level": "warn",
+          "message": "疑是别字：「一如继往」通常写作「一如既往」（成语）",
+          "offset": 10,
+          "length": 4,
+          "line": 1,
+          "snippet": "一如继往",
+          "basis": "成语/固定搭配的通用写法（零歧义词表，见 lib/typoRules.ts）"
+        },
+        {
+          "code": "typo_confusion",
+          "level": "warn",
+          "message": "疑是别字：「按耐不住」通常写作「按捺不住」（成语）",
+          "offset": 15,
+          "length": 4,
+          "line": 1,
+          "snippet": "按耐不住",
+          "basis": "成语/固定搭配的通用写法（零歧义词表，见 lib/typoRules.ts）"
+        }
+      ]
+    },
+    {
+      "text": "他说：「你好。\n\n她答：「再见。」\n",
+      "issues": [
+        {
+          "code": "quote_unbalanced",
+          "level": "error",
+          "message": "引号不配对：这一段有 1 个「「」、0 个「」」，请检查漏写或多写",
+          "offset": 3,
+          "length": 1,
+          "line": 1,
+          "snippet": "「",
+          "basis": "GB/T 15834-2011《标点符号用法》（引号、括号成对使用）"
+        }
+      ]
+    },
+    {
+      "text": "（括号没关",
+      "issues": [
+        {
+          "code": "quote_unbalanced",
+          "level": "error",
+          "message": "引号不配对：这一段有 1 个「（」、0 个「）」，请检查漏写或多写",
+          "offset": 0,
+          "length": 1,
+          "line": 1,
+          "snippet": "（",
+          "basis": "GB/T 15834-2011《标点符号用法》（引号、括号成对使用）"
+        }
+      ]
+    },
+    {
+      "text": "第一段「配对」。\n\n第二段「没配对。\n\n第三段』多了。",
+      "issues": [
+        {
+          "code": "quote_unbalanced",
+          "level": "error",
+          "message": "引号不配对：这一段有 1 个「「」、0 个「」」，请检查漏写或多写",
+          "offset": 13,
+          "length": 1,
+          "line": 3,
+          "snippet": "「",
+          "basis": "GB/T 15834-2011《标点符号用法》（引号、括号成对使用）"
+        },
+        {
+          "code": "quote_unbalanced",
+          "level": "error",
+          "message": "引号不配对：这一段有 0 个「『」、1 个「』」，请检查漏写或多写",
+          "offset": 23,
+          "length": 1,
+          "line": 5,
+          "snippet": "』",
+          "basis": "GB/T 15834-2011《标点符号用法》（引号、括号成对使用）"
+        }
+      ]
+    },
+    {
+      "text": "混合“双引号”和「直角引号」都合法。",
+      "issues": []
+    }
+  ],
+  "findMatches": [
+    {
+      "text": "abcABCabc",
+      "query": "abc",
+      "options": {},
+      "ranges": [
+        {
+          "from": 0,
+          "to": 3
+        },
+        {
+          "from": 3,
+          "to": 6
+        },
+        {
+          "from": 6,
+          "to": 9
+        }
+      ]
+    },
+    {
+      "text": "abcABCabc",
+      "query": "abc",
+      "options": {
+        "caseSensitive": true
+      },
+      "ranges": [
+        {
+          "from": 0,
+          "to": 3
+        },
+        {
+          "from": 6,
+          "to": 9
+        }
+      ]
+    },
+    {
+      "text": "aaaa",
+      "query": "aa",
+      "options": {},
+      "ranges": [
+        {
+          "from": 0,
+          "to": 2
+        },
+        {
+          "from": 2,
+          "to": 4
+        }
+      ]
+    },
+    {
+      "text": "他说他走",
+      "query": "他",
+      "options": {},
+      "ranges": [
+        {
+          "from": 0,
+          "to": 1
+        },
+        {
+          "from": 2,
+          "to": 3
+        }
+      ]
+    },
+    {
+      "text": "abc",
+      "query": "",
+      "options": {},
+      "ranges": []
+    },
+    {
+      "text": "a1b22c333",
+      "query": "\\d+",
+      "options": {
+        "regex": true
+      },
+      "ranges": [
+        {
+          "from": 1,
+          "to": 2
+        },
+        {
+          "from": 3,
+          "to": 5
+        },
+        {
+          "from": 6,
+          "to": 9
+        }
+      ]
+    },
+    {
+      "text": "a1b22c333",
+      "query": "(",
+      "options": {
+        "regex": true
+      },
+      "ranges": null
+    },
+    {
+      "text": "abc",
+      "query": "x*",
+      "options": {
+        "regex": true
+      },
+      "ranges": [
+        {
+          "from": 0,
+          "to": 0
+        },
+        {
+          "from": 1,
+          "to": 1
+        },
+        {
+          "from": 2,
+          "to": 2
+        },
+        {
+          "from": 3,
+          "to": 3
+        }
+      ]
+    },
+    {
+      "text": "ABC abc",
+      "query": "b",
+      "options": {
+        "regex": true,
+        "caseSensitive": true
+      },
+      "ranges": [
+        {
+          "from": 5,
+          "to": 6
+        }
+      ]
+    }
+  ],
+  "replaceAll": [
+    {
+      "text": "猫追老鼠，猫赢了。",
+      "query": "猫",
+      "replacement": "狗",
+      "options": {},
+      "result": {
+        "text": "狗追老鼠，狗赢了。",
+        "count": 2
+      }
+    },
+    {
+      "text": "abcABC",
+      "query": "abc",
+      "replacement": "x",
+      "options": {},
+      "result": {
+        "text": "xx",
+        "count": 2
+      }
+    },
+    {
+      "text": "abcABC",
+      "query": "abc",
+      "replacement": "x",
+      "options": {
+        "caseSensitive": true
+      },
+      "result": {
+        "text": "xABC",
+        "count": 1
+      }
+    },
+    {
+      "text": "价格$1",
+      "query": "$1",
+      "replacement": "$$",
+      "options": {},
+      "result": {
+        "text": "价格$$",
+        "count": 1
+      }
+    },
+    {
+      "text": "john smith",
+      "query": "(\\w+) (\\w+)",
+      "replacement": "$2, $1",
+      "options": {
+        "regex": true
+      },
+      "result": {
+        "text": "smith, john",
+        "count": 1
+      }
+    },
+    {
+      "text": "abc",
+      "query": "b",
+      "replacement": "[$&]",
+      "options": {
+        "regex": true
+      },
+      "result": {
+        "text": "a[b]c",
+        "count": 1
+      }
+    },
+    {
+      "text": "a-b",
+      "query": "-",
+      "replacement": "$$",
+      "options": {
+        "regex": true
+      },
+      "result": {
+        "text": "a$b",
+        "count": 1
+      }
+    },
+    {
+      "text": "abc",
+      "query": "z",
+      "replacement": "y",
+      "options": {},
+      "result": {
+        "text": "abc",
+        "count": 0
+      }
+    },
+    {
+      "text": "abc",
+      "query": "(",
+      "replacement": "y",
+      "options": {
+        "regex": true
+      },
+      "result": {
+        "text": "abc",
+        "count": 0
+      }
+    },
+    {
+      "text": "x1y",
+      "query": "(\\d)",
+      "replacement": "$2|$0|$1$1",
+      "options": {
+        "regex": true
+      },
+      "result": {
+        "text": "x$2|$0|11y",
+        "count": 1
+      }
+    }
+  ],
+  "expandReplacement": [
+    {
+      "text": "john smith",
+      "range": {
+        "from": 0,
+        "to": 10
+      },
+      "query": "(\\w+) (\\w+)",
+      "replacement": "$2 $1",
+      "options": {
+        "regex": true
+      },
+      "result": "smith john"
+    },
+    {
+      "text": "john smith",
+      "range": {
+        "from": 0,
+        "to": 4
+      },
+      "query": "john",
+      "replacement": "$1",
+      "options": {},
+      "result": "$1"
+    },
+    {
+      "text": "ab",
+      "range": {
+        "from": 0,
+        "to": 1
+      },
+      "query": "a",
+      "replacement": "<$&>",
+      "options": {
+        "regex": true
+      },
+      "result": "<a>"
+    }
+  ],
+  "nextMatch": [
+    {
+      "ranges": [],
+      "caret": 0,
+      "direction": 1,
+      "result": null
+    },
+    {
+      "ranges": [
+        {
+          "from": 2,
+          "to": 3
+        },
+        {
+          "from": 8,
+          "to": 9
+        }
+      ],
+      "caret": 0,
+      "direction": 1,
+      "result": {
+        "from": 2,
+        "to": 3
+      }
+    },
+    {
+      "ranges": [
+        {
+          "from": 2,
+          "to": 3
+        },
+        {
+          "from": 8,
+          "to": 9
+        }
+      ],
+      "caret": 2,
+      "direction": 1,
+      "result": {
+        "from": 8,
+        "to": 9
+      }
+    },
+    {
+      "ranges": [
+        {
+          "from": 2,
+          "to": 3
+        },
+        {
+          "from": 8,
+          "to": 9
+        }
+      ],
+      "caret": 9,
+      "direction": 1,
+      "result": {
+        "from": 2,
+        "to": 3
+      }
+    },
+    {
+      "ranges": [
+        {
+          "from": 2,
+          "to": 3
+        },
+        {
+          "from": 8,
+          "to": 9
+        }
+      ],
+      "caret": 9,
+      "direction": -1,
+      "result": {
+        "from": 2,
+        "to": 3
+      }
+    },
+    {
+      "ranges": [
+        {
+          "from": 2,
+          "to": 3
+        },
+        {
+          "from": 8,
+          "to": 9
+        }
+      ],
+      "caret": 2,
+      "direction": -1,
+      "result": {
+        "from": 8,
+        "to": 9
+      }
+    },
+    {
+      "ranges": [
+        {
+          "from": 2,
+          "to": 3
+        },
+        {
+          "from": 8,
+          "to": 9
+        }
+      ],
+      "caret": 1,
+      "direction": -1,
+      "result": {
+        "from": 8,
+        "to": 9
+      }
+    }
+  ],
+  "replaceRange": [
+    {
+      "text": "0123456789",
+      "from": 2,
+      "to": 4,
+      "replacement": "ab",
+      "result": "01ab456789"
+    },
+    {
+      "text": "0123456789",
+      "from": 4,
+      "to": 2,
+      "replacement": "ab",
+      "result": "01ab456789"
+    },
+    {
+      "text": "0123",
+      "from": -5,
+      "to": 99,
+      "replacement": "X",
+      "result": "X"
+    },
+    {
+      "text": "0123",
+      "from": 2,
+      "to": 2,
+      "replacement": "ins",
+      "result": "01ins23"
+    }
+  ],
+  "applyPairOnKey": [
+    {
+      "text": "他说",
+      "start": 2,
+      "end": 2,
+      "key": "「",
+      "result": {
+        "text": "他说「」",
+        "caret": 3
+      }
+    },
+    {
+      "text": "他说",
+      "start": 0,
+      "end": 2,
+      "key": "“",
+      "result": {
+        "text": "“他说”",
+        "caret": 4,
+        "selection": {
+          "from": 1,
+          "to": 3
+        }
+      }
+    },
+    {
+      "text": "他说」",
+      "start": 2,
+      "end": 2,
+      "key": "」",
+      "result": {
+        "text": "他说」",
+        "caret": 3
+      }
+    },
+    {
+      "text": "他说",
+      "start": 2,
+      "end": 2,
+      "key": "」",
+      "result": null
+    },
+    {
+      "text": "abc",
+      "start": 1,
+      "end": 1,
+      "key": "(",
+      "result": {
+        "text": "a()bc",
+        "caret": 2
+      }
+    },
+    {
+      "text": "abc",
+      "start": 1,
+      "end": 1,
+      "key": "\"",
+      "result": {
+        "text": "a\"\"bc",
+        "caret": 2
+      }
+    },
+    {
+      "text": "abc",
+      "start": 1,
+      "end": 1,
+      "key": "a",
+      "result": null
+    },
+    {
+      "text": "abc",
+      "start": 1,
+      "end": 1,
+      "key": "「」",
+      "result": null
+    },
+    {
+      "text": "",
+      "start": 0,
+      "end": 0,
+      "key": "《",
+      "result": {
+        "text": "《》",
+        "caret": 1
+      }
+    }
+  ],
+  "parseScenes": [
+    {
+      "text": "",
+      "scenes": []
+    },
+    {
+      "text": "只有一段话，没有分场。",
+      "scenes": [
+        {
+          "index": 0,
+          "title": "只有一段话，没有分场。",
+          "explicit": false,
+          "from": 0,
+          "to": 11,
+          "words": 9
+        }
+      ]
+    },
+    {
+      "text": "第一场内容\n\n◇◇◇\n\n第二场内容\n***\n第三场",
+      "scenes": [
+        {
+          "index": 0,
+          "title": "第一场内容",
+          "explicit": false,
+          "from": 0,
+          "to": 7,
+          "words": 5
+        },
+        {
+          "index": 1,
+          "title": "第二场内容",
+          "explicit": false,
+          "from": 12,
+          "to": 18,
+          "words": 5
+        },
+        {
+          "index": 2,
+          "title": "第三场",
+          "explicit": true,
+          "from": 26,
+          "to": 26,
+          "words": 0
+        }
+      ]
+    },
+    {
+      "text": "【雨夜】\n他走进雨里。\n\n【清晨】\n天亮了。",
+      "scenes": [
+        {
+          "index": 0,
+          "title": "雨夜",
+          "explicit": true,
+          "from": 5,
+          "to": 13,
+          "words": 5
+        },
+        {
+          "index": 1,
+          "title": "清晨",
+          "explicit": true,
+          "from": 18,
+          "to": 22,
+          "words": 3
+        }
+      ]
+    },
+    {
+      "text": "场景：告别\n她转身。\n场景：重逢\n他回头。",
+      "scenes": [
+        {
+          "index": 0,
+          "title": "告别",
+          "explicit": true,
+          "from": 6,
+          "to": 11,
+          "words": 3
+        },
+        {
+          "index": 1,
+          "title": "重逢",
+          "explicit": true,
+          "from": 17,
+          "to": 21,
+          "words": 3
+        }
+      ]
+    },
+    {
+      "text": "第3场\n正文开始\n第 4 场：雨夜\n又一场\n第5场 告别\n结束",
+      "scenes": [
+        {
+          "index": 0,
+          "title": "第3场",
+          "explicit": true,
+          "from": 4,
+          "to": 9,
+          "words": 4
+        },
+        {
+          "index": 1,
+          "title": "雨夜",
+          "explicit": true,
+          "from": 18,
+          "to": 22,
+          "words": 3
+        },
+        {
+          "index": 2,
+          "title": "告别",
+          "explicit": true,
+          "from": 29,
+          "to": 31,
+          "words": 2
+        }
+      ]
+    },
+    {
+      "text": "第一场的内容。\n继续写。",
+      "scenes": [
+        {
+          "index": 0,
+          "title": "第一场的内容。",
+          "explicit": false,
+          "from": 0,
+          "to": 12,
+          "words": 9
+        }
+      ]
+    },
+    {
+      "text": "第 3 场 他走了。\n后文",
+      "scenes": [
+        {
+          "index": 0,
+          "title": "第 3 场 他走了。",
+          "explicit": false,
+          "from": 0,
+          "to": 13,
+          "words": 8
+        }
+      ]
+    },
+    {
+      "text": "## 小标题\n文字\n### 另一个\n更多文字",
+      "scenes": [
+        {
+          "index": 0,
+          "title": "小标题",
+          "explicit": true,
+          "from": 7,
+          "to": 10,
+          "words": 2
+        },
+        {
+          "index": 1,
+          "title": "另一个",
+          "explicit": true,
+          "from": 18,
+          "to": 22,
+          "words": 4
+        }
+      ]
+    },
+    {
+      "text": "---\n开头就是分隔\n===\n",
+      "scenes": [
+        {
+          "index": 0,
+          "title": "开头就是分隔",
+          "explicit": false,
+          "from": 4,
+          "to": 11,
+          "words": 6
+        }
+      ]
+    },
+    {
+      "text": "A\n\n\n\nB\n◆◆◆\nC",
+      "scenes": [
+        {
+          "index": 0,
+          "title": "A",
+          "explicit": false,
+          "from": 0,
+          "to": 7,
+          "words": 2
+        },
+        {
+          "index": 1,
+          "title": "C",
+          "explicit": false,
+          "from": 11,
+          "to": 12,
+          "words": 1
+        }
+      ]
+    }
+  ],
+  "goalProgress": [
+    {
+      "words": 0,
+      "target": 0,
+      "result": {
+        "words": 0,
+        "target": 0,
+        "ratio": 1,
+        "remaining": 0,
+        "done": true
+      }
+    },
+    {
+      "words": 50,
+      "target": 100,
+      "result": {
+        "words": 50,
+        "target": 100,
+        "ratio": 0.5,
+        "remaining": 50,
+        "done": false
+      }
+    },
+    {
+      "words": 150,
+      "target": 100,
+      "result": {
+        "words": 150,
+        "target": 100,
+        "ratio": 1,
+        "remaining": 0,
+        "done": true
+      }
+    },
+    {
+      "words": 10,
+      "target": -5,
+      "result": {
+        "words": 10,
+        "target": 0,
+        "ratio": 1,
+        "remaining": 0,
+        "done": true
+      }
+    },
+    {
+      "words": 7,
+      "target": 3.9,
+      "result": {
+        "words": 7,
+        "target": 3,
+        "ratio": 1,
+        "remaining": 0,
+        "done": true
+      }
+    },
+    {
+      "words": 100,
+      "target": 100,
+      "result": {
+        "words": 100,
+        "target": 100,
+        "ratio": 1,
+        "remaining": 0,
+        "done": true
+      }
+    }
+  ]
+}
