@@ -256,10 +256,10 @@ OUT_OF_SCOPE_SOURCES: Dict[str, str] = {
         "就应当移进 IN_SCOPE_SOURCES 并把两个码登记进 AUDIT_CODE_BASIS"
     ),
     "app/core/agent_turn.py": (
-        "码只用于 SSE 运行时错误（如 hard_timeout），不进 harnessRuns / write_precheck 对账"
+        "码只用于 SSE 运行时错误（如 hard_timeout），不按 code 归档"
     ),
     "app/core/critique_contract.py": (
-        "码出现在审稿 JSON 契约的 issues[].code 里（模型输出字段），不按 harness 缺陷码归档"
+        "码出现在审稿 JSON 契约的 issues[].code 里（模型输出字段），不按 code 归档"
     ),
 }
 
