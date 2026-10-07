@@ -165,7 +165,7 @@ describe("超时 wiring（AST）", () => {
               offenders.push(`${file}: timeoutMs 不在对象字面量内`);
             } else if (siblingTimeoutKind(obj) !== "llm") {
               const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
-              offenders.push(`${file}:${line + 1} TIMEOUTS.${key} 缺少 timeoutKind: \"llm\"`);
+              offenders.push(`${file}:${line + 1} TIMEOUTS.${key} 缺少 timeoutKind: "llm"`);
             }
           }
         }
@@ -280,7 +280,7 @@ describe("超时 wiring（AST）", () => {
         if (!msOk || !kindOk) {
           const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
           offenders.push(
-            `auth.ts:${line + 1} 缺少 timeoutMs: TIMEOUTS.auth 和/或 timeoutKind: \"auth\"`
+            `auth.ts:${line + 1} 缺少 timeoutMs: TIMEOUTS.auth 和/或 timeoutKind: "auth"`
           );
         }
       }

@@ -72,9 +72,11 @@ test("桌面作品窗口：双击剧本在桌面上开窗，Ribbon 与大纲可�
   await registerAndLogin(page, username);
 
   const title = await page.getByLabel("作品标题").inputValue();
+  const chapters = page.getByTestId("chapter-outline").getByRole("option");
+  const before = await chapters.count();
   await page.getByRole("button", { name: "+ 章" }).click();
   await page.getByRole("button", { name: "添加" }).click();
-  await expect(page.getByRole("option")).toHaveCount(5, { timeout: 20_000 });
+  await expect(chapters).toHaveCount(before + 1, { timeout: 20_000 });
   await page.waitForTimeout(1500);
 
   await goDesktopAndOpen(page, title);
@@ -98,8 +100,9 @@ test("桌面作品窗口：双击剧本在桌面上开窗，Ribbon 与大纲可�
   await close.first().click();
 
   // 章节可切
-  await page.getByRole("option").nth(1).click();
-  await expect(page.getByRole("option").nth(1)).toHaveAttribute("aria-selected", "true");
+  const outlineOptions = page.getByTestId("chapter-outline").getByRole("option");
+  await outlineOptions.nth(1).click();
+  await expect(outlineOptions.nth(1)).toHaveAttribute("aria-selected", "true");
 
   // 「全屏写作」= 收起桌面、稿纸铺满；顶栏「文件 → 返回桌面」回来还是这扇窗
   await page.getByTestId("script-window-fullscreen").click();
@@ -117,12 +120,14 @@ test("桌面作品窗口：图标角标显示章数，「继续写作」打开�
   await registerAndLogin(page, username);
   const title = await page.getByLabel("作品标题").inputValue();
 
+  const chapters = page.getByTestId("chapter-outline").getByRole("option");
+  const before = await chapters.count();
   await page.getByRole("button", { name: "+ 章" }).click();
   await page.getByRole("button", { name: "添加" }).click();
-  await expect(page.getByRole("option")).toHaveCount(5, { timeout: 20_000 });
-  await page.getByRole("option").nth(1).click();
-  await expect(page.getByRole("option").nth(1)).toHaveAttribute("aria-selected", "true");
-  const chapterLabel = ((await page.getByRole("option").nth(1).textContent()) ?? "")
+  await expect(chapters).toHaveCount(before + 1, { timeout: 20_000 });
+  await chapters.nth(1).click();
+  await expect(chapters.nth(1)).toHaveAttribute("aria-selected", "true");
+  const chapterLabel = ((await chapters.nth(1).textContent()) ?? "")
     .replace(/^\d+/, "")
     .trim();
   await page.waitForTimeout(2500);
@@ -135,9 +140,9 @@ test("桌面作品窗口：图标角标显示章数，「继续写作」打开�
   await expect(page.getByTestId("desktop-view")).toBeVisible({ timeout: 30_000 });
 
   const icon = page.getByRole("listitem", { name: title });
-  await expect(icon.locator('[data-testid^="icon-badge-"]')).toHaveText("5 章");
+  await expect(icon.locator('[data-testid^="icon-badge-"]')).toHaveText(`${before + 1} 章`);
   const hint = await icon.getAttribute("title");
-  expect(hint).toContain("共 5 章");
+  expect(hint).toContain(`共 ${before + 1} 章`);
   expect(hint).toContain("最后修改");
 
   const resume = page.getByTestId("desktop-resume");

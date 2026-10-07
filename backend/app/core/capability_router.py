@@ -12,8 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import FrozenSet, Literal, Optional
 
-from app.core.pipeline.style_transfer_contract import style_transfer_prompt_block
 from app.core.critique_contract import critique_framing as _critique_framing
+from app.core.pipeline.style_transfer_contract import style_transfer_prompt_block
 
 Capability = Literal["write", "critique", "ingest", "chat"]
 WriteOp = Literal[

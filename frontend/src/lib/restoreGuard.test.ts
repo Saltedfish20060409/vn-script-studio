@@ -67,8 +67,8 @@ describe("restoreGuard 保护窗时序", () => {
 
   it("失败立即清窗", () => {
     const t0 = 1_000_000;
-    let until = openRestoreGuardAtRequest(t0);
-    until = clearRestoreGuard();
+    openRestoreGuardAtRequest(t0);
+    const until = clearRestoreGuard();
     expect(until).toBe(0);
     expect(isRestoreGuardActive(until, t0 + 100)).toBe(false);
     expect(shouldBlockPersistForRestoreGuard(until, t0 + 100)).toBe(false);
