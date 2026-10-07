@@ -1885,17 +1885,19 @@ export function StudioApp() {
       window.clearTimeout(editorCommitTimer.current);
       editorCommitTimer.current = null;
     }
-    const flushed = await confirmClearBothSurfacesIfNeeded(
-      project,
-      chapter.id,
-      editorRef.current,
-      writeModeRef.current
-    );
-    if (!flushed) return;
-    updateActive(() => flushed);
+    const chId = chapter.id;
+    const mode = writeModeRef.current;
+    const text = editorRef.current;
+    const ok = await confirmClearBothSurfacesIfNeeded(project, chId, text, mode);
+    if (!ok) return;
+    let flushed: VnProject | null = null;
+    updateActive((p) => {
+      flushed = flushChapter(p, chId, text, mode);
+      return flushed;
+    });
     persistWriteMode(next);
-    const ch = flushed.chapters.find((c) => c.id === chapter.id);
-    if (ch) loadEditorFromChapter(ch, flushed.characters, next);
+    const ch = (flushed ?? project).chapters.find((c) => c.id === chId);
+    if (ch) loadEditorFromChapter(ch, (flushed ?? project).characters, next);
   }
 
   async function generateRpyFromManuscript() {
@@ -1916,17 +1918,20 @@ export function StudioApp() {
       });
       if (!keepProse) return;
     }
-    const flushed = await confirmClearBothSurfacesIfNeeded(
-      project,
-      chapter.id,
-      editorRef.current,
-      writeModeRef.current
-    );
-    if (!flushed) return;
-    updateActive(() => flushed);
-    const ch = flushed.chapters.find((c) => c.id === chapter.id);
+    const chId = chapter.id;
+    const mode = writeModeRef.current;
+    const text = editorRef.current;
+    const ok = await confirmClearBothSurfacesIfNeeded(project, chId, text, mode);
+    if (!ok) return;
+    let flushed: VnProject | null = null;
+    updateActive((p) => {
+      flushed = flushChapter(p, chId, text, mode);
+      return flushed;
+    });
+    const base = flushed ?? project;
+    const ch = base.chapters.find((c) => c.id === chId);
     const stored = storedProse(ch).trim();
-    const preview = scriptPreview(ch, flushed.characters);
+    const preview = scriptPreview(ch, base.characters);
     // 转换源可用预览；禁止把预览写回 prose（P4.5）
     const convertSource = stored || preview;
     if (!convertSource.trim()) {
@@ -1936,33 +1941,36 @@ export function StudioApp() {
     setGeneratingRpy(true);
     setError("");
     try {
-      const out = await generateRpyFromProse(project.id, chapter.id, convertSource, true);
-      const next: VnProject = {
-        ...flushed,
-        chapters: flushed.chapters.map((c) =>
-          c.id === chapter.id
-            ? {
-                ...c,
-                // 只更新 blocks；有存盘 prose 才写 hash；勿把 preview 赋给 prose
-                ...(stored
-                  ? {
-                      prose: storedProse(c),
-                      blocks: out.blocks,
-                      rpyFromProseHash: proseFingerprint(stored),
-                      ...(out.nlRpyMap ? { nlRpyMap: out.nlRpyMap } : {}),
-                    }
-                  : {
-                      blocks: out.blocks,
-                      rpyFromProseHash: undefined,
-                    }),
-              }
-            : c
-        ),
-      };
-      updateActive(() => next);
+      const out = await generateRpyFromProse(project.id, chId, convertSource, true);
+      let next: VnProject | null = null;
+      updateActive((p) => {
+        next = {
+          ...p,
+          chapters: p.chapters.map((c) =>
+            c.id === chId
+              ? {
+                  ...c,
+                  // 只更新 blocks；有存盘 prose 才写 hash；勿把 preview 赋给 prose
+                  ...(stored
+                    ? {
+                        prose: storedProse(c),
+                        blocks: out.blocks,
+                        rpyFromProseHash: proseFingerprint(stored),
+                        ...(out.nlRpyMap ? { nlRpyMap: out.nlRpyMap } : {}),
+                      }
+                    : {
+                        blocks: out.blocks,
+                        rpyFromProseHash: undefined,
+                      }),
+                }
+              : c
+          ),
+        };
+        return next;
+      });
       persistWriteMode("rpy");
-      const updated = next.chapters.find((c) => c.id === chapter.id);
-      if (updated) loadEditorFromChapter(updated, next.characters, "rpy");
+      const updated = (next ?? base).chapters.find((c) => c.id === chId);
+      if (updated) loadEditorFromChapter(updated, (next ?? base).characters, "rpy");
       // out.rpy 只是**本章片段**（没有角色 define、没有 label start），而面板上的
       // 「下载 .rpy」下的是服务端整部作品的导出——两者不是同一份文件。所以这里把它
       // 标记为"已过期"：片段仍然显示（作者想看看模型写出了什么），但下载按钮会要求

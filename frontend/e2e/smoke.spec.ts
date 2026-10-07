@@ -23,6 +23,10 @@ function seedLocalStorage(page: Page) {
   page.addInitScript(() => {
     try {
       for (let v = 1; v <= 30; v += 1) localStorage.setItem(`vnss-notice-read-v${v}`, "1");
+      localStorage.setItem("vnss-boot-v1", "1");
+      localStorage.setItem("vnss-firstrun-hidden", "1");
+      localStorage.setItem("vnss-desktop-tips-v1", "1");
+      localStorage.setItem("vnss-write-mode", "prose");
       localStorage.setItem(
         "vnss-agent-float-v6",
         JSON.stringify({ mode: "docked", edge: "right", along: 96, size: "mini" })
@@ -69,6 +73,8 @@ async function createBlankProject(page: Page) {
 }
 
 test("注册 → 登录 → 建项目 → 写作 → 保存 → 导出", async ({ page }) => {
+  // 注册+建项+reload+生成+导出，默认 30s 不够（生成接口在无 Key 时走本地规则仍可能偏慢）
+  test.setTimeout(90_000);
   const username = randomName("e2e_");
   await register(page, username);
 
@@ -93,10 +99,17 @@ test("注册 → 登录 → 建项目 → 写作 → 保存 → 导出", async (
   await expect(after).toHaveValue(/站厅里回荡/, { timeout: 15_000 });
   await expect(after).toHaveValue(/末班车已经开走了/);
 
-  await page.getByRole("tab", { name: "RPY" }).click();
+  // 在正文档生成（此时编辑器里就是 prose）；生成完再看 RPY 档
+  const gen = page.waitForResponse(
+    (r) => r.url().includes("/generate-rpy") && r.request().method() === "POST",
+    { timeout: 45_000 }
+  );
   await page.getByRole("button", { name: "根据剧本生成" }).click();
+  const genRes = await gen;
+  expect(genRes.ok(), await genRes.text()).toBeTruthy();
+  await page.getByRole("tab", { name: "RPY" }).click();
   await expect(page.getByTestId("script-editor")).toHaveValue(/末班车/, {
-    timeout: 30_000,
+    timeout: 15_000,
   });
 
   const downloadPromise = page.waitForEvent("download");
