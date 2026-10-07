@@ -30,6 +30,14 @@ export function FilingFooter() {
   return (
     <footer className={styles.filing}>
       <Link to="/guide">使用指南</Link>
+      <a
+        href="https://github.com/Saltedfish20060409/vn-script-studio/releases"
+        target="_blank"
+        rel="noreferrer"
+        title="下载 Android 伴侣 APK（调试包）"
+      >
+        Android 客户端
+      </a>
       {icp ? (
         <a href="https://beian.miit.gov.cn" target="_blank" rel="noreferrer">
           {icp}
