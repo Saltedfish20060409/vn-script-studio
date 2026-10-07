@@ -99,15 +99,15 @@ test("注册 → 登录 → 建项目 → 写作 → 保存 → 导出", async (
   await expect(after).toHaveValue(/站厅里回荡/, { timeout: 15_000 });
   await expect(after).toHaveValue(/末班车已经开走了/);
 
-  // 在正文档生成（此时编辑器里就是 prose）；生成完再看 RPY 档
+  // 「根据剧本生成」只在 RPY 档显示；点之前先切过去（会 flush 正文档）
+  await page.getByRole("tab", { name: "RPY" }).click();
   const gen = page.waitForResponse(
     (r) => r.url().includes("/generate-rpy") && r.request().method() === "POST",
     { timeout: 45_000 }
   );
-  await page.getByRole("button", { name: "根据剧本生成" }).click();
+  await page.getByRole("button", { name: /根据(剧本|正文)生成/ }).click();
   const genRes = await gen;
   expect(genRes.ok(), await genRes.text()).toBeTruthy();
-  await page.getByRole("tab", { name: "RPY" }).click();
   await expect(page.getByTestId("script-editor")).toHaveValue(/末班车/, {
     timeout: 15_000,
   });
