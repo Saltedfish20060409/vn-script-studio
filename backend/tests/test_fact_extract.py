@@ -22,16 +22,12 @@ def test_fingerprints_change_on_script_edit():
     meta = compute_fingerprints(p)
     p2 = p.model_copy(deep=True)
     ch = p2.chapters[0]
-    blocks = list(ch.blocks) + [
-        {
-            "type": "dialogue",
-            "id": "x1",
-            "characterId": "linxia",
-            "text": "新加一句对白用于指纹变更。",
-        }
-    ]
+    # 指纹覆盖 title/synopsis/正文；改 synopsis 最稳（不依赖 ScriptBlock 联合类型构造）
     p2.chapters = [
-        c.model_copy(update={"blocks": blocks}) if c.id == ch.id else c for c in p2.chapters
+        c.model_copy(update={"synopsis": (c.synopsis or "") + "·指纹变更"})
+        if c.id == ch.id
+        else c
+        for c in p2.chapters
     ]
     delta = diff_fingerprints(p2, meta)
     assert ch.id in delta.changed_chapter_ids

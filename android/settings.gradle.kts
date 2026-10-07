@@ -1,28 +1,23 @@
 pluginManagement {
     includeBuild("build-logic")
     repositories {
-        maven("https://maven.aliyun.com/repository/google")
-        maven("https://maven.aliyun.com/repository/public")
-        google {
-            content {
-                includeGroupByRegex("com\\.android.*")
-                includeGroupByRegex("com\\.google.*")
-                includeGroupByRegex("androidx.*")
-            }
-        }
+        // CI（GitHub Actions）优先走官方源；国内本机再回落到阿里云镜像。
+        google()
         mavenCentral()
         gradlePluginPortal()
+        maven("https://maven.aliyun.com/repository/google")
+        maven("https://maven.aliyun.com/repository/public")
     }
 }
-// 不启用 foojay-resolver：国内镜像常拉不到该插件；本机用 ANDROID Studio / JAVA_HOME 的 JDK 即可。
+// 不启用 foojay-resolver：国内镜像常拉不到该插件；本机用 Android Studio / JAVA_HOME 的 JDK 即可。
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        maven("https://maven.aliyun.com/repository/google")
-        maven("https://maven.aliyun.com/repository/public")
         google()
         mavenCentral()
+        maven("https://maven.aliyun.com/repository/google")
+        maven("https://maven.aliyun.com/repository/public")
     }
 }
 
