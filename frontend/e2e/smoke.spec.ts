@@ -108,7 +108,9 @@ test("注册 → 登录 → 建项目 → 写作 → 保存 → 导出", async (
   await page.getByRole("button", { name: /根据(剧本|正文)生成/ }).click();
   const genRes = await gen;
   expect(genRes.ok(), await genRes.text()).toBeTruthy();
-  await expect(page.getByTestId("script-editor")).toHaveValue(/末班车/, {
+  // 空白剧本没有「夏言」角色卡时，对白行会落成 raw 并被 P5 闸门剥掉；
+  // 旁白行仍会留下，所以这里认站厅那句，不认「末班车」。
+  await expect(page.getByTestId("script-editor")).toHaveValue(/站厅里回荡/, {
     timeout: 15_000,
   });
 
