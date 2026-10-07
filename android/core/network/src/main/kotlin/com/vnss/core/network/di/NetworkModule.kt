@@ -15,6 +15,7 @@ import com.vnss.core.network.api.VnssApi
 import com.vnss.core.network.interceptor.AuthInterceptor
 import com.vnss.core.network.interceptor.BaseUrlInterceptor
 import com.vnss.core.network.interceptor.ClientHeaderInterceptor
+import com.vnss.core.network.interceptor.RefreshCookieInterceptor
 import com.vnss.core.network.interceptor.TimeoutInterceptor
 import com.vnss.core.network.interceptor.TokenAuthenticator
 import dagger.Module
@@ -59,10 +60,12 @@ object NetworkModule {
     fun provideBareClient(
         @Named(ROOT) root: OkHttpClient,
         serverUrl: ServerUrlProvider,
+        tokens: TokenStore,
         @ApplicationContext context: Context,
     ): OkHttpClient = root.newBuilder()
         .addInterceptor(BaseUrlInterceptor(serverUrl))
         .addInterceptor(ClientHeaderInterceptor())
+        .addInterceptor(RefreshCookieInterceptor(tokens))
         .addInterceptor(TimeoutInterceptor())
         .addInterceptor(loggingInterceptor(context))
         .build()

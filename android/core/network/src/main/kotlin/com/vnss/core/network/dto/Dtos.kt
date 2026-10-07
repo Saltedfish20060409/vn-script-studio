@@ -88,6 +88,39 @@ data class AgentRunRequestDto(
     @SerialName("apply_actions") val applyActions: Boolean = true,
     val resume: Boolean = false,
     @SerialName("writing_surface") val writingSurface: String? = "prose",
+    @SerialName("lens_ids") val lensIds: List<String>? = null,
+)
+
+@Serializable
+data class LensPackDto(
+    val id: String = "",
+    val name: String = "",
+    val tags: List<String> = emptyList(),
+)
+
+@Serializable
+data class LensesCatalogDto(
+    val packs: List<LensPackDto> = emptyList(),
+    val maxActive: Int = 3,
+)
+
+@Serializable
+data class ProjectLensesDto(
+    val activeIds: List<String> = emptyList(),
+    val builtin: List<LensPackDto> = emptyList(),
+    val customPacks: List<LensPackDto> = emptyList(),
+    val active: List<LensPackDto> = emptyList(),
+)
+
+@Serializable
+data class ProjectLensesPutRequest(
+    val activeIds: List<String> = emptyList(),
+)
+
+@Serializable
+data class ProjectLensesPutResponse(
+    val activeIds: List<String> = emptyList(),
+    val active: List<LensPackDto> = emptyList(),
 )
 
 @Serializable

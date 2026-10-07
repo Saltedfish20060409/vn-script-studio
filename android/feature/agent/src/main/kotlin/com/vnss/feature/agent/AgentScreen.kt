@@ -1,24 +1,29 @@
 package com.vnss.feature.agent
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,6 +54,7 @@ import com.vnss.core.designsystem.InfoBanner
 import com.vnss.core.designsystem.InlineSpinner
 import com.vnss.core.designsystem.LoadingBox
 import com.vnss.core.model.AgentRole
+import com.vnss.core.model.AuthorLens
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,7 +76,19 @@ fun AgentRoute(onBack: () -> Unit, viewModel: AgentViewModel = hiltViewModel()) 
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回") }
                 },
-                actions = { TextButton(onClick = { viewModel.showConversations(true) }) { Text("对话") } },
+                actions = {
+                    TextButton(
+                        onClick = { viewModel.showLenses(true) },
+                        enabled = !state.running,
+                    ) {
+                        Text(
+                            lensLabel(state.activeLensIds, state.lensCatalog),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    TextButton(onClick = { viewModel.showConversations(true) }) { Text("对话") }
+                },
             )
         },
         bottomBar = {
@@ -164,6 +183,78 @@ fun AgentRoute(onBack: () -> Unit, viewModel: AgentViewModel = hiltViewModel()) 
             }
         }
     }
+
+    if (state.showLenses) {
+        LensSheet(
+            catalog = state.lensCatalog,
+            activeIds = state.activeLensIds,
+            maxActive = state.maxActiveLenses,
+            busy = state.lensBusy || state.running,
+            onToggle = viewModel::toggleLens,
+            onDismiss = { viewModel.showLenses(false) },
+        )
+    }
+}
+
+private fun lensLabel(activeIds: List<String>, catalog: List<AuthorLens>): String {
+    if (activeIds.isEmpty()) return "作家眼光"
+    val names = activeIds.map { id -> catalog.find { it.id == id }?.name ?: id }
+    return when {
+        names.size == 1 -> names[0]
+        else -> "眼光×${names.size}"
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun LensSheet(
+    catalog: List<AuthorLens>,
+    activeIds: List<String>,
+    maxActive: Int,
+    busy: Boolean,
+    onToggle: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("作家眼光", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "切换的是作家技法视角，不是扮演本人。默认用通用文学编辑；最多同时选 $maxActive 位。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = activeIds.isEmpty(),
+                    onClick = { onToggle(null) },
+                    enabled = !busy,
+                    label = { Text("通用文学编辑") },
+                )
+                catalog.forEach { pack ->
+                    FilterChip(
+                        selected = pack.id in activeIds,
+                        onClick = { onToggle(pack.id) },
+                        enabled = !busy,
+                        label = { Text(pack.name) },
+                    )
+                }
+            }
+            if (catalog.isEmpty() && busy) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    InlineSpinner()
+                    Text("加载中…", style = MaterialTheme.typography.bodySmall)
+                }
+            } else if (catalog.isEmpty()) {
+                Text("暂时拉不到作家目录，请检查网络后重开。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
 }
 
 @Composable
@@ -171,7 +262,7 @@ private fun Hint() {
     Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("和 Agent 聊聊你的作品", style = MaterialTheme.typography.titleMedium)
         Text(
-            "可以问人物设定、前后文是否矛盾、下一章怎么写。手机上的修改会先同步到服务端，Agent 读到的就是最新稿。",
+            "可以问人物设定、前后文是否矛盾、下一章怎么写。顶部可换「作家眼光」换技法视角。手机上的修改会先同步到服务端，Agent 读到的就是最新稿。",
             Modifier.padding(top = 8.dp),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -185,15 +276,22 @@ private fun Bubble(item: ChatItem) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
         Surface(
             shape = RoundedCornerShape(16.dp),
-            color = if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+            color = if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+            contentColor = if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.fillMaxWidth(if (mine) 0.85f else 0.95f),
+            shadowElevation = 0.dp,
+            tonalElevation = 0.dp,
         ) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 SelectionContainer {
                     Text(item.message.content, style = MaterialTheme.typography.bodyMedium)
                 }
                 if (item.applied) {
-                    Text("已写入作品", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Text(
+                        "已写入作品",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                    )
                 }
                 item.warnings.forEach {
                     Text("⚠ $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)

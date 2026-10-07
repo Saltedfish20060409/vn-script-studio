@@ -192,6 +192,22 @@ data class AgentRunRequest(
     val selection: String?,
     val applyActions: Boolean = true,
     val resume: Boolean = false,
+    /** 本轮选用的作家眼光 id（最多 3；空 = 通用文学编辑）。 */
+    val lensIds: List<String> = emptyList(),
+)
+
+/** 内置 / 自定义作家思维包的展示信息。 */
+data class AuthorLens(
+    val id: String,
+    val name: String,
+    val tags: List<String> = emptyList(),
+)
+
+/** 作品当前启用的作家眼光 + 可选目录。 */
+data class ProjectLenses(
+    val activeIds: List<String>,
+    val catalog: List<AuthorLens>,
+    val maxActive: Int = 3,
 )
 
 data class AgentRunResult(

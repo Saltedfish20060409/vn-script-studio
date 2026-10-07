@@ -10,7 +10,9 @@ Thumbs.db
 packages/web/.next/
 packages/cli/dist/
 packages/core/dist/
-data/
+# 本地运行时数据目录（勿写太宽：android/core/data 是源码模块）
+/data/
+!android/core/data/
 *.rpy.bak
 .cache/
 .pip-tmp/

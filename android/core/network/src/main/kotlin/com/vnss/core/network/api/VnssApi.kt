@@ -10,10 +10,14 @@ import com.vnss.core.network.dto.CommentsEnvelope
 import com.vnss.core.network.dto.CreateConversationRequest
 import com.vnss.core.network.dto.CreateProjectRequest
 import com.vnss.core.network.dto.IdentifierRequest
+import com.vnss.core.network.dto.LensesCatalogDto
 import com.vnss.core.network.dto.LocksEnvelope
 import com.vnss.core.network.dto.LoginRequest
 import com.vnss.core.network.dto.MembersEnvelope
 import com.vnss.core.network.dto.OkMessageDto
+import com.vnss.core.network.dto.ProjectLensesDto
+import com.vnss.core.network.dto.ProjectLensesPutRequest
+import com.vnss.core.network.dto.ProjectLensesPutResponse
 import com.vnss.core.network.dto.ProjectPutRequest
 import com.vnss.core.network.dto.ProjectSummaryDto
 import com.vnss.core.network.dto.PutConversationRequest
@@ -84,6 +88,19 @@ interface VnssApi {
         @Body body: PutConversationRequest,
     ): AgentConversationDto
 
+    // ---------------------------------------------------------------- lenses（作家眼光）
+    @GET("lenses")
+    suspend fun listLenses(): LensesCatalogDto
+
+    @GET("projects/{id}/lenses")
+    suspend fun getProjectLenses(@Path("id") id: String): ProjectLensesDto
+
+    @PUT("projects/{id}/lenses")
+    suspend fun putProjectLenses(
+        @Path("id") id: String,
+        @Body body: ProjectLensesPutRequest,
+    ): ProjectLensesPutResponse
+
     // ---------------------------------------------------------------- collab
     @GET("projects/{id}/members")
     suspend fun members(@Path("id") id: String): MembersEnvelope
@@ -127,9 +144,13 @@ interface VnssApi {
 
 /** 无需登录态的认证端点（注册 / 登录 / 找回）。走独立 Retrofit，不带 Authenticator。 */
 interface AuthApi {
+    /**
+     * 返回 [retrofit2.Response]：除 JSON 外还要读 `Set-Cookie: vnss_refresh`，
+     * 兼容尚未把 refresh_token 放进响应体的服务端。
+     */
     @POST("auth/login")
     @Headers("${Timeouts.HEADER}: ${Timeouts.AUTH_MS}")
-    suspend fun login(@Body body: LoginRequest): TokenDto
+    suspend fun login(@Body body: LoginRequest): retrofit2.Response<TokenDto>
 
     @POST("auth/register")
     @Headers("${Timeouts.HEADER}: ${Timeouts.UPLOAD_MS}")
