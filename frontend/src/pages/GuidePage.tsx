@@ -46,6 +46,14 @@ export default function GuidePage() {
           <p className={styles.nav}>
             <Link to="/login">登录</Link>
             <Link to="/">进入工作室</Link>
+            <a
+              href="https://github.com/Saltedfish20060409/vn-script-studio/releases"
+              target="_blank"
+              rel="noreferrer"
+              title="下载 Android 伴侣 APK（调试包）"
+            >
+              Android 客户端
+            </a>
           </p>
         </header>
       </TiltedCard>

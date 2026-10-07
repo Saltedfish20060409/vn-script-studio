@@ -438,6 +438,15 @@ export default function LoginPage() {
           <p className={styles.finePrint}>
             <Link to="/guide">使用指南 →</Link>
             <span aria-hidden> · </span>
+            <a
+              href="https://github.com/Saltedfish20060409/vn-script-studio/releases"
+              target="_blank"
+              rel="noreferrer"
+              title="下载 Android 伴侣 APK（调试包）"
+            >
+              Android 客户端
+            </a>
+            <span aria-hidden> · </span>
             <Link to="/legal?doc=privacy">隐私政策</Link>
             <span aria-hidden> · </span>
             <Link to="/legal?doc=terms">服务条款</Link>
