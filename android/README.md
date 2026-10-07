@@ -13,22 +13,21 @@
 
 ## 构建
 
-需要 JDK 17 与 Android SDK（compileSdk 35，minSdk 26）。仓库只提交了 `gradle-wrapper.properties`，没有 wrapper jar，
-本机先 `gradle wrapper` 生成，或直接用 Gradle 8.11.1：
+需要 JDK 17 与 Android SDK（compileSdk 35，minSdk 26）。仓库已包含 Gradle Wrapper：
 
 ```bash
 cd android
-gradle testDebugUnitTest      # 单测（含与 Web / 后端共用的夹具）
-gradle lintDebug
-gradle assembleDebug
+./gradlew testDebugUnitTest      # 单测（含与 Web / 后端共用的夹具）
+./gradlew lintDebug
+./gradlew assembleDebug
 ```
 
 - debug 与 release 默认都连线上服务 `https://vnscriptstudio.cn`，且都只允许 HTTPS；
   需要连其它服务端时用 `-Pvnss.debugServerUrl=...` / `-Pvnss.releaseServerUrl=...` 覆盖
   （本机调试 http 后端还需把 `app/build.gradle.kts` 里 debug 的 `usesCleartext` 临时改为 `"true"`）。
-- 登录页可以临时改服务器地址（保存在本机）。
 - 签名：复制 `keystore.properties`（`storeFile / storePassword / keyAlias / keyPassword`，**已在 .gitignore**）到 `android/`；
   没有该文件时 release 回退用 debug 签名，仅供内测。
+- 给作者下载的包请发到 [GitHub Releases](https://github.com/Saltedfish20060409/vn-script-studio/releases)（网页设置里也链到这里）；CI 的 debug APK 产物只供开发自测。
 
 ## 架构
 

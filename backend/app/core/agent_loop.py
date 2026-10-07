@@ -53,9 +53,9 @@ from app.core.narrative_review import (
     run_narrative_self_review,
     should_self_review,
 )
+from app.core.surgical_revise import is_surgical_revise, replace_script_reject_note
 from app.core.write_gate import WriteGateResult, gate_continue_draft, should_write_gate
 from app.core.writing_craft import build_writing_craft_prompt, select_craft_mode
-from app.core.surgical_revise import is_surgical_revise, replace_script_reject_note
 from app.domain.types import (
     AgentAction,
     AgentContextMeta,

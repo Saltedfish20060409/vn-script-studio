@@ -92,7 +92,6 @@ fun SettingsRoute(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMod
             Text(viewModel.username ?: "已登录", style = MaterialTheme.typography.bodyLarge)
             viewModel.email?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             Text("服务器：${viewModel.serverOrigin}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("更换服务器请先退出登录，在登录页修改。", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick = { confirmLogout = true }, enabled = !state.loggingOut) {
                 if (state.loggingOut) InlineSpinner() else Text("退出登录")
             }

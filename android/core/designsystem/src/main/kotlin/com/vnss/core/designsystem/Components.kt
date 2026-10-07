@@ -1,15 +1,24 @@
 package com.vnss.core.designsystem
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -18,6 +27,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vnss.core.model.SyncState
@@ -144,4 +157,89 @@ fun SyncBadge(state: SyncState, modifier: Modifier = Modifier) {
 @Composable
 fun InlineSpinner(modifier: Modifier = Modifier) {
     CircularProgressIndicator(modifier.size(18.dp), strokeWidth = 2.dp)
+}
+
+/** 网页端那种左边一条强调色的描边卡片。 */
+@Composable
+fun VnssCard(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val shape = MaterialTheme.shapes.medium
+    val border = MaterialTheme.colorScheme.outline
+    Row(
+        modifier
+            .clip(shape)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .border(1.5.dp, border, shape)
+            .background(MaterialTheme.colorScheme.surface)
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min),
+    ) {
+        Box(
+            Modifier
+                .width(4.dp)
+                .fillMaxHeight()
+                .background(MaterialTheme.colorScheme.primary),
+        )
+        Column(Modifier.padding(16.dp).weight(1f), content = content)
+    }
+}
+
+@Composable
+fun VnssPrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    busy: Boolean = false,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled && !busy,
+        modifier = modifier.fillMaxWidth().height(48.dp),
+        shape = RoundedCornerShape(999.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+    ) {
+        if (busy) InlineSpinner() else Text(text, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** 登录页斜切色块，呼应网页锁屏 slash。 */
+@Composable
+fun SlashBackdrop(modifier: Modifier = Modifier) {
+    Box(modifier) {
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .fillMaxWidth(0.55f)
+                .fillMaxSize()
+                .rotate(-12f)
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.04f),
+                        ),
+                    ),
+                ),
+        )
+    }
+}
+
+@Composable
+fun BrandMark(modifier: Modifier = Modifier, subtitle: String? = null) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            "VN SCRIPT",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold,
+        )
+        Text("VN Script Studio", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        if (subtitle != null) {
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }

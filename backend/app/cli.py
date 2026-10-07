@@ -259,15 +259,15 @@ def eval(
     from app.core.llm_http import chat_completions, content_from_response
 
     if ab:
-        # 对照盲评只用线上真实链路里已有的模块，避免"评测里另写一套"导致测的不是产品
+        # 对照盲评只用线上真实链路里已有的模块，避免"评测里另写一套"导致测的不是产品。
+        # 资产密度量具（每千字对白+动作 / 问句数）：读"约束让稿子变瘦了没有"，
+        # 与 lint 命中数一起读。见 `_score_arm` 的说明。
         from app.core.agent import agent_identity_block
         from app.core.agent_context import build_agent_context
         from app.core.agent_loop import compose_agent_system
         from app.core.llm_params import task_temperature
         from app.core.narrative_lint import NarrativeLintIssue, lint_has_blockers
         from app.core.narrative_review import run_narrative_self_review
-        # 资产密度量具（每千字对白+动作 / 问句数）：读"约束让稿子变瘦了没有"，
-        # 与 lint 命中数一起读。见 `_score_arm` 的说明。
         from app.core.prose_assets import extract_assets
         from app.core.writing_craft import build_writing_craft_prompt, select_craft_mode
 

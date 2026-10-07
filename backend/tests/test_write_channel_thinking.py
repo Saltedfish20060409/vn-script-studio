@@ -69,7 +69,6 @@ async def _create_project(client, headers, title="思考档测试"):
     reason="PostgreSQL test DB unreachable (set DATABASE_URL_TEST)",
 )
 def test_write_endpoint_sends_the_thinking_tier(monkeypatch):
-    from app.config import get_settings
     from app.core.pipeline import orchestrator as orch
 
     captured: dict = {}
@@ -82,7 +81,9 @@ def test_write_endpoint_sends_the_thinking_tier(monkeypatch):
         return {"stage": "write", "content": "（她偏过头。）", "model": cfg.model}
 
     monkeypatch.setattr(orch, "stage_write", fake_stage_write)
-    settings = get_settings()
+    # 必须用 db_gate 注入的测试设置：新用户无 Key 时走 server 凭据，
+    # 裸 get_settings() 读进程默认会误期望 v4-flash-think，而 Depends 里是 deepseek-chat。
+    settings = db_gate.test_settings()
     expected = resolve_write_model(settings.deepseek_model, settings.write_thinking)
 
     async def _scenario():

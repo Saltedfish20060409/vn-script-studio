@@ -74,6 +74,12 @@ interface AgentRepository {
         messages: List<AgentMessage>,
     ): Outcome<Unit>
 
+    /** 作品当前启用的作家眼光 + 可选目录（内置 + 自定义）。 */
+    suspend fun loadLenses(projectId: String): Outcome<ProjectLenses>
+
+    /** 保存作品启用的作家眼光（最多 [ProjectLenses.maxActive] 个）。 */
+    suspend fun setActiveLenses(projectId: String, activeIds: List<String>): Outcome<List<String>>
+
     /**
      * 流式运行 Agent。运行前会先把本地未同步的章节推上去，
      * 运行后若服务端应用了改动，会重新拉取项目（见实现）。

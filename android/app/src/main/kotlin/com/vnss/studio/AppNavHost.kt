@@ -1,6 +1,24 @@
 package com.vnss.studio
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -23,17 +41,17 @@ object Routes {
     const val PROJECT = "project/{$ARG_PROJECT_ID}"
     const val CHAPTER = "chapter/{$ARG_CHAPTER_ID}"
     const val CONFLICT = "conflict/{$ARG_CHAPTER_ID}"
-    // 三个页面的参数名都是 "projectId"（各 feature 各自声明了同值常量，这里统一用 projects 的）
-    const val AGENT = "agent/{$ARG_PROJECT_ID}"
-    const val LEDGER = "ledger/{$ARG_PROJECT_ID}"
-    const val COLLAB = "collab/{$ARG_PROJECT_ID}"
     const val SETTINGS = "settings"
-    fun collab(projectId: String) = "collab/$projectId"
-    fun agent(projectId: String) = "agent/$projectId"
-    fun ledger(projectId: String) = "ledger/$projectId"
     fun project(id: String) = "project/$id"
     fun chapter(id: String) = "chapter/$id"
     fun conflict(id: String) = "conflict/$id"
+}
+
+private enum class ProjectTab(val label: String, val icon: ImageVector) {
+    Chapters("章节", Icons.Default.Edit),
+    Agent("Agent", Icons.Default.Send),
+    Ledger("账本", Icons.Default.Info),
+    Collab("协作", Icons.Default.Person),
 }
 
 @Composable
@@ -50,13 +68,10 @@ fun AppNavHost() {
             Routes.PROJECT,
             arguments = listOf(navArgument(ARG_PROJECT_ID) { type = NavType.StringType }),
         ) {
-            ChapterListRoute(
-                onBack = { nav.popBackStack() },
-                onOpenChapter = { _, chapterId -> nav.navigate(Routes.chapter(chapterId)) },
+            ProjectShell(
+                onLeaveProject = { nav.popBackStack() },
+                onOpenChapter = { nav.navigate(Routes.chapter(it)) },
                 onResolveConflict = { nav.navigate(Routes.conflict(it)) },
-                onOpenAgent = { nav.navigate(Routes.agent(it)) },
-                onOpenLedger = { nav.navigate(Routes.ledger(it)) },
-                onOpenCollab = { nav.navigate(Routes.collab(it)) },
             )
         }
         composable(
@@ -74,26 +89,46 @@ fun AppNavHost() {
         ) {
             ConflictRoute(onDone = { nav.popBackStack() })
         }
-        composable(
-            Routes.AGENT,
-            arguments = listOf(navArgument(ARG_PROJECT_ID) { type = NavType.StringType }),
-        ) {
-            AgentRoute(onBack = { nav.popBackStack() })
-        }
-        composable(
-            Routes.LEDGER,
-            arguments = listOf(navArgument(ARG_PROJECT_ID) { type = NavType.StringType }),
-        ) {
-            LedgerRoute(onBack = { nav.popBackStack() })
-        }
-        composable(
-            Routes.COLLAB,
-            arguments = listOf(navArgument(ARG_PROJECT_ID) { type = NavType.StringType }),
-        ) {
-            CollabRoute(onBack = { nav.popBackStack() })
-        }
         composable(Routes.SETTINGS) {
             SettingsRoute(onBack = { nav.popBackStack() })
+        }
+    }
+}
+
+@Composable
+private fun ProjectShell(
+    onLeaveProject: () -> Unit,
+    onOpenChapter: (chapterId: String) -> Unit,
+    onResolveConflict: (chapterId: String) -> Unit,
+) {
+    var tab by rememberSaveable { mutableStateOf(ProjectTab.Chapters.name) }
+    val current = ProjectTab.entries.firstOrNull { it.name == tab } ?: ProjectTab.Chapters
+
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                ProjectTab.entries.forEach { item ->
+                    NavigationBarItem(
+                        selected = item == current,
+                        onClick = { tab = item.name },
+                        icon = { Icon(item.icon, contentDescription = item.label) },
+                        label = { Text(item.label) },
+                    )
+                }
+            }
+        },
+    ) { padding ->
+        Box(Modifier.padding(padding)) {
+            when (current) {
+                ProjectTab.Chapters -> ChapterListRoute(
+                    onBack = onLeaveProject,
+                    onOpenChapter = { _, chapterId -> onOpenChapter(chapterId) },
+                    onResolveConflict = onResolveConflict,
+                )
+                ProjectTab.Agent -> AgentRoute(onBack = onLeaveProject)
+                ProjectTab.Ledger -> LedgerRoute(onBack = onLeaveProject)
+                ProjectTab.Collab -> CollabRoute(onBack = onLeaveProject)
+            }
         }
     }
 }

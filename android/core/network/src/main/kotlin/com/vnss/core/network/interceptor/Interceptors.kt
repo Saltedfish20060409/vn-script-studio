@@ -78,6 +78,26 @@ class ClientHeaderInterceptor : Interceptor {
 }
 
 /**
+ * 刷新接口同时带上 Cookie，兼容只认 Cookie、不认请求体的旧后端。
+ * 新后端读 body 里的 `refresh_token`，多带 Cookie 无害。
+ */
+class RefreshCookieInterceptor(
+    private val tokens: com.vnss.core.model.TokenStore,
+) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val original = chain.request()
+        val path = original.url.encodedPath
+        if (!path.endsWith("/auth/refresh")) return chain.proceed(original)
+        val refresh = tokens.refreshToken()?.takeIf { it.isNotBlank() } ?: return chain.proceed(original)
+        return chain.proceed(
+            original.newBuilder()
+                .header("Cookie", com.vnss.core.network.RefreshCookie.cookieHeader(refresh))
+                .build(),
+        )
+    }
+}
+
+/**
  * 读取 `X-Vnss-Timeout-Ms` 声明的预算并应用为该请求的读/写超时，随后把头移除（不发给服务端）。
  *
  * 超时统一翻译为 [RequestTimeoutException]（IOException 子类）：直接抛 AppError 会在

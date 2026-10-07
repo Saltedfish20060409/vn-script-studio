@@ -21,7 +21,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional
 
 #: 括号动作/旁白：VN 剧本里 `（他退出去，把门带上——没关严。）`
 _ACTION_RE = re.compile(r"[（(][^）)]{1,80}[）)]")

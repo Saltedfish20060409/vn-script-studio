@@ -13,6 +13,7 @@ import com.vnss.core.network.dto.CreateProjectRequest
 import com.vnss.core.network.dto.IdentifierRequest
 import com.vnss.core.network.dto.LoginRequest
 import com.vnss.core.network.dto.OkMessageDto
+import com.vnss.core.network.dto.ProjectLensesPutRequest
 import com.vnss.core.network.dto.ProjectPutRequest
 import com.vnss.core.network.dto.ProjectSummaryDto
 import com.vnss.core.network.dto.PutConversationRequest
@@ -142,6 +143,7 @@ class ApiContractTest {
         assertRequest("AgentRunIn", AgentRunRequestDto.serializer())
         assertRequest("AgentConversationCreateIn", CreateConversationRequest.serializer())
         assertRequest("AgentConversationPutIn", PutConversationRequest.serializer())
+        assertRequest("LensesPutIn", ProjectLensesPutRequest.serializer())
         assertRequest("CommentIn", CommentCreateRequest.serializer())
         assertRequest("CommentUpdateIn", CommentUpdateRequest.serializer())
         assertRequest("SettingsPutIn", SettingsPutRequest.serializer())

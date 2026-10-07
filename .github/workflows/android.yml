@@ -36,7 +36,11 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
+      # v3 默认会装已下线的 `tools` 包，在新版 cmdline-tools 上必挂。
+      # 只装本仓库 compileSdk 35 实际需要的组件。
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
 
       - uses: gradle/actions/setup-gradle@v4
 

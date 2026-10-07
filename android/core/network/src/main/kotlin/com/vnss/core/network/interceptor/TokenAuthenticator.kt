@@ -1,6 +1,7 @@
 package com.vnss.core.network.interceptor
 
 import com.vnss.core.model.TokenStore
+import com.vnss.core.network.RefreshCookie
 import com.vnss.core.network.SessionEvents
 import com.vnss.core.network.api.RefreshApi
 import com.vnss.core.network.dto.RefreshRequest
@@ -51,8 +52,11 @@ class TokenAuthenticator(
             when {
                 result.isSuccessful -> {
                     val body = result.body() ?: throw IOException("刷新登录态失败：响应为空")
-                    // 后端轮换 refresh token；响应里没带就沿用旧的
-                    tokens.save(body.accessToken, body.refreshToken ?: refreshToken)
+                    // 后端轮换 refresh token：优先 JSON，其次 Set-Cookie，都没有则沿用旧的
+                    val nextRefresh = body.refreshToken?.takeIf { it.isNotBlank() }
+                        ?: RefreshCookie.fromHeaders(result.headers())
+                        ?: refreshToken
+                    tokens.save(body.accessToken, nextRefresh)
                     return response.request.newBuilder()
                         .header("Authorization", "Bearer ${body.accessToken}")
                         .build()

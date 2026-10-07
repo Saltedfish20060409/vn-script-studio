@@ -108,8 +108,11 @@ test("「资料」开关：取消勾选的资料块真的不进请求", async ({
   await expect(page.getByTestId("agent-sections-summary")).toContainText("本次不带");
 
   // 发一句话，断言请求里带上了 exclude_sections（waitForRequest 的断言收到的是请求本身）
+  // chat 短问可能走 /agent/turn，写作多步仍走 /agent/stream
   const posted = page.waitForRequest(
-    (r) => r.url().includes("/agent/stream") && r.method() === "POST",
+    (r) =>
+      r.method() === "POST" &&
+      (r.url().includes("/agent/stream") || r.url().includes("/agent/turn")),
     { timeout: 30_000 }
   );
   const composer = page.getByPlaceholder(/用平常话说/).first();

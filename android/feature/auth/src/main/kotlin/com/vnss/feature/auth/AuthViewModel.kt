@@ -4,12 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vnss.core.common.Outcome
 import com.vnss.core.model.AuthRepository
-import com.vnss.core.model.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -21,7 +19,6 @@ data class AuthUiState(
     val identifier: String = "",
     val email: String = "",
     val password: String = "",
-    val serverUrl: String = "",
     val busy: Boolean = false,
     val error: String? = null,
     val info: String? = null,
@@ -30,24 +27,15 @@ data class AuthUiState(
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val auth: AuthRepository,
-    private val settings: SettingsRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AuthUiState())
     val state: StateFlow<AuthUiState> = _state.asStateFlow()
 
-    init {
-        viewModelScope.launch {
-            val url = settings.local.first().serverUrlOverride
-            _state.update { it.copy(serverUrl = url) }
-        }
-    }
-
     fun setMode(mode: AuthMode) = _state.update { it.copy(mode = mode, error = null, info = null) }
     fun onIdentifier(v: String) = _state.update { it.copy(identifier = v, error = null) }
     fun onEmail(v: String) = _state.update { it.copy(email = v, error = null) }
     fun onPassword(v: String) = _state.update { it.copy(password = v, error = null) }
-    fun onServerUrl(v: String) = _state.update { it.copy(serverUrl = v, error = null) }
     fun dismissError() = _state.update { it.copy(error = null) }
 
     fun submit() {
@@ -59,7 +47,6 @@ class AuthViewModel @Inject constructor(
         }
         viewModelScope.launch {
             _state.update { it.copy(busy = true, error = null, info = null) }
-            saveServerUrl(s.serverUrl)
             val result: Outcome<String?> = when (s.mode) {
                 // 登录成功后会话状态变化，由上层导航切走；这里不需要返回信息
                 AuthMode.LOGIN -> mapUnit(auth.login(s.identifier, s.password))
@@ -87,13 +74,6 @@ class AuthViewModel @Inject constructor(
         is Outcome.Failure -> o
     }
 
-    private suspend fun saveServerUrl(raw: String) {
-        val cleaned = normalizeServerUrl(raw)
-        if (cleaned != settings.local.first().serverUrlOverride) {
-            settings.updateLocal { it.copy(serverUrlOverride = cleaned) }
-        }
-    }
-
     private fun validate(s: AuthUiState): String? = when (s.mode) {
         AuthMode.LOGIN -> when {
             s.identifier.isBlank() -> "请输入用户名或邮箱"
@@ -119,16 +99,6 @@ class AuthViewModel @Inject constructor(
             val t = v.trim()
             val at = t.indexOf('@')
             return at > 0 && at < t.length - 3 && t.indexOf('.', at) > at + 1 && !t.contains(' ')
-        }
-
-        /** 空串 = 用默认地址；否则补全 https://、去掉末尾 / 与误填的 /api/v1。 */
-        fun normalizeServerUrl(raw: String): String {
-            var t = raw.trim()
-            if (t.isEmpty()) return ""
-            if (!t.contains("://")) t = "https://$t"
-            t = t.trimEnd('/')
-            t = t.removeSuffix("/api/v1").trimEnd('/')
-            return t
         }
     }
 }

@@ -10,6 +10,7 @@ import com.vnss.core.model.AgentMessage
 import com.vnss.core.model.AgentRepository
 import com.vnss.core.model.AgentRole
 import com.vnss.core.model.AgentRunRequest
+import com.vnss.core.model.AuthorLens
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,6 +47,12 @@ data class AgentUiState(
     val notice: String? = null,
     val conversations: List<AgentConversationSummary>? = null,
     val showConversations: Boolean = false,
+    /** 作家眼光目录；空表示还没拉到。 */
+    val lensCatalog: List<AuthorLens> = emptyList(),
+    val activeLensIds: List<String> = emptyList(),
+    val maxActiveLenses: Int = 3,
+    val showLenses: Boolean = false,
+    val lensBusy: Boolean = false,
 )
 
 @HiltViewModel
@@ -62,7 +69,10 @@ class AgentViewModel @Inject constructor(
     private var runJob: Job? = null
 
     init {
-        viewModelScope.launch { openLatest() }
+        viewModelScope.launch {
+            loadLenses()
+            openLatest()
+        }
     }
 
     /** 进入页面：接着最近一次对话；没有就等第一次发送时再建（不为「只是看看」白建空会话）。 */
@@ -74,6 +84,21 @@ class AgentViewModel @Inject constructor(
             }
             // 离线 / 失败：仍可开始新对话（发送时会再尝试联网）
             is Outcome.Failure -> _state.update { it.copy(loading = false, error = list.error.message) }
+        }
+    }
+
+    private suspend fun loadLenses() {
+        when (val r = agent.loadLenses(projectId)) {
+            is Outcome.Success -> _state.update {
+                it.copy(
+                    lensCatalog = r.value.catalog,
+                    activeLensIds = r.value.activeIds,
+                    maxActiveLenses = r.value.maxActive,
+                )
+            }
+            is Outcome.Failure -> {
+                // 眼光加载失败不挡聊天；用户打开面板时会再试
+            }
         }
     }
 
@@ -112,6 +137,43 @@ class AgentViewModel @Inject constructor(
         }
     }
 
+    fun showLenses(show: Boolean) {
+        _state.update { it.copy(showLenses = show) }
+        if (show && _state.value.lensCatalog.isEmpty()) {
+            viewModelScope.launch { loadLenses() }
+        }
+    }
+
+    /**
+     * 切换作家眼光。点已选中的会取消；空选 = 通用文学编辑。
+     * 最多 [AgentUiState.maxActiveLenses] 个，满员后再选会提示。
+     */
+    fun toggleLens(id: String?) {
+        if (_state.value.lensBusy || _state.value.running) return
+        val current = _state.value.activeLensIds
+        val max = _state.value.maxActiveLenses
+        val next = when {
+            id == null -> emptyList()
+            id in current -> current - id
+            current.size >= max -> {
+                _state.update { it.copy(error = "最多同时选 $max 位作家眼光") }
+                return
+            }
+            else -> current + id
+        }
+        viewModelScope.launch {
+            _state.update { it.copy(lensBusy = true, error = null) }
+            when (val r = agent.setActiveLenses(projectId, next)) {
+                is Outcome.Success -> _state.update {
+                    it.copy(activeLensIds = r.value, lensBusy = false)
+                }
+                is Outcome.Failure -> _state.update {
+                    it.copy(lensBusy = false, error = r.error.message)
+                }
+            }
+        }
+    }
+
     fun openConversation(id: String) {
         if (_state.value.running) return
         viewModelScope.launch { open(id) }
@@ -120,7 +182,14 @@ class AgentViewModel @Inject constructor(
     fun newConversation() {
         if (_state.value.running) return
         _state.update {
-            AgentUiState(loading = false, applyActions = it.applyActions, conversations = it.conversations)
+            AgentUiState(
+                loading = false,
+                applyActions = it.applyActions,
+                conversations = it.conversations,
+                lensCatalog = it.lensCatalog,
+                activeLensIds = it.activeLensIds,
+                maxActiveLenses = it.maxActiveLenses,
+            )
         }
     }
 
@@ -166,6 +235,7 @@ class AgentViewModel @Inject constructor(
                     selection = null,
                     applyActions = _state.value.applyActions,
                     resume = resume,
+                    lensIds = _state.value.activeLensIds,
                 )
                 agent.run(request).collect { event -> handle(event, items, convId) }
             } finally {

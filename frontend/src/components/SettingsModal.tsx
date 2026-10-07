@@ -1137,6 +1137,17 @@ export function SettingsModal({ open, onClose, settings, onChange, view, onViewC
                 <p className={styles.note}>
                   模型连接信息（API Key、Base URL、模型名）在「模型」页签配置：可加密保存到你的账号（跨设备），也可只存当前浏览器。之后的 AI 调用会用你配置的模型。
                 </p>
+                <p className={styles.note}>
+                  Android 客户端内测中：可在{" "}
+                  <a
+                    href="https://github.com/Saltedfish20060409/vn-script-studio/releases"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    GitHub Releases
+                  </a>{" "}
+                  下载 APK（需允许安装未知来源）。手机浏览器也可把本站「安装为应用」（PWA）。
+                </p>
               </div>
             )}
 

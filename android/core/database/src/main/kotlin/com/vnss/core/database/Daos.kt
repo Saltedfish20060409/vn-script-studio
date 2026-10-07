@@ -78,6 +78,9 @@ interface ChapterDao {
     @Query("SELECT COUNT(*) FROM chapters WHERE syncState != 'SYNCED'")
     fun observePendingCount(): Flow<Int>
 
+    @Query("SELECT COUNT(*) FROM chapters WHERE syncState != 'SYNCED'")
+    suspend fun pendingCount(): Int
+
     @Query("SELECT COALESCE(MAX(orderIndex), -1) FROM chapters WHERE projectId = :projectId")
     suspend fun maxOrder(projectId: String): Int
     @Upsert

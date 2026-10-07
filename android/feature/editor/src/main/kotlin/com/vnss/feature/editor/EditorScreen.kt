@@ -279,7 +279,12 @@ private fun BodyField(state: EditorUiState, viewModel: EditorViewModel) {
         if (reveal.focusBody) focus.requestFocus()
     }
 
-    Box(Modifier.fillMaxSize().verticalScroll(scroll)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(scroll),
+    ) {
         BasicTextField(
             value = state.body,
             onValueChange = viewModel::onBodyChange,

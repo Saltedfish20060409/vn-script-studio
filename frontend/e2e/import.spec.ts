@@ -118,5 +118,11 @@ test("导入小说文件：按章切分、按卷归组、正文按段落成块",
   // 界面上真的能切卷、能切章
   await expect(page.getByTestId("volume-row")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId(/^volume-chip-vol-/)).toHaveCount(2);
-  await expect(page.getByTestId("script-editor")).toHaveValue(/雨落在站台上/);
+  await expect(page.getByTestId(/^chapter-chip-/).first()).toContainText("站台");
+  // 导入只写 blocks、不写 prose（P4.5：正文档空时编辑器不回填脚本投影）。
+  // 切到 RPY 档才能看到旁白块正文。
+  await page.getByRole("tab", { name: "RPY" }).click();
+  await expect(page.getByTestId("script-editor")).toHaveValue(/雨落在站台上/, {
+    timeout: 15_000,
+  });
 });

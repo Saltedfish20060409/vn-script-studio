@@ -1,6 +1,5 @@
 package com.vnss.feature.projects
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,7 +13,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -40,6 +38,7 @@ import com.vnss.core.designsystem.EmptyState
 import com.vnss.core.designsystem.ErrorBanner
 import com.vnss.core.designsystem.InfoBanner
 import com.vnss.core.designsystem.LoadingBox
+import com.vnss.core.designsystem.VnssCard
 import com.vnss.core.model.ProjectSummary
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -131,8 +130,8 @@ private fun ProjectList(items: List<ProjectSummary>, onOpen: (String) -> Unit) {
         modifier = Modifier.fillMaxSize(),
     ) {
         items(items, key = { it.id }) { p ->
-            Card(Modifier.fillMaxWidth().clickable { onOpen(p.id) }) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            VnssCard(onClick = { onOpen(p.id) }) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(p.title.ifBlank { "未命名作品" }, style = MaterialTheme.typography.titleMedium)
                     p.logline?.takeIf { it.isNotBlank() }?.let {
                         Text(

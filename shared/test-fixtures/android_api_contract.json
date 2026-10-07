@@ -18,6 +18,10 @@
     { "method": "get", "path": "/api/v1/projects/{}/agent/conversations/{}" },
     { "method": "put", "path": "/api/v1/projects/{}/agent/conversations/{}" },
 
+    { "method": "get", "path": "/api/v1/lenses" },
+    { "method": "get", "path": "/api/v1/projects/{}/lenses" },
+    { "method": "put", "path": "/api/v1/projects/{}/lenses" },
+
     { "method": "get", "path": "/api/v1/projects/{}/members" },
     { "method": "get", "path": "/api/v1/projects/{}/locks" },
     { "method": "get", "path": "/api/v1/projects/{}/comments" },
@@ -47,7 +51,8 @@
     "ProjectSummary": ["id", "title", "logline", "genre", "updated_at", "created_at", "chapters_count"],
     "ProjectCreateIn": ["title", "from_demo", "template_id"],
     "ProjectPutIn": ["data", "updated_at", "force", "chapter_ids", "sections"],
-    "AgentRunIn": ["messages", "chapter_id", "selection", "conversation_id", "apply_actions", "resume", "writing_surface"],
+    "AgentRunIn": ["messages", "chapter_id", "selection", "conversation_id", "apply_actions", "resume", "writing_surface", "lens_ids"],
+    "LensesPutIn": ["activeIds"],
     "AgentConversationSummary": ["id", "title", "message_count", "updated_at"],
     "AgentConversationOut": ["id", "title", "messages", "chat_memory", "run_state"],
     "AgentConversationCreateIn": ["title"],

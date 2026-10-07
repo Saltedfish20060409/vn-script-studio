@@ -1,7 +1,5 @@
 package com.vnss.feature.projects
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,12 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -42,6 +37,7 @@ import com.vnss.core.designsystem.ErrorBanner
 import com.vnss.core.designsystem.InfoBanner
 import com.vnss.core.designsystem.LoadingBox
 import com.vnss.core.designsystem.SyncBadge
+import com.vnss.core.designsystem.VnssCard
 import com.vnss.core.model.ChapterSummary
 import com.vnss.core.model.SyncState
 
@@ -52,9 +48,6 @@ fun ChapterListRoute(
     onBack: () -> Unit,
     onOpenChapter: (projectId: String, chapterId: String) -> Unit,
     onResolveConflict: (chapterId: String) -> Unit,
-    onOpenAgent: (projectId: String) -> Unit,
-    onOpenLedger: (projectId: String) -> Unit,
-    onOpenCollab: (projectId: String) -> Unit,
     viewModel: ChaptersViewModel = hiltViewModel(),
 ) {
     val project by viewModel.project.collectAsStateWithLifecycle()
@@ -88,14 +81,6 @@ fun ChapterListRoute(
             modifier = Modifier.padding(padding).fillMaxSize(),
         ) {
             Column(Modifier.fillMaxSize()) {
-                Row(
-                    Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    AssistChip(onClick = { onOpenAgent(projectId) }, label = { Text("Agent 对话") })
-                    AssistChip(onClick = { onOpenLedger(projectId) }, label = { Text("账本 / 伏笔") })
-                    AssistChip(onClick = { onOpenCollab(projectId) }, label = { Text("协作批注") })
-                }
                 state.error?.let {
                     ErrorBanner(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), onRetry = viewModel::refresh, onDismiss = viewModel::dismissError)
                 }
@@ -159,8 +144,8 @@ fun ChapterListRoute(
 
 @Composable
 private fun ChapterCard(c: ChapterSummary, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    VnssCard(onClick = onClick) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     c.title.ifBlank { "（无标题）" },
