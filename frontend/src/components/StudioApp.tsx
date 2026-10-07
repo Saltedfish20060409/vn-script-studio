@@ -1811,9 +1811,11 @@ export function StudioApp() {
     const mode = writeModeRef.current;
     const text = editorRef.current;
     const chId = chapter.id;
+    // 确认框可能 await；期间若已加章/改卷，绝不能拿旧 snapshot 整份盖回去
+    // （addChapter 里 void commitEditor() 曾因此把刚加的章冲掉，e2e 章数永远 +0）。
     const next = await confirmClearBothSurfacesIfNeeded(project, chId, text, mode);
     if (!next) return;
-    updateActive(() => next);
+    updateActive((p) => flushChapter(p, chId, text, mode));
   }
 
   function applyOverlay(next: StudioOverlay) {
