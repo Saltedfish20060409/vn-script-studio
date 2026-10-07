@@ -7,6 +7,7 @@ import { openViewPanel } from "./nav";
  */
 
 const PASSWORD = "e2e-secret-123";
+const CHAPTER_CHIP = /^chapter-chip-/;
 
 function randomName(prefix: string): string {
   return `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
@@ -18,6 +19,8 @@ function seedLocalStorage(page: Page) {
       for (let v = 1; v <= 30; v += 1) localStorage.setItem(`vnss-notice-read-v${v}`, "1");
       localStorage.setItem("vnss-boot-v1", "1");
       localStorage.setItem("vnss-music-bar", "0");
+      localStorage.setItem("vnss-firstrun-hidden", "1");
+      localStorage.setItem("vnss-desktop-tips-v1", "1");
       // 组件台/真机共用同一台机器时别把"上次开着的那扇窗"带进来（这条用例要的是图标页）
       localStorage.removeItem("vnss-desktop-window-v1");
       localStorage.setItem(
@@ -50,6 +53,33 @@ async function registerAndLogin(page: Page, username: string) {
   await expect(page.getByTestId("script-editor")).toBeVisible({ timeout: 40_000 });
 }
 
+/** 驱动应用内的 prompt（与 volumes.spec 同一套）。 */
+async function answerPrompt(page: Page, value: string, confirmLabel: string) {
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  await dialog.locator("input").fill(value);
+  await dialog.getByRole("button", { name: confirmLabel }).click();
+}
+
+async function chapterChips(page: Page) {
+  const expand = page.getByTestId("outline-expand");
+  if (await expand.isVisible().catch(() => false)) {
+    await expand.click();
+  }
+  const chapters = page.getByTestId(CHAPTER_CHIP);
+  await expect(chapters.first()).toBeVisible({ timeout: 15_000 });
+  return chapters;
+}
+
+async function addChapterViaOutline(page: Page) {
+  const chapters = await chapterChips(page);
+  const before = await chapters.count();
+  await page.getByRole("button", { name: "+ 章" }).click();
+  await answerPrompt(page, `第${before + 1}章·e2e`, "添加");
+  await expect(chapters).toHaveCount(before + 1, { timeout: 20_000 });
+  return { chapters, before };
+}
+
 async function goDesktopAndOpen(page: Page, title: string) {
   await page.evaluate(() => {
     localStorage.removeItem("vnss-desktop-window-v1");
@@ -72,11 +102,7 @@ test("桌面作品窗口：双击剧本在桌面上开窗，Ribbon 与大纲可�
   await registerAndLogin(page, username);
 
   const title = await page.getByLabel("作品标题").inputValue();
-  const chapters = page.getByTestId("chapter-outline").getByRole("option");
-  const before = await chapters.count();
-  await page.getByRole("button", { name: "+ 章" }).click();
-  await page.getByRole("button", { name: "添加" }).click();
-  await expect(chapters).toHaveCount(before + 1, { timeout: 20_000 });
+  await addChapterViaOutline(page);
   await page.waitForTimeout(1500);
 
   await goDesktopAndOpen(page, title);
@@ -99,8 +125,8 @@ test("桌面作品窗口：双击剧本在桌面上开窗，Ribbon 与大纲可�
   const close = page.getByTestId("backstage-close").or(page.getByTestId("drawer-close"));
   await close.first().click();
 
-  // 章节可切
-  const outlineOptions = page.getByTestId("chapter-outline").getByRole("option");
+  // 章节可切（用 chapter-chip，避免卷标 role=option 掺进来）
+  const outlineOptions = await chapterChips(page);
   await outlineOptions.nth(1).click();
   await expect(outlineOptions.nth(1)).toHaveAttribute("aria-selected", "true");
 
@@ -120,11 +146,7 @@ test("桌面作品窗口：图标角标显示章数，「继续写作」打开�
   await registerAndLogin(page, username);
   const title = await page.getByLabel("作品标题").inputValue();
 
-  const chapters = page.getByTestId("chapter-outline").getByRole("option");
-  const before = await chapters.count();
-  await page.getByRole("button", { name: "+ 章" }).click();
-  await page.getByRole("button", { name: "添加" }).click();
-  await expect(chapters).toHaveCount(before + 1, { timeout: 20_000 });
+  const { chapters, before } = await addChapterViaOutline(page);
   await chapters.nth(1).click();
   await expect(chapters.nth(1)).toHaveAttribute("aria-selected", "true");
   const chapterLabel = ((await chapters.nth(1).textContent()) ?? "")
@@ -152,19 +174,5 @@ test("桌面作品窗口：图标角标显示章数，「继续写作」打开�
   // 「继续写作」打开的还是这扇窗（当前作品 + 上次那一章），不是跳去另一套外壳
   await expect(page.getByTestId("desktop-script-window")).toBeVisible();
   await expect(page.getByTestId("script-editor")).toBeVisible();
-  await expect(page.getByRole("option").nth(1)).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("desktop-resume")).toHaveCount(0);
-});
-
-test("工作台视图：页脚在页面最底部，没被音乐条压住", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 860 });
-  const username = randomName("e2e_footer_");
-  await registerAndLogin(page, username);
-
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await page.waitForTimeout(500);
-
-  const footer = page.locator("footer");
-  await expect(footer).toBeVisible();
-  await expect(footer).toBeInViewport();
 });

@@ -419,7 +419,10 @@ async def put_project(
             server_dt = row.updated_at
             if server_dt.tzinfo is None:
                 server_dt = server_dt.replace(tzinfo=timezone.utc)
-            if abs((server_dt - client_dt).total_seconds()) > 0.5 and server_dt > client_dt:
+            # 服务端更新时间严格晚于客户端携带的版本即冲突。
+            # 以前用 0.5s 滑窗，CI 里「force 推进 → 立刻再用旧时间戳」会在半秒内完成，
+            # 导致章级 PUT 把空稿盖回去却拿不到 409（见 test_put_chapter_conflict）。
+            if server_dt > client_dt:
                 raise HTTPException(
                     status_code=409,
                     detail={
