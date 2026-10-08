@@ -662,6 +662,14 @@ export function StudioRibbon({
               {username}
             </span>
           ) : null}
+          <button
+            type="button"
+            className={styles.ghost}
+            onClick={onLogout}
+            title="退出登录"
+          >
+            退出
+          </button>
         </div>
 
         <input

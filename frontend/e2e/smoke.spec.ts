@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openFilePage, openRibbonMenu } from "./nav";
+import { openFilePage } from "./nav";
 
 /**
  * End-to-end smoke tests — the critical user journey:
@@ -130,8 +130,8 @@ test("登出后回到登录页，旧账号可重新登录", async ({ page }) => 
     timeout: 15_000,
   });
 
-  // 「退出」现在在文件菜单里（Word 壳把顶栏散落按钮收进去了），不再是顶栏按钮
-  await (await openRibbonMenu(page, "文件")).getByRole("menuitem", { name: "退出" }).click();
+  // 顶栏右侧常驻「退出」；文件菜单里也有同名项，优先点顶栏按钮
+  await page.getByTestId("studio-ribbon").getByRole("button", { name: "退出" }).click();
   await expect(page).toHaveURL(/\/login/);
 
   await page.fill("#vnss-username", username);
