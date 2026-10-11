@@ -1343,6 +1343,36 @@ export type AgentWriteStreamEvent =
       wrote: false;
       capability?: string;
       writeOp?: string | null;
+      contextIncluded?: string[];
+      sceneGuard?: {
+        ok?: boolean;
+        issueCount?: number;
+        warnings?: string[];
+        strengthen?: boolean;
+      } | null;
+      strategyAdapt?: {
+        changed?: boolean;
+        suggestedAssist?: string;
+        reasons?: string[];
+        attention?: string;
+        memory?: string;
+        reasoning?: string;
+        logged?: boolean;
+      } | null;
+      hybridHits?: number;
+      capabilityProfile?: {
+        reasoning?: number;
+        attention?: number;
+        memory?: number;
+        instruction_following?: number;
+        digestHint?: string;
+        tiers?: {
+          reasoning?: string;
+          attention?: string;
+          memory?: string;
+          instruction_following?: string;
+        };
+      } | null;
     }
   | { type: "error"; message: string; code?: string; elapsedS?: number };
 
@@ -1393,6 +1423,12 @@ export async function agentTurnStream(
     messages?: { role: string; content: string }[];
     scope?: "chapter_append" | "selection_replace" | "chapter_replace";
     genre_override?: string;
+    /** 写作辅助强度 → 后端 WritingStrategyProfile（本机设置） */
+    writing_assist?: "strong" | "mid" | "weak";
+    /** 试玩器当前变量 → 分支记忆 / flag 切片 */
+    assumed_flags?: Record<string, unknown>;
+    /** 可选：开启真 LLM 子代理复核 */
+    llm_subagent?: boolean;
   },
   onEvent: (evt: AgentWriteStreamEvent) => void,
   signal?: AbortSignal,
@@ -1411,11 +1447,39 @@ export async function agentTurnStream(
       messages: body.messages,
       scope: body.scope,
       genre_override: body.genre_override,
+      writing_assist: body.writing_assist,
+      assumed_flags: body.assumed_flags,
+      llm_subagent: body.llm_subagent,
     },
     onEvent,
     signal,
     onActivity
   );
+}
+
+/** 草稿采纳/拒绝 → 后端 strategyAdapt bandit。 */
+export async function postStrategyOutcome(
+  projectId: string,
+  body: {
+    outcome: "accept" | "reject";
+    chapter_id?: string;
+    suggested_assist?: "strong" | "mid" | "weak";
+    write_op?: string;
+  }
+): Promise<{ ok?: boolean; bandit?: Record<string, unknown> }> {
+  const res = await fetch(
+    `${API_BASE}/projects/${projectId}/writing/strategy-outcome`,
+    {
+      method: "POST",
+      headers: buildApiHeaders(undefined, true),
+      body: JSON.stringify(body),
+    }
+  );
+  if (!res.ok) {
+    const detail = await res.text().catch(() => `HTTP ${res.status}`);
+    throw new Error(detail || `HTTP ${res.status}`);
+  }
+  return (await res.json()) as { ok?: boolean; bandit?: Record<string, unknown> };
 }
 
 async function readAgentWriteSse(
@@ -1651,6 +1715,7 @@ export function putAgentConversation(
     messages?: AgentChatMessage[];
     chat_memory?: string;
     undo_stack?: unknown[];
+    assumed_flags?: Record<string, unknown>;
   }
 ): Promise<AgentConversationOut> {
   return apiFetch(`/projects/${projectId}/agent/conversations/${conversationId}`, {

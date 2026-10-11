@@ -79,6 +79,12 @@ export function ProjectLedgerPanel({ project, onOpenChapter }: Props) {
           章节摘要、出场角色、角色情绪与最近动作、章末钩子。它们会作为「项目硬锚」
           自动写进 AI 责编的上下文，让续写/审稿不跑偏——你不需要下任何命令。
         </p>
+        {(overview.pendingRemaining ?? 0) > 0 ? (
+          <p className={styles.note} data-testid="ledger-pending-remaining">
+            还有 <strong>{overview.pendingRemaining}</strong> 章待写入账本（单次保存有上限）。
+            再保存一次可继续补齐，避免立刻续写时读到半新半旧锚点。
+          </p>
+        ) : null}
       </div>
 
       <section className={styles.block}>

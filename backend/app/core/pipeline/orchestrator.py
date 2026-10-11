@@ -112,6 +112,9 @@ async def stage_write(
     lens_ids: Optional[List[str]] = None,
     enrich_context: bool = True,
     write_op: Optional[str] = None,
+    assumed_flags: Optional[Dict[str, Any]] = None,
+    writing_assist: Optional[str] = None,
+    playtest_hints_block: str = "",
 ) -> Dict[str, Any]:
     """写作条件成稿。
 
@@ -138,7 +141,42 @@ async def stage_write(
             # （2026-10-01 线上事故：删掉的原文又出现在生成结果里）。
             plain = chapter_plain(ch, project.characters)
             chapter_tail = (plain or "")[-tail_limit:]
-    ledger_block = format_ledger_for_agent(get_ledger(project), chapters=project.chapters)
+    from app.core.write_hybrid import build_write_hybrid_block
+    from app.core.vn_write_bundle import assemble_vn_write_bundle
+    from app.core.writing_strategy import (
+        current_writing_strategy,
+        reasoning_framing_extra,
+    )
+
+    strategy = current_writing_strategy()
+    vn_bundle = (
+        assemble_vn_write_bundle(
+            project,
+            chapter_id=chapter_id,
+            strategy=strategy,
+            assumed_flags=assumed_flags,
+            writing_assist=writing_assist,
+            playtest_hints_block=playtest_hints_block or "",
+        )
+        if enrich_context
+        else None
+    )
+    ledger_block = vn_bundle.lore_craft if vn_bundle else format_ledger_for_agent(
+        get_ledger(project), chapters=project.chapters
+    )
+    hybrid_block, hybrid_hits = ("", [])
+    if enrich_context and (instruction or "").strip():
+        hybrid_block, hybrid_hits = build_write_hybrid_block(
+            project,
+            instruction,
+            chapter_id=chapter_id,
+        )
+        if hybrid_block:
+            ledger_block = (
+                (hybrid_block + "\n\n" + ledger_block).strip()
+                if ledger_block
+                else hybrid_block
+            )
     mem = long_memory
     if not mem and db_continuity:
         mem = db_continuity.get("agentBlock") or ""
@@ -167,7 +205,12 @@ async def stage_write(
     elif instruction:
         beat_txt = f"## 意图\n{instruction}"
 
-    op_frame = write_op_framing(write_op or "continue")
+    op = write_op or "continue"
+    op_frame = write_op_framing(op)
+    if strategy.reasoning == "low":
+        op_frame = op_frame + reasoning_framing_extra(op)
+    if vn_bundle and vn_bundle.framing_extra:
+        op_frame = op_frame + vn_bundle.framing_extra + "\n"
     chat_for_user = ctx.chat_block if ctx else ""
     user = build_writer_user_prompt(
         f"{op_frame}"
@@ -229,12 +272,77 @@ async def stage_write(
         content = llm.get("content") or ""
         model = llm.get("model")
 
+    # 本场写后守卫 + 策略闭环（廉价，不二次调模型）
+    from app.core.scene_guard import guard_scene_draft
+    from app.core.writing_strategy import adapt_from_turn_signals
+
+    guard = guard_scene_draft(
+        project, content, chapter_id=chapter_id, write_op=op
+    )
+    sub_meta = (vn_bundle.meta.get("subagent") or {}) if vn_bundle else {}
+    sub_strengthen = bool(sub_meta.get("strengthen"))
+    guard_contradictions = sum(
+        1
+        for i in guard.issues
+        if str(i.get("code") or "") in {"dead_character_present"}
+        or str(i.get("severity") or "") == "error"
+    )
+    adapt = adapt_from_turn_signals(
+        strategy,
+        scene_guard_strengthen=guard.strengthen or sub_strengthen,
+        gate_failed=guard.gate_passed is False,
+        contradiction_count=guard_contradictions
+        + int(sub_meta.get("contradictionCount") or 0),
+    )
+    strategy_adapt_meta = {
+        "changed": adapt.changed,
+        "suggestedAssist": adapt.suggested_assist,
+        "reasons": list(adapt.reasons),
+        "attention": adapt.profile.attention,
+        "memory": adapt.profile.memory,
+        "reasoning": adapt.profile.reasoning,
+    }
+    try:
+        from app.core.strategy_adapt_log import append_strategy_adapt_event
+
+        log_path = append_strategy_adapt_event(
+            project_id=str(getattr(project, "id", "") or ""),
+            chapter_id=chapter_id,
+            write_op=op,
+            adapt=strategy_adapt_meta,
+        )
+        if log_path:
+            strategy_adapt_meta["logged"] = True
+    except Exception:  # noqa: BLE001 — 落盘失败不挡写作
+        strategy_adapt_meta["logged"] = False
+
+    included = list(ctx.included) if ctx else ["chapter_tail", "ledger"]
+    if hybrid_hits:
+        included.append("hybrid_retrieval")
+    if guard.issue_count:
+        included.append("scene_guard")
+    if vn_bundle:
+        intensity = str(vn_bundle.meta.get("intensity") or "full")
+        included.append(f"vn_bundle:{intensity}")
+        if intensity != "light":
+            included.extend(["branch_memory", "foreshadow_graph", "vn_scene_constraints"])
+        else:
+            included.append("vn_scene_constraints")
+        if (vn_bundle.meta.get("voice") or {}).get("priorCount"):
+            included.append("voice_write_prior")
+        if (vn_bundle.meta.get("playtestHints") or {}).get("injected"):
+            included.append("playtest_write_hints")
+
     return {
         "stage": "write",
         "content": content,
         "model": model,
         "styleConfirmed": True,
-        "contextIncluded": list(ctx.included) if ctx else ["chapter_tail", "ledger"],
+        "contextIncluded": included,
+        "sceneGuard": guard.as_meta(),
+        "strategyAdapt": strategy_adapt_meta,
+        "hybridHits": len(hybrid_hits),
+        "vnConstraints": vn_bundle.meta if vn_bundle else None,
     }
 
 

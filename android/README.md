@@ -27,7 +27,10 @@ cd android
   （本机调试 http 后端还需把 `app/build.gradle.kts` 里 debug 的 `usesCleartext` 临时改为 `"true"`）。
 - 签名：复制 `keystore.properties`（`storeFile / storePassword / keyAlias / keyPassword`，**已在 .gitignore**）到 `android/`；
   没有该文件时 release 回退用 debug 签名，仅供内测。
-- 给作者下载的包请发到 [GitHub Releases](https://github.com/Saltedfish20060409/vn-script-studio/releases)（网页设置里也链到这里）；CI 的 debug APK 产物只供开发自测。
+- 对外发布要落**两处**：① **站点直链**（主）——把 apk 传到线上 `frontend/dist/dl/vn-script-studio-android-latest.apk`，
+  网页端登录页 / 页脚 / 使用指南 / 设置四处入口都指向它（地址常量见 `frontend/src/lib/appDownload.ts`），
+  文件名**换版本时保持不变**，所以已经发出去的链接不会失效；② [GitHub Releases](https://github.com/Saltedfish20060409/vn-script-studio/releases)
+  作为备用与版本历史（直链打不开时用）。CI 的 debug APK 产物只供开发自测。
 
 ## 架构
 

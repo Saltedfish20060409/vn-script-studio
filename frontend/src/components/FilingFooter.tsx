@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { apiFetch } from "../api/http";
+import { APP_APK_URL } from "../lib/appDownload";
 import styles from "./FilingFooter.module.css";
 
 type SiteMeta = { icpBeian?: string; gonganBeian?: string };
@@ -31,10 +32,10 @@ export function FilingFooter() {
     <footer className={styles.filing}>
       <Link to="/guide">使用指南</Link>
       <a
-        href="https://github.com/Saltedfish20060409/vn-script-studio/releases"
+        href={APP_APK_URL}
         target="_blank"
         rel="noreferrer"
-        title="下载 Android 伴侣 APK（调试包）"
+        title="下载 Android 客户端 APK（调试包，站点直链）"
       >
         Android 客户端
       </a>

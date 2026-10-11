@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from app.core.demo import create_demo_project
 from app.core.pipeline.ledger import (
+    AUTO_FORESHADOW_NOTE,
     digest_chapter_into_ledger,
     foreshadow_report,
     format_ledger_for_agent,
@@ -97,3 +98,48 @@ def test_report_works_without_chapters():
     assert rows[0]["ageChapters"] is None
     # 硬锚块也不该因为缺章节而失效
     assert isinstance(format_ledger_for_agent(ledger), str)
+
+
+def test_heuristic_rewrites_replace_auto_foreshadow_for_same_chapter():
+    """大改章末钩：旧「自动」open 应消失，新钩出现；人工伏笔保留。"""
+    p = _project_with_chapters(2)
+    ch = p.chapters[0]
+    # 先塞一条自动伏笔 + 一条人工伏笔
+    ledger = get_ledger(p)
+    ledger["foreshadows"] = [
+        {
+            "id": "auto1",
+            "hook": "旧章末钩：雨夜有人在跟踪",
+            "plantedChapter": ch.id,
+            "status": "open",
+            "note": AUTO_FORESHADOW_NOTE,
+        },
+        {
+            "id": "manual1",
+            "hook": "人工埋下的红伞",
+            "plantedChapter": ch.id,
+            "status": "open",
+            "note": "作者手记",
+        },
+    ]
+    p = set_ledger(p, ledger)
+
+    # 改正文，使 closeHook 变成新内容
+    p = p.model_copy(deep=True)
+    p.chapters[0].prose = (
+        "林夏推开门。\n"
+        "门外空无一人。\n"
+        "她听见远处传来钟声。\n"
+        "新章末钩：钟楼上的灯突然灭了。"
+    )
+    ledger2 = digest_chapter_into_ledger(p, ch.id)
+    fores = ledger2.get("foreshadows") or []
+    hooks = [str(f.get("hook") or "") for f in fores]
+    assert "旧章末钩：雨夜有人在跟踪" not in hooks
+    assert any("人工埋下的红伞" in h for h in hooks)
+    autos = [f for f in fores if f.get("note") == AUTO_FORESHADOW_NOTE]
+    assert len(autos) <= 1
+    if autos:
+        assert "钟楼" in str(autos[0].get("hook") or "") or "灯" in str(
+            autos[0].get("hook") or ""
+        )

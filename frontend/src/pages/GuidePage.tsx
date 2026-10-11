@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { FilingFooter } from "../components/FilingFooter";
 import { TiltedCard } from "../components/reactbits/TiltedCard";
+import { APP_APK_MIRROR_URL, APP_APK_URL } from "../lib/appDownload";
 import GUIDE_MD from "../lib/guide.md?raw";
 import styles from "./GuidePage.module.css";
 
@@ -47,12 +48,20 @@ export default function GuidePage() {
             <Link to="/login">登录</Link>
             <Link to="/">进入工作室</Link>
             <a
-              href="https://github.com/Saltedfish20060409/vn-script-studio/releases"
+              href={APP_APK_URL}
               target="_blank"
               rel="noreferrer"
-              title="下载 Android 伴侣 APK（调试包）"
+              title="下载 Android 客户端 APK（调试包，站点直链）"
             >
               Android 客户端
+            </a>
+            <a
+              href={APP_APK_MIRROR_URL}
+              target="_blank"
+              rel="noreferrer"
+              title="直链打不开或下载中断时用（GitHub Releases）"
+            >
+              GitHub 备用
             </a>
           </p>
         </header>

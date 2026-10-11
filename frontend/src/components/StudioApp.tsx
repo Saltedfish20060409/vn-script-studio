@@ -1511,7 +1511,15 @@ export function StudioApp() {
       );
       setSaveBadge("idle");
       setSavedAt(Date.now());
-      if (!silent) setStatus("工程已同步到服务器");
+      if (!silent) {
+        const pending =
+          saved.writingLedger?.digestMeta?.pendingRemaining ?? 0;
+        setStatus(
+          pending > 0
+            ? `工程已同步到服务器（账本还有 ${pending} 章待入库，再保存一次可继续补齐）`
+            : "工程已同步到服务器"
+        );
+      }
       if (p.chapters.some((c) => (c.prose || "").trim().length > 0)) {
         trackOncePerUser(EVENTS.proseSaved, { kind: "persist" });
       }

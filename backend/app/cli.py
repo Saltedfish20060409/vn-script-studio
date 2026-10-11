@@ -182,6 +182,51 @@ def eval(
     longrange_chapters: int = typer.Option(
         60, "--longrange-chapters", help="基准作品的章节数"
     ),
+    vn_sota: bool = typer.Option(
+        False,
+        "--vn-sota",
+        help="VN/轻小说垂直 SOTA 套件（加权 overall；非通用 Arena）",
+    ),
+    vn_sota_longrange: bool = typer.Option(
+        False,
+        "--vn-sota-longrange",
+        help="与 --vn-sota 联用：附加合成长程暴露率轴",
+    ),
+    overall_table: bool = typer.Option(
+        False,
+        "--overall-table",
+        help="与 --vn-sota 联用：输出可归档权重表（JSON 含 weighted/rows/disclaimer）",
+    ),
+    ab_appendix: Optional[Path] = typer.Option(
+        None,
+        "--ab-appendix",
+        help="与 --vn-sota 联用：挂载既有 --ab 报告 JSON 为附录（不进主 overall）",
+    ),
+    deploy_compare: bool = typer.Option(
+        False,
+        "--deploy-compare",
+        help="线上 Writing Turn vs 本地新代码：双臂出稿 + 甲乙盲评包（见 docs/deploy-compare.md）",
+    ),
+    vn_sota_gate: bool = typer.Option(
+        False,
+        "--vn-sota-gate",
+        help="与 --deploy-compare 联用：结构门禁失败则非 0 退出",
+    ),
+    skip_deployed: bool = typer.Option(
+        False,
+        "--skip-deployed",
+        help="与 --deploy-compare 联用：跳过线上臂（调试用）",
+    ),
+    write_baseline: bool = typer.Option(
+        False,
+        "--write-baseline",
+        help="与 --deploy-compare 联用：重写夹具 vn_sota_baseline.json 后退出",
+    ),
+    scores: Optional[Path] = typer.Option(
+        None,
+        "--scores",
+        help="人评汇总 JSON；与 --vn-sota 或 --deploy-compare 联用时挂 appendix",
+    ),
     context_ab: bool = typer.Option(
         False,
         "--context-ab",
@@ -232,6 +277,99 @@ def eval(
                 json.dumps(ctx_ab, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             typer.echo(f"对照报告已写入 {out}")
+        return
+    if deploy_compare or write_baseline:
+        import asyncio
+
+        from app.core.deploy_compare import (
+            attach_human_scores_appendix,
+            run_deploy_compare,
+            write_compare_artifacts,
+            write_structure_baseline,
+        )
+
+        if write_baseline:
+            payload = write_structure_baseline()
+            typer.echo(
+                f"已写入 vn_sota_baseline.json overall={payload.get('overall')}"
+            )
+            return
+        report = asyncio.run(
+            run_deploy_compare(
+                seed=int(seed),
+                case_limit=int(cases) if cases else 0,
+                local_api_key=api_key,
+                local_base_url=base_url,
+                local_model=model,
+                skip_deployed=bool(skip_deployed),
+            )
+        )
+        if scores and scores.is_file():
+            from app.core.demo import create_demo_project
+            from app.core.eval_vn_sota import run_vn_sota_suite
+
+            proj = create_demo_project()
+            focus = proj.chapters[0].id if proj.chapters else None
+            suite = run_vn_sota_suite(proj, chapter_id=focus, seed=int(seed))
+            suite = attach_human_scores_appendix(suite, scores)
+            report["vnSotaAppendix"] = suite.get("appendix")
+        out_dir = out if out and out.suffix == "" else (out.parent if out else Path("compare"))
+        if out and out.suffix:
+            # 文件路径：写到同目录
+            out_dir = out.parent / (out.stem or "compare")
+        paths = write_compare_artifacts(report, out_dir)
+        gate = report.get("structureGate") or {}
+        typer.echo(
+            f"deploy-compare: cases={report.get('summary', {}).get('caseCount')} "
+            f"blind={report.get('summary', {}).get('blindItemCount')} "
+            f"structurePassed={gate.get('passed')} delta={gate.get('delta')}"
+        )
+        typer.echo(f"报告: {paths['report']}")
+        typer.echo(f"盲评: {paths['md']} （密钥 {paths['key']}）")
+        typer.echo(report.get("disclaimer") or "")
+        if vn_sota_gate and not gate.get("passed"):
+            raise typer.Exit(code=2)
+        return
+    if vn_sota:
+        from app.core.demo import create_demo_project
+        from app.core.eval_vn_sota import (
+            build_overall_table,
+            format_vn_sota_report,
+            run_vn_sota_suite,
+        )
+
+        proj = create_demo_project()
+        focus = proj.chapters[0].id if proj.chapters else None
+        suite = run_vn_sota_suite(
+            proj,
+            chapter_id=focus,
+            include_longrange=bool(vn_sota_longrange),
+            seed=int(seed),
+            ab_appendix_path=ab_appendix,
+        )
+        if scores and scores.is_file():
+            from app.core.deploy_compare import attach_human_scores_appendix
+
+            suite = attach_human_scores_appendix(suite, scores)
+        typer.echo(
+            format_vn_sota_report(suite, overall_table=bool(overall_table))
+        )
+        if out:
+            payload = (
+                build_overall_table(suite) if overall_table else suite
+            )
+            if overall_table:
+                # 归档包：权重表 + 完整 metrics / weighted / appendix
+                payload = {
+                    **payload,
+                    "metrics": suite.get("metrics"),
+                    "weighted": suite.get("weighted"),
+                    "appendix": suite.get("appendix") or {},
+                }
+            out.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            typer.echo(f"垂直 SOTA 报告已写入 {out}")
         return
     if longrange:
         # 这条路径**不需要模型**：暴露率是"矛盾所在的章有没有被送进检测器视野"，

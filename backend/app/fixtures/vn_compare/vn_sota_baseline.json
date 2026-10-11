@@ -1,0 +1,167 @@
+{
+  "overall": 0.95,
+  "suite": "vn_ln_vertical_sota_v1",
+  "seed": 20260409,
+  "weighted": {
+    "overall": 0.95,
+    "weights": {
+      "route_isolation": 0.25,
+      "foreshadow_ending_completeness": 0.2,
+      "capability_probes": 0.2,
+      "foreshadow_payoff_graph": 0.15,
+      "voice_prior_coverage": 0.1,
+      "playtest_hook_density": 0.05,
+      "stageable_blocker_rate": 0.03,
+      "longrange_exposure_synthetic": 0.02
+    },
+    "applied": [
+      {
+        "id": "route_isolation",
+        "score": 1.0,
+        "weight": 0.25,
+        "share": 0.277778,
+        "contribution": 0.277778
+      },
+      {
+        "id": "foreshadow_payoff_graph",
+        "score": 1.0,
+        "weight": 0.15,
+        "share": 0.166667,
+        "contribution": 0.166667
+      },
+      {
+        "id": "foreshadow_ending_completeness",
+        "score": 1.0,
+        "weight": 0.2,
+        "share": 0.222222,
+        "contribution": 0.222222
+      },
+      {
+        "id": "voice_prior_coverage",
+        "score": 1.0,
+        "weight": 0.1,
+        "share": 0.111111,
+        "contribution": 0.111111
+      },
+      {
+        "id": "capability_probes",
+        "score": 0.775,
+        "weight": 0.2,
+        "share": 0.222222,
+        "contribution": 0.172222
+      }
+    ],
+    "skipped": [
+      {
+        "id": "playtest_hook_density",
+        "reason": "no_score",
+        "weight": 0.05
+      }
+    ],
+    "renormalized": true,
+    "weightSumApplied": 0.9
+  },
+  "table": {
+    "suite": "vn_ln_vertical_sota_v1",
+    "disclaimer": "非通用 Arena：本 overall 仅衡量 VN/轻小说垂直连贯性（分支隔离、伏笔、可演等），不得与通用写作榜或 LMSYS Arena 混比。",
+    "overall": 0.95,
+    "seed": 20260409,
+    "chapterId": "ch1",
+    "rows": [
+      {
+        "id": "route_isolation",
+        "weight": 0.25,
+        "score": 1.0,
+        "inOverall": true
+      },
+      {
+        "id": "foreshadow_ending_completeness",
+        "weight": 0.2,
+        "score": 1.0,
+        "inOverall": true
+      },
+      {
+        "id": "capability_probes",
+        "weight": 0.2,
+        "score": 0.775,
+        "inOverall": true
+      },
+      {
+        "id": "foreshadow_payoff_graph",
+        "weight": 0.15,
+        "score": 1.0,
+        "inOverall": true
+      },
+      {
+        "id": "voice_prior_coverage",
+        "weight": 0.1,
+        "score": 1.0,
+        "inOverall": true
+      },
+      {
+        "id": "playtest_hook_density",
+        "weight": 0.05,
+        "score": null,
+        "inOverall": false
+      },
+      {
+        "id": "stageable_blocker_rate",
+        "weight": 0.03,
+        "score": null,
+        "inOverall": false
+      },
+      {
+        "id": "longrange_exposure_synthetic",
+        "weight": 0.02,
+        "score": null,
+        "inOverall": false
+      }
+    ],
+    "applied": [
+      {
+        "id": "route_isolation",
+        "score": 1.0,
+        "weight": 0.25,
+        "share": 0.277778,
+        "contribution": 0.277778
+      },
+      {
+        "id": "foreshadow_payoff_graph",
+        "score": 1.0,
+        "weight": 0.15,
+        "share": 0.166667,
+        "contribution": 0.166667
+      },
+      {
+        "id": "foreshadow_ending_completeness",
+        "score": 1.0,
+        "weight": 0.2,
+        "share": 0.222222,
+        "contribution": 0.222222
+      },
+      {
+        "id": "voice_prior_coverage",
+        "score": 1.0,
+        "weight": 0.1,
+        "share": 0.111111,
+        "contribution": 0.111111
+      },
+      {
+        "id": "capability_probes",
+        "score": 0.775,
+        "weight": 0.2,
+        "share": 0.222222,
+        "contribution": 0.172222
+      }
+    ],
+    "skipped": [
+      {
+        "id": "playtest_hook_density",
+        "reason": "no_score",
+        "weight": 0.05
+      }
+    ],
+    "renormalized": true,
+    "appendix": {}
+  }
+}

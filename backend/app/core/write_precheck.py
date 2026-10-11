@@ -322,7 +322,13 @@ def precheck_before_continue(
     issues.extend(_gone_locations_in_text(project, haystack))
     issues.extend(_continuity_focus_issues(project, focus_id or None))
 
-    report = PrecheckReport(issues=issues[:_MAX_WARNINGS])
+    try:
+        from app.core.writing_strategy import write_precheck_fact_limit
+
+        fact_limit = write_precheck_fact_limit()
+    except Exception:  # noqa: BLE001
+        fact_limit = _MAX_WARNINGS
+    report = PrecheckReport(issues=issues[:fact_limit])
     if prose_audit:
         report.prose = _prose_focus_issues(focus_text or "")
     return report

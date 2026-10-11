@@ -12,6 +12,7 @@ import {
   visibleChoices,
   type PlayState,
 } from "../lib/playState";
+import { saveAssumedFlags } from "../lib/assumedFlags";
 import type { LocalPlaytestChoice, PlaytestSession } from "../lib/playtestTelemetry";
 import styles from "./ScriptPlayer.module.css";
 
@@ -161,9 +162,10 @@ export function ScriptPlayer({
         }
       }
       runtimeVars.current = vars;
+      if (projectId) saveAssumedFlags(projectId, vars);
       return { ...next, variables: vars };
     });
-  }, []);
+  }, [projectId]);
 
   const current = useMemo(() => {
     const scope = scopeOf(cursor, chapter.blocks ?? []);
@@ -263,6 +265,7 @@ export function ScriptPlayer({
     setLoopStop(false);
     const fresh = initialVariables(variables);
     runtimeVars.current = fresh;
+    if (projectId) saveAssumedFlags(projectId, fresh);
     setStage({ bgm: "", sound: "", voice: "", camera: "", variables: fresh });
     setCursor(PLAY_START);
     setHistory([]);

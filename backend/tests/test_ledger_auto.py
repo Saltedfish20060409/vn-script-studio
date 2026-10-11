@@ -10,6 +10,8 @@ from __future__ import annotations
 from app.core.chapter_digest import chapter_content_hash
 from app.core.demo import create_demo_project
 from app.core.pipeline.ledger import (
+    AUTO_DIGEST_BULK_MAX_CHAPTERS,
+    AUTO_DIGEST_MAX_CHAPTERS,
     auto_digest_ledger,
     format_ledger_for_agent,
     get_ledger,
@@ -154,3 +156,46 @@ def test_content_hash_is_stable_across_db_key_reordering():
         {"type": "dialogue", "characterId": "char1", "text": "新台词。"}
     ]
     assert chapter_content_hash(changed) != h0
+
+
+def test_auto_digest_records_pending_remaining_when_budget_hits():
+    p = _project()
+    assert len(p.chapters) >= 2
+    first = auto_digest_ledger(p, max_chapters=1)
+    meta = get_ledger(first).get("digestMeta") or {}
+    assert meta.get("pendingRemaining") == len(p.chapters) - 1
+    assert meta.get("digestedThisPass") == 1
+
+    done = auto_digest_ledger(first)
+    meta2 = get_ledger(done).get("digestMeta") or {}
+    assert meta2.get("pendingRemaining") == 0
+
+
+def test_auto_digest_raises_chapter_cap_on_bulk_pending():
+    """待入库 ≥ 10 且未显式收紧 max_chapters 时，单次上限提到 BULK。"""
+    from app.core.demo import create_demo_project
+
+    base = create_demo_project()
+    # 造出足够多「待入库」章：复制首章并改 id/正文，避免命中已有 hash
+    chapters = []
+    for i in range(12):
+        ch = base.chapters[0].model_copy(deep=True)
+        ch.id = f"bulk-{i}"
+        ch.title = f"批量章{i}"
+        ch.prose = f"这是第{i}章的全新正文，用来改变内容指纹。" * 3
+        chapters.append(ch)
+    p = base.model_copy(deep=True)
+    p.chapters = chapters
+
+    out = auto_digest_ledger(p)  # 默认 max；pending=12 ≥ 阈值 → bulk 上限 40
+    facts = get_ledger(out)["chapterFacts"]
+    assert len(facts) == 12  # 12 < BULK 40，一轮应吃完（若仍用 20 也会吃完，故再断言 meta）
+    assert (get_ledger(out).get("digestMeta") or {}).get("pendingRemaining") == 0
+    assert AUTO_DIGEST_BULK_MAX_CHAPTERS > AUTO_DIGEST_MAX_CHAPTERS
+
+    # 显式收紧 max_chapters=5 时不应被 bulk 抬高
+    p2 = base.model_copy(deep=True)
+    p2.chapters = chapters
+    capped = auto_digest_ledger(p2, max_chapters=5)
+    assert len(get_ledger(capped)["chapterFacts"]) == 5
+    assert (get_ledger(capped).get("digestMeta") or {}).get("pendingRemaining") == 7

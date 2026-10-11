@@ -59,6 +59,7 @@ from app.schemas import (
     AgentSessionPutIn,
     AgentTurnIn,
     AgentWriteIn,
+    StrategyOutcomeIn,
     AiRunIn,
     ChapterReviseApplyIn,
     ChapterReviseIn,
@@ -2157,6 +2158,10 @@ async def put_agent_conversation(
         sess.chat_memory = body.chat_memory
     if body.undo_stack is not None:
         sess.undo_stack = body.undo_stack
+    if body.assumed_flags is not None:
+        state = dict(sess.run_state) if isinstance(sess.run_state, dict) else {}
+        state["assumedFlags"] = body.assumed_flags
+        sess.run_state = state
     sess.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(sess)
@@ -2240,6 +2245,10 @@ async def put_agent_session(
         sess.chat_memory = body.chat_memory
     if body.undo_stack is not None:
         sess.undo_stack = body.undo_stack
+    if body.assumed_flags is not None:
+        state = dict(sess.run_state) if isinstance(sess.run_state, dict) else {}
+        state["assumedFlags"] = body.assumed_flags
+        sess.run_state = state
     sess.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(sess)
@@ -2580,7 +2589,10 @@ def _global_memory_block(vn: VnProject) -> Optional[str]:
     try:
         from app.core.global_memory import build_global_memory, format_global_memory_for_agent
 
-        block = format_global_memory_for_agent(build_global_memory(vn))
+        # 写路径默认 graded：分卷卷述压缩，总述+伏笔优先（对齐账本 graded）
+        block = format_global_memory_for_agent(
+            build_global_memory(vn), graded=True
+        )
         return block.strip() or None
     except Exception:  # noqa: BLE001 — 记忆层失败不该影响对话
         return None
@@ -2995,6 +3007,9 @@ async def _streaming_writer_draft(
     lens_ids: Optional[List[str]] = None,
     enrich_context: bool = True,
     scope: Optional[str] = None,
+    assumed_flags: Optional[Dict[str, Any]] = None,
+    writing_assist: Optional[str] = None,
+    capability_profile: Optional[Dict[str, Any]] = None,
 ) -> StreamingResponse:
     """共用写作草稿 SSE：`/agent/turn`（默认）与旧 `/agent/write`（兼容层）。
 
@@ -3060,6 +3075,45 @@ async def _streaming_writer_draft(
     long_memory = str(continuity.get("agentBlock") or "")
     global_memory = _global_memory_block(vn) or ""
 
+    # 试玩覆盖 → 钩子密度：weak 档不加载；样本量不够时 build_* 会静默（只 meta）
+    playtest_hints_block = ""
+    playtest_hints_meta: Optional[Dict[str, Any]] = None
+    assist_l = (writing_assist or "").strip().lower()
+    if enrich_context and assist_l != "weak":
+        try:
+            from app.core.branch_analysis import analyze_branches
+            from app.core.playtest_write_hints import build_playtest_write_hints
+            from app.services import playtest_telemetry as telemetry
+
+            branch = analyze_branches(vn)
+            chapter_order = [
+                str(getattr(ch, "id", "") or "") for ch in (vn.chapters or [])
+            ]
+            analytics = await telemetry.load_reader_analytics(
+                db, row.id, branch=branch, chapter_order=chapter_order
+            )
+            hints = build_playtest_write_hints(
+                vn, chapter_id=chapter_id, analytics=analytics
+            )
+            playtest_hints_block = str(hints.get("block") or "")
+            playtest_hints_meta = {
+                "basis": hints.get("basis"),
+                "evidenceReady": hints.get("evidenceReady"),
+                "writeSilent": hints.get("writeSilent"),
+                "injectedCount": hints.get("injectedCount"),
+                "actionableCount": hints.get("actionableCount"),
+                "sampleNote": hints.get("sampleNote"),
+            }
+        except Exception:  # noqa: BLE001 — 试玩数据失败不挡写作
+            playtest_hints_block = ""
+            playtest_hints_meta = {
+                "basis": "script-only",
+                "evidenceReady": False,
+                "writeSilent": True,
+                "injectedCount": 0,
+                "error": "playtest_hints_unavailable",
+            }
+
     queue: "asyncio.Queue[dict]" = asyncio.Queue()
 
     async def _sse(data: dict) -> str:
@@ -3085,6 +3139,9 @@ async def _streaming_writer_draft(
             enrich_context=enrich_context,
             db_continuity=continuity if continuity else None,
             write_op=write_op,
+            assumed_flags=assumed_flags,
+            writing_assist=writing_assist,
+            playtest_hints_block=playtest_hints_block,
         )
 
     async def event_stream():
@@ -3158,6 +3215,15 @@ async def _streaming_writer_draft(
                 runner.cancel()
             yield await _sse({"type": "error", "message": str(exc)[:500]})
             return
+        vn_meta = result.get("vnConstraints")
+        if isinstance(vn_meta, dict) and playtest_hints_meta:
+            vn_meta = {
+                **vn_meta,
+                "playtestHints": {
+                    **(vn_meta.get("playtestHints") or {}),
+                    **playtest_hints_meta,
+                },
+            }
         yield await _sse(
             {
                 "type": "done",
@@ -3170,6 +3236,11 @@ async def _streaming_writer_draft(
                 "capability": capability,
                 "writeOp": write_op,
                 "contextIncluded": result.get("contextIncluded") or [],
+                "sceneGuard": result.get("sceneGuard"),
+                "strategyAdapt": result.get("strategyAdapt"),
+                "hybridHits": result.get("hybridHits"),
+                "vnConstraints": vn_meta,
+                "capabilityProfile": capability_profile,
             }
         )
 
@@ -3401,6 +3472,32 @@ async def _streaming_turn_agent_delegate(
     )
 
 
+@router.post("/{project_id}/writing/strategy-outcome")
+async def post_strategy_outcome(
+    project_id: str,
+    body: StrategyOutcomeIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """记录草稿采纳/拒绝，供 strategyAdapt bandit（不挡主路径）。"""
+    from app.core.strategy_adapt_log import append_strategy_adapt_event
+    from app.core.strategy_bandit import bandit_meta
+    from app.services.projects import get_owned_project
+
+    await get_owned_project(db, user, project_id)
+    append_strategy_adapt_event(
+        project_id=project_id,
+        chapter_id=body.chapter_id,
+        write_op=body.write_op,
+        outcome=body.outcome,
+        adapt={
+            "changed": False,
+            "suggestedAssist": body.suggested_assist,
+        },
+    )
+    return {"ok": True, "bandit": bandit_meta(project_id)}
+
+
 @router.post("/{project_id}/agent/turn")
 async def agent_turn_stream(
     project_id: str,
@@ -3419,11 +3516,52 @@ async def agent_turn_stream(
         assert_known_capability,
         resolve_write_op,
     )
+    from app.core.writing_strategy import (
+        resolve_writing_strategy,
+        set_writing_strategy,
+    )
+    import os
+
+    if body.llm_subagent:
+        os.environ["VNSS_LLM_SUBAGENT"] = "1"
 
     try:
         assert_known_capability(body.capability)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # 写作策略档与 capability 正交；缺省 strong；可选探针画像融合
+    set_writing_strategy(
+        resolve_writing_strategy(writing_assist=body.writing_assist)
+    )
+    capability_profile: Optional[Dict[str, Any]] = None
+    if body.capability == "write" and body.run_capability_probes:
+        try:
+            from app.core.capability_probes import (
+                blend_with_assist,
+                run_capability_probes,
+            )
+            from app.services.projects import get_owned_project, row_to_vn
+
+            row0 = await get_owned_project(db, user, project_id)
+            vn0 = row_to_vn(row0)
+            cap = run_capability_probes(vn0, chapter_id=body.chapter_id)
+            set_writing_strategy(blend_with_assist(cap, body.writing_assist))
+            capability_profile = cap.as_meta()
+            # 账本空 + memory 偏低 → 提示 digest（不自动改写工程）
+            try:
+                from app.core.pipeline.ledger import get_ledger
+
+                led = get_ledger(vn0)
+                emptyish = not (led.get("characterStates") or led.get("foreshadows"))
+                if emptyish and cap.tier("memory") == "low":
+                    capability_profile["digestHint"] = (
+                        "账本几乎为空且记忆档偏低：建议先「账本消化」再续写"
+                    )
+            except Exception:  # noqa: BLE001
+                pass
+        except Exception:  # noqa: BLE001 — 探针失败不挡写作
+            pass
 
     instruction = (body.instruction or "").strip()
     if not instruction and body.messages:
@@ -3441,6 +3579,16 @@ async def agent_turn_stream(
         resolved = resolve_write_op(body.write_op, selection=body.selection)
         if not resolved.ok:
             raise HTTPException(status_code=400, detail=resolved.error or "非法 write_op")
+        assumed = body.assumed_flags
+        if not assumed and body.conversation_id:
+            try:
+                sess_flags = await _get_session(db, project_id, body.conversation_id)
+                rs = sess_flags.run_state if isinstance(sess_flags.run_state, dict) else {}
+                raw = rs.get("assumedFlags")
+                if isinstance(raw, dict) and raw:
+                    assumed = raw
+            except Exception:  # noqa: BLE001
+                assumed = body.assumed_flags
         return await _streaming_writer_draft(
             project_id=project_id,
             instruction=instruction,
@@ -3458,6 +3606,9 @@ async def agent_turn_stream(
             lens_ids=body.lens_ids,
             enrich_context=body.enrich_context,
             scope=body.scope,
+            assumed_flags=assumed,
+            writing_assist=body.writing_assist,
+            capability_profile=capability_profile,
         )
 
     if body.capability == "ingest":

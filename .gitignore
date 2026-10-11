@@ -44,6 +44,10 @@ frontend/blob-report/
 backend/.cache_agent*
 backend/.cache_*
 **/.cache_agent*
+# 策略抬档 / bandit 本地 JSONL
+backend/.vnss-logs/
+# 线上对照盲评产物（含出稿全文 / 密钥 / 裁判分，勿入库）
+backend/compare/
 
 # Local chapter dump backups (author drafts; never commit)
 *-backup.txt
@@ -77,6 +81,8 @@ docs/*
 !docs/writing-surface.md
 !docs/references.md
 !docs/ablation-2026-09-28.md
+!docs/blind-ab.md
+!docs/deploy-compare.md
 
 # react-bits 临时导出文件(不入库)
 _rb/

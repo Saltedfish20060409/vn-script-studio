@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/authContext";
+import { APP_APK_MIRROR_URL, APP_APK_URL } from "../lib/appDownload";
 import {
   ApiError,
   forgotPassword,
@@ -439,12 +440,21 @@ export default function LoginPage() {
             <Link to="/guide">使用指南 →</Link>
             <span aria-hidden> · </span>
             <a
-              href="https://github.com/Saltedfish20060409/vn-script-studio/releases"
+              href={APP_APK_URL}
               target="_blank"
               rel="noreferrer"
-              title="下载 Android 伴侣 APK（调试包）"
+              title="下载 Android 客户端 APK（调试包，站点直链）"
             >
               Android 客户端
+            </a>
+            <span aria-hidden> · </span>
+            <a
+              href={APP_APK_MIRROR_URL}
+              target="_blank"
+              rel="noreferrer"
+              title="直链打不开或下载中断时用（GitHub Releases）"
+            >
+              GitHub 备用
             </a>
             <span aria-hidden> · </span>
             <Link to="/legal?doc=privacy">隐私政策</Link>

@@ -23,6 +23,10 @@ from app.domain.types import VnProject
 #: `[选项] …` / `[音乐 …]`）。它们不是"钩子"，只是演出结构。
 _MARKER_RE = re.compile(r"\[[^\]]*\]")
 
+#: 启发式从章末钩子自动写入的伏笔 note。大改同章时只替换带此标记的条目，
+#: 不碰 LLM / 人工埋下的伏笔。
+AUTO_FORESHADOW_NOTE = "章末钩子（自动）"
+
 
 def _hook_has_prose(close_hook: str) -> bool:
     """章末钩子里必须含**真正的正文**才算一条伏笔。
@@ -230,6 +234,8 @@ def empty_ledger() -> Dict[str, Any]:
         #: 裁剪痕迹（见 `_retention_record`）。**必须在这里与 get_ledger 都放行**，
         #: 否则会被读路径规范化掉，"账本丢过东西"这件事就又变成不可见的了。
         "retention": {},
+        #: 保存时 auto_digest 的可观测 meta（pendingRemaining 等），同样必须放行。
+        "digestMeta": {},
         "updatedAt": _now(),
     }
 
@@ -243,6 +249,7 @@ def get_ledger(project: VnProject) -> Dict[str, Any]:
             "foreshadows": list(raw.get("foreshadows") or []),
             "events": list(raw.get("events") or []),
             "retention": dict(raw.get("retention") or {}),
+            "digestMeta": dict(raw.get("digestMeta") or {}),
             "updatedAt": raw.get("updatedAt") or _now(),
         }
     return empty_ledger()
@@ -322,31 +329,81 @@ _OMIT_NOTE_RESERVE = 96
 
 
 def _build_ledger_sections(
-    ledger: Dict[str, Any], chapters: Optional[List[Any]]
+    ledger: Dict[str, Any],
+    chapters: Optional[List[Any]],
+    *,
+    focus_chapter_id: Optional[str] = None,
+    graded: bool = False,
 ) -> Dict[str, List[str]]:
-    """把账本渲染成"段名 → 行列表"，让 `format_ledger_for_agent` 能整段取舍。"""
+    """把账本渲染成"段名 → 行列表"，让 `format_ledger_for_agent` 能整段取舍。
+
+    ``graded=True`` 时按信息价值差异化压缩（锚点 / 要点 / 卷述）：
+    - 锚点：未回收伏笔 + 每人最新状态（高保真）
+    - 要点：焦点章及邻章事实保留细节；远端章压成一行
+    - 卷述：事件只留最近若干条一行摘要
+    """
     sections: Dict[str, List[str]] = {}
+    focus = (focus_chapter_id or "").strip()
+    chapter_ids = [str(getattr(c, "id", "") or "") for c in (chapters or [])]
+    focus_idx = chapter_ids.index(focus) if focus and focus in chapter_ids else -1
+    near_ids: set[str] = set()
+    if focus_idx >= 0:
+        for j in range(max(0, focus_idx - 1), min(len(chapter_ids), focus_idx + 2)):
+            near_ids.add(chapter_ids[j])
+    elif focus:
+        near_ids.add(focus)
 
     facts = ledger.get("chapterFacts") or []
     if facts:
         lines = ["### 章节事实摘要"]
-        for f in facts[-8:]:
-            title = f.get("title") or f.get("chapterId") or "?"
-            body = "；".join(str(x) for x in (f.get("facts") or [])[:6])
-            q = " / ".join(str(x) for x in (f.get("keyQuotes") or [])[:2])
-            lines.append(f"- [{title}] {body}" + (f"｜对白锚：{q}" if q else ""))
+        if graded:
+            lines[0] = "### 章节事实摘要（分级：邻章详 / 远端一行）"
+        window = facts[-12:] if graded else facts[-8:]
+        for f in window:
+            cid = str(f.get("chapterId") or "")
+            title = f.get("title") or cid or "?"
+            fact_list = list(f.get("facts") or [])
+            if graded and near_ids and cid not in near_ids:
+                # 远端：一行要点
+                one = "；".join(str(x) for x in fact_list[:2]) or "（无要点）"
+                lines.append(f"- [{title}] {one[:100]}")
+            else:
+                body = "；".join(str(x) for x in fact_list[:6])
+                q = " / ".join(str(x) for x in (f.get("keyQuotes") or [])[:2])
+                lines.append(f"- [{title}] {body}" + (f"｜对白锚：{q}" if q else ""))
         sections["facts"] = lines
 
     states = ledger.get("characterStates") or []
     if states:
         lines = ["### 角色状态快照（最近）"]
-        for s in states[-12:]:
-            lines.append(
-                f"- {s.get('characterName') or s.get('characterId')}@"
-                f"{s.get('chapterTitle') or s.get('chapterId')}："
-                f"情={s.get('emotion') or '—'}；身={s.get('body') or '—'}；"
-                f"关系={s.get('relations') or '—'}"
-            )
+        if graded:
+            # 每人最新一条（锚点），再按焦点章过滤优先
+            latest: Dict[str, Dict[str, Any]] = {}
+            for s in states:
+                key = str(s.get("characterName") or s.get("characterId") or "")
+                if key:
+                    latest[key] = s
+            ordered = list(latest.values())
+            if near_ids:
+                ordered.sort(
+                    key=lambda s: 0 if str(s.get("chapterId") or "") in near_ids else 1
+                )
+            lines[0] = "### 角色状态快照（锚点·每人最新）"
+            for s in ordered[:10]:
+                lines.append(
+                    f"- {s.get('characterName') or s.get('characterId')}@"
+                    f"{s.get('chapterTitle') or s.get('chapterId')}："
+                    f"情={s.get('emotion') or '—'}；身={s.get('body') or '—'}；"
+                    f"关系={s.get('relations') or '—'}"
+                )
+        else:
+            for s in states[-12:]:
+                lines.append(
+                    f"- {s.get('characterName') or s.get('characterId')}@"
+                    f"{s.get('chapterTitle') or s.get('chapterId')}："
+                    f"情={s.get('emotion') or '—'}；身={s.get('body') or '—'}；"
+                    f"关系={s.get('relations') or '—'}"
+                )
         sections["states"] = lines
 
     fores = [x for x in (ledger.get("foreshadows") or []) if x.get("status") != "paid"]
@@ -368,6 +425,8 @@ def _build_ledger_sections(
             return age if isinstance(age, int) else -1
 
         lines = ["### 未回收伏笔"]
+        if graded:
+            lines[0] = "### 未回收伏笔（锚点·高保真）"
         for fo in sorted(fores, key=_hook_age, reverse=True)[:10]:
             age = ages.get(str(fo.get("id")))
             age_bit = f"，已埋 {age} 章未回收" if isinstance(age, int) and age >= 3 else ""
@@ -381,8 +440,13 @@ def _build_ledger_sections(
     events = ledger.get("events") or []
     if events:
         lines = ["### 关键事件"]
-        for ev in events[-10:]:
-            lines.append(f"- {ev.get('summary') or ev.get('id')}")
+        if graded:
+            lines[0] = "### 关键事件（卷述·一行）"
+            for ev in events[-6:]:
+                lines.append(f"- {ev.get('summary') or ev.get('id')}")
+        else:
+            for ev in events[-10:]:
+                lines.append(f"- {ev.get('summary') or ev.get('id')}")
         sections["events"] = lines
 
     return sections
@@ -393,6 +457,8 @@ def format_ledger_for_agent(
     *,
     limit: int = 2800,
     chapters: Optional[List[Any]] = None,
+    focus_chapter_id: Optional[str] = None,
+    graded: bool = False,
 ) -> str:
     """Hard-anchor block injected into write/check prompts.
 
@@ -405,7 +471,14 @@ def format_ledger_for_agent(
     `docs/long-context-policy.md` 的"整块让位 + 写进提示词"同一条规矩。
     """
     head = "## 项目硬锚（写作账本·不得推翻已确认事实）"
-    sections = _build_ledger_sections(ledger, chapters)
+    if graded:
+        head = "## 项目硬锚（写作账本·分级压缩·不得推翻已确认事实）"
+    sections = _build_ledger_sections(
+        ledger,
+        chapters,
+        focus_chapter_id=focus_chapter_id,
+        graded=graded,
+    )
     if not sections:
         return ""
 
@@ -508,6 +581,9 @@ def digest_chapter_into_ledger(
     if len(chapter_facts) > _MAX_CHAPTER_FACTS:
         evicted["chapterFacts"] = len(chapter_facts) - _MAX_CHAPTER_FACTS
     ledger["chapterFacts"] = chapter_facts[-_MAX_CHAPTER_FACTS:]
+    # 立刻打指纹：finalize / 手工 digest（含 LLM enrich）之后若再走
+    # sync → auto_digest，hash 一致就会跳过，不会用启发式把 enrich 抹掉。
+    _stamp_fact_hash(ledger, chapter_id, chapter_content_hash(ch))
 
     # character states
     states = [
@@ -599,19 +675,31 @@ def digest_chapter_into_ledger(
                     "updatedAt": _now(),
                 }
             )
-    elif dig.closeHook and _hook_has_prose(dig.closeHook):
-        # avoid dup by hook text
-        if not any(f.get("hook") == dig.closeHook for f in fores):
-            fores.append(
-                {
-                    "id": str(uuid4()),
-                    "hook": dig.closeHook[:120],
-                    "plantedChapter": chapter_id,
-                    "status": "open",
-                    "note": "章末钩子（自动）",
-                    "updatedAt": _now(),
-                }
+    else:
+        # 大改同章：先清掉本章「自动」open 钩，再按当前 closeHook 重埋。
+        # 只动 AUTO_FORESHADOW_NOTE，避免误删 LLM / 人工伏笔。
+        fores = [
+            f
+            for f in fores
+            if not (
+                f.get("plantedChapter") == chapter_id
+                and str(f.get("note") or "") == AUTO_FORESHADOW_NOTE
+                and str(f.get("status") or "open") != "paid"
             )
+        ]
+        if dig.closeHook and _hook_has_prose(dig.closeHook):
+            hook_text = dig.closeHook[:120]
+            if not any(f.get("hook") == hook_text for f in fores):
+                fores.append(
+                    {
+                        "id": str(uuid4()),
+                        "hook": hook_text,
+                        "plantedChapter": chapter_id,
+                        "status": "open",
+                        "note": AUTO_FORESHADOW_NOTE,
+                        "updatedAt": _now(),
+                    }
+                )
     # 未回收优先于已回收（见 `_retain_foreshadows`：尾部截断丢掉的恰是最早埋的那条）。
     kept_fores, fores_evicted = _retain_foreshadows(fores)
     evicted.update(fores_evicted)
@@ -637,6 +725,9 @@ def digest_chapter_into_ledger(
 
 # 单次保存最多为多少章做入库，以及正文总量预算（防止导入几十章时拖慢保存）
 AUTO_DIGEST_MAX_CHAPTERS = 20
+#: 待入库章数 ≥ 此阈值时，单次上限临时提到 BULK 值（仍受字数预算约束）
+AUTO_DIGEST_BULK_PENDING_THRESHOLD = 10
+AUTO_DIGEST_BULK_MAX_CHAPTERS = 40
 AUTO_DIGEST_MAX_CHARS = 400_000
 
 
@@ -645,6 +736,15 @@ def _stamp_fact_hash(ledger: Dict[str, Any], chapter_id: str, content_hash: str)
         if row.get("chapterId") == chapter_id:
             row["sourceHash"] = content_hash
             return
+
+
+def _set_digest_meta(ledger: Dict[str, Any], *, pending_remaining: int, digested: int) -> None:
+    """可观测：还剩多少章待入库（前端 toast / 账本面板可读）。"""
+    ledger["digestMeta"] = {
+        "pendingRemaining": max(0, int(pending_remaining)),
+        "digestedThisPass": max(0, int(digested)),
+        "updatedAt": _now(),
+    }
 
 
 def auto_digest_ledger(project: VnProject, *, max_chapters: int = AUTO_DIGEST_MAX_CHAPTERS,
@@ -659,6 +759,10 @@ def auto_digest_ledger(project: VnProject, *, max_chapters: int = AUTO_DIGEST_MA
       避免生成时读到已经不存在的章节；
     - **有预算**：一次保存最多处理 max_chapters 章、max_chars 字正文，超出的留到
       下次保存继续（状态仍是"待入库"，不会丢）；
+    - **大批量**：待入库 ≥ ``AUTO_DIGEST_BULK_PENDING_THRESHOLD`` 且调用方未显式收紧
+      ``max_chapters`` 时，单次上限提到 ``AUTO_DIGEST_BULK_MAX_CHAPTERS``；
+    - **可观测**：``writingLedger.digestMeta.pendingRemaining`` 告诉前端还有几章
+      要再保存才能齐；
     - **不抛异常**：任何意外都返回原项目 —— 记账失败绝不能连带保存失败。
     """
     try:
@@ -696,19 +800,35 @@ def auto_digest_ledger(project: VnProject, *, max_chapters: int = AUTO_DIGEST_MA
             pending.append((ch.id, h, plain_len))
 
         if not pending and not pruned:
+            # 清零待入库提示，避免旧 meta 误导
+            if (ledger.get("digestMeta") or {}).get("pendingRemaining"):
+                _set_digest_meta(ledger, pending_remaining=0, digested=0)
+                return set_ledger(project, ledger)
             return project
+
+        effective_max = max_chapters
+        if (
+            max_chapters == AUTO_DIGEST_MAX_CHAPTERS
+            and len(pending) >= AUTO_DIGEST_BULK_PENDING_THRESHOLD
+        ):
+            effective_max = AUTO_DIGEST_BULK_MAX_CHAPTERS
 
         cur = set_ledger(project, ledger) if pruned else project
         budget = max_chars
         done = 0
         for chapter_id, content_hash, plain_len in pending:
-            if done >= max_chapters or budget <= 0:
+            if done >= effective_max or budget <= 0:
                 break
             ledger = digest_chapter_into_ledger(cur, chapter_id)
+            # digest 已 stamp；再写一次保证与本轮算得的 hash 一致（防漂移）
             _stamp_fact_hash(ledger, chapter_id, content_hash)
             cur = set_ledger(cur, ledger)
             budget -= plain_len
             done += 1
-        return cur
+
+        remaining = max(0, len(pending) - done)
+        ledger = get_ledger(cur)
+        _set_digest_meta(ledger, pending_remaining=remaining, digested=done)
+        return set_ledger(cur, ledger)
     except Exception:  # noqa: BLE001 —— 记账是附带能力，绝不能把保存搞挂
         return project

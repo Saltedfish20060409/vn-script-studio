@@ -28,6 +28,8 @@ export interface LedgerOverview {
   openForeshadows: number;
   paidForeshadows: number;
   updatedAt?: string;
+  /** 上次保存后仍待入库的章数（0 = 已齐） */
+  pendingRemaining?: number;
 }
 
 export function isForeshadowOpen(f: LedgerForeshadow): boolean {
@@ -120,6 +122,7 @@ export function summarizeLedger(project: VnProject): LedgerOverview {
     openForeshadows: open,
     paidForeshadows: foreshadows.length - open,
     updatedAt: ledger.updatedAt,
+    pendingRemaining: ledger.digestMeta?.pendingRemaining ?? 0,
   };
 }
 

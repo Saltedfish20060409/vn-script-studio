@@ -37,6 +37,13 @@ export default defineConfig({
         // Cache the app shell + hashed assets; API calls are network-only
         // (collab events / saves must never be served stale).
         navigateFallback: "/index.html",
+        // 但 `/dl/` 下的下载物（Android 客户端的 apk）必须排除在外面。
+        // 少了这一条：Service Worker 把**任何同源导航**都当成应用路由回 index.html，
+        // 于是用户点「Android 客户端」看到的是网页版界面而不是开始下载
+        // （迅雷这类下载器绕过 SW，反而能下到真包 —— 症状就是"浏览器不行、下载器可以"）。
+        // 注意 curl / Invoke-WebRequest 也不经过 SW，用它们测会得到 200 + 正确的包，
+        // 看不出这个问题：要么在真浏览器里点，要么看构建出的 sw.js 有没有这条 denylist。
+        navigateFallbackDenylist: [/^\/dl\//],
         globPatterns: ["**/*.{js,css,html,svg,png,ico}"],
         // 大体量美术资源（9.1MB/33 张 PNG）不进 precache，首访只下载 PWA 必需项；
         // 这些图片在页面用到时由下方同源 CacheFirst 规则按需缓存。

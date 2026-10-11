@@ -174,6 +174,23 @@ class AgentTurnIn(BaseModel):
     exclude_sections: Optional[List[str]] = None
     mentor_opt_in: bool = False
     apply_actions: bool = False
+    # 写作辅助强度：strong=多补注意力/记忆；weak=少干预。与 capability/write_op 正交。
+    writing_assist: Optional[Literal["strong", "mid", "weak"]] = None
+    #: 试玩器当前 flag（分支记忆 flag 切片）；缺省用变量声明默认值
+    assumed_flags: Optional[Dict[str, Any]] = None
+    #: 写前跑能力探针并覆盖/融合策略档（默认开）
+    run_capability_probes: bool = True
+    #: 可选：开启真 LLM 子代理复核（默认关；也可用环境变量 VNSS_LLM_SUBAGENT）
+    llm_subagent: bool = False
+
+
+class StrategyOutcomeIn(BaseModel):
+    """作者对草稿的采纳/拒绝（供 strategyAdapt bandit）。"""
+
+    outcome: Literal["accept", "reject"]
+    chapter_id: Optional[str] = None
+    suggested_assist: Optional[Literal["strong", "mid", "weak"]] = None
+    write_op: Optional[str] = None
 
 
 class AgentRunIn(BaseModel):
@@ -254,6 +271,8 @@ class AgentConversationPutIn(BaseModel):
     messages: Optional[List[Dict[str, Any]]] = None
     chat_memory: Optional[str] = None
     undo_stack: Optional[List[Any]] = None
+    #: 试玩器 flag 侧车（写入 run_state.assumedFlags）
+    assumed_flags: Optional[Dict[str, Any]] = None
 
 
 class AgentConversationRenameIn(BaseModel):

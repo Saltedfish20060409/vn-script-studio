@@ -648,22 +648,59 @@ def _volume_block(volume: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _volume_block_graded(volume: Dict[str, Any]) -> str:
+    """分级压缩版分卷块：只留卷名、Top 角色、关系一行、最近关键事件。"""
+    head = f"### {volume.get('title')}（{_range_label(volume)}）"
+    lines = [head]
+    characters = volume.get("characters") or []
+    if characters:
+        who = "、".join(str(c.get("name") or "?") for c in characters[:3])
+        lines.append(f"- 要角：{who}")
+        # 要角关系一行（不调模型：拼 ledger/卷内已有 formula/relations 字段）
+        rel_bits = []
+        for c in characters[:3]:
+            name = str(c.get("name") or "?")
+            rel = str(c.get("relations") or c.get("formula") or "").strip()
+            if rel:
+                rel_bits.append(f"{name}:{_clip(rel, 28)}")
+        if rel_bits:
+            lines.append("- 关系：" + "；".join(rel_bits[:3]))
+    events = volume.get("keyEvents") or []
+    if events:
+        # 只留最近 2 条事件摘要（卷述级）
+        for event in events[-2:]:
+            beat = _clip(event.get("beatSummary") or "", 48)
+            lines.append(f"- 第{event.get('index')}章：{beat}")
+    hooks = volume.get("openForeshadows") or []
+    if hooks:
+        lines.append(f"- 本卷未回收伏笔 {len(hooks)} 条（详见上方清单）")
+    return "\n".join(lines)
+
+
 def format_global_memory_for_agent(
-    memory: Dict[str, Any], *, max_chars: int = DEFAULT_AGENT_BUDGET
+    memory: Dict[str, Any],
+    *,
+    max_chars: int = DEFAULT_AGENT_BUDGET,
+    graded: bool = False,
 ) -> str:
     """给 Agent 用的紧凑注入块。
 
     超预算时的取舍是**写死的**：全局总述与未回收伏笔一定留下（写下一章必须先知道
     "故事到哪了"和"哪些坑还开着"），先牺牲分卷明细；省了哪几卷会写在末尾。
     预算下限 400 字，就是为了保证上面两样在极端情况下也能各留一段。
+
+    ``graded=True``：分卷块用卷述级压缩（对齐账本 graded），默认写路径开启。
     """
     data = memory if isinstance(memory, dict) else {}
     budget = max(MIN_AGENT_BUDGET, int(max_chars or DEFAULT_AGENT_BUDGET))
+    if graded:
+        budget = min(budget, max(MIN_AGENT_BUDGET, DEFAULT_AGENT_BUDGET * 3 // 4))
 
     overall_block = _overall_block(data.get("overall") or {})
     hooks_block = _hooks_block(data)
+    vol_fmt = _volume_block_graded if graded else _volume_block
     volume_blocks = [
-        (str(volume.get("title") or f"第{volume.get('index')}卷"), _volume_block(volume))
+        (str(volume.get("title") or f"第{volume.get('index')}卷"), vol_fmt(volume))
         for volume in data.get("volumes") or []
     ]
 

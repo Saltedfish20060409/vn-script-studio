@@ -17,6 +17,7 @@ import {
   type UsageTotals,
 } from "../api/misc";
 import { t } from "../lib/i18n";
+import { APP_APK_MIRROR_URL, APP_APK_URL } from "../lib/appDownload";
 import {
   autoCompressedNote,
   bgImageNote,
@@ -36,6 +37,19 @@ import {
   setLegacyAgentToolsEnabled,
   setLegacyAgentWriteEnabled,
 } from "../lib/agentTurnFlags";
+import {
+  loadLlmSubagentEnabled,
+  saveLlmSubagentEnabled,
+} from "../lib/harnessFlags";
+import {
+  loadCapabilityProfile,
+  loadStrategyAdaptLog,
+  loadWritingAssist,
+  saveWritingAssist,
+  WRITING_ASSIST_OPTIONS,
+  type CapabilityProfileSnapshot,
+  type WritingAssistStrength,
+} from "../lib/writingAssist";
 import {
   isAutoRpyAfterProseWriteEnabled,
   setAutoRpyAfterProseWriteEnabled,
@@ -718,11 +732,132 @@ function LlmPane() {
         </button>
       </div>
       <hr className={styles.divider} />
+      <WritingAssistStrengthControl />
+      <hr className={styles.divider} />
       <p className={styles.note}>
         Agent 高级（ADR 0001）：默认写作走 Writing Turn；经典责编工具环默认隐藏。
         仅排障 / B1 回滚时打开下面开关。
       </p>
       <AgentTurnAdvancedFlags />
+    </div>
+  );
+}
+
+function WritingAssistStrengthControl() {
+  const [assist, setAssist] = useState<WritingAssistStrength>(loadWritingAssist);
+  const [cap, setCap] = useState<CapabilityProfileSnapshot | null>(
+    loadCapabilityProfile
+  );
+  const [llmSub, setLlmSub] = useState(loadLlmSubagentEnabled);
+  const [diagOpen, setDiagOpen] = useState(false);
+  const [adaptLog, setAdaptLog] = useState(loadStrategyAdaptLog);
+  const hint =
+    WRITING_ASSIST_OPTIONS.find((o) => o.value === assist)?.hint || "";
+  const tiers = cap?.tiers;
+  const intensityHint =
+    assist === "weak" ? "light" : assist === "mid" ? "mid" : "full";
+  return (
+    <div className={styles.note} data-testid="writing-assist-control">
+      <label style={{ display: "block", marginBottom: 6 }}>
+        写作辅助强度（本机）
+        <select
+          value={assist}
+          onChange={(e) => {
+            const v = e.target.value as WritingAssistStrength;
+            saveWritingAssist(v);
+            setAssist(v);
+          }}
+          style={{ display: "block", marginTop: 6, maxWidth: 280 }}
+        >
+          {WRITING_ASSIST_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p style={{ margin: 0, opacity: 0.85 }}>{hint}</p>
+      <p style={{ margin: "6px 0 0", opacity: 0.75, fontSize: "0.9em" }}>
+        当前 VN bundle 强度：{intensityHint}
+      </p>
+      <label style={{ display: "block", marginTop: 10 }}>
+        <input
+          type="checkbox"
+          checked={llmSub}
+          onChange={(e) => {
+            saveLlmSubagentEnabled(e.target.checked);
+            setLlmSub(e.target.checked);
+          }}
+        />{" "}
+        真 LLM 子代理复核（贵；默认关，需服务端模型 Key）
+      </label>
+      <div
+        data-testid="capability-probe-tiers"
+        style={{ marginTop: 10, opacity: 0.9, fontSize: "0.92em" }}
+      >
+        <div style={{ marginBottom: 4 }}>能力探针（最近一次写作，只读）</div>
+        {tiers ? (
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            <li>注意力：{tiers.attention ?? "—"}</li>
+            <li>记忆：{tiers.memory ?? "—"}</li>
+            <li>推理：{tiers.reasoning ?? "—"}</li>
+            <li>指令遵循：{tiers.instruction_following ?? "—"}</li>
+          </ul>
+        ) : (
+          <p style={{ margin: 0, opacity: 0.75 }}>
+            尚无记录——完成一次 Writing Turn 后会显示各维档位。
+          </p>
+        )}
+        {cap?.at ? (
+          <p style={{ margin: "4px 0 0", opacity: 0.65, fontSize: "0.88em" }}>
+            更新于 {new Date(cap.at).toLocaleString()}{" "}
+            <button
+              type="button"
+              style={{
+                marginLeft: 4,
+                background: "none",
+                border: "none",
+                padding: 0,
+                color: "inherit",
+                textDecoration: "underline",
+                cursor: "pointer",
+              }}
+              onClick={() => setCap(loadCapabilityProfile())}
+            >
+              刷新
+            </button>
+          </p>
+        ) : null}
+      </div>
+      <details
+        data-testid="harness-diagnostics"
+        style={{ marginTop: 12 }}
+        open={diagOpen}
+        onToggle={(e) => setDiagOpen((e.target as HTMLDetailsElement).open)}
+      >
+        <summary style={{ cursor: "pointer" }}>写作 harness 诊断</summary>
+        <p style={{ margin: "8px 0 4px", opacity: 0.8, fontSize: "0.9em" }}>
+          最近 strategyAdapt（本机，含采纳/拒绝）
+        </p>
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: "0.88em" }}>
+          {adaptLog.slice(-8).reverse().map((row, i) => (
+            <li key={`${row.at}-${i}`}>
+              {(row.at || "").slice(0, 19)} · assist=
+              {row.suggestedAssist || "—"}
+              {row.outcome ? ` · ${row.outcome}` : ""}
+              {row.changed ? " · bumped" : ""}
+            </li>
+          ))}
+          {!adaptLog.length ? <li>暂无记录</li> : null}
+        </ul>
+        <button
+          type="button"
+          style={{ marginTop: 6 }}
+          onClick={() => setAdaptLog(loadStrategyAdaptLog())}
+        >
+          刷新日志
+        </button>
+      </details>
     </div>
   );
 }
@@ -1138,15 +1273,23 @@ export function SettingsModal({ open, onClose, settings, onChange, view, onViewC
                   模型连接信息（API Key、Base URL、模型名）在「模型」页签配置：可加密保存到你的账号（跨设备），也可只存当前浏览器。之后的 AI 调用会用你配置的模型。
                 </p>
                 <p className={styles.note}>
-                  Android 客户端内测中：可在{" "}
+                  Android 客户端内测中：点{" "}
                   <a
-                    href="https://github.com/Saltedfish20060409/vn-script-studio/releases"
+                    href={APP_APK_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    这里下载 APK
+                  </a>
+                  （需允许安装未知来源）。直链打不开或下载中断时，用{" "}
+                  <a
+                    href={APP_APK_MIRROR_URL}
                     target="_blank"
                     rel="noreferrer"
                   >
                     GitHub Releases
                   </a>{" "}
-                  下载 APK（需允许安装未知来源）。手机浏览器也可把本站「安装为应用」（PWA）。
+                  备用。手机浏览器也可把本站「安装为应用」（PWA）。
                 </p>
               </div>
             )}

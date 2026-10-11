@@ -199,6 +199,22 @@ def test_prod_config_keeps_cache_strategy():
     assert spa and "expires -1;" in spa.group(1), "SPA fallback 入口也必须 no-cache"
 
 
+def test_prod_config_serves_downloads_without_spa_fallback():
+    """`/dl/` 是安装包等下载物（Android 客户端的 apk 放在这里，网页端登录页 / 页脚 /
+    使用指南 / 设置四处入口都指向它）。
+
+    少了这条 location，缺失的文件会落进下面的 SPA fallback —— 返回 `index.html`（200），
+    用户以为在下 13MB 的 apk，实际存下来一个 HTML，比一个干脆的 404 难查得多。
+    `expires -1` 同理不能省：`...-latest.apk` 换版本时**文件名不变、内容变**，
+    长缓存会把旧包发给用户（没变的包靠 ETag 走 304，不会白下）。
+    """
+    block = re.search(r"location /dl/ \{([^}]*)\}", _read(PROD))
+    assert block, "缺少 /dl/ 的 location（安装包下载目录）"
+    body = block.group(1)
+    assert "try_files $uri =404;" in body, "/dl/ 不能回落到 SPA fallback"
+    assert "expires -1;" in body, "latest.apk 会随版本换内容，不能长缓存"
+
+
 def test_prod_config_proxies_api_with_sse_friendly_settings():
     text = _read(PROD)
     api = re.search(r"location /api/ \{([^}]*)\}", text)

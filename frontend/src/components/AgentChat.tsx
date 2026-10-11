@@ -33,6 +33,7 @@ import {
   agentTurnStream,
   chapterRevise,
   chapterReviseApply,
+  postStrategyOutcome,
   factsScan,
   fetchPreQuestions,
   generateRpyFromProse,
@@ -43,6 +44,16 @@ import {
   type PipelineRunResult,
 } from "../api/client";
 import { inferAgentIntent } from "../lib/agentIntent";
+import { loadAssumedFlags } from "../lib/assumedFlags";
+import { loadLlmSubagentEnabled } from "../lib/harnessFlags";
+import {
+  appendStrategyAdaptLog,
+  loadWritingAssist,
+  logStrategyOutcome,
+  maybeBumpWritingAssist,
+  saveCapabilityProfile,
+  suggestAssistFromLocalBandit,
+} from "../lib/writingAssist";
 import {
   applyWriteDraftScope,
   inferDefaultWriteScope,
@@ -930,6 +941,12 @@ export function AgentChat({
   }
 
   function handleDiscardWriteDraft(chapterId: string) {
+    logStrategyOutcome(projectId, "reject", { chapterId });
+    void postStrategyOutcome(projectId, {
+      outcome: "reject",
+      chapter_id: chapterId,
+      suggested_assist: loadWritingAssist(),
+    }).catch(() => undefined);
     setPendingRevise(null, { clearChapterId: chapterId });
     setReviseReviewOpen(false);
     const cleared = messagesRef.current.map((m) =>
@@ -1911,6 +1928,10 @@ export function AgentChat({
               capability: "write",
               write_op: resolvedOp,
               messages: history,
+              writing_assist:
+                suggestAssistFromLocalBandit(projectId) || loadWritingAssist(),
+              assumed_flags: loadAssumedFlags(projectId),
+              llm_subagent: loadLlmSubagentEnabled(),
             },
             onEvt,
             controller.signal,
@@ -1928,6 +1949,52 @@ export function AgentChat({
         throw new Error("写作通道没有返回正文，请重试");
       }
       const targetId = done.chapterId || chapterId;
+      if (done.capabilityProfile) {
+        saveCapabilityProfile(done.capabilityProfile);
+      }
+      const digestHint = done.capabilityProfile?.digestHint
+        ? `\n\n💡 ${done.capabilityProfile.digestHint}`
+        : "";
+      const flags = loadAssumedFlags(projectId);
+      if (flags && conversationId) {
+        void putAgentConversation(projectId, conversationId, {
+          assumed_flags: flags,
+        }).catch(() => undefined);
+      }
+      if (done.strategyAdapt) {
+        appendStrategyAdaptLog({
+          projectId,
+          chapterId: done.chapterId,
+          changed: done.strategyAdapt.changed,
+          suggestedAssist: done.strategyAdapt.suggestedAssist,
+          reasons: done.strategyAdapt.reasons,
+          attention: done.strategyAdapt.attention,
+          memory: done.strategyAdapt.memory,
+          reasoning: done.strategyAdapt.reasoning,
+        });
+      }
+      const bumped = maybeBumpWritingAssist(
+        done.strategyAdapt?.suggestedAssist
+      );
+      const guardNote =
+        done.sceneGuard && done.sceneGuard.ok === false
+          ? `\n\n⚠️ 本场守卫标出 ${done.sceneGuard.issueCount ?? "?"} 处问题` +
+            (
+              (done.sceneGuard.warnings || []).length
+                ? `：${(done.sceneGuard.warnings || []).slice(0, 2).join("；")}`
+                : ""
+            ) +
+            "。写入前建议先改。"
+          : "";
+      const adaptNote = bumped
+        ? `\n\n（已自动将写作辅助强度抬至「${bumped}」，下一轮会加强硬锚注入。）`
+        : done.strategyAdapt?.changed
+          ? `\n\n（策略建议加强辅助：${(done.strategyAdapt.reasons || []).join("；") || "本场信号"}）`
+          : "";
+      const hybridNote =
+        typeof done.hybridHits === "number" && done.hybridHits > 0
+          ? `\n\n（本轮 hybrid 检索命中 ${done.hybridHits} 条相关片段。）`
+          : "";
       setPendingRevise({
         chapterId: targetId,
         revisedText: draft,
@@ -1950,6 +2017,10 @@ export function AgentChat({
             (useClassic
               ? "已打开经典左右对照：逐段挑「改稿 / 原文」，满意再点「写入」。\n\n"
               : "点下方 **写入** 将草稿落入工程（可先切换：章末追加 / 替换选区 / 替换整章）；或 **放弃**。需要逐段对照可开「经典对照」。\n\n") +
+            guardNote +
+            adaptNote +
+            hybridNote +
+            digestHint +
             "---\n\n" +
             preview,
           action: useClassic
@@ -2829,6 +2900,14 @@ export function AgentChat({
         writing_surface: resolveWritingSurface(),
       });
       if (res.wrote && res.project) {
+        logStrategyOutcome(projectId, "accept", {
+          chapterId: draft!.chapterId,
+        });
+        void postStrategyOutcome(projectId, {
+          outcome: "accept",
+          chapter_id: draft!.chapterId,
+          suggested_assist: loadWritingAssist(),
+        }).catch(() => undefined);
         undoStack.current = [
           ...undoStack.current,
           { label: "改稿写入", project: snapshot },

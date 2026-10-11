@@ -387,6 +387,12 @@ interface WritingLedger {
   foreshadows?: LedgerForeshadow[];
   events?: LedgerEvent[];
   updatedAt?: string;
+  /** 保存时 auto_digest 留下的可观测信息：还有几章待入库 */
+  digestMeta?: {
+    pendingRemaining?: number;
+    digestedThisPass?: number;
+    updatedAt?: string;
+  };
 }
 
 interface FactEvidence {

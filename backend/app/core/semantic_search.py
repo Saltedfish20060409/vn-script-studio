@@ -142,6 +142,110 @@ async def index_project_chunks(
     return written
 
 
+def _token_set(text: str) -> set[str]:
+    from app.core.retrieval import tokenize_query
+
+    return set(tokenize_query(text or ""))
+
+
+def lexical_overlap_score(query: str, text: str) -> float:
+    """零依赖语义近似：查询 token 在候选文本中的覆盖率（0..1）。"""
+    q = _token_set(query)
+    if not q:
+        return 0.0
+    t = _token_set(text)
+    if not t:
+        return 0.0
+    hit = sum(1 for tok in q if tok in t)
+    return hit / len(q)
+
+
+def _cosine(a: List[float], b: List[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = 0.0
+    na = 0.0
+    nb = 0.0
+    for x, y in zip(a, b):
+        dot += x * y
+        na += x * x
+        nb += y * y
+    if na <= 0 or nb <= 0:
+        return 0.0
+    return max(0.0, min(1.0, dot / ((na**0.5) * (nb**0.5))))
+
+
+def embed_texts_sync(
+    texts: List[str],
+    *,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+) -> Optional[List[List[float]]]:
+    """同步 embedding（写路径重排用）；未配置或失败返回 None。"""
+    if base_url is None or api_key is None or model is None:
+        bu, ak, md = _embedding_settings()
+        base_url = base_url or bu
+        api_key = api_key or ak
+        model = model or md
+    base_url = (base_url or "").strip()
+    api_key = (api_key or "").strip()
+    model = (model or "text-embedding-3-small").strip()
+    if not base_url or not api_key or not texts:
+        return None
+    import httpx
+
+    url = base_url.rstrip("/") + "/embeddings"
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            resp = client.post(
+                url,
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={"model": model, "input": texts},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        rows = (data or {}).get("data") or []
+        vectors = [list(r["embedding"]) for r in rows if "embedding" in r]
+        return vectors if len(vectors) == len(texts) else None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("sync embedding failed: %s", exc)
+        return None
+
+
+def rerank_texts(
+    query: str,
+    hits: List[Tuple[str, str, float]],
+    *,
+    alpha: float = 0.4,
+    use_embeddings: bool = True,
+) -> List[Tuple[str, str, float]]:
+    """写路径轻量重排：heuristic + 词面重叠；若配置了 EMBEDDING_* 再混余弦。
+
+    ``alpha``：重叠（或余弦）权重；其余留给原 heuristic score。
+    """
+    if not hits or not (query or "").strip():
+        return hits
+    a = max(0.0, min(1.0, float(alpha)))
+    cos_scores: Optional[List[float]] = None
+    if use_embeddings:
+        texts = [query] + [f"{lab}\n{snip}"[:2000] for lab, snip, _ in hits]
+        vecs = embed_texts_sync(texts)
+        if vecs and len(vecs) == len(texts):
+            qv = vecs[0]
+            cos_scores = [_cosine(qv, v) for v in vecs[1:]]
+    rescored: List[Tuple[str, str, float]] = []
+    for i, (label, snippet, score) in enumerate(hits):
+        ov = lexical_overlap_score(query, f"{label}\n{snippet}")
+        sem = cos_scores[i] if cos_scores is not None else ov
+        # 有余弦时：重叠与余弦各半再与 heuristic 混合
+        blend = 0.5 * ov + 0.5 * sem if cos_scores is not None else ov
+        mixed = (1.0 - a) * float(score) + a * blend
+        rescored.append((label, snippet, round(mixed, 4)))
+    rescored.sort(key=lambda x: (-x[2], x[0]))
+    return rescored
+
+
 async def semantic_search(
     db: AsyncSession,
     project_id: str,

@@ -1,0 +1,27 @@
+[
+  {
+    "id": "case-01-continue-rain",
+    "task": "continue",
+    "instruction": "从本章末尾自然续写约 400 字：雨夜月台，保持林夏与周屿已有口吻，不要总结前文，不要写引擎指令。"
+  },
+  {
+    "id": "case-02-choice-cost",
+    "task": "continue",
+    "instruction": "续写一段含菜单倾向的抉择（可用自然语言描述选项，不要写 menu:）：两个选项须有不同剧情代价，保留一条犹豫/说不清的毛边。"
+  },
+  {
+    "id": "case-03-foreshadow",
+    "task": "continue",
+    "instruction": "续写时轻轻推进或呼应一处未回收的氛围钩子（雨声/末班车/伞），不要直白解释主题，不要新开无关支线。"
+  },
+  {
+    "id": "case-04-voice",
+    "task": "continue",
+    "instruction": "写一段以周屿对白为主的短场（约 300 字），旁白克制，口吻与既有人设一致，禁止说明书腔。"
+  },
+  {
+    "id": "case-05-stageable",
+    "task": "continue",
+    "instruction": "续写可演场景：对白一行一句 + 短旁白 + 括号动作；地点保持月台；禁止 label/jump/scene 等引擎语法。"
+  }
+]
