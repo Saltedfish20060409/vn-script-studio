@@ -1,0 +1,17 @@
+# 生产镜像只跑 API；下列内容留在 GitHub / 本地，不进镜像。
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.venv
+.env
+.env.*
+!.env.example
+tests
+app/fixtures
+**/compare
+.cache_*
+.vnss-logs
+*.md
