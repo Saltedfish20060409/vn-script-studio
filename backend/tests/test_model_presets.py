@@ -62,6 +62,9 @@ def test_old_models_removed_and_latest_present():
         "glm-4-plus",
         "gpt-4o",
         "gpt-4o-mini",
+        "gpt-5",
+        "gpt-5.5",
+        "gpt-5-mini",
     ):
         assert retired not in ids, f"retired model still listed: {retired}"
     for latest in (
@@ -70,7 +73,13 @@ def test_old_models_removed_and_latest_present():
         "kimi-k3",
         "qwen-max",
         "glm-5",
-        "gpt-5",
+        "gpt-6.1-sol",
+        "gpt-6-astra",
+        "grok-4.7",
+        "claude-haiku",
+        "qwen-flash",
+        "mistral-medium",
+        "local-lmstudio",
     ):
         assert latest in ids, f"missing latest model: {latest}"
 
@@ -81,13 +90,32 @@ def test_international_and_domestic_vendors_present():
     for pid in (
         "claude-opus",
         "claude-sonnet",
+        "claude-haiku",
         "gemini-flash",
         "gemini-pro",
+        "grok-4.7",
+        "mistral-medium",
         "doubao-seed-turbo",
         "glm-5-flash",
         "glm-5-turbo",
     ):
         assert pid in ids, f"missing preset: {pid}"
+
+
+def test_latest_model_ids_match_official_docs():
+    """关键档位的 model 字段跟官方文档 ID 对齐（未在线校验的也写死，避免悄悄漂移）。"""
+    assert find_preset("qwen-max")["model"] == "qwen3.8-max"
+    assert find_preset("qwen-flash")["model"] == "qwen3.8-flash"
+    assert find_preset("claude-opus-5")["model"] == "claude-opus-5-5"
+    assert find_preset("claude-sonnet")["model"] == "claude-sonnet-5-5"
+    assert find_preset("claude-haiku")["model"] == "claude-haiku-5-5"
+    assert find_preset("gemini-flash")["model"] == "gemini-3.8-flash"
+    assert find_preset("gemini-pro")["model"] == "gemini-4-argon"
+    assert find_preset("gpt-6.1-sol")["model"] == "gpt-6.1-sol"
+    assert find_preset("gpt-6-astra")["model"] == "gpt-6-astra"
+    assert find_preset("gpt-6-luna")["model"] == "gpt-6-luna"
+    assert find_preset("grok-4.7")["model"] == "grok-4.7"
+    assert find_preset("mistral-medium")["model"] == "mistral-medium-3-5"
 
 
 def test_glm_presets_use_live_verified_ids():
@@ -122,8 +150,8 @@ def test_supports_json_mode_reads_the_catalogue():
     assert supports_json_mode("glm-4-flash-250414") is True
     # 思考模式与 Anthropic 兼容层都不支持 response_format
     assert supports_json_mode("deepseek-flash-think") is False
-    assert supports_json_mode("claude-opus-5") is False
-    assert supports_json_mode("claude-sonnet-4-8") is False
+    assert supports_json_mode("claude-opus-5-5") is False
+    assert supports_json_mode("claude-sonnet-5-5") is False
     assert supports_json_mode("qwen3:8b") is False
 
 
@@ -135,7 +163,7 @@ def test_supports_json_mode_is_liberal_for_unknown_models():
 
 
 def test_supports_json_mode_tolerates_case_and_shorthand():
-    assert supports_json_mode("Claude-Opus-5") is False
+    assert supports_json_mode("Claude-Opus-5-5") is False
     assert supports_json_mode("  deepseek-flash  ") is True
     # 手填简写时按前缀兜底
     assert supports_json_mode("claude") is False
@@ -143,7 +171,7 @@ def test_supports_json_mode_tolerates_case_and_shorthand():
 
 def test_json_mode_warning_only_for_unsupported():
     assert json_mode_warning("deepseek-flash") == ""
-    warn = json_mode_warning("claude-opus-5")
+    warn = json_mode_warning("claude-opus-5-5")
     assert "不支持结构化输出" in warn and "建议换一档" in warn
 
 

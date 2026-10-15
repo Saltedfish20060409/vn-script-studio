@@ -4,16 +4,16 @@ Every preset speaks the OpenAI-compatible /v1/chat/completions wire format,
 so a single client (llm_http) serves them all. Presets only fill in the
 base URL and model name; the user still supplies their own API key.
 
-ID 可信度分级（2026-09-11 校对）：
+ID 可信度分级（2026-10-15 校对）：
 - **实测验证**：智谱（用线上 key 拉过 /models：glm-5.3 / glm-5.3-flash / glm-5-turbo…）、
   豆包（用户在站内真实调用成功：doubao-seed-2-1-turbo-260628）、
   DeepSeek（官方更新日志 + 定价页：正式名 deepseek-flash，服务端为 V4.1-Flash）。
-- **仅官方文档/官方更新说明**（未在线校验）：Claude、Gemini、GPT、Kimi、Qwen 的最新档。
-  这类条目的 note 里都标了「ID 未在线校验，以官方控制台为准」——它们在国内多数还需
-  自备网络条件；用户若报 model 不存在，在「设置 → 模型」里改成控制台显示的名字即可
-  （预设只是帮忙填端点，不锁定模型名）。
+- **仅官方文档/官方更新说明**（未在线校验）：Claude、Gemini、GPT、Grok、Kimi、Qwen、
+  Mistral 的最新档。这类条目的 note 里都标了「ID 未在线校验，以官方控制台为准」——
+  它们在国内多数还需自备网络条件；用户若报 model 不存在，在「设置 → 模型」里改成
+  控制台显示的名字即可（预设只是帮忙填端点，不锁定模型名）。
 
-``*-think`` 后缀是本工作室对思考模式的别名（在 llm_http 出站前改写）。
+``*-think`` 后缀是本仓库对思考模式的别名（在 llm_http 出站前改写）。
 """
 
 from __future__ import annotations
@@ -133,13 +133,13 @@ MODEL_PRESETS: List[Dict[str, object]] = [
     # ---------------- 通义千问 ----------------
     {
         "id": "qwen-max",
-        "label": "通义千问旗舰（qwen3.7-max）",
+        "label": "通义千问旗舰（qwen3.8-max）",
         "vendor": "Alibaba",
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "model": "qwen3.7-max",
+        "model": "qwen3.8-max",
         "json_mode": True,
         "context_k": 1000,
-        "note": "Qwen3.7 旗舰（MoE、百万级上下文），质量优先，中文创作强。若报 model 不存在，改用控制台里的当前旗舰 ID。",
+        "note": "Qwen3.8 旗舰（MoE、百万级上下文），质量优先，中文创作强。若报 model 不存在，改用控制台里的当前旗舰 ID。",
     },
     {
         "id": "qwen-plus",
@@ -148,8 +148,18 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "model": "qwen-plus",
         "json_mode": True,
-        "context_k": 131,
+        "context_k": 1000,
         "note": "均衡款，速度与质量兼顾，适合日常写作。也会自动指向 Qwen 最新均衡版本。",
+    },
+    {
+        "id": "qwen-flash",
+        "label": "通义千问快（qwen3.8-flash）",
+        "vendor": "Alibaba",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "model": "qwen3.8-flash",
+        "json_mode": True,
+        "context_k": 1000,
+        "note": "Qwen3.8 Flash：更快更省，适合大批量润色与草稿。若报 model 不存在，可改用控制台的 qwen-flash。",
     },
     # ---------------- Kimi ----------------
     {
@@ -159,8 +169,18 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "base_url": "https://api.moonshot.cn",
         "model": "kimi-k3",
         "json_mode": True,
+        "context_k": 1000,
+        "note": "最新一代（2.8T、百万上下文），中文长文与 Agent 能力突出。若报 model 不存在，按 Moonshot 控制台显示的 ID 改。",
+    },
+    {
+        "id": "kimi-k2.7-code",
+        "label": "Kimi K2.7 Code",
+        "vendor": "Moonshot",
+        "base_url": "https://api.moonshot.cn",
+        "model": "kimi-k2.7-code",
+        "json_mode": True,
         "context_k": 256,
-        "note": "最新一代，中文长文与 Agent 能力突出。若报 model 不存在，按 Moonshot 控制台显示的 ID 改。",
+        "note": "编码专用档；长上下文指令跟随更稳。纯剧本写作也可试，以控制台 ID 为准。",
     },
     {
         "id": "kimi-k2.6",
@@ -175,85 +195,117 @@ MODEL_PRESETS: List[Dict[str, object]] = [
     # ---------------- Claude（OpenAI 兼容端点） ----------------
     {
         "id": "claude-opus-5",
+        "label": "Claude Opus 5.5",
+        "vendor": "Anthropic",
+        "base_url": "https://api.anthropic.com/v1",
+        "model": "claude-opus-5-5",
+        "json_mode": False,
+        "context_k": 1000,
+        "note": "最新旗舰（ID 未在线校验，以 Anthropic 控制台为准）。长文改写与复杂创作口碑好；国内需自备网络条件，不支持 JSON 模式。",
+    },
+    {
+        "id": "claude-opus",
         "label": "Claude Opus 5",
         "vendor": "Anthropic",
         "base_url": "https://api.anthropic.com/v1",
         "model": "claude-opus-5",
         "json_mode": False,
-        "context_k": 200,
-        "note": "最新一代（ID 未在线校验，以 Anthropic 控制台为准）。文风与长文改写口碑好；国内需自备网络条件，不支持 JSON 模式。",
-    },
-    {
-        "id": "claude-opus",
-        "label": "Claude Opus 4.8",
-        "vendor": "Anthropic",
-        "base_url": "https://api.anthropic.com/v1",
-        "model": "claude-opus-4-8",
-        "json_mode": False,
-        "context_k": 200,
+        "context_k": 1000,
         "note": "上一代旗舰（ID 未在线校验）。若报 model 不存在，按控制台显示的名字改；不支持 JSON 模式。",
     },
     {
         "id": "claude-sonnet",
-        "label": "Claude Sonnet 4.8",
+        "label": "Claude Sonnet 5.5",
         "vendor": "Anthropic",
         "base_url": "https://api.anthropic.com/v1",
-        "model": "claude-sonnet-4-8",
+        "model": "claude-sonnet-5-5",
         "json_mode": False,
-        "context_k": 200,
-        "note": "轻量档：更快更省，适合日常润色（ID 未在线校验）。国内需自备网络条件；不支持 JSON 模式。",
+        "context_k": 1000,
+        "note": "速度与质量折中，适合日常润色（ID 未在线校验）。国内需自备网络条件；不支持 JSON 模式。",
+    },
+    {
+        "id": "claude-haiku",
+        "label": "Claude Haiku 5.5",
+        "vendor": "Anthropic",
+        "base_url": "https://api.anthropic.com/v1",
+        "model": "claude-haiku-5-5",
+        "json_mode": False,
+        "context_k": 1000,
+        "note": "最快最省配（ID 未在线校验）。适合大批量短改、分类与摘要；不支持 JSON 模式。",
     },
     # ---------------- Gemini（OpenAI 兼容端点） ----------------
     {
         "id": "gemini-flash",
-        "label": "Gemini 3.7 Flash",
+        "label": "Gemini 3.8 Flash",
         "vendor": "Google",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "model": "gemini-3.7-flash",
+        "model": "gemini-3.8-flash",
         "json_mode": True,
         "context_k": 1000,
-        "note": "Google 官方文档标注的最新主力 Flash（ID 未在线校验）。超长上下文、价格低；国内需自备网络条件。",
+        "note": "Google 最新主力 Flash（ID 未在线校验）。超长上下文、价格低；国内需自备网络条件。",
     },
     {
         "id": "gemini-pro",
-        "label": "Gemini 3.7 Pro",
+        "label": "Gemini 4 Argon",
         "vendor": "Google",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "model": "gemini-3.7-pro",
+        "model": "gemini-4-argon",
         "json_mode": True,
         "context_k": 1000,
-        "note": "旗舰档（ID 未在线校验；若控制台暂无该档，改用 Flash）。国内需自备网络条件。",
+        "note": "Gemini 4 旗舰（ID 未在线校验）。复杂推理与长程任务；国内需自备网络条件。",
     },
     # ---------------- OpenAI ----------------
     {
-        "id": "gpt-5.5",
-        "label": "OpenAI GPT-5.5",
+        "id": "gpt-6-astra",
+        "label": "OpenAI GPT-6 Astra",
         "vendor": "OpenAI",
         "base_url": "https://api.openai.com",
-        "model": "gpt-5.5",
+        "model": "gpt-6-astra",
         "json_mode": True,
-        "context_k": 1000,
-        "note": "最新一代（ID 未在线校验，以 OpenAI 控制台为准）。国际访问需要网络条件。",
+        "context_k": 1050,
+        "note": "最新旗舰（ID 未在线校验，以 OpenAI 控制台为准）。复杂推理与创作；国际访问需要网络条件。",
     },
     {
-        "id": "gpt-5",
-        "label": "OpenAI GPT-5",
+        "id": "gpt-6.1-sol",
+        "label": "OpenAI GPT-6.1 Sol",
         "vendor": "OpenAI",
         "base_url": "https://api.openai.com",
-        "model": "gpt-5",
+        "model": "gpt-6.1-sol",
         "json_mode": True,
-        "context_k": 400,
-        "note": "上一代，仍可用；模型名以 OpenAI 控制台为准。",
+        "context_k": 1050,
+        "note": "接近 Astra 的主力均衡档（ID 未在线校验）。质量与成本折中，日常写作推荐。",
     },
     {
-        "id": "gpt-5-mini",
-        "label": "OpenAI GPT-5-mini",
+        "id": "gpt-6-luna",
+        "label": "OpenAI GPT-6 Luna",
         "vendor": "OpenAI",
         "base_url": "https://api.openai.com",
-        "model": "gpt-5-mini",
+        "model": "gpt-6-luna",
         "json_mode": True,
-        "context_k": 400,
-        "note": "国际访问需要网络条件；轻量快速，日常写作够用。",
+        "context_k": 1050,
+        "note": "轻量快速档（ID 未在线校验）。高并发、草稿与短改够用。",
+    },
+    # ---------------- Grok（xAI） ----------------
+    {
+        "id": "grok-4.7",
+        "label": "Grok 4.7",
+        "vendor": "xAI",
+        "base_url": "https://api.x.ai",
+        "model": "grok-4.7",
+        "json_mode": True,
+        "context_k": 500,
+        "note": "xAI 最新旗舰（ID 未在线校验）。编码与知识工作；国内需自备网络条件。",
+    },
+    # ---------------- Mistral ----------------
+    {
+        "id": "mistral-medium",
+        "label": "Mistral Medium 3.5",
+        "vendor": "Mistral",
+        "base_url": "https://api.mistral.ai",
+        "model": "mistral-medium-3-5",
+        "json_mode": True,
+        "context_k": 256,
+        "note": "Mistral 前沿多模态档（ID 未在线校验）。Agent / 编码场景口碑好；国内需自备网络条件。",
     },
     # ---------------- 本地 ----------------
     {
@@ -265,6 +317,16 @@ MODEL_PRESETS: List[Dict[str, object]] = [
         "json_mode": False,
         "context_k": 32,
         "note": "免费离线。需在本机运行 Ollama 并已拉取模型（如 qwen3:8b）；模型名可改。本地小模型不支持 JSON 模式。",
+    },
+    {
+        "id": "local-lmstudio",
+        "label": "本地 LM Studio（离线）",
+        "vendor": "LM Studio",
+        "base_url": "http://localhost:1234/v1",
+        "model": "local-model",
+        "json_mode": False,
+        "context_k": 32,
+        "note": "免费离线。需在本机启动 LM Studio 的本地服务器，并把模型名改成已加载的那个；不支持 JSON 模式。",
     },
 ]
 

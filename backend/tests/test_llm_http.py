@@ -322,7 +322,7 @@ def test_json_mode_dropped_for_unsupporting_model():
     这曾经是个真问题：预设里的 json_mode 只是一个标记，没有任何代码用它，
     选 Claude / 思考模式时照样把参数发出去。
     """
-    for model in ("claude-opus-5", "claude-sonnet-4-8", "qwen3:8b"):
+    for model in ("claude-opus-5-5", "claude-sonnet-5-5", "qwen3:8b"):
         body = _post_body_for(model, response_format=JSON_FMT)
         assert "response_format" not in body, f"{model} 仍然带了 response_format"
 

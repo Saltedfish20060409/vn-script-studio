@@ -38,5 +38,5 @@ def test_pro_still_passes_through():
 def test_other_vendors_omit_thinking():
     assert resolve_chat_model("kimi-k2.6") == ("kimi-k2.6", None)
     assert resolve_chat_model("kimi-k3") == ("kimi-k3", None)
-    assert resolve_chat_model("gpt-5") == ("gpt-5", None)
+    assert resolve_chat_model("gpt-6.1-sol") == ("gpt-6.1-sol", None)
     assert resolve_chat_model("glm-5.3") == ("glm-5.3", None)

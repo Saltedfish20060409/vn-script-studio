@@ -38,7 +38,7 @@ def test_already_thinking_or_unknown_models_are_left_alone():
     # 已经是思考档：没有兄弟，原样返回
     assert resolve_write_model("deepseek-flash-think") == "deepseek-flash-think"
     # 别的厂商 / 自建端点：**不许替作者换模型**（我们也不知道那一档支不支持思考）
-    for m in ("glm-5.3", "doubao-seed-2-1-turbo-260628", "qwen3.7-max", "my-local-llama"):
+    for m in ("glm-5.3", "doubao-seed-2-1-turbo-260628", "qwen3.8-max", "my-local-llama"):
         assert resolve_write_model(m) == m
     # 空值回落到默认档，且默认档有兄弟
     assert resolve_write_model(None) == "deepseek-flash-think"
