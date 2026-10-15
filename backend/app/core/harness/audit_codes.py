@@ -137,6 +137,22 @@ AUDIT_CODE_BASIS: Dict[str, str] = {
     "death_then_speaks": (
         "`app/core/write_precheck.py`：从 `app/core/continuity_graph.py` 捞出的「死人说话」"
     ),
+    # ---- 世界状态 ConsistencyHarness（app/core/harness/world_consistency.py）----
+    "ws_dead_character": (
+        "`app/core/harness/world_consistency.py`：WorldState 记角色已故/不在场，"
+        "本稿或后章仍将其当作在场（写后闸可挡）"
+    ),
+    "ws_status_conflict": (
+        "`app/core/harness/world_consistency.py`：角色 status 单值事实与提议冲突"
+    ),
+    "ws_gone_location": (
+        "`app/core/harness/world_consistency.py`：地点在 WorldState 已标废弃/已毁，"
+        "本稿仍当作可用"
+    ),
+    "ws_fact_interval_clash": (
+        "`app/core/harness/world_consistency.py`：原子事实有效区间碰撞"
+        "（FactTrack 风格单值关系冲突）"
+    ),
     # ---- 缺陷标记（不是规则）----
     AUDIT_CODE_MISSING: (
         "**不是规则**：`app/core/write_gate.py` 在收到没有 code 的体检问题时的标记。"
@@ -153,6 +169,10 @@ CHAPTER_STABLE_CODES: FrozenSet[str] = frozenset(
         "gone_location_present",
         "unknown_location_tag",
         "death_then_speaks",
+        "ws_dead_character",
+        "ws_status_conflict",
+        "ws_gone_location",
+        "ws_fact_interval_clash",
     }
 )
 
@@ -217,6 +237,7 @@ DEFECT_MARKER_CODES: FrozenSet[str] = frozenset({AUDIT_CODE_MISSING})
 IN_SCOPE_SOURCES: Tuple[str, ...] = (
     "app/core/narrative_lint.py",
     "app/core/harness/ai_flavor.py",
+    "app/core/harness/world_consistency.py",
     "app/core/pipeline/style_skill.py",
     "app/core/pipeline/beat_check.py",
     "app/core/pipeline/voice_lint.py",
@@ -260,6 +281,10 @@ OUT_OF_SCOPE_SOURCES: Dict[str, str] = {
     ),
     "app/core/critique_contract.py": (
         "码出现在审稿 JSON 契约的 issues[].code 里（模型输出字段），不按 code 归档"
+    ),
+    "app/core/vn_classifiers.py": (
+        "码只出现在子代理廉价预筛结论里（与 SubagentConclusion 合并），"
+        "不按 code 归档；死人出场真源仍以 write_precheck / WorldState harness 为准"
     ),
 }
 

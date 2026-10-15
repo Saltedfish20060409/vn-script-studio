@@ -1077,6 +1077,11 @@ def detect_deterministic(project: VnProject) -> List[Dict[str, Any]]:
         # 绕开窗口，所以章距多远都能对上（见 docs/longrange-consistency-and-eval.md 第八节）
         "unenabled_event": "plot",
         "payoff_terms_mismatch": "plot",
+        # WorldState ConsistencyHarness（FactTrack 区间 / 死人出场）
+        "ws_dead_character": "character",
+        "ws_status_conflict": "character",
+        "ws_gone_location": "location",
+        "ws_fact_interval_clash": "timeline",
     }
 
     def _push(code: Any, chapter: Any, message: Any) -> None:
@@ -1145,6 +1150,15 @@ def detect_deterministic(project: VnProject) -> List[Dict[str, Any]]:
             if isinstance(f, Mapping):
                 _push(f.get("code"), f.get("chapterId"), f.get("message"))
     except Exception:  # noqa: BLE001 — 因果层不可用时跳过
+        pass
+    try:
+        # WorldState 层：原子事实有效区间 + 死人出场（不靠 LLM）。
+        from app.core.harness.world_consistency import detect_world_state_findings
+
+        for f in detect_world_state_findings(project):
+            if isinstance(f, Mapping):
+                _push(f.get("code"), f.get("chapterId"), f.get("message"))
+    except Exception:  # noqa: BLE001 — WorldState 层不可用时跳过
         pass
     return out
 

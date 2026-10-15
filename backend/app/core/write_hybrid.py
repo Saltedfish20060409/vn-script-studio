@@ -119,10 +119,16 @@ def format_hybrid_block(
 ) -> str:
     if not hits:
         return ""
-    lines = ["## 相关检索（hybrid · 本轮指令命中，供对照勿编造）"]
+    # Soft retrieval only — never a consistency truth source. WorldState /
+    # ledger hard anchors take precedence; models must not treat these snippets
+    # as overriding status / timeline / world rules.
+    lines = [
+        "## 相关检索（soft · hybrid/语义 · 氛围与措辞对照，**不是**硬事实；"
+        "不得覆盖世界状态约束）"
+    ]
     used = len(lines[0])
     for h in hits:
-        line = f"- [{h.get('label')}] {h.get('snippet')}"
+        line = f"- [soft|{h.get('label')}] {h.get('snippet')}"
         if used + len(line) + 1 > max_chars:
             lines.append("…（检索块已满，其余命中省略）")
             break

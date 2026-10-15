@@ -231,6 +231,8 @@ def empty_ledger() -> Dict[str, Any]:
         "characterStates": [],
         "foreshadows": [],
         "events": [],
+        #: 可校验世界状态（原子事实 + 有效区间 + provenance）。见 `app.core.world_state`。
+        "worldState": {},
         #: 裁剪痕迹（见 `_retention_record`）。**必须在这里与 get_ledger 都放行**，
         #: 否则会被读路径规范化掉，"账本丢过东西"这件事就又变成不可见的了。
         "retention": {},
@@ -248,6 +250,7 @@ def get_ledger(project: VnProject) -> Dict[str, Any]:
             "characterStates": list(raw.get("characterStates") or []),
             "foreshadows": list(raw.get("foreshadows") or []),
             "events": list(raw.get("events") or []),
+            "worldState": dict(raw.get("worldState") or {}),
             "retention": dict(raw.get("retention") or {}),
             "digestMeta": dict(raw.get("digestMeta") or {}),
             "updatedAt": raw.get("updatedAt") or _now(),
@@ -459,8 +462,14 @@ def format_ledger_for_agent(
     chapters: Optional[List[Any]] = None,
     focus_chapter_id: Optional[str] = None,
     graded: bool = False,
+    prefer_world_state: bool = True,
 ) -> str:
     """Hard-anchor block injected into write/check prompts.
+
+    When ``prefer_world_state`` is True (default) and ``ledger.worldState`` has
+    facts, prepend structured WorldState constraints (checkable truth), then
+    attach a slim legacy ledger summary. Soft hybrid/RAG must not enter this
+    block — callers mark retrieval separately.
 
     超预算时**整段让位**，并把省掉的段名写在块尾——不再从文本中间切一刀。
     原来的 `text[:limit-12]` 会把排在后面的整段静默吃掉，而"章节事实摘要"体积最大
@@ -470,6 +479,22 @@ def format_ledger_for_agent(
     未回收伏笔必须留着，省了哪几卷要写出来"），也与
     `docs/long-context-policy.md` 的"整块让位 + 写进提示词"同一条规矩。
     """
+    if prefer_world_state:
+        ws = ledger.get("worldState") if isinstance(ledger.get("worldState"), dict) else {}
+        if ws.get("facts"):
+            try:
+                from app.core.world_state import format_hard_anchors
+
+                return format_hard_anchors(
+                    ledger,
+                    chapters=chapters,
+                    focus_chapter_id=focus_chapter_id,
+                    limit=limit,
+                    graded=graded,
+                )
+            except Exception:  # noqa: BLE001 — 世界状态渲染失败时回落旧硬锚
+                pass
+
     head = "## 项目硬锚（写作账本·不得推翻已确认事实）"
     if graded:
         head = "## 项目硬锚（写作账本·分级压缩·不得推翻已确认事实）"
@@ -720,6 +745,14 @@ def digest_chapter_into_ledger(
     ledger["events"] = events[-_MAX_EVENTS:]
     ledger["retention"] = _retention_record(ledger, evicted)
     ledger["updatedAt"] = _now()
+    # WorldState sync: atomic facts + event frames (deterministic, no LLM).
+    # Must run after characterStates / events are written so extractors see them.
+    try:
+        from app.core.world_facts import sync_world_state_after_digest
+
+        ledger = sync_world_state_after_digest(project, ledger, chapter_id)
+    except Exception:  # noqa: BLE001 — 世界状态失败绝不能拖垮账本入库
+        pass
     return ledger
 
 
@@ -784,6 +817,28 @@ def auto_digest_ledger(project: VnProject, *, max_chapters: int = AUTO_DIGEST_MA
             kept = [r for r in rows if not r.get(field) or r.get(field) in live_ids]
             if len(kept) != len(rows):
                 ledger[key] = kept
+                pruned = True
+        # WorldState：丢掉指向已删章节的事实 / 事件帧
+        ws = ledger.get("worldState") if isinstance(ledger.get("worldState"), dict) else {}
+        if ws:
+            facts = list(ws.get("facts") or [])
+            frames = list(ws.get("eventFrames") or [])
+            kept_facts = [
+                f
+                for f in facts
+                if str((f.get("source") or {}).get("chapterId") or "") in live_ids
+                or not str((f.get("source") or {}).get("chapterId") or "")
+            ]
+            kept_frames = [
+                f
+                for f in frames
+                if not f.get("chapterId") or f.get("chapterId") in live_ids
+            ]
+            if len(kept_facts) != len(facts) or len(kept_frames) != len(frames):
+                ws = dict(ws)
+                ws["facts"] = kept_facts
+                ws["eventFrames"] = kept_frames
+                ledger["worldState"] = ws
                 pruned = True
 
         # 2) 找出内容变了或还没入库的章节（按叙事顺序处理）

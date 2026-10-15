@@ -168,7 +168,17 @@ python -m app eval --longrange --longrange-chapters 60        # 不需要 API ke
 ④ 分析与上报都**不回选项文案**，只有 `menuId` + `choiceIndex` + 计数——换来的是
 "整条链路零正文"可以被测试机检。
 
-### 7. 长篇记忆第三层：`core/global_memory.py`
+### 7. 世界状态 + 一致性 Harness：`core/world_state.py` / `harness/world_consistency.py`
+
+向量检索（可选 pgvector）**不是**一致性真相源；保存时账本 digest 会增量写入
+`writingLedger.worldState`（原子事实 + 有效区间 + 章节 provenance）。写路径注入时
+优先拼「世界状态约束」硬锚，hybrid/语义检索标为 **soft**，不得覆盖硬约束。
+
+写后闸 / 续写前对账接入 ConsistencyHarness（A 层确定性：死人出场、废弃地点、
+区间碰撞；码：`ws_dead_character` / `ws_gone_location` / `ws_fact_interval_clash`），
+并挂进 `eval_longrange.detect_deterministic`。回归见 `tests/test_world_state_harness.py`。
+
+### 8. 长篇记忆第三层：`core/global_memory.py`
 
 现有记忆只有"每章抽取式摘要"与"每 10 章归档"两级，四十章之后没有"整本书到目前为止"的压缩表示。
 新模块按卷（没有卷就按跨度）聚合，给出每卷的章节范围、字数、**按重要性排序的出场角色**、
@@ -189,7 +199,7 @@ importance = base × recency
 衰减相对**本档末尾**计算，不会拿全书最后一章去压早期的卷；角色在档内最后一章还出场时，
 算式里不出现衰减项（作者不必看一堆 ×1.00）。
 
-### 8. 故事层指标：`core/story_metrics.py`
+### 9. 故事层指标：`core/story_metrics.py`
 
 另有两个作者会直接问、但此前完全没有量具的指标：
 
@@ -221,7 +231,7 @@ importance = base × recency
 > `format_ledger_for_agent` 的未回收清单、**当成事实喂给写作模型**。
 > 现已改为"去掉方括号标记后仍须有正文才算钩子"。
 
-### 9. 分支改进建议（融合）：`core/branch_recommendations.py`
+### 10. 分支改进建议（融合）：`core/branch_recommendations.py`
 
 上面两条数据源本身都只是"事实"：`branch_analysis` 说**结构上**哪里写坏了，
 读者遥测说**经验上**读者怎么选。作者要的是"该怎么办"，所以这一层把两者融起来，
@@ -239,7 +249,7 @@ importance = base × recency
 （小样本下的"没人选"说明不了任何事）；每条建议带 `confidence`（`static` / `evidence`），
 有读者证据才算证据。
 
-### 10. best-of-N 采样 + 确定性重排：`core/pipeline/candidates.py` + 流水线接线
+### 11. best-of-N 采样 + 确定性重排：`core/pipeline/candidates.py` + 流水线接线
 
 以前写作链路是"单次采样 → 确定性检查 → 改写一轮"，没有多候选、也没有打分重排。
 现在 `run_pipeline(candidates=N)` 会用**温度梯形**多采几份，再用**确定性量具**排序选优：
@@ -247,7 +257,7 @@ importance = base × recency
 所以"有 error 就一票否决"是权重算术的结果而不是排序特判。默认 N=1（关），
 开启时 N 封顶 6，并把 N、温度、每份得分、选它的理由与**成本提示**全部写进返回值。
 
-### 11. 自适应选项：`core/adaptive_reader.py` + 导出器开关
+### 12. 自适应选项：`core/adaptive_reader.py` + 导出器开关
 
 "剧情随读者历史变化"此前完全没有，而它通常需要作者先给每个选项打标签（要改模型 +
 编辑器 UI，成本高且容易没人用）。这里换一条路：**从现有的 `set` 块自动派生**。

@@ -298,6 +298,30 @@ def precheck_before_continue(
                 )
             )
 
+    # WorldState 硬约束：与账本状态互补（有有效区间）；续写前只提示 error 级死人出场。
+    try:
+        from app.core.harness.world_consistency import run_consistency_harness
+
+        ws = run_consistency_harness(
+            project, draft=haystack, chapter_id=focus_id or None
+        )
+        seen_subj = {i.subject for i in issues if i.code == "dead_character_present"}
+        for c in ws.conflicts:
+            if c.code != "ws_dead_character":
+                continue
+            if c.subject in seen_subj:
+                continue
+            issues.append(
+                PrecheckIssue(
+                    code="ws_dead_character",
+                    severity="error",
+                    message=c.message,
+                    subject=c.subject,
+                )
+            )
+    except Exception:  # noqa: BLE001 — 世界状态失败不挡续写前对账主路径
+        pass
+
     for fo in foreshadow_report(project):
         if str(fo.get("status") or "") == "paid":
             continue

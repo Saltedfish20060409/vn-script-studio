@@ -172,8 +172,10 @@ async def stage_write(
             chapter_id=chapter_id,
         )
         if hybrid_block:
+            # Hard anchors (WorldState / ledger) first; soft hybrid after so it
+            # cannot crowd out checkable constraints (Lost-in-the-Middle).
             ledger_block = (
-                (hybrid_block + "\n\n" + ledger_block).strip()
+                (ledger_block + "\n\n" + hybrid_block).strip()
                 if ledger_block
                 else hybrid_block
             )

@@ -19,6 +19,11 @@ from app.core.harness.roles import (
     build_role_system,
     otaku_skill_bodies,
 )
+from app.core.harness.world_consistency import (
+    ConsistencyHarnessReport,
+    WorldConflict,
+    run_consistency_harness,
+)
 
 __all__ = [
     "HarnessIssue",
@@ -35,4 +40,7 @@ __all__ = [
     "ROLE_PROMPTS",
     "build_role_system",
     "otaku_skill_bodies",
+    "ConsistencyHarnessReport",
+    "WorldConflict",
+    "run_consistency_harness",
 ]

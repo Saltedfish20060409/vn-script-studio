@@ -195,6 +195,17 @@ def assemble_write_context(
     included.append("project_context")
     included.append("chapter_tail")
     included.append("ledger")
+    # WorldState 约束块由 format_ledger_for_agent / format_hard_anchors 注入；
+    # 在此登记意图，便于 meta / 单测核对「硬锚优先于 soft 检索」。
+    try:
+        from app.core.pipeline.ledger import get_ledger
+        from app.core.world_state import get_world_state
+
+        ws = get_world_state(get_ledger(project))
+        if ws.get("facts"):
+            included.append("world_constraints")
+    except Exception:  # noqa: BLE001
+        pass
 
     return WriteContextBundle(
         system_extra="\n\n".join(system_parts).strip(),

@@ -275,6 +275,48 @@ def gate_continue_draft(
                         )
                         break
 
+        # WorldState ConsistencyHarness (A+B)：独立于生成模型的状态差分。
+        # error → 挡闸；warn → 只提醒。与 dead_character_present 互补（WS 有区间语义）。
+        try:
+            from app.core.harness.world_consistency import run_consistency_harness
+
+            ws_report = run_consistency_harness(
+                project, draft=text, chapter_id=chapter_id
+            )
+            for c in ws_report.conflicts:
+                if c.severity == "warn":
+                    warnings.append(c.message)
+                    continue
+                issues.append(
+                    {
+                        "severity": "error",
+                        "code": c.code,
+                        "message": c.message,
+                    }
+                )
+                lint_issues.append(
+                    NarrativeLintIssue(
+                        severity="error", code=c.code, message=c.message
+                    )
+                )
+                if c.subject:
+                    for ln in text.splitlines():
+                        if c.subject in ln:
+                            mark_hints.append(
+                                {
+                                    "quote": (c.quote or ln.strip())[:240],
+                                    "reason": c.message,
+                                    "instruction": (
+                                        f"世界状态约束冲突（「{c.subject}」），"
+                                        "改掉或删掉本行，不要扩写全章。"
+                                    ),
+                                    "code": c.code,
+                                }
+                            )
+                            break
+        except Exception:  # noqa: BLE001 — harness 失败不该让写后闸崩掉
+            pass
+
         # 声线指纹：画像就绪且本段对白明显跑偏 → 只警告 + 标记 hint，不挡落地
         voice_issues, voice_warns, voice_hints = _voice_drift_hints(
             project, text, chapter_id=chapter_id

@@ -103,6 +103,11 @@ EXPECTED_CODES = {
     "gone_location_present",
     "unknown_location_tag",
     "death_then_speaks",
+    # 世界状态 ConsistencyHarness
+    "ws_dead_character",
+    "ws_status_conflict",
+    "ws_gone_location",
+    "ws_fact_interval_clash",
     # 缺陷标记
     "code_missing",
 }
