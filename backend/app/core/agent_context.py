@@ -331,6 +331,7 @@ _SECTION_ORDER: Tuple[str, ...] = (
     "rules",
     "mustBring",
     "precheck",
+    "chatDecisions",
     "characters",
     "relations",
     "locations",
@@ -1086,6 +1087,7 @@ _SECTION_LABELS_EXTRA: Dict[str, str] = {
     "rules": "写作规则",
     "mustBring": "本场必带",
     "precheck": "续写前对账",
+    "chatDecisions": "对话决定",
     "timeline": "时间线",
     "focus": "当前章正文",
     "selection": "你的选区",
@@ -1104,7 +1106,7 @@ _RETRIEVE_BY_SECTION: Dict[str, str] = {
     "index": "章节目录在「项目」页能看到；也可以让它 get_chapter 读某一章",
     "loreLinks": "让它用 search_lore 按关键词搜设定",
     "lore": "让它用 search_lore / get_lore_entry 取回具体条目",
-    "chatMemory": "更早的对话轮次没有工具可取回，可把关键结论写进要求里",
+    "chatMemory": "更早对话的节选已被压缩；原话用 search_chat 按关键词取回",
     "globalMemory": "全局记忆会随章节推进自动重建（MEMORY_AUTO_ARCHIVE）",
     "longMemory": "长程记忆会随章节推进自动重建（MEMORY_AUTO_ARCHIVE）",
 }
@@ -1119,6 +1121,7 @@ _RETRIEVE_INSTRUCTION_BY_SECTION: Dict[str, str] = {
     "index": "先用 get_chapter 读一下这次要写的那一章，再继续。",
     "lore": "先用 search_lore 把相关的设定条目取回来，然后再继续。",
     "loreLinks": "先用 search_lore 把相关的设定条目取回来，然后再继续。",
+    "chatMemory": "先用 search_chat 把和这次要求相关的更早对话原话取回来，然后再继续。",
 }
 
 
@@ -1899,7 +1902,12 @@ def build_agent_context(
         included.append(f"变量×{len(var_lines)}")
     if selection:
         included.append(f"选区{len(selection)}字")
-    if chatMemory and chatMemory.strip():
+    from app.core.longform_memory import split_chat_memory
+
+    chat_decisions, chat_rest = split_chat_memory(chatMemory or "")
+    if chat_decisions:
+        included.append("对话决定")
+    if chat_rest.strip():
         included.append("对话记忆")
     if longChapterMemory and longChapterMemory.strip():
         included.append("长程章节记忆")
@@ -1990,6 +1998,14 @@ def build_agent_context(
             ),
         ),
         ("precheck", precheck_block),
+        (
+            "chatDecisions",
+            (
+                f"\n{chat_decisions}"
+                if chat_decisions
+                else ""
+            ),
+        ),
         ("bible", f"\n## Story Bible（内部参考，禁止整段搬进正文）\n{bible_block}" if bible_block else ""),
         (
             # 时间线放进**头部**：它是"什么已经发生了"的地基（LongMemEval 的"时间推理"
@@ -2061,8 +2077,8 @@ def build_agent_context(
         (
             "chatMemory",
             (
-                f"\n## 对话滚动记忆（更早轮次压缩，非正式剧情）\n{_clip(chatMemory.strip(), _CLIP_CHAT_MEMORY)}"
-                if chatMemory and chatMemory.strip()
+                f"\n## 对话滚动记忆（更早轮次压缩，非正式剧情；原话用 search_chat 取回）\n{_clip(chat_rest.strip(), _CLIP_CHAT_MEMORY)}"
+                if chat_rest.strip()
                 else ""
             ),
         ),
@@ -2140,7 +2156,7 @@ def build_agent_context(
             "本次上下文较长：请以**开头的角色/设定与末尾的硬规则、「当前章节」正文**为准；"
             "中间的资料是按检索拼上的，可能与本步无关，不要为了用上它们而离题。"
             "提示词里没有的章节或设定就是这次没带来——用 get_chapter / search_script / "
-            "search_lore 取，不要凭印象补写。"
+            "search_lore 取；更早的对话原话用 search_chat 取，不要凭印象补写。"
         )
         included.append("长上下文提醒")
     tail = (

@@ -404,27 +404,132 @@ def build_all_archive_drafts(
     return [build_archive_draft(project, g, span) for g in groups]
 
 
+def _section_rank(title: str) -> int:
+    """越小越该留下。硬锚点与增量承重且难复原；设定快照上下文里已有 bible。"""
+    low = (title or "").lower()
+    if "worldstate" in low or "硬锚" in title:
+        return 0
+    if any(
+        k in low
+        for k in (
+            "character and plot",
+            "character deltas",
+            "relationship deltas",
+            "power / item",
+            "open hooks",
+            "to preserve",
+        )
+    ):
+        return 1
+    if "spine" in low or "脊骨" in (title or ""):
+        return 2
+    if "snapshot" in low or "rolling context" in low:
+        return 4
+    if "read before" in low:
+        return 5
+    return 3
+
+
+def _split_markdown_sections(text: str) -> List[Tuple[str, str]]:
+    """按二级标题切开。没有标题时整段当作一块，避免再从中间对切。"""
+    raw = (text or "").strip()
+    if not raw:
+        return []
+    lines = raw.splitlines()
+    chunks: List[Tuple[str, List[str]]] = []
+    title = ""
+    buf: List[str] = []
+    saw_heading = False
+    for line in lines:
+        if line.startswith("## "):
+            saw_heading = True
+            if title or buf:
+                chunks.append((title, buf))
+            title = line[3:].strip()
+            buf = [line]
+        else:
+            buf.append(line)
+    if title or buf:
+        chunks.append((title, buf))
+    if not saw_heading:
+        return [("", raw)]
+    out: List[Tuple[str, str]] = []
+    for heading, body_lines in chunks:
+        body = "\n".join(body_lines).strip()
+        if body:
+            out.append((heading, body))
+    return out
+
+
+def _fit_priority_blocks(
+    blocks: Sequence[Tuple[str, str, int]],
+    *,
+    max_chars: int,
+) -> str:
+    """按优先级整段装入。装不下时丢掉低优先级整段，并写明省了哪一段。
+
+    承重段（rank ≤ 1）仍放不下时，只从该段末尾截断，不从整篇文档中段对切。
+    """
+    budget = max(200, int(max_chars))
+    reserve = 96
+    kept: List[str] = []
+    omitted: List[str] = []
+    used = 0
+    for title, body, rank in blocks:
+        piece = (body or "").strip()
+        if not piece:
+            continue
+        sep = 2 if kept else 0
+        if used + sep + len(piece) <= budget - reserve:
+            kept.append(piece)
+            used += sep + len(piece)
+            continue
+        room = budget - reserve - used - sep
+        if rank <= 1 and room > 140:
+            note = "\n…（本节后部未展开）"
+            cut = piece[: room - len(note)].rstrip() + note
+            kept.append(cut)
+            used += sep + len(cut)
+            continue
+        label = title.strip() or "未命名段落"
+        if label not in omitted:
+            omitted.append(label)
+    text = "\n\n".join(kept)
+    if omitted:
+        shown = "、".join(omitted[:8])
+        extra = f"，另有 {len(omitted) - 8} 段" if len(omitted) > 8 else ""
+        text = f"{text}\n\n…（因篇幅未展开：{shown}{extra}）".strip()
+    if len(text) > budget:
+        text = text[: budget - 12].rstrip() + "\n…（未展开）"
+    return text
+
+
 def format_memory_for_agent(
     continuity_text: str,
     spine: Optional[List[Dict[str, Any]]] = None,
     max_chars: int = 3200,
 ) -> str:
-    """Compact injection block for Agent context."""
-    parts: List[str] = ["## 长程章节记忆（NovelMaster 风格归档）", ""]
+    """给 Agent 的长程记忆块。超预算时按段落优先级保留，不对整篇做首尾对切。
+
+    保留顺序：WorldState 硬锚点 → 角色/关系/物品/未回收钩子增量 → 最近脊骨
+    → 其余说明 → 设定快照（上下文里已有 bible，最后才丢）。
+    """
+    header = "## 长程章节记忆（NovelMaster 风格归档）"
+    blocks: List[Tuple[str, str, int]] = [(header, header, -1)]
     if spine:
-        parts.append("### 本段脊骨")
+        lines = ["### 本段脊骨"]
         for item in spine[-12:]:
-            parts.append(
+            lines.append(
                 f"- Ch{item.get('index')} `{item.get('title')}`: {item.get('recall')}"
             )
-        parts.append("")
-    body = continuity_text.strip()
-    if len(body) > max_chars:
-        # Prefer spine + head/tail of continuity
-        half = max_chars // 2 - 20
-        body = f"{body[:half]}\n…(记忆切片中间省略)…\n{body[-half:]}"
-    parts.append(body)
-    return "\n".join(parts)
+        blocks.append(("本段脊骨", "\n".join(lines), 2))
+    for title, body in _split_markdown_sections(continuity_text):
+        # 结构化脊骨已经单列最近 12 条，正文里的 Range Spine 整段可让位。
+        if spine and _section_rank(title) == 2:
+            continue
+        blocks.append((title or "连续性正文", body, _section_rank(title)))
+    blocks.sort(key=lambda row: row[2])
+    return _fit_priority_blocks(blocks, max_chars=max_chars)
 
 
 def utc_now() -> datetime:

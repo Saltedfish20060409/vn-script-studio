@@ -41,6 +41,14 @@ def test_format_chat_history_includes_roles():
     assert "车站" in block
 
 
+def test_format_chat_history_keeps_early_decision_outside_tail():
+    messages = [{"role": "user", "content": "不要使用说明书旁白"}]
+    messages += [{"role": "user", "content": f"闲聊{i}"} for i in range(20)]
+    block = format_chat_history(messages, max_turns=4)
+    assert "不要使用说明书旁白" in block
+    assert "闲聊0" not in block
+
+
 def test_format_bible_brief_keeps_five_fields():
     project = _demo_project()
     brief = format_bible_brief(project)

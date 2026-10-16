@@ -399,6 +399,7 @@ async def _agent_steps(
                         args,
                         project=working,
                         chapter_id=request.chapterId,
+                        chat_messages=list(request.messages or []),
                     )
                 trace.append(
                     {

@@ -43,6 +43,43 @@ def test_global_memory_graded_shorter_or_equal():
     assert len(graded) <= len(full) + 40
 
 
+def test_graded_volume_keeps_state_change():
+    from app.core.world_state import make_fact
+
+    p = create_demo_project()
+    first = (p.chapters or [None])[0]
+    assert first is not None
+    ledger = dict(p.writingLedger or {})
+    ledger["worldState"] = {
+        "schemaVersion": 1,
+        "facts": [
+            make_fact(
+                subject="林夏",
+                relation="status",
+                value="alive",
+                chapter_id=first.id,
+                chapter_index=0,
+                valid_to=0,
+                fact_id="alive",
+            ),
+            make_fact(
+                subject="林夏",
+                relation="status",
+                value="dead",
+                chapter_id=first.id,
+                chapter_index=0,
+                quote="身亡",
+                fact_id="dead",
+            ),
+        ],
+    }
+    p = set_ledger(p, ledger)
+    graded = format_global_memory_for_agent(
+        build_global_memory(p), graded=True, max_chars=8000
+    )
+    assert "林夏.status：原为 alive，现为 dead" in graded
+
+
 def test_dead_character_classifier():
     p = create_demo_project()
     name = (

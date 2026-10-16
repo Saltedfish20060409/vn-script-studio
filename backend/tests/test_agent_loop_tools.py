@@ -168,6 +168,23 @@ def test_parse_loop_json_tool_calls():
     assert calls[0]["name"] == "get_chapter"
 
 
+def test_search_chat_finds_earlier_user_line():
+    p = _demo()
+    ok, out = run_agent_tool(
+        "search_chat",
+        {"query": "说明书"},
+        project=p,
+        chat_messages=[
+            {"role": "user", "content": "不要写成说明书旁白"},
+            {"role": "assistant", "content": "好的"},
+            {"role": "user", "content": "接着写车站"},
+        ],
+    )
+    assert ok
+    assert "不要写成说明书旁白" in out
+    assert "车站" not in out
+
+
 def test_legacy_actions_only_means_done_path():
     raw = '{"message":"这是意见","actions":[]}'
     parsed = _parse_loop_json(raw)

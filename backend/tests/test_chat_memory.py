@@ -63,3 +63,29 @@ def test_extractive_fallback_structure():
     bundle = compress_chat_history(many, keep_recent=6, summarize_after=22)
     assert bundle.summarizedCount > 0
     assert len(bundle.recentMessages) == 6
+
+
+def test_compress_pins_user_decisions_and_skips_acks():
+    from app.core.longform_memory import DECISION_HEADING
+
+    older = [
+        _msg("user", "不要写成说明书旁白"),
+        _msg("assistant", "好的"),
+        *[_msg("user", f"随便聊聊第{i}天的天气") for i in range(28)],
+    ]
+    bundle = compress_chat_history(older, keep_recent=6, summarize_after=22)
+    assert DECISION_HEADING in bundle.memoryBlock
+    assert "不要写成说明书旁白" in bundle.memoryBlock
+    assert "[编辑] 好的" not in bundle.memoryBlock
+
+
+def test_later_override_demotes_earlier_decision():
+    older = [
+        _msg("user", "必须用第一人称"),
+        *[_msg("user", f"过程{i}") for i in range(24)],
+        _msg("user", "算了改成第三人称限制叙述"),
+    ]
+    bundle = compress_chat_history(older, keep_recent=4, summarize_after=22)
+    assert "算了改成第三人称限制叙述" in bundle.memoryBlock
+    assert "已被后续决定覆盖" in bundle.memoryBlock
+    assert "必须用第一人称" in bundle.memoryBlock

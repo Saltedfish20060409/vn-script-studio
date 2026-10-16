@@ -191,6 +191,25 @@ def test_memory_layers_keep_their_raised_clip():
 # ---- 2. 不许静默 ------------------------------------------------------------
 
 
+def test_chat_decisions_survive_when_scroll_memory_is_bulky():
+    from app.core.longform_memory import DECISION_HEADING
+
+    memory = (
+        f"{DECISION_HEADING}\n"
+        "- 不要把林夏写成已故\n"
+        "需要更早原话时用 search_chat 检索本会话。\n\n"
+        "## 更早对话节选 ×1\n- [作者] "
+        + ("闲聊" * 3000)
+    )
+    ctx = _context(
+        _project(),
+        chatMemory=memory,
+        referenceDocs="囧" * 40000,
+        maxChars=7000,
+    )
+    assert "不要把林夏写成已故" in ctx.text
+
+
 def test_over_budget_drops_whole_sections_instead_of_slicing_the_middle():
     """超预算时按块让位，并如实说明；不再"从中间砍一刀"。"""
     # 填充字符要挑不会出现在提示词别处的（「参」会撞上「内部参考」里的那个字）
@@ -235,6 +254,7 @@ def test_drop_order_never_touches_protected_sections():
         "style",
         "focus",
         "selection",
+        "chatDecisions",
     }
     assert not (droppable & protected), f"关键块进了丢弃表：{sorted(droppable & protected)}"
     # 两级顺序也不能重叠（否则第二级永远轮不到）

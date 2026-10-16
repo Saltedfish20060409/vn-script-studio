@@ -6,7 +6,7 @@ No shell / filesystem — only in-memory VnProject data.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from app.core.agent_context import chapter_plain
 from app.core.character_voice.corpus import format_corpus_for_prompt
@@ -24,6 +24,17 @@ TOOL_SPECS: List[Dict[str, Any]] = [
             "chapterRef": "章节 id 或标题，可选",
             "chapterRefs": "多个章节 id/标题，逗号分隔，可选（与 chapterRef 二选一）",
             "maxChars": "每章最大字符，默认 12000（读到一半发现不够可再调大）",
+        },
+    },
+    {
+        "name": "search_chat",
+        "description": (
+            "在本会话更早的对话里按关键词检索作者或编辑的原话。"
+            "上下文里的对话节选被压缩之后，用它取回改口、禁令和具体决定，不要凭印象补。"
+        ),
+        "parameters": {
+            "query": "要找的原话关键词",
+            "limit": "最多返回几条，默认 6",
         },
     },
     {
@@ -243,6 +254,7 @@ def run_agent_tool(
     *,
     project: VnProject,
     chapter_id: Optional[str] = None,
+    chat_messages: Optional[Sequence[Any]] = None,
 ) -> Tuple[bool, str]:
     """Execute one tool. Returns (ok, preview_text)."""
     args = arguments if isinstance(arguments, dict) else {}
@@ -279,6 +291,37 @@ def run_agent_tool(
             plain = chapter_plain(ch, project.characters)
             # 长章用"两头都留"（见 `_clip_chapter`）：续写要接的是章末那一拍
             return True, f"#{ch.title or ch.id}\n{_clip_chapter(plain, max_c)}"
+
+        if name == "search_chat":
+            q = str(args.get("query") or "").strip()
+            if not q:
+                return False, "query 必填"
+            if not chat_messages:
+                return True, "本轮没有会话原文可检索。对话决定若已在上下文头部，以那一块为准。"
+            limit = max(1, min(12, int(args.get("limit") or 6)))
+            needle = q.lower()
+            hits: List[str] = []
+            for raw in chat_messages:
+                if isinstance(raw, dict):
+                    role = str(raw.get("role") or "")
+                    content = str(raw.get("content") or "")
+                else:
+                    role = str(getattr(raw, "role", "") or "")
+                    content = str(getattr(raw, "content", "") or "")
+                if role not in ("user", "assistant") or needle not in content.lower():
+                    continue
+                label = "作者" if role == "user" else "编辑"
+                flat = " ".join(content.split())
+                at = flat.lower().find(needle)
+                start = max(0, at - 40)
+                snippet = flat[start : start + 180]
+                prefix = "…" if start else ""
+                hits.append(f"- [{label}] {prefix}{snippet}")
+                if len(hits) >= limit:
+                    break
+            if not hits:
+                return True, f"无命中：{q}"
+            return True, "\n".join(hits)
 
         if name == "search_script":
             q = str(args.get("query") or "").strip()

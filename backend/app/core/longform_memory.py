@@ -58,6 +58,118 @@ class ChatMemoryBundle:
 _DEFAULT_KEEP = 16
 _SUMMARIZE_AFTER = 22
 
+#: 作者改口、禁令、明确决定。只认用户原话，不认模型复述。
+_DECISION_RE = re.compile(
+    r"(不要|别再|不准|禁止|不能|改成|改为|换成|更正|必须|记住|定一下|就按|确认|禁用|算了)"
+)
+_OVERRIDE_RE = re.compile(r"(改成|改为|换成|更正|不要再用|算了)")
+_ACK_RE = re.compile(
+    r"^(好的?|收到|明白了?|嗯+|可以|ok|okay|知道了|行)[。.!！…]*$",
+    re.IGNORECASE,
+)
+DECISION_HEADING = "## 对话决定（作者确认，不得自行推翻）"
+_MAX_PINNED = 12
+
+
+def _plain(text: str) -> str:
+    return " ".join((text or "").split()).strip()
+
+
+def extract_chat_decisions(
+    messages: List[AgentChatMessage],
+) -> tuple[List[str], List[str]]:
+    """返回 (仍有效的决定原文, 已被后续改口覆盖的短行)。
+
+    覆盖规则只看作者后来是否明确改口，不看模型重复了几次。
+    """
+    last_override = -1
+    for i, message in enumerate(messages):
+        if message.role == "user" and _OVERRIDE_RE.search(message.content or ""):
+            last_override = i
+    pinned: List[str] = []
+    superseded: List[str] = []
+    for i, message in enumerate(messages):
+        if message.role != "user":
+            continue
+        text = _plain(message.content)
+        if not text or _ACK_RE.match(text) or not _DECISION_RE.search(text):
+            continue
+        if last_override >= 0 and i < last_override:
+            superseded.append(text[:80])
+        else:
+            pinned.append(text[:400])
+    return pinned[:_MAX_PINNED], superseded[:6]
+
+
+def render_decision_block(pinned: List[str], superseded: List[str]) -> str:
+    if not pinned and not superseded:
+        return ""
+    lines = [DECISION_HEADING]
+    for item in pinned:
+        lines.append(f"- {item}")
+    for item in superseded:
+        lines.append(f"- （已被后续决定覆盖）{item}")
+    lines.append("需要更早原话时用 search_chat 检索本会话。")
+    return "\n".join(lines)
+
+
+def split_chat_memory(block: str) -> tuple[str, str]:
+    """把「对话决定」从滚动节选里拆出来。决定块单独钉住，节选可以让位。"""
+    text = (block or "").strip()
+    if not text or DECISION_HEADING not in text:
+        return "", text
+    start = text.find(DECISION_HEADING)
+    rest_after = text[start + len(DECISION_HEADING) :]
+    next_heading = rest_after.find("\n## ")
+    if next_heading >= 0:
+        decision = (DECISION_HEADING + rest_after[:next_heading]).strip()
+        tail = (text[:start] + rest_after[next_heading + 1 :]).strip()
+    else:
+        decision = text[start:].strip()
+        tail = text[:start].strip()
+    return decision, tail
+
+
+def _older_bullets(
+    messages: List[AgentChatMessage],
+    decision_source: Optional[List[AgentChatMessage]] = None,
+) -> tuple[str, str]:
+    pinned, superseded = extract_chat_decisions(decision_source or messages)
+    pinned_norm = {_plain(item) for item in pinned}
+    superseded_norm = {_plain(item) for item in superseded}
+    bullets: List[str] = []
+    for message in messages:
+        text = _plain(message.content)
+        if not text or _ACK_RE.match(text):
+            continue
+        if message.role == "user" and (
+            text[:400] in pinned_norm or text[:80] in superseded_norm or _DECISION_RE.search(text)
+        ):
+            continue
+        role = "作者" if message.role == "user" else "编辑"
+        bullets.append(f"- [{role}] {text[:80]}")
+    decision = render_decision_block(pinned, superseded)
+    excerpt = ""
+    if bullets:
+        excerpt = f"## 更早对话节选 ×{len(bullets)}\n" + "\n".join(bullets)
+    return decision, excerpt
+
+
+def _merge_decision_blocks(fresh: str, prior: str) -> str:
+    """合并两段决定。后写的原文在前；既有决定里还没出现的行附在后面。"""
+    if not prior:
+        return fresh
+    if not fresh:
+        return prior
+    extra = [
+        line
+        for line in prior.splitlines()
+        if line.startswith("- ") and line not in fresh
+    ]
+    if not extra:
+        return fresh
+    return fresh.rstrip() + "\n" + "\n".join(extra)
+
 
 def compress_chat_history(
     messages: List[AgentChatMessage],
@@ -73,7 +185,7 @@ def compress_chat_history(
     threshold = summarize_after if summarize_after is not None else _SUMMARIZE_AFTER
     usable = [m for m in messages if m.role in ("user", "assistant")]
 
-    if len(usable) <= threshold:
+    if len(usable) <= threshold and keep > 0:
         return ChatMemoryBundle(
             memoryBlock=(prior_memory or "").strip(),
             recentMessages=usable[-keep:] if keep > 0 else [],
@@ -82,18 +194,16 @@ def compress_chat_history(
 
     older = usable[: max(0, len(usable) - keep)]
     recent = usable[-keep:] if keep > 0 else []
-    bullets = []
-    for i, m in enumerate(older):
-        role = "你" if m.role == "user" else "编辑"
-        text = " ".join(m.content.split()).strip()[:100]
-        bullets.append(f"{i + 1}. [{role}] {text}{'…' if len(m.content) > 100 else ''}")
-
-    prior = (prior_memory or "").strip()
+    decision, excerpt = _older_bullets(older, usable)
+    prior_decision, prior_rest = split_chat_memory(prior_memory or "")
+    decision = _merge_decision_blocks(decision, prior_decision)
+    prior_rest = prior_rest.strip()
     memory_block = "\n\n".join(
         p
         for p in [
-            f"（既有记忆）\n{prior}" if prior else "",
-            f"（更早对话节选 ×{len(bullets)}）\n" + "\n".join(bullets),
+            decision,
+            f"（既有记忆）\n{prior_rest}" if prior_rest else "",
+            excerpt,
         ]
         if p
     )
@@ -131,6 +241,20 @@ async def summarize_chat_memory(
     if not older_messages:
         return (prior_memory or "").strip()
 
+    pinned, superseded = extract_chat_decisions(older_messages)
+    prior_decision, prior_rest = split_chat_memory(prior_memory or "")
+    local_decisions = _merge_decision_blocks(
+        render_decision_block(pinned, superseded), prior_decision
+    )
+
+    def _with_decisions(body: str) -> str:
+        text = (body or "").strip()
+        if not local_decisions:
+            return text[:max_chars]
+        if DECISION_HEADING in text:
+            return text[:max_chars]
+        return f"{local_decisions}\n\n{text}".strip()[:max_chars]
+
     transcript = "\n".join(
         f"[{'用户' if m.role == 'user' else '编辑'}] {m.content}"[:300]
         for m in older_messages
@@ -146,7 +270,7 @@ async def summarize_chat_memory(
                 {
                     "role": "user",
                     "content": (
-                        (f"既有记忆：\n{prior_memory}\n\n" if prior_memory and prior_memory.strip() else "")
+                        (f"既有记忆：\n{prior_rest}\n\n" if prior_rest.strip() else "")
                         + f"待整理对话：\n{transcript[:6000]}"
                     ),
                 },
@@ -160,20 +284,24 @@ async def summarize_chat_memory(
         content, _ = content_from_response(res)
         summary = (content or "").strip()
         if len(summary) >= 20:
-            return summary[:max_chars]
+            return _with_decisions(summary)
     except Exception:  # noqa: BLE001 - degrade to extractive on any failure
         pass
 
     # Fallback: extractive bullets (existing behaviour) — or plain squeeze for
     # very short histories where bullet extraction has nothing to extract.
     if len(older_messages) <= 8:
-        lines = [
-            f"- [{'你' if m.role == 'user' else '编辑'}] {' '.join(m.content.split())[:120]}"
-            for m in older_messages
-            if m.role in ("user", "assistant")
-        ]
-        prior = (prior_memory or "").strip()
-        return "\n".join(p for p in [prior, *lines] if p)[:max_chars]
+        lines = []
+        pinned_norm = {_plain(item) for item in pinned}
+        for message in older_messages:
+            if message.role not in ("user", "assistant"):
+                continue
+            text = _plain(message.content)
+            if not text or _ACK_RE.match(text) or text[:400] in pinned_norm:
+                continue
+            role = "作者" if message.role == "user" else "编辑"
+            lines.append(f"- [{role}] {text[:120]}")
+        return _with_decisions("\n".join(p for p in [prior_rest.strip(), *lines] if p))
     return compress_chat_history(
         older_messages, keep_recent=0, prior_memory=prior_memory
     ).memoryBlock[:max_chars]

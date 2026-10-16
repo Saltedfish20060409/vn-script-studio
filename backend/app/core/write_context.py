@@ -52,18 +52,44 @@ def _clip(text: str, max_chars: int) -> str:
     return t[: max(0, max_chars - 12)].rstrip() + "\n…(截断)"
 
 
+def _as_chat_message(raw: Any) -> Any:
+    from app.domain.types import AgentChatMessage
+
+    if isinstance(raw, AgentChatMessage):
+        return raw
+    if isinstance(raw, dict):
+        role = str(raw.get("role") or "")
+        content = str(raw.get("content") or "")
+    else:
+        role = str(getattr(raw, "role", "") or "")
+        content = str(getattr(raw, "content", "") or "")
+    if role not in ("user", "assistant"):
+        return None
+    return AgentChatMessage(role=role, content=content)
+
+
 def format_chat_history(
     messages: Optional[Sequence[Any]],
     *,
     max_chars: int = CHAT_HISTORY_MAX_CHARS,
     max_turns: int = 12,
 ) -> str:
-    """把会话 messages 收成写路径可读的对话块。"""
+    """把会话 messages 收成写路径可读的对话块。
+
+    作者的改口与禁令从全部轮次里钉出来，不随“只留最近若干轮”丢掉。
+    """
     if not messages:
         return ""
+    from app.core.longform_memory import extract_chat_decisions, render_decision_block
+
+    pinned, superseded = extract_chat_decisions(
+        [m for m in (_as_chat_message(raw) for raw in messages) if m is not None]
+    )
+    decision = render_decision_block(pinned, superseded)
     lines: List[str] = []
     # 只取尾部若干轮，避免整段日志淹没正文指令
     tail = list(messages)[-max_turns:]
+    pinned_norm = {p.strip() for p in pinned}
     for m in tail:
         if isinstance(m, dict):
             role = str(m.get("role") or "")
@@ -74,15 +100,21 @@ def format_chat_history(
         content = content.strip()
         if not content:
             continue
+        if role == "user" and " ".join(content.split())[:400] in pinned_norm:
+            continue
         label = "作者" if role == "user" else ("助手" if role == "assistant" else role or "消息")
         # 单条过长时先裁，避免一轮占满预算
         if len(content) > 1200:
             content = content[:1188].rstrip() + "…(截断)"
         lines.append(f"{label}：{content}")
-    if not lines:
+    if not lines and not decision:
         return ""
-    body = "\n".join(lines)
-    return "## 最近对话\n" + _clip(body, max_chars)
+    recent = "## 最近对话\n" + "\n".join(lines) if lines else ""
+    if decision and len(decision) >= max_chars:
+        return _clip(decision, max_chars)
+    room = max_chars - (len(decision) + 2 if decision else 0)
+    recent = _clip(recent, room) if recent else ""
+    return "\n\n".join(p for p in (decision, recent) if p)
 
 
 def format_bible_brief(project: Any, *, max_chars: int = BIBLE_BRIEF_MAX_CHARS) -> str:

@@ -324,6 +324,70 @@ def _key_events(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     ]
 
 
+_STATE_RELATIONS = frozenset(
+    {"status", "relation", "holds", "location", "alive", "dead"}
+)
+
+
+def _state_change_lines(
+    project: VnProject, rows: Sequence[Dict[str, Any]]
+) -> List[str]:
+    """本档里改过的硬状态。出场次数不参与取舍；被覆盖的旧值只留「原为 / 现为」一行。"""
+    if not rows:
+        return []
+    try:
+        from app.core.pipeline.ledger import get_ledger
+        from app.core.world_state import get_world_state
+
+        world = get_world_state(get_ledger(project))
+    except Exception:  # noqa: BLE001 — 账本脏数据不该让记忆层崩掉
+        return []
+    facts = [f for f in (world.get("facts") or []) if isinstance(f, dict)]
+    if not facts:
+        return []
+    vol_indexes = {int(r["index"]) - 1 for r in rows}
+    as_of = max(vol_indexes)
+    grouped: Dict[tuple, List[Dict[str, Any]]] = {}
+    for fact in facts:
+        relation = str(fact.get("relation") or "")
+        if relation not in _STATE_RELATIONS:
+            continue
+        start = int(fact.get("validFrom") or 0)
+        if start not in vol_indexes:
+            continue
+        subject = str(fact.get("subject") or "").strip()
+        if not subject:
+            continue
+        grouped.setdefault((subject, relation), []).append(fact)
+
+    lines: List[str] = []
+    for (subject, relation), group in grouped.items():
+        group.sort(key=lambda fact: int(fact.get("validFrom") or 0))
+        current = None
+        previous = None
+        for fact in group:
+            start = int(fact.get("validFrom") or 0)
+            end = fact.get("validTo")
+            active = start <= as_of and (end is None or as_of < int(end))
+            if active:
+                current = fact
+            elif end is not None and int(end) <= as_of:
+                previous = fact
+        if current is None and previous is None:
+            continue
+        if (
+            current is not None
+            and previous is not None
+            and str(previous.get("value") or "") != str(current.get("value") or "")
+        ):
+            lines.append(
+                f"{subject}.{relation}：原为 {previous.get('value')}，现为 {current.get('value')}"
+            )
+        elif current is not None:
+            lines.append(f"{subject}.{relation}：{current.get('value')}")
+    return lines[:8]
+
+
 def _open_foreshadows(project: VnProject) -> List[Dict[str, Any]]:
     """未回收伏笔：复用 ``ledger.foreshadow_report``，只留 status == "open" 的。
 
@@ -438,6 +502,7 @@ def _build_volume(
         "wordCount": words,
         "characters": characters[:MAX_VOLUME_CHARACTERS],
         "keyEvents": _key_events(rows),
+        "stateChanges": _state_change_lines(project, rows),
         "openForeshadows": [
             h for h in hooks if str(h.get("plantedChapter") or "") in chapter_ids
         ],
@@ -637,6 +702,8 @@ def _volume_block(volume: Dict[str, Any]) -> str:
             lines.append(f"  - 第{event['index']}章《{event['title']}》：{event['beatSummary']}{tail}")
     else:
         lines.append("- 关键事件：（本档还没有写出内容）")
+    for change in volume.get("stateChanges") or []:
+        lines.append(f"- 状态：{change}")
     hooks = volume.get("openForeshadows") or []
     if hooks:
         joined = "；".join(
@@ -671,6 +738,8 @@ def _volume_block_graded(volume: Dict[str, Any]) -> str:
         for event in events[-2:]:
             beat = _clip(event.get("beatSummary") or "", 48)
             lines.append(f"- 第{event.get('index')}章：{beat}")
+    for change in (volume.get("stateChanges") or [])[:6]:
+        lines.append(f"- 状态：{change}")
     hooks = volume.get("openForeshadows") or []
     if hooks:
         lines.append(f"- 本卷未回收伏笔 {len(hooks)} 条（详见上方清单）")
