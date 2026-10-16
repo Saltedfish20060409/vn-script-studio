@@ -991,8 +991,8 @@ async def run_agent_loop(
         else:
             final_message = "本轮没有产出可用说明，请换个问法再试。"
     elif _is_echo_of_tool_result(final_message, last_tool_text):
-        # 模型复读了工具读到的章节/资料原文（如 Agnes 类忽略 JSON 协议、
-        # 对工具结果理解弱的模型）：明示用户，避免把"复读"当成正常回复。
+        # 模型复读了工具读到的章节/资料原文（忽略 JSON 协议、
+        # 对工具结果理解弱的模型会这样）：明示用户，避免把复读当成正常回复。
         final_message = (
             "模型复述了工具读取的章节/资料原文，没有给出实际分析。"
             "请重试；若多次出现，建议更换模型（当前模型可能不支持本 Agent 的"
