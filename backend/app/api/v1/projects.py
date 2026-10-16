@@ -450,6 +450,23 @@ async def put_project(
         server_vn = row_to_vn(row)
         client_vn = normalize_project(dict(body.data))
         merged = merge_project_changes(server_vn, client_vn, chapter_ids, sections)
+        if set(sections or []) & {"bible", "characters", "locations"}:
+            from app.core.pipeline.ledger import get_ledger, set_ledger
+            from app.core.world_state import (
+                mark_facts_needs_reinterpret,
+                subjects_affected_by_setting_edit,
+            )
+
+            hit = subjects_affected_by_setting_edit(server_vn, merged)
+            if hit:
+                merged = set_ledger(
+                    merged,
+                    mark_facts_needs_reinterpret(
+                        get_ledger(merged),
+                        subjects=hit,
+                        reason="设定已改动，事实待重解释",
+                    ),
+                )
         # JSONB split stage 1: persist blob + chapter rows together.
         await sync_chapter_rows_from_vn(db, row, merged, tz_offset_minutes=tz_offset)
         from app.services.snapshots import maybe_auto_snapshot
@@ -468,7 +485,24 @@ async def put_project(
 
     data = dict(body.data)
     data["id"] = project_id
+    server_vn = row_to_vn(row)
     vn = normalize_project(data)
+    from app.core.pipeline.ledger import get_ledger, set_ledger
+    from app.core.world_state import (
+        mark_facts_needs_reinterpret,
+        subjects_affected_by_setting_edit,
+    )
+
+    hit = subjects_affected_by_setting_edit(server_vn, vn)
+    if hit:
+        vn = set_ledger(
+            vn,
+            mark_facts_needs_reinterpret(
+                get_ledger(vn),
+                subjects=hit,
+                reason="设定已改动，事实待重解释",
+            ),
+        )
     await sync_chapter_rows_from_vn(db, row, vn, tz_offset_minutes=tz_offset)
     from app.services.snapshots import maybe_auto_snapshot
 

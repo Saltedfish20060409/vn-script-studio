@@ -153,6 +153,19 @@ AUDIT_CODE_BASIS: Dict[str, str] = {
         "`app/core/harness/world_consistency.py`：原子事实有效区间碰撞"
         "（FactTrack 风格单值关系冲突）"
     ),
+    # ---- 世界状态 C 层语义（app/core/harness/world_semantic.py）----
+    "ws_motive": (
+        "`app/core/harness/world_semantic.py`：角色动机/性格与已建立状态明显矛盾"
+        "（窄 LLM 裁判；写后闸默认 warn）"
+    ),
+    "ws_knowledge": (
+        "`app/core/harness/world_semantic.py`：角色使用了不应知道的信息"
+        "（隐含知识泄露；写后闸默认 warn）"
+    ),
+    "ws_world_rule": (
+        "`app/core/harness/world_semantic.py`：正文违反世界观规则/禁忌"
+        "（写后闸默认 warn）"
+    ),
     # ---- 缺陷标记（不是规则）----
     AUDIT_CODE_MISSING: (
         "**不是规则**：`app/core/write_gate.py` 在收到没有 code 的体检问题时的标记。"
@@ -226,6 +239,10 @@ DRAFT_LOCAL_CODES: FrozenSet[str] = frozenset(
         "antipattern:process_faq",
         "antipattern:inner_os",
         "antipattern:fake_choice",
+        # C 层语义：随每一次生成变化，不进章属性状态
+        "ws_motive",
+        "ws_knowledge",
+        "ws_world_rule",
     }
 )
 
@@ -238,6 +255,7 @@ IN_SCOPE_SOURCES: Tuple[str, ...] = (
     "app/core/narrative_lint.py",
     "app/core/harness/ai_flavor.py",
     "app/core/harness/world_consistency.py",
+    "app/core/harness/world_semantic.py",
     "app/core/pipeline/style_skill.py",
     "app/core/pipeline/beat_check.py",
     "app/core/pipeline/voice_lint.py",

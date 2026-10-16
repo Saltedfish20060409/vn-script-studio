@@ -28,11 +28,10 @@ function clip(s: string, n: number): string {
 }
 
 /**
- * 账本 / 摘要视图：把服务端**保存时自动攒**的两样东西翻给用户看。
+ * 账本 / 摘要（调试）视图：观测保存时自动攒下的摘要与 writingLedger / WorldState。
  *
- * 为什么要有这一页（2026-09 结论）：自动生成的章节摘要此前 159/159 项目都有，
- * 但前端没有任何地方展示，等于没做；账本更是只躺在聊天流里。用户看不见，
- * 就会以为"这个功能不存在"。
+ * 主读者是 Agent（硬锚注入），不是作者日常工作台。入口默认隐藏，
+ * 见 `lib/debugFlags.ts`（`vn.debugLedger=1`）。
  */
 export function ProjectLedgerPanel({ project, onOpenChapter }: Props) {
   const ledger = useMemo(() => project.writingLedger || {}, [project.writingLedger]);
@@ -53,6 +52,10 @@ export function ProjectLedgerPanel({ project, onOpenChapter }: Props) {
 
   return (
     <div className={styles.wrap} data-testid="project-ledger-panel">
+      <p className={styles.note} role="note">
+        调试页：这里的摘要与事实主要给 AI 续写用，保存时会自动更新。普通写作不必常看；
+        冲突请在写后闸用「标记批改」或「接受为合法转折」处理。
+      </p>
       <div className={styles.head}>
         <div className={styles.cards}>
           <div className={styles.card}>

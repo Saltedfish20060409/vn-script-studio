@@ -87,7 +87,8 @@ test("文件菜单：二级页都能打开，返回正文后稿纸还在", async
   await expect(page.getByTestId("view-drawer")).toBeVisible();
   await closeOverlay(page);
 
-  for (const label of ["本地化", "成员", "账本 / 摘要"]) {
+  // 「账本 / 摘要」已降级为调试入口（localStorage vn.debugLedger），不进默认文件菜单。
+  for (const label of ["本地化", "成员"]) {
     await openFilePage(page, label);
     await expect(page.getByTestId("file-backstage")).toBeVisible();
     await page.getByTestId("backstage-close").click();

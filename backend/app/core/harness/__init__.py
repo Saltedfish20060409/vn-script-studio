@@ -24,6 +24,11 @@ from app.core.harness.world_consistency import (
     WorldConflict,
     run_consistency_harness,
 )
+from app.core.harness.world_semantic import (
+    merge_c_into_write_gate,
+    parse_semantic_issues,
+    run_semantic_layer_c,
+)
 
 __all__ = [
     "HarnessIssue",
@@ -43,4 +48,7 @@ __all__ = [
     "ConsistencyHarnessReport",
     "WorldConflict",
     "run_consistency_harness",
+    "run_semantic_layer_c",
+    "parse_semantic_issues",
+    "merge_c_into_write_gate",
 ]

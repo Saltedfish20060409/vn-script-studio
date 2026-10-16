@@ -86,6 +86,7 @@ import { PwaInstallPrompt } from "./PwaInstallPrompt";
 import { ProjectExportPanel } from "./ProjectExportPanel";
 import { ProjectHistoryPanel } from "./ProjectHistoryPanel";
 import { ProjectLedgerPanel } from "./ProjectLedgerPanel";
+import { isDebugLedgerEnabled } from "../lib/debugFlags";
 import { WritingStatsPanel } from "./WritingStatsPanel";
 import { StudioBootScreen } from "./StudioBootScreen";
 import { STUDIO_TABS } from "../lib/studioTabs";
@@ -358,7 +359,7 @@ const FILE_PAGE_ENTRIES = [
   ["audit", "稿件体检"],
   ["analysis", "结构分析"],
   ["export", "导出"],
-  ["ledger", "账本 / 摘要"],
+  ["ledger", "账本 / 摘要（调试）"],
   ["assets", "素材"],
   ["localization", "本地化"],
   ["history", "快照 / 分享"],
@@ -3055,7 +3056,7 @@ export function StudioApp() {
           />
         )}
 
-        {sub === "ledger" && project && (
+        {sub === "ledger" && project && isDebugLedgerEnabled() && (
           <ProjectLedgerPanel project={project} onOpenChapter={openChapterInDocument} />
         )}
 

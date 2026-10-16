@@ -167,6 +167,7 @@ def build_synthetic_novel(
     semantic_per_kind: int = 2,
     distractors: int = 3,
     causal_buckets: int = 5,
+    include_world_state: bool = False,
 ) -> Tuple[VnProject, Dict[str, Any]]:
     """造一部 N 章的合成长篇 + 标准答案（planted 矛盾 + 诱导项）。
 
@@ -191,6 +192,10 @@ def build_synthetic_novel(
         # 断裂判定（局部与全篇相反）自然不成立——实测就是这样把两项都变成漏检的。
         {"id": "wu", "defineName": "wu", "displayName": "吴岚"},
         {"id": "han", "defineName": "han", "displayName": "韩序"},
+        # 顾晚 / 乔宁 / 裴宁：WorldState 区间埋点专用，不与死亡/声线共用。
+        {"id": "gu", "defineName": "gu", "displayName": "顾晚"},
+        {"id": "qiao", "defineName": "qiao", "displayName": "乔宁"},
+        {"id": "pei", "defineName": "pei", "displayName": "裴宁"},
     ]
     locations = [
         {"id": "loc-station", "name": "车站", "imageTag": "bg_station", "description": "老旧的站台"},
@@ -322,6 +327,7 @@ def build_synthetic_novel(
                 subject=who,
             )
         )
+
 
     # ② 时间线顺序矛盾（order 与章节先后不一致）——这是本基准**唯一**的受控顺序矛盾
     for k in range(deterministic_per_kind):
@@ -547,6 +553,123 @@ def build_synthetic_novel(
                 subject=who,
             )
         )
+    # 默认关闭：多占章节会挤掉伏笔/因果埋点。量具测试显式打开。
+    ws_facts: List[dict] = []
+    if include_world_state:
+        from app.core.world_state import make_fact as _ws_make_fact
+
+        for k in range(min(1, deterministic_per_kind)):
+            pair = pick_free(target_bucket(k, 4))
+            if pair is None:
+                continue
+            est, conflict = pair
+            death_line = "顾晚去世了。"
+            blocks_by_chapter[ch_ids[est]].insert(2, _narr(death_line))
+            blocks_by_chapter[ch_ids[conflict]].insert(2, _dlg("gu", "我还在。"))
+            ws_facts.append(
+                _ws_make_fact(
+                    subject="顾晚",
+                    relation="status",
+                    value="dead",
+                    chapter_id=ch_ids[est],
+                    chapter_index=est,
+                    quote=death_line,
+                    confidence=0.95,
+                )
+            )
+            planted.append(
+                Planted(
+                    id=f"ws-dead-{k}",
+                    category="character",
+                    kind="ws_dead_character",
+                    tier="deterministic",
+                    establishedChapter=ch_ids[est],
+                    conflictChapter=ch_ids[conflict],
+                    distance=conflict - est,
+                    establishedQuote=death_line,
+                    conflictQuote="顾晚：我还在。",
+                    description=f"世界状态记顾晚已故，第{conflict + 1}章仍出场",
+                    subject="顾晚",
+                )
+            )
+        hold_names = ["乔宁", "裴宁"]
+        for k in range(min(1, deterministic_per_kind)):
+            pair = pick_free(target_bucket(k, 5))
+            if pair is None:
+                continue
+            est, conflict = pair
+            who = hold_names[k % len(hold_names)]
+            setup = f"{who}拿着钥匙。"
+            clash = f"{who}拿着信。"
+            blocks_by_chapter[ch_ids[est]].insert(2, _narr(setup))
+            blocks_by_chapter[ch_ids[conflict]].insert(2, _narr(clash))
+            fact = _ws_make_fact(
+                subject=who,
+                relation="holds",
+                value="钥匙",
+                chapter_id=ch_ids[est],
+                chapter_index=est,
+                quote=setup,
+                confidence=0.9,
+            )
+            fact["validTo"] = conflict + 1
+            ws_facts.append(fact)
+            planted.append(
+                Planted(
+                    id=f"ws-holds-{k}",
+                    category="timeline",
+                    kind="ws_fact_interval_clash",
+                    tier="deterministic",
+                    establishedChapter=ch_ids[est],
+                    conflictChapter=ch_ids[conflict],
+                    distance=conflict - est,
+                    establishedQuote=setup,
+                    conflictQuote=clash,
+                    description=f"{who}持有物从钥匙变为信，区间覆盖到冲突章",
+                    subject=who,
+                )
+            )
+        for kind, setup, clash, desc in (
+            (
+                "ws_motive",
+                "顾晚发誓再也不碰那把钥匙。",
+                "顾晚忽然很想把钥匙交出去。",
+                "动机前后矛盾（C 层，确定性器不报）",
+            ),
+            (
+                "ws_knowledge",
+                "只有死者知道暗号青鸟。",
+                "顾晚说出了暗号青鸟。",
+                "隐含知识泄露（C 层，确定性器不报）",
+            ),
+        ):
+            pair = pick_free(target_bucket(0 if kind == "ws_motive" else 1, 6))
+            if pair is None:
+                free = [i for i, cid in enumerate(ch_ids) if cid not in used_chapters]
+                if len(free) < 2:
+                    continue
+                est_i, con_i = free[0], free[1]
+                used_chapters.add(ch_ids[est_i])
+                used_chapters.add(ch_ids[con_i])
+                pair = (est_i, con_i)
+            est, conflict = pair
+            blocks_by_chapter[ch_ids[est]].insert(2, _narr(setup))
+            blocks_by_chapter[ch_ids[conflict]].insert(2, _narr(clash))
+            planted.append(
+                Planted(
+                    id=f"{kind}-0",
+                    category="character",
+                    kind=kind,
+                    tier="semantic",
+                    establishedChapter=ch_ids[est],
+                    conflictChapter=ch_ids[conflict],
+                    distance=conflict - est,
+                    establishedQuote=setup,
+                    conflictQuote=clash,
+                    description=desc,
+                    subject="顾晚",
+                )
+            )
 
     # ⑦ 未回收伏笔：账本里埋一个钩子，全书结束都没回收。
     #    先给两条已回收的，保证回收率不是 0/0（也就有了"已回收不该被报"的对照）。
@@ -721,6 +844,17 @@ def build_synthetic_novel(
             )
         )
 
+    ledger_blob: Dict[str, Any] = {}
+    if foreshadow_seed:
+        ledger_blob["foreshadows"] = foreshadow_seed
+    if ws_facts:
+        ledger_blob["worldState"] = {
+            "schemaVersion": 1,
+            "facts": ws_facts,
+            "eventFrames": [],
+            "version": 1,
+        }
+
     project = normalize_project(
         {
             "id": "bench-longrange",
@@ -730,7 +864,7 @@ def build_synthetic_novel(
             "variables": variables,
             "timeline": timeline,
             "bible": {"world": "多雨的城市。", "outline": "两人在站台反复相遇。"},
-            "writingLedger": {"foreshadows": foreshadow_seed} if foreshadow_seed else None,
+            "writingLedger": ledger_blob or None,
             "chapters": [
                 _chapter(cid, chapter_titles[i], blocks_by_chapter[cid])
                 for i, cid in enumerate(ch_ids)

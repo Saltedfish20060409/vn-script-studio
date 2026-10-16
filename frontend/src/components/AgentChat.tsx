@@ -14,6 +14,7 @@ import {
   getProjectMentors,
   harnessLint,
   listLenses,
+  pipelineAcceptWorldExtension,
   pipelineGate,
   pipelineLedgerDigest,
   pipelineRun,
@@ -460,6 +461,16 @@ export function AgentChat({
   const [runInfoOpen, setRunInfoOpen] = useState<boolean>(() => readRunInfoOpen());
   const [gateMarkHints, setGateMarkHints] = useState<
     Array<{ quote?: string; reason?: string; instruction?: string; code?: string }>
+  >([]);
+  /** 写后闸：可「接受为合法转折」写回 WorldState 的冲突 */
+  const [gateAcceptCandidates, setGateAcceptCandidates] = useState<
+    Array<{
+      code?: string;
+      subject?: string;
+      message?: string;
+      relation?: string;
+      newValue?: string;
+    }>
   >([]);
   /** P6：结构化审稿 issues（可一键建标记） */
   const [critiquePayload, setCritiquePayload] = useState<CritiquePayload | null>(
@@ -1084,6 +1095,7 @@ export function AgentChat({
     );
     setBusy(true);
     setGateMarkHints([]);
+    setGateAcceptCandidates([]);
     setCritiquePayload(null);
     track(EVENTS.agentTurnStart, {
       capability: opts.turnCapability || "chat",
@@ -1340,6 +1352,17 @@ export function AgentChat({
         ? meta.writeGate.markHints.filter((h) => h && h.quote)
         : [];
       setGateMarkHints(markHints);
+      const acceptCand = Array.isArray(meta?.writeGate?.acceptCandidates)
+        ? meta.writeGate.acceptCandidates.filter((c) => c && c.subject && c.code)
+        : [];
+      setGateAcceptCandidates(acceptCand);
+      const acceptFoot =
+        acceptCand.length > 0
+          ? `世界状态冲突可「接受为合法转折」（只改记忆、不改正文）：${acceptCand
+              .slice(0, 3)
+              .map((c) => `「${c.subject}」`)
+              .join("、")}`
+          : "";
       const markFoot =
         markHints.length > 0
           ? `写后闸失败段可用「标记批改」只改这些（不必整章回炉）：\n${markHints
@@ -1360,6 +1383,7 @@ export function AgentChat({
           ? "上面的「提议」都放进了「项目 → 结构分析 → 待审列表」，你逐条勾选接受后才会写进工程（AI 不会直接改设定库）"
           : "",
         warnings.length ? `未执行：${warnings.join("；")}` : "",
+        acceptFoot,
         markFoot,
         noteUndo,
       ]
@@ -3172,6 +3196,65 @@ export function AgentChat({
                       }}
                     >
                       一键标记批改
+                    </button>
+                  </div>
+                ) : null}
+                {gateAcceptCandidates.length > 0 ? (
+                  <div
+                    className={styles.resumeBar}
+                    role="status"
+                    data-testid="gate-accept-extension"
+                  >
+                    <span>
+                      世界状态冲突：
+                      {gateAcceptCandidates
+                        .slice(0, 2)
+                        .map((c) => `「${c.subject}」`)
+                        .join("、")}
+                      {gateAcceptCandidates.length > 2
+                        ? `等 ${gateAcceptCandidates.length} 处`
+                        : ""}
+                      （剧情转折可接受，不改正文）
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      data-testid="gate-accept-extension-btn"
+                      onClick={async () => {
+                        const first = gateAcceptCandidates[0];
+                        if (!first?.subject || !first?.code) return;
+                        try {
+                          setBusy(true);
+                          const res = await pipelineAcceptWorldExtension(projectId, {
+                            subject: first.subject,
+                            code: first.code,
+                            chapter_id: chapterId || null,
+                            relation: first.relation || null,
+                            new_value: first.newValue || null,
+                            note: "作者在写后闸接受为合法转折",
+                          });
+                          if (res.project) onProjectChange(res.project);
+                          setGateAcceptCandidates((prev) =>
+                            prev.filter(
+                              (c) =>
+                                !(
+                                  c.subject === first.subject &&
+                                  c.code === first.code
+                                )
+                            )
+                          );
+                        } catch (e) {
+                          setError(
+                            e instanceof Error
+                              ? e.message
+                              : "接受合法转折失败"
+                          );
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      接受为合法转折
                     </button>
                   </div>
                 ) : null}

@@ -227,6 +227,30 @@ def _build_range_deltas(
     }
 
 
+def format_archive_world_projection(
+    project: VnProject,
+    group: List[NumberedChapter],
+    *,
+    limit: int = 1800,
+) -> str:
+    """WorldState hard anchors as of this archive span's last chapter."""
+    if not group:
+        return ""
+    from app.core.pipeline.ledger import get_ledger
+    from app.core.world_state import format_world_constraints, get_world_state
+
+    world = get_world_state(get_ledger(project))
+    if not (world.get("facts") or world.get("eventFrames")):
+        return ""
+    return format_world_constraints(
+        world,
+        chapters=project.chapters,
+        focus_chapter_id=group[-1].chapter.id,
+        foreshadows=None,
+        limit=limit,
+    )
+
+
 def build_continuity_text(
     project: VnProject,
     group: List[NumberedChapter],
@@ -244,11 +268,26 @@ def build_continuity_text(
         "## Read Before Writing Later Chapters",
         "",
         "- Compact historical layer for long-form continuation (NovelMaster-style).",
-        "- Prefer newer chapter digests / bible if this conflicts.",
-        "",
-        "## Range Spine",
+        "- WorldState hard anchors below outrank soft NLP digests / bible snapshots.",
+        "- Prefer newer chapter digests / bible only when they do not contradict hard anchors.",
         "",
     ]
+    ws_block = format_archive_world_projection(project, group)
+    if ws_block:
+        lines.extend(
+            [
+                "## WorldState Hard Anchors（本段结束时）",
+                "",
+                ws_block,
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "## Range Spine",
+            "",
+        ]
+    )
     for c in group:
         dig_note = ""
         lines.append(

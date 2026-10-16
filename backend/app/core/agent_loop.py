@@ -923,7 +923,35 @@ async def run_agent_loop(
                 project=working,
                 chapter_id=request.chapterId,
             )
-            has_soft = bool(write_gate.warnings or write_gate.markHints)
+            # C 层（窄 LLM）：动机 / 隐含知识 / 世界规则；失败只 warn，不挡落地。
+            try:
+                from app.core.harness.world_semantic import (
+                    merge_c_into_write_gate,
+                    run_semantic_layer_c,
+                )
+
+                c_hits = await run_semantic_layer_c(
+                    config,
+                    working,
+                    gated.text,
+                    chapter_id=request.chapterId,
+                )
+                if c_hits:
+                    write_gate = merge_c_into_write_gate(write_gate, c_hits)
+                    trace.append(
+                        {
+                            "type": "thought",
+                            "text": f"一致性 C 层：{len(c_hits)} 条语义提醒",
+                        }
+                    )
+            except Exception:  # noqa: BLE001 — C 层不可用时静默跳过
+                pass
+            gate_meta = write_gate.as_meta()
+            has_soft = bool(
+                write_gate.warnings
+                or write_gate.markHints
+                or gate_meta.get("acceptCandidates")
+            )
             if not write_gate.passed or has_soft:
                 tip = "；".join(write_gate.warnings[:2]) or (
                     "确定性规则未过" if not write_gate.passed else "有提醒"
@@ -939,6 +967,7 @@ async def run_agent_loop(
                         "passed": write_gate.passed,
                         "warnings": write_gate.warnings,
                         "markHints": write_gate.markHints,
+                        "acceptCandidates": gate_meta.get("acceptCandidates") or [],
                     }
                 )
                 mark_tip = ""

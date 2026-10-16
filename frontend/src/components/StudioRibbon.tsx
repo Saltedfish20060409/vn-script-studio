@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type RefObject } from "react";
 import { copyFor, type GenreCopy } from "../lib/genreCopy";
+import { isDebugLedgerEnabled } from "../lib/debugFlags";
 import type { ProjectSub, ViewPanel } from "../lib/studioOverlay";
 import { openNotice } from "../lib/notice";
 import { formatClock } from "../lib/desktopView";
@@ -71,7 +72,6 @@ const FILE_PAGES_NOVEL: ReadonlyArray<readonly [ProjectSub, string]> = [
   ["stats", "写作统计"],
   ["serial", "连载 / 发布"],
   ["audit", "稿件体检"],
-  ["ledger", "账本 / 摘要"],
   ["assets", "素材"],
   ["localization", "本地化"],
   ["history", "快照 / 分享"],
@@ -85,9 +85,14 @@ const FILE_PAGES_VN: ReadonlyArray<readonly [ProjectSub, string]> = [
   ["localization", "本地化"],
   ["history", "快照 / 分享"],
   ["members", "成员"],
-  ["ledger", "账本 / 摘要"],
   ["stats", "写作统计"],
   ["serial", "连载 / 发布"],
+];
+
+/** 账本是 Agent 记忆观测面，默认不进文件菜单；调试开时挂在末尾。 */
+const FILE_PAGE_LEDGER_DEBUG: readonly [ProjectSub, string] = [
+  "ledger",
+  "账本 / 摘要（调试）",
 ];
 
 const VIEW_QUICK: ReadonlyArray<readonly [ViewPanel, string]> = [
@@ -150,7 +155,11 @@ export function StudioRibbon({
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   /** 文件菜单内的下钻分组（目前只有「项目」）。关菜单时回到第一层。 */
   const [fileGroup, setFileGroup] = useState<"project" | null>(null);
-  const filePages = copy.genre === "vn" ? FILE_PAGES_VN : FILE_PAGES_NOVEL;
+  const filePages = (() => {
+    const base = copy.genre === "vn" ? FILE_PAGES_VN : FILE_PAGES_NOVEL;
+    // 账本默认隐藏：它是 Agent 硬锚的观测面，不是作者日常工作台。
+    return isDebugLedgerEnabled() ? [...base, FILE_PAGE_LEDGER_DEBUG] : [...base];
+  })();
   const showViewQuick = copy.genre === "vn";
   /** 菜单标题：label 与助记键都来自 lib/shortcuts（绑定也由它推导，不会各说一套） */
   const menuMeta = (id: MenuId): MenuMnemonic =>

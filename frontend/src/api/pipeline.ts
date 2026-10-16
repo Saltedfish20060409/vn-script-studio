@@ -251,3 +251,28 @@ export function pipelineLedgerDigest(
     }),
   });
 }
+
+/** Author accepts a WorldState / ledger conflict as a legal narrative turn. */
+export function pipelineAcceptWorldExtension(
+  id: string,
+  body: {
+    subject: string;
+    code: string;
+    chapter_id?: string | null;
+    new_value?: string | null;
+    relation?: string | null;
+    note?: string;
+  }
+): Promise<{
+  ok: boolean;
+  subject: string;
+  code: string;
+  worldState?: unknown;
+  project: VnProject;
+}> {
+  return apiFetch(`/projects/${id}/pipeline/world-state/accept-extension`, {
+    method: "POST",
+    timeoutMs: TIMEOUTS.quick,
+    body: JSON.stringify(body),
+  });
+}

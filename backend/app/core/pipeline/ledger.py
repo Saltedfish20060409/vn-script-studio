@@ -552,6 +552,7 @@ def digest_chapter_into_ledger(
     llm_facts: Optional[List[str]] = None,
     llm_states: Optional[List[Dict[str, Any]]] = None,
     llm_foreshadows: Optional[List[Dict[str, Any]]] = None,
+    llm_world_facts: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Update ledger from chapter content (+ optional LLM enrichments)."""
     ch = next((c for c in project.chapters if c.id == chapter_id), None)
@@ -745,12 +746,17 @@ def digest_chapter_into_ledger(
     ledger["events"] = events[-_MAX_EVENTS:]
     ledger["retention"] = _retention_record(ledger, evicted)
     ledger["updatedAt"] = _now()
-    # WorldState sync: atomic facts + event frames (deterministic, no LLM).
+    # WorldState sync: atomic facts + event frames (heuristics; optional low-confidence LLM triples).
     # Must run after characterStates / events are written so extractors see them.
     try:
         from app.core.world_facts import sync_world_state_after_digest
 
-        ledger = sync_world_state_after_digest(project, ledger, chapter_id)
+        ledger = sync_world_state_after_digest(
+            project,
+            ledger,
+            chapter_id,
+            llm_world_facts=llm_world_facts,
+        )
     except Exception:  # noqa: BLE001 — 世界状态失败绝不能拖垮账本入库
         pass
     return ledger

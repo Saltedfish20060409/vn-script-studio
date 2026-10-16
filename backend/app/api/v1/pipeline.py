@@ -94,6 +94,17 @@ class LedgerDigestIn(BaseModel):
     enrich: bool = True
 
 
+class WorldExtensionAcceptIn(BaseModel):
+    """Author accepts a WorldState conflict as a legal narrative turn."""
+
+    subject: str
+    code: str
+    chapter_id: Optional[str] = None
+    new_value: Optional[str] = None
+    relation: Optional[str] = None
+    note: str = ""
+
+
 @router.get("/pipeline/meta")
 async def pipeline_meta():
     from app.core.mentors import default_active_ids, list_builtin_meta
@@ -503,6 +514,66 @@ async def pipeline_ledger_get(
     }
 
 
+@router.post("/projects/{project_id}/pipeline/world-state/accept-extension")
+async def pipeline_world_state_accept_extension(
+    project_id: str,
+    body: WorldExtensionAcceptIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Accept a harness conflict as a legal plot turn → rewrite WorldState.
+
+    Does not rewrite prose. After this, the same draft should pass the
+    WorldState A-layer for that subject (mark-rewrite remains for style fixes).
+    """
+    from app.core.world_state import (
+        ACCEPTABLE_EXTENSION_CODES,
+        accept_legal_extension,
+        chapter_index_map,
+        get_world_state,
+    )
+
+    row = await get_owned_project(db, user, project_id)
+    vn = row_to_vn(row)
+    subject = (body.subject or "").strip()
+    code = (body.code or "").strip()
+    if not subject:
+        raise HTTPException(status_code=400, detail="subject 不能为空")
+    if code not in ACCEPTABLE_EXTENSION_CODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"码 {code!r} 不支持接受为合法转折",
+        )
+    order = chapter_index_map(vn.chapters or [])
+    cid = (body.chapter_id or "").strip()
+    idx = order.get(cid, max(order.values()) if order else 0)
+    try:
+        ledger = accept_legal_extension(
+            get_ledger(vn),
+            subject=subject,
+            code=code,
+            chapter_id=cid,
+            chapter_index=idx,
+            new_value=body.new_value,
+            relation=body.relation,
+            note=body.note or "",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    vn2 = set_ledger(vn, ledger)
+    await sync_chapter_rows_from_vn(db, row, vn2)
+    await db.commit()
+    await db.refresh(row)
+    world = get_world_state(ledger)
+    return {
+        "ok": True,
+        "subject": subject,
+        "code": code,
+        "worldState": world,
+        "project": project_to_dict(row_to_vn(row)),
+    }
+
+
 @router.post("/projects/{project_id}/pipeline/ledger/digest")
 async def pipeline_ledger_digest(
     project_id: str,
@@ -525,6 +596,7 @@ async def pipeline_ledger_digest(
                 "llm_facts": payload.get("llm_facts"),
                 "llm_states": payload.get("llm_states"),
                 "llm_foreshadows": payload.get("llm_foreshadows"),
+                "llm_world_facts": payload.get("llm_world_facts"),
             }
             enrich_meta = {
                 "enrich": True,

@@ -59,6 +59,40 @@ class WriteGateResult:
     missingCodeCount: int = 0
 
     def as_meta(self) -> Dict[str, Any]:
+        from app.core.world_state import ACCEPTABLE_EXTENSION_CODES
+
+        accept: List[Dict[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for raw in self.issues:
+            if not isinstance(raw, dict):
+                continue
+            code = str(raw.get("code") or "").strip()
+            if code not in ACCEPTABLE_EXTENSION_CODES:
+                continue
+            msg = str(raw.get("message") or "")
+            # Prefer explicit subject (WorldConflict); message「」 may be a value not a name.
+            subject = str(raw.get("subject") or "").strip()
+            if not subject:
+                m = re.search(r"「([^」]{1,40})」", msg)
+                subject = m.group(1) if m else ""
+            if not subject:
+                continue
+            key = (code, subject)
+            if key in seen:
+                continue
+            seen.add(key)
+            row = {
+                "code": code,
+                "subject": subject,
+                "message": msg[:160],
+            }
+            rel = str(raw.get("relation") or "").strip()
+            if rel:
+                row["relation"] = rel
+            prop = str(raw.get("proposedValue") or raw.get("newValue") or "").strip()
+            if prop:
+                row["newValue"] = prop
+            accept.append(row)
         return {
             "passed": self.passed,
             "issueCount": len(self.issues),
@@ -66,6 +100,7 @@ class WriteGateResult:
             "warnings": self.warnings[:6],
             "markHints": self.markHints[:4],
             "missingCodeCount": self.missingCodeCount,
+            "acceptCandidates": accept[:6],
         }
 
 
@@ -254,6 +289,7 @@ def gate_continue_draft(
                     "severity": "error",
                     "code": i.code,
                     "message": i.message,
+                    "subject": i.subject or "",
                 }
             )
             lint_issues.append(
@@ -283,15 +319,34 @@ def gate_continue_draft(
             ws_report = run_consistency_harness(
                 project, draft=text, chapter_id=chapter_id
             )
+            from app.core.world_state import ACCEPTABLE_EXTENSION_CODES
+
             for c in ws_report.conflicts:
                 if c.severity == "warn":
                     warnings.append(c.message)
+                    # warn 也可进 acceptCandidates（如 ws_gone_location），须写入 issues
+                    # 并带上 subject；否则作者无法「接受为合法转折」。
+                    if c.code in ACCEPTABLE_EXTENSION_CODES and c.subject:
+                        issues.append(
+                            {
+                                "severity": "warn",
+                                "code": c.code,
+                                "message": c.message,
+                                "subject": c.subject,
+                                "relation": getattr(c, "relation", "") or "",
+                                "proposedValue": getattr(c, "proposedValue", "")
+                                or "",
+                            }
+                        )
                     continue
                 issues.append(
                     {
                         "severity": "error",
                         "code": c.code,
                         "message": c.message,
+                        "subject": c.subject or "",
+                        "relation": getattr(c, "relation", "") or "",
+                        "proposedValue": getattr(c, "proposedValue", "") or "",
                     }
                 )
                 lint_issues.append(

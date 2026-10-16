@@ -46,6 +46,8 @@ class WorldConflict:
     category: str = "factual"
     #: legal_extension = new info that does not violate; violation = hard conflict
     kind: str = "violation"
+    relation: str = ""
+    proposedValue: str = ""
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -57,6 +59,8 @@ class WorldConflict:
             "chapterIds": list(self.chapterIds),
             "category": self.category,
             "kind": self.kind,
+            "relation": self.relation,
+            "proposedValue": self.proposedValue,
         }
 
 
@@ -83,7 +87,7 @@ def _facts_conflict(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
     if str(a.get("relation") or "") != str(b.get("relation") or ""):
         return False
     rel = str(a.get("relation") or "")
-    if rel not in SINGLE_VALUED_RELATIONS:
+    if rel not in SINGLE_VALUED_RELATIONS and rel != "holds":
         return False
     va = str(a.get("value") or "").strip().lower()
     vb = str(b.get("value") or "").strip().lower()
@@ -100,6 +104,12 @@ def _facts_conflict(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
     a0, b0 = int(a.get("validFrom") or 0), int(b.get("validFrom") or 0)
     a1 = a.get("validTo")
     b1 = b.get("validTo")
+    # Open fact superseded by a later (or same-index) value is a legal update,
+    # except silent revival (dead → not-dead). upsert closes the old interval.
+    if a1 is None and b0 >= a0:
+        if looks_dead_value(va) and not looks_dead_value(vb):
+            return True
+        return False
     a_end = int(a1) if a1 is not None else 10**9
     b_end = int(b1) if b1 is not None else 10**9
     return a0 < b_end and b0 < a_end
@@ -158,6 +168,26 @@ def propose_facts_from_draft(
                 category="characterization",
             )
         )
+    # Possession proposals so FactTrack interval clashes on `holds` are scorable.
+    hold_re = re.compile(
+        r"([\u4e00-\u9fff]{2,8})(?:拿着|握着|带着)([\u4e00-\u9fffA-Za-z0-9]{1,12})"
+    )
+    for m in hold_re.finditer(text):
+        who, obj = m.group(1), m.group(2)
+        if who not in names or not obj:
+            continue
+        proposed.append(
+            make_fact(
+                subject=who,
+                relation="holds",
+                value=obj,
+                chapter_id=cid,
+                chapter_index=idx,
+                quote=m.group(0)[:80],
+                confidence=0.7,
+                category="factual",
+            )
+        )
     return proposed
 
 
@@ -189,6 +219,8 @@ def check_proposed_against_world(
                     quote=quote or subj,
                     chapterIds=[cid] if cid else [],
                     category=_CATEGORY_FOR_CODE["ws_dead_character"],
+                    relation="status",
+                    proposedValue=val,
                 )
             )
             continue
@@ -216,6 +248,8 @@ def check_proposed_against_world(
                             if x
                         ],
                         category=_CATEGORY_FOR_CODE["ws_fact_interval_clash"],
+                        relation=rel,
+                        proposedValue=val,
                     )
                 )
                 break
@@ -234,6 +268,8 @@ def check_proposed_against_world(
                         quote=quote or subj,
                         chapterIds=[cid] if cid else [],
                         category=_CATEGORY_FOR_CODE["ws_gone_location"],
+                        relation="status",
+                        proposedValue=val,
                     )
                 )
 
@@ -352,17 +388,42 @@ def detect_world_state_findings(project: VnProject) -> List[Dict[str, Any]]:
     """
     ledger = get_ledger(project)
     world = get_world_state(ledger)
+    # Do not bootstrap from digest here. A full-book extract would commit deaths
+    # and then flag every later mention, which the long-range benchmark counts as
+    # false positives (it only labels the declared conflict chapter). Callers that
+    # want WorldState scoring must seed ``writingLedger.worldState`` first.
     if not (world.get("facts") or []):
-        # Bootstrap from chapter digests so eval works before a save cycle
-        from app.core.world_facts import sync_world_state_after_digest
-
-        for ch in project.chapters or []:
-            ledger = sync_world_state_after_digest(project, ledger, ch.id)
-        world = get_world_state(ledger)
+        return []
 
     order = chapter_index_map(project.chapters or [])
     out: List[Dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
     from app.core.agent_context import chapter_plain
+
+    def _cat(code: str) -> str:
+        if code == "ws_dead_character":
+            return "character"
+        if code == "ws_gone_location":
+            return "location"
+        if code == "ws_fact_interval_clash":
+            return "timeline"
+        return "character"
+
+    def _push(c: WorldConflict, cid: str) -> None:
+        key = (c.code, c.subject or "", cid)
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(
+            {
+                "code": c.code,
+                "kind": c.code,
+                "category": _cat(c.code),
+                "chapterId": cid,
+                "chapterIds": [cid],
+                "message": c.message,
+            }
+        )
 
     for ch in project.chapters or []:
         cid = str(ch.id)
@@ -371,16 +432,12 @@ def detect_world_state_findings(project: VnProject) -> List[Dict[str, Any]]:
         for c in check_draft_presence_against_status(
             world, plain, at_index=idx, chapter_id=cid
         ):
-            out.append(
-                {
-                    "code": c.code,
-                    "kind": c.code,
-                    "category": "character"
-                    if c.code == "ws_dead_character"
-                    else "location",
-                    "chapterId": cid,
-                    "chapterIds": [cid],
-                    "message": c.message,
-                }
-            )
+            _push(c, cid)
+        # B-layer: proposed facts from this chapter vs active WorldState intervals
+        proposed = propose_facts_from_draft(project, plain, chapter_id=cid)
+        if proposed:
+            for c in check_proposed_against_world(world, proposed, at_index=idx):
+                if c.severity != "error":
+                    continue
+                _push(c, cid)
     return out

@@ -108,6 +108,9 @@ EXPECTED_CODES = {
     "ws_status_conflict",
     "ws_gone_location",
     "ws_fact_interval_clash",
+    "ws_motive",
+    "ws_knowledge",
+    "ws_world_rule",
     # 缺陷标记
     "code_missing",
 }

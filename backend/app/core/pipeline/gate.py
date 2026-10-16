@@ -113,6 +113,7 @@ async def finalize_chapter_async(
                 "llm_facts": payload.get("llm_facts"),
                 "llm_states": payload.get("llm_states"),
                 "llm_foreshadows": payload.get("llm_foreshadows"),
+                "llm_world_facts": payload.get("llm_world_facts"),
             }
             enrich_meta = {
                 "enrich": True,

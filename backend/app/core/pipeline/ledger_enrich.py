@@ -60,8 +60,11 @@ async def enrich_chapter_ledger_payload(
         "从视觉小说章节正文提炼写作账本硬锚。只输出 JSON：\n"
         '{"facts":["事实1",...],'
         '"states":[{"characterName":"","emotion":"","body":"","relations":""}],'
-        '"foreshadows":[{"hook":"","status":"open","note":""}]}\n'
-        "facts 3～8 条；states 覆盖出场角色；foreshadows 0～4 条未回收钩子。\n\n"
+        '"foreshadows":[{"hook":"","status":"open","note":""}],'
+        '"worldFacts":[{"subject":"角色或地点","relation":"status|relation|holds|location|can|cannot|time_anchor",'
+        '"value":"短值","quote":"原句片段"}]}\n'
+        "facts 3～8 条；states 覆盖出场角色；foreshadows 0～4 条未回收钩子；"
+        "worldFacts 0～8 条原子事实（短 relation/value，勿写长句）。\n\n"
         f"## 角色表\n{json.dumps(cast, ensure_ascii=False)}\n\n"
         f"## 章节「{ch.title}」\n{plain[:7000]}"
     )
@@ -116,8 +119,26 @@ async def enrich_chapter_ledger_payload(
                 "note": str(fo.get("note") or "LLM充实"),
             }
         )
+    world_facts: List[Dict[str, Any]] = []
+    for wf in parsed.get("worldFacts") or []:
+        if not isinstance(wf, dict):
+            continue
+        subj = str(wf.get("subject") or "").strip()
+        rel = str(wf.get("relation") or "").strip()
+        val = str(wf.get("value") or "").strip()
+        if not subj or not rel or not val:
+            continue
+        world_facts.append(
+            {
+                "subject": subj[:40],
+                "relation": rel[:32],
+                "value": val[:120],
+                "quote": str(wf.get("quote") or "")[:80],
+            }
+        )
     return {
         "llm_facts": facts[:12],
         "llm_states": states[:12],
         "llm_foreshadows": fores[:6],
+        "llm_world_facts": world_facts[:8],
     }

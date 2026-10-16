@@ -586,6 +586,42 @@ def test_clean_baseline_has_no_factual_findings():
     assert factual == [], f"干净基线出现了事实类告警：{factual[:3]}"
 
 
+def test_world_state_interval_plants_are_recalled():
+    """FactTrack 区间埋点：确定性器对 ws_dead / ws_fact_interval_clash 召回 1；语义子类型为 0。"""
+    from app.core.eval_longrange import (
+        build_synthetic_novel,
+        chunked_plan,
+        detect_deterministic,
+        evaluate_detections,
+        evaluate_exposure,
+    )
+
+    project, gt = build_synthetic_novel(
+        chapters=60, seed=14, include_world_state=True
+    )
+    planted = gt["planted"]
+    ws_det = [
+        it
+        for it in planted
+        if it["kind"] in ("ws_dead_character", "ws_fact_interval_clash")
+    ]
+    ws_sem = [it for it in planted if it["kind"] in ("ws_motive", "ws_knowledge")]
+    assert ws_det, "合成长篇应埋 WorldState 确定性区间冲突"
+    assert ws_sem, "应有 ConStory 语义子类型（仅契约，不要求确定性召回）"
+    subset = {
+        **gt,
+        "planted": ws_det,
+    }
+    out = evaluate_detections(subset, detect_deterministic(project))
+    assert out["recall"] == 1.0, out.get("missedItems")
+    sem_gt = {**gt, "planted": ws_sem}
+    sem_out = evaluate_detections(sem_gt, detect_deterministic(project))
+    assert sem_out["recall"] == 0.0
+    windows = chunked_plan(project)
+    exposure = evaluate_exposure({**gt, "planted": ws_det + ws_sem}, windows)
+    assert exposure["exposureRecall"] == 1.0
+
+
 def test_deterministic_detector_catches_every_deterministic_item_with_no_fp():
     """回归闸：确定性层必须**全中且零误报**。
 

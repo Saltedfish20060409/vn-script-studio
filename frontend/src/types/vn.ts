@@ -794,6 +794,14 @@ export interface AgentContextMeta {
       instruction?: string;
       code?: string;
     }>;
+    /** 可「接受为合法转折」写回 WorldState 的冲突（不改正文） */
+    acceptCandidates?: Array<{
+      code?: string;
+      subject?: string;
+      message?: string;
+      relation?: string;
+      newValue?: string;
+    }>;
   };
   /** 写路径材料预取（上下文被裁时服务端已取回） */
   retrievePrefetch?: {
