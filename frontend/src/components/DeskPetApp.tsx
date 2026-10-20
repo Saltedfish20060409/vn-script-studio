@@ -2,22 +2,21 @@ import { useSyncExternalStore } from "react";
 import {
   getDeskPetState,
   setDeskPetEnabled,
+  setPetWanderInterval,
   subscribeDeskPet,
+  type PetWanderInterval,
 } from "../lib/deskPet";
 import styles from "./DeskPetApp.module.css";
 
 /**
- * 桌面上的「桌宠」小窗口：开关、姿势与位置说明。
- *
- * 桌宠本体仍是桌面上的挂件（可以拖着走），这个窗口是它的"设置面板"——
- * 对应 Windows 里"应用 + 它的设置"分开的做法：双击图标开的是应用窗口，
- * 而不是把宠物本身塞进窗口里（塞进去它就没法趴在编辑器边上了）。
+ * 桌面上的「桌宠」小窗口：开关、自主间隔。
+ * 桌宠本体仍是屏幕挂件；本窗口只做设置，不把宠物塞进窗里。
  */
 export function DeskPetApp() {
-  const enabled = useSyncExternalStore(
+  const { enabled, wanderInterval } = useSyncExternalStore(
     subscribeDeskPet,
-    () => getDeskPetState().enabled,
-    () => getDeskPetState().enabled
+    getDeskPetState,
+    getDeskPetState
   );
 
   return (
@@ -33,10 +32,25 @@ export function DeskPetApp() {
         />
         显示桌宠
       </label>
+      <label className={styles.field}>
+        <span className={styles.fieldLabel}>自主活动</span>
+        <select
+          className={styles.select}
+          value={wanderInterval}
+          disabled={!enabled}
+          onChange={(e) => setPetWanderInterval(e.target.value as PetWanderInterval)}
+        >
+          <option value="normal">正常（偶尔走动、闲聊）</option>
+          <option value="calm">安静（较少）</option>
+          <option value="off">关闭（不走动、不闲聊）</option>
+        </select>
+      </label>
       <p className={styles.note}>
-        {enabled
-          ? "现在它在屏幕上。想让它安静一点：取消上面的勾选即可。"
-          : "已隐藏。勾上就会重新出现。"}
+        {!enabled
+          ? "已隐藏。勾上就会重新出现。"
+          : wanderInterval === "off"
+            ? "她还在，只是自己不走动、不冒写作提醒。"
+            : "现在它在屏幕上。右键可喂食、玩耍、换姿势。"}
       </p>
     </div>
   );

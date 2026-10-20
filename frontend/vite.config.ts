@@ -9,6 +9,24 @@ const CACHE_ID = `vnss-${new Date()
   .replace(/[-:TZ]/g, "")
   .slice(0, 12)}`;
 
+// nginx 对不存在的路径会回退成 index.html（200），CacheFirst 默认会把它当图片缓存 30 天，
+// 资源上线后老用户仍拿到那份 HTML。只缓存真正的图片响应。
+// 该对象会被 workbox 序列化进 sw.js：函数体内不能引用外部变量。
+// 参数用泛型约束而不是 Response：tsconfig.node.json 没有 DOM lib（见下方 urlPattern 注释）。
+const imageResponsesOnly = {
+  cacheWillUpdate: async <
+    R extends { status: number; headers: { get(name: string): string | null } },
+  >({
+    response,
+  }: {
+    response: R;
+  }) =>
+    response.status === 200 &&
+    (response.headers.get("content-type") || "").startsWith("image/")
+      ? response
+      : null,
+};
+
 export default defineConfig({
   plugins: [
     react(),
@@ -58,14 +76,39 @@ export default defineConfig({
           // 使用指南截图（约 14MB/44 张）不进 precache：首访不拖慢，页面用到时
           // 走下方同源图片 CacheFirst 规则按需缓存。
           "guide/**",
+          // 桌宠图集按动作懒加载，走下方 pet-assets 规则。
+          "pet/**",
         ],
         runtimeCaching: [
+          // 桌宠规则必须排在通用图片规则前面（workbox 取第一条匹配）。
+          // 图集文件名带内容哈希，可长期 CacheFirst；清单 JSON 要拿到最新的哈希，走 NetworkFirst。
+          {
+            urlPattern: ({ sameOrigin, url }) =>
+              sameOrigin && /\/pet\/v\d+\/[^?#]+\.json(?:[?#]|$)/.test(String(url)),
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "pet-manifest",
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 4 },
+            },
+          },
+          {
+            urlPattern: ({ sameOrigin, url }) =>
+              sameOrigin && /\/pet\/v\d+\//.test(String(url)),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "pet-assets",
+              expiration: { maxEntries: 120, maxAgeSeconds: 365 * 24 * 3600 },
+              plugins: [imageResponsesOnly],
+            },
+          },
           {
             urlPattern: /^https:\/\/.*\.(png|jpg|jpeg|webp|gif)$/,
             handler: "CacheFirst",
             options: {
               cacheName: "images",
               expiration: { maxEntries: 60, maxAgeSeconds: 30 * 24 * 3600 },
+              plugins: [imageResponsesOnly],
             },
           },
           {
@@ -83,6 +126,7 @@ export default defineConfig({
             options: {
               cacheName: "images",
               expiration: { maxEntries: 60, maxAgeSeconds: 30 * 24 * 3600 },
+              plugins: [imageResponsesOnly],
             },
           },
         ],

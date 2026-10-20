@@ -1,0 +1,624 @@
+{
+ "version": 1,
+ "canvas": {
+  "A": {
+   "w": 320,
+   "h": 480
+  },
+  "B": {
+   "w": 240,
+   "h": 240
+  }
+ },
+ "bodies": {
+  "idle": {
+   "canvas": "A",
+   "src": "body_idle.879e4b24.webp",
+   "anchor": {
+    "type": "foot",
+    "x": 160.0,
+    "y": 450.0
+   },
+   "emote": {
+    "size": 42.08,
+    "above_right": [
+     251.25,
+     6.67
+    ],
+    "zzz": [
+     264.58,
+     0.83
+    ],
+    "temple": [
+     268.33,
+     52.5
+    ]
+   }
+  },
+  "perch_top": {
+   "canvas": "A",
+   "src": "body_perch_top.2bc4cd83.webp",
+   "anchor": {
+    "type": "sit",
+    "x": 160.0,
+    "y": 316.67
+   },
+   "emote": {
+    "size": 41.25,
+    "above_right": [
+     247.08,
+     14.17
+    ],
+    "zzz": [
+     260.42,
+     8.75
+    ],
+    "temple": [
+     264.17,
+     59.58
+    ]
+   }
+  },
+  "peek_over": {
+   "canvas": "B",
+   "src": "body_peek_over.684afb6c.webp",
+   "anchor": {
+    "type": "bottom",
+    "x": 120.0,
+    "y": 240.0
+   },
+   "emote": {
+    "size": 41.88,
+    "above_right": [
+     205.62,
+     61.56
+    ],
+    "zzz": [
+     218.75,
+     55.94
+    ],
+    "temple": [
+     222.5,
+     107.5
+    ]
+   }
+  },
+  "peek_side_r": {
+   "canvas": "B",
+   "src": "body_peek_side_r.d0009384.webp",
+   "anchor": {
+    "type": "grip",
+    "x": 234.06,
+    "y": 149.97
+   },
+   "emote": {
+    "size": 26.56,
+    "above_right": [
+     227.81,
+     30.94
+    ],
+    "zzz": [
+     236.25,
+     27.5
+    ],
+    "temple": [
+     238.44,
+     59.69
+    ]
+   }
+  },
+  "peek_side_l": {
+   "canvas": "B",
+   "src": "body_peek_side_l.583ab043.webp",
+   "anchor": {
+    "type": "grip",
+    "x": 5.62,
+    "y": 149.69
+   },
+   "emote": {
+    "size": 26.56,
+    "above_right": [
+     120.31,
+     30.94
+    ],
+    "zzz": [
+     128.75,
+     27.5
+    ],
+    "temple": [
+     130.94,
+     59.69
+    ]
+   }
+  },
+  "hide_corner": {
+   "canvas": "A",
+   "src": "body_hide_corner.7fda74d3.webp",
+   "anchor": {
+    "type": "foot",
+    "x": 160.0,
+    "y": 450.0
+   },
+   "emote": {
+    "size": 42.08,
+    "above_right": [
+     252.92,
+     108.75
+    ],
+    "zzz": [
+     266.25,
+     102.92
+    ],
+    "temple": [
+     270.0,
+     154.58
+    ]
+   }
+  },
+  "sleep": {
+   "canvas": "A",
+   "src": "body_sleep.5f6ddfb3.webp",
+   "anchor": {
+    "type": "foot",
+    "x": 160.0,
+    "y": 450.0
+   },
+   "emote": {
+    "size": 41.67,
+    "above_right": [
+     248.33,
+     99.17
+    ],
+    "zzz": [
+     261.67,
+     93.33
+    ],
+    "temple": [
+     265.42,
+     145.0
+    ]
+   }
+  },
+  "headpat": {
+   "canvas": "A",
+   "src": "body_headpat.5b0b34c4.webp",
+   "anchor": {
+    "type": "foot",
+    "x": 160.0,
+    "y": 450.0
+   },
+   "emote": {
+    "size": 42.08,
+    "above_right": [
+     251.25,
+     12.92
+    ],
+    "zzz": [
+     264.58,
+     7.08
+    ],
+    "temple": [
+     268.33,
+     58.75
+    ]
+   }
+  },
+  "held": {
+   "canvas": "A",
+   "src": "body_held.cf58bece.webp",
+   "anchor": {
+    "type": "grab",
+    "x": 160.83,
+    "y": 20.0
+   },
+   "emote": {
+    "size": 42.08,
+    "above_right": [
+     251.25,
+     6.67
+    ],
+    "zzz": [
+     264.58,
+     0.83
+    ],
+    "temple": [
+     268.33,
+     52.5
+    ]
+   }
+  },
+  "happy_jump": {
+   "canvas": "A",
+   "src": "body_happy_jump.b85347b1.webp",
+   "anchor": {
+    "type": "foot",
+    "x": 160.0,
+    "y": 450.0
+   },
+   "emote": {
+    "size": 55.42,
+    "above_right": [
+     272.08,
+     -2.5
+    ],
+    "zzz": [
+     289.58,
+     -10.42
+    ],
+    "temple": [
+     294.58,
+     57.92
+    ]
+   }
+  },
+  "happy_land": {
+   "canvas": "A",
+   "src": "body_happy_land.152277f8.webp",
+   "anchor": {
+    "type": "foot",
+    "x": 160.0,
+    "y": 450.0
+   },
+   "emote": {
+    "size": 55.42,
+    "above_right": [
+     272.08,
+     15.42
+    ],
+    "zzz": [
+     289.58,
+     7.5
+    ],
+    "temple": [
+     294.58,
+     75.83
+    ]
+   }
+  },
+  "perch_side": {
+   "canvas": "A",
+   "src": "body_perch_side.0741166e.webp",
+   "anchor": {
+    "type": "side",
+    "x": 37.5,
+    "y": 450.0
+   },
+   "emote": {
+    "size": 42.08,
+    "above_right": [
+     218.75,
+     16.25
+    ],
+    "zzz": [
+     232.08,
+     10.42
+    ],
+    "temple": [
+     235.83,
+     62.08
+    ]
+   }
+  }
+ },
+ "walk": {
+  "r": {
+   "src": "walk_r.40b82d60.webp",
+   "frames": [
+    [
+     0,
+     0,
+     320,
+     480
+    ],
+    [
+     322,
+     0,
+     320,
+     480
+    ],
+    [
+     644,
+     0,
+     320,
+     480
+    ],
+    [
+     966,
+     0,
+     320,
+     480
+    ]
+   ],
+   "ms": 320,
+   "anchor": {
+    "type": "foot",
+    "x": 160.0,
+    "y": 450.0
+   },
+   "emote": {
+    "size": 42.08,
+    "above_right": [
+     251.25,
+     6.67
+    ],
+    "zzz": [
+     264.58,
+     0.83
+    ],
+    "temple": [
+     268.33,
+     52.5
+    ]
+   }
+  },
+  "l": {
+   "src": "walk_l.5c87c752.webp",
+   "frames": [
+    [
+     0,
+     0,
+     320,
+     480
+    ],
+    [
+     322,
+     0,
+     320,
+     480
+    ],
+    [
+     644,
+     0,
+     320,
+     480
+    ],
+    [
+     966,
+     0,
+     320,
+     480
+    ]
+   ],
+   "ms": 320,
+   "anchor": {
+    "type": "foot",
+    "x": 160.0,
+    "y": 450.0
+   },
+   "emote": {
+    "size": 42.08,
+    "above_right": [
+     251.25,
+     6.67
+    ],
+    "zzz": [
+     264.58,
+     0.83
+    ],
+    "temple": [
+     268.33,
+     52.5
+    ]
+   }
+  }
+ },
+ "feed": {
+  "src": "feed.d741d98f.webp",
+  "frames": [
+   [
+    0,
+    0,
+    320,
+    480
+   ],
+   [
+    322,
+    0,
+    320,
+    480
+   ],
+   [
+    644,
+    0,
+    320,
+    480
+   ],
+   [
+    966,
+    0,
+    320,
+    480
+   ]
+  ],
+  "ms": 380,
+  "anchor": {
+   "type": "foot",
+   "x": 160.0,
+   "y": 450.0
+  },
+  "emote": {
+   "size": 42.08,
+   "above_right": [
+    251.25,
+    12.92
+   ],
+   "zzz": [
+    264.58,
+    7.08
+   ],
+   "temple": [
+    268.33,
+    58.75
+   ]
+  }
+ },
+ "play": {
+  "src": "play.27be64b3.webp",
+  "frames": [
+   [
+    0,
+    0,
+    320,
+    480
+   ],
+   [
+    322,
+    0,
+    320,
+    480
+   ],
+   [
+    644,
+    0,
+    320,
+    480
+   ],
+   [
+    966,
+    0,
+    320,
+    480
+   ]
+  ],
+  "ms": 400,
+  "anchor": {
+   "type": "foot",
+   "x": 160.0,
+   "y": 450.0
+  },
+  "emote": {
+   "size": 42.08,
+   "above_right": [
+    251.25,
+    12.92
+   ],
+   "zzz": [
+    264.58,
+    7.08
+   ],
+   "temple": [
+    268.33,
+    58.75
+   ]
+  }
+ },
+ "faces": {
+  "idle": {
+   "src": "face_idle.fd618ca6.webp",
+   "rect": [
+    105,
+    96,
+    88,
+    66
+   ],
+   "variants": {
+    "eye_open+mouth_half": [
+     0,
+     0
+    ],
+    "eye_open+mouth_open": [
+     90,
+     0
+    ],
+    "eye_half+mouth_closed": [
+     180,
+     0
+    ],
+    "eye_half+mouth_half": [
+     270,
+     0
+    ],
+    "eye_half+mouth_open": [
+     360,
+     0
+    ],
+    "eye_closed+mouth_closed": [
+     450,
+     0
+    ],
+    "eye_closed+mouth_half": [
+     540,
+     0
+    ],
+    "eye_closed+mouth_open": [
+     630,
+     0
+    ],
+    "happy": [
+     720,
+     0
+    ],
+    "sad": [
+     810,
+     0
+    ],
+    "think": [
+     900,
+     0
+    ],
+    "fluster": [
+     990,
+     0
+    ]
+   }
+  },
+  "peek_over": {
+   "src": "face_peek_over.882bfc32.webp",
+   "rect": [
+    62,
+    160,
+    92,
+    61
+   ],
+   "variants": {
+    "eye_half": [
+     0,
+     0
+    ],
+    "eye_closed": [
+     94,
+     0
+    ],
+    "happy": [
+     188,
+     0
+    ],
+    "sad": [
+     282,
+     0
+    ],
+    "think": [
+     376,
+     0
+    ],
+    "fluster": [
+     470,
+     0
+    ]
+   }
+  },
+  "perch_top": {
+   "src": "face_perch_top.f52f2fca.webp",
+   "rect": [
+    102,
+    115,
+    93,
+    55
+   ],
+   "variants": {
+    "look": [
+     0,
+     0
+    ],
+    "eye_half": [
+     95,
+     0
+    ],
+    "eye_closed": [
+     190,
+     0
+    ]
+   }
+  }
+ }
+}

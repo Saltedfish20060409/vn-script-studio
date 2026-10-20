@@ -1,0 +1,40 @@
+.sprite {
+  position: relative;
+  pointer-events: none;
+}
+
+.stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+.clip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+}
+
+.motion {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  background-repeat: no-repeat;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* 符号可以伸出画布（如探头时汗滴超出右边），不裁剪 */
+.emote {
+  position: absolute;
+  overflow: visible;
+}

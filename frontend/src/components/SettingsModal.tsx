@@ -1232,7 +1232,7 @@ export function SettingsModal({ open, onClose, settings, onChange, view, onViewC
                     <option value="0">关闭</option>
                   </select>
                   <span className={styles.note}>
-                    桌面小助手：点击换心情冒泡，右键有菜单；位置自动记住。
+                    桌面小助手：宽屏默认开启；点击互动，右键有喂食 / 玩耍等菜单；位置自动记住。
                   </span>
                 </label>
                 <label>

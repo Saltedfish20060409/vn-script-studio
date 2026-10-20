@@ -1,451 +1,652 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   getDeskPetState,
   setDeskPetEnabled,
   setDeskPetPos,
   subscribeDeskPet,
+  type PetWanderInterval,
 } from "../lib/deskPet";
-import { mascotLine } from "../lib/mascotCopy";
+import { subscribePet } from "../lib/petBridge";
+import { petLine } from "../lib/petCopy";
+import { masterPxPerSec } from "../lib/petMotion";
 import {
-  PET_ANIMATIONS,
-  PET_CANVAS,
-  petFrameUrl,
-  type PetActionId,
-} from "../lib/petAnimations";
+  createPetState,
+  petReducer,
+  type PetMood,
+  type PetPlacement,
+  type PetState,
+} from "../lib/petMachine";
+import {
+  loadPetManifest,
+  preloadPetAssets,
+  type PetManifest,
+  type PetWalkDir,
+} from "../lib/petManifest";
+import {
+  FRAME_EDGE_BAND_PX,
+  PET_DISPLAY,
+  anchorOf,
+  bodyMetrics,
+  boxAt,
+  canPeekAt,
+  canPeekUnderAt,
+  canPerchAt,
+  canPerchSideAt,
+  classifyDrop,
+  mirroredAnchor,
+  petScale,
+  petVisual,
+  upsideDownAnchor,
+  type PetBodyMetrics,
+  type PetBox,
+  type PetViewport,
+  type PetVisual,
+} from "../lib/petVisual";
 import type { MascotMood } from "./MascotFigure";
 import { PetPlaceholder } from "./PetPlaceholder";
+import { PetSprite } from "./PetSprite";
 import styles from "./QPet.module.css";
 
-type PetMode = "dock" | "corner" | "free" | "edge-left" | "edge-right";
-
-const PET_W = 120;
-const PET_H = 168;
 const DOCK_GAP = 10;
 /** 底部固定音乐条的高度预留：桌宠角落/游走不上遮挡区（条高约 43px，这里留点余量） */
 const BAR_RESERVE = 50;
-/** 无交互多久触发打瞌睡（至少 3 分钟） */
-const SLEEP_AFTER_MS = 3 * 60 * 1000;
+const CORNER_GAP = 16;
+const WALK_PX_PER_S = 60;
+const TICK_MS = 1000;
+const CLICK_DELAY_MS = 240;
+const DRAG_THRESHOLD_PX = 4;
+/** 气泡出现后播口型的时长：每字约 90ms，封顶 1.6s */
+const BUBBLE_TALK_MS_PER_CHAR = 90;
+const BUBBLE_TALK_MAX_MS = 1600;
 
-const MOOD_FOR_STANCE: Record<PetActionId, MascotMood> = {
-  breath_idle: "idle",
-  blink: "idle",
-  walk_side_r: "idle",
-  perch_top: "idle",
-  peek_over: "idle",
-  peek_side_r: "idle",
-  perch_side_r: "idle",
-  peek_under: "idle",
-  hide_corner: "worry",
-  slip_r: "idle",
-  react_fluster: "fluster",
-  react_cheer: "cheer",
-  fall_asleep: "idle",
-  drag_held: "fluster",
-  drop_land: "fluster",
-  read_over_shoulder: "think",
+/** 清单加载失败时占位小人用的画布：A 套站姿 */
+const FALLBACK_METRICS: PetBodyMetrics = {
+  w: 320,
+  h: 480,
+  anchor: { x: 160, y: 450 },
+  emote: { size: 42, above_right: [250, 7], zzz: [264, 1], temple: [268, 52] },
 };
 
-/** 点击反应池：不规律触发 */
-const CLICK_POOL: Array<{ stance: PetActionId; text: string | null }> = [
-  { stance: "react_fluster", text: null },
-  { stance: "react_cheer", text: "嘿嘿。" },
-  { stance: "breath_idle", text: mascotLine("deskPet") },
-  { stance: "read_over_shoulder", text: "在看我吗？" },
-];
+const PLACEHOLDER_MOOD: Record<PetMood, MascotMood> = {
+  neutral: "idle",
+  happy: "cheer",
+  sad: "worry",
+  think: "think",
+  fluster: "fluster",
+};
 
-/** 原地小动作池（占位阶段也有动画/表情） */
-const MINI_ACTIONS: PetActionId[] = [
-  "react_cheer", // 跳一下
-  "read_over_shoulder", // 张望
-  "hide_corner", // 坐下蜷
-];
+/** 会自己走动的位置；自由摆放和贴边尊重用户的摆放，不走 */
+const WANDER_FROM: ReadonlySet<PetPlacement> = new Set<PetPlacement>([
+  "corner",
+  "dock",
+  "perchTop",
+  "peekOver",
+]);
 
-function clampX(x: number, w = PET_W): number {
-  return Math.max(0, Math.min(x, window.innerWidth - w - 8));
-}
-function clampY(y: number, h = PET_H): number {
-  return Math.max(0, Math.min(y, window.innerHeight - h - BAR_RESERVE));
-}
+/** 挂在编辑框上的位置：滚动时跟着框，框消失就落地 */
+const ON_FRAME: ReadonlySet<PetPlacement> = new Set<PetPlacement>([
+  "perchTop",
+  "peekOver",
+  "peekUnder",
+  "perchSideLeft",
+  "perchSideRight",
+]);
 
-function dockFromEditorRect(rect: DOMRect): { x: number; y: number } {
-  return {
-    x: clampX(rect.right + DOCK_GAP),
-    y: clampY(rect.bottom - PET_H),
-  };
-}
+const GROUND: ReadonlySet<PetPlacement> = new Set<PetPlacement>(["corner", "dock", "free"]);
 
-function cornerPos(): { x: number; y: number } {
-  return {
-    x: clampX(window.innerWidth - PET_W - 16),
-    y: clampY(window.innerHeight - PET_H - 16),
-  };
-}
-
-/** 姿态 → 编辑器对齐位置（到达框边目标时用） */
-function dockPosFor(stance: PetActionId, rect: DOMRect): { x: number; y: number } {
-  const s = PET_ANIMATIONS[stance];
-  const c = PET_CANVAS[s.canvas];
-  const h = (PET_W / c.w) * c.h;
-  if (s.anchor?.sit_contact) {
-    const ratio = s.anchor.sit_contact.y / c.h;
-    return {
-      x: clampX(rect.left + rect.width / 2 - PET_W / 2),
-      y: clampY(rect.top - h * ratio),
-    };
-  }
-  if (s.canvas === "B") {
-    return {
-      x: clampX(rect.left + rect.width / 2 - 48, 96),
-      y: clampY(rect.top - 56, 96),
-    };
-  }
-  return dockFromEditorRect(rect);
-}
-
-/** 自由游走目标：普通游走保持当前高度（纯水平）；框边目标（趴框顶/
- *  站两侧/探头）需要改变高度时才斜向移动。编辑器可见时偏好框边。 */
-function pickTarget(
-  editorRef: React.RefObject<HTMLTextAreaElement | null> | undefined,
-  from: { x: number; y: number }
-): { x: number; y: number; onArrive: "perch" | "peek" | "stand" } {
-  const vw = window.innerWidth;
-  const targets: Array<{ x: number; y: number; onArrive: "perch" | "peek" | "stand" }> = [];
-  const el = editorRef?.current;
-  const r = el ? el.getBoundingClientRect() : null;
-  if (r && r.width > 40) {
-    targets.push({
-      x: clampX(r.left + r.width / 2 - PET_W / 2),
-      y: clampY(r.top - 96),
-      onArrive: "perch",
-    }); // 趴框顶（斜向上去）
-    targets.push({
-      x: clampX(r.right + DOCK_GAP),
-      y: clampY(r.bottom - PET_H),
-      onArrive: "stand",
-    }); // 框右侧
-    targets.push({
-      x: clampX(r.left - PET_W - 10),
-      y: clampY(r.bottom - PET_H),
-      onArrive: "stand",
-    }); // 框左侧
-    targets.push({
-      x: clampX(r.left + r.width / 2 - 48, 96),
-      y: clampY(r.top - 56, 96),
-      onArrive: "peek",
-    }); // 框顶探头（斜向上去）
-  }
-  // 普通游走：保持当前高度 → 纯水平移动
-  targets.push({
-    x: clampX(vw * (0.08 + Math.random() * 0.84)),
-    y: from.y,
-    onArrive: "stand",
-  });
-  targets.push({
-    x: clampX(vw * (0.08 + Math.random() * 0.84)),
-    y: from.y,
-    onArrive: "stand",
-  });
-  return targets[Math.floor(Math.random() * targets.length)];
-}
+type WalkPlan = {
+  from: PetBox;
+  to: PetBox;
+  dir: PetWalkDir;
+  placement: PetPlacement;
+  /** 走到后要用的画布位置（坐框顶 / 探头会换画布） */
+  arrive: PetBox;
+};
 
 type Props = {
   editorRef?: React.RefObject<HTMLTextAreaElement | null>;
   cheerSignal?: number;
 };
 
-/** Q 版桌宠：像桌宠模拟器一样在屏幕上自由游走 —— 随机走向各处、
- *  停停走走、做小动作、被戳有反应、可拖拽、会打瞌睡。 */
+function viewport(): PetViewport {
+  return { w: window.innerWidth, h: window.innerHeight, bottomReserve: BAR_RESERVE };
+}
+
+function displayWidth(): number {
+  return window.innerWidth < 768 ? PET_DISPLAY.small : PET_DISPLAY.medium;
+}
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+}
+
+function isLateNight(): boolean {
+  const h = new Date().getHours();
+  return h >= 23 || h < 5;
+}
+
+function reactionActive(s: PetState, now: number): boolean {
+  return s.reaction !== null && s.reaction.until > now;
+}
+
+/** 与 petReducer 的 walkStart 条件一致：先判断，避免改了位置却没走成 */
+function canWalk(s: PetState, now: number): boolean {
+  return !s.reducedMotion && s.body !== "sleep" && s.body !== "held" && !reactionActive(s, now);
+}
+
+function isResting(s: PetState): boolean {
+  return (
+    s.body === "idle" ||
+    s.body === "perchTop" ||
+    s.body === "peekOver" ||
+    s.body === "peekSide" ||
+    s.body === "hideCorner"
+  );
+}
+
+/** 同一句气泡的随机数固定，重渲染不换词 */
+function bubbleRand(id: number): number {
+  return ((id * 9301 + 49297) % 233280) / 233280;
+}
+
+/** Q 版桌宠：状态由 petMachine 决定，这里负责屏幕位置、走动、拖拽和输入。 */
 export function QPet({ editorRef, cheerSignal }: Props) {
   const [enabled, setEnabled] = useState(getDeskPetState().enabled);
-  const [mode, setMode] = useState<PetMode>("corner");
-  const [pos, setPos] = useState<{ x: number; y: number }>(() => cornerPos());
-  const [stance, setStance] = useState<PetActionId>("breath_idle");
-  const [frameIdx, setFrameIdx] = useState(0);
-  const [hasFrames, setHasFrames] = useState<Record<string, boolean>>({});
-  const [line, setLine] = useState<string | null>(null);
+  const [manifest, setManifest] = useState<PetManifest | null | undefined>(undefined);
+  const [state, dispatch] = useReducer(petReducer, undefined, () =>
+    createPetState(Date.now(), { placement: "corner", reducedMotion: prefersReducedMotion() })
+  );
+  const [box, setBox] = useState<PetBox | null>(null);
+  const [moveMs, setMoveMs] = useState(0);
+  const [walkDir, setWalkDir] = useState<PetWalkDir>("r");
+  const [displayW, setDisplayW] = useState(displayWidth);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [moveMs, setMoveMs] = useState(1500);
-  const [walkDir, setWalkDir] = useState<1 | -1>(1);
+  const [bubbleTalk, setBubbleTalk] = useState(false);
   const [behaviorTick, setBehaviorTick] = useState(0);
-  const [eyePos, setEyePos] = useState({ x: 0, y: 0 });
-  const posRef = useRef(pos);
-  const stanceRef = useRef(stance);
+  const scale = petScale(displayW);
+
+  const stateRef = useRef(state);
+  const boxRef = useRef(box);
   useEffect(() => {
-    posRef.current = pos;
-    stanceRef.current = stance;
-  }, [pos, stance]);
+    stateRef.current = state;
+    boxRef.current = box;
+  });
+  const rootRef = useRef<HTMLDivElement>(null);
+  const walkPlan = useRef<WalkPlan | null>(null);
+  const walking = useRef(false);
+  const walkTimers = useRef<number[]>([]);
+  const clickTimer = useRef<number | null>(null);
   const dragRef = useRef<{
     startX: number;
     startY: number;
-    originX: number;
-    originY: number;
+    origin: PetBox;
     moved: boolean;
+    sampleX: number;
+    sampleT: number;
   } | null>(null);
-  const prevEnabledRef = useRef(getDeskPetState().enabled);
-  const lineTimer = useRef<number | null>(null);
-  const blinkTimer = useRef<number | null>(null);
-  const behaviorTimer = useRef<number | null>(null);
-  const clickTimer = useRef<number | null>(null);
-  const moveTimer = useRef<number | null>(null);
-  const segTimers = useRef<number[]>([]);
-  const sleepTimer = useRef<number | null>(null);
-  const lastActivityRef = useRef(Date.now());
+  const dragSpeed = useRef(0);
+  /** 挂在编辑框上时，挂点相对框左缘、上缘的距离 */
+  const frameOffset = useRef<{ x: number; y: number } | null>(null);
+  const leavingFrame = useRef(false);
+  const prevEnabled = useRef(enabled);
   const prevCheer = useRef(cheerSignal ?? 0);
-  /** 走位/行为进行中：防止重复调度 */
-  const wanderingRef = useRef(false);
 
-  // 设置开关同步：只在「关→开」时归位
-  useEffect(() => {
-    const onStore = () => {
-      const st = getDeskPetState();
-      if (st.enabled !== prevEnabledRef.current) {
-        if (st.enabled) {
-          setPos(cornerPos());
-          setStance("breath_idle");
-          setMode("corner");
-        }
-        prevEnabledRef.current = st.enabled;
-      }
-      setEnabled(st.enabled);
-    };
-    return subscribeDeskPet(onStore);
-  }, []);
-
-  const say = useCallback((text: string) => {
-    setLine(text);
-    if (lineTimer.current) window.clearTimeout(lineTimer.current);
-    lineTimer.current = window.setTimeout(() => setLine(null), 5200);
-  }, []);
-
-  const markFrameResult = useCallback((action: string, ok: boolean) => {
-    setHasFrames((prev) => {
-      if (prev[action] === ok) return prev;
-      return { ...prev, [action]: ok };
-    });
-  }, []);
-
-  const spec = PET_ANIMATIONS[stance];
-  const framesReady = hasFrames[stance] === true;
-  const isPeek = spec.canvas === "B";
-  const showW = isPeek ? 96 : PET_W;
-  const mood = MOOD_FOR_STANCE[stance];
-  const isEdge = mode === "edge-left" || mode === "edge-right";
-
-  // 动画循环：按每帧停留时长推进；循环 / 单次停帧 / 单次播完回呼吸
-  useEffect(() => {
-    if (!framesReady) return; // 占位由 CSS 动画负责
-    let cancelled = false;
-    let idx = frameIdx === 0 ? 0 : frameIdx;
-    const step = () => {
-      if (cancelled) return;
-      const next = idx + 1;
-      if (next >= spec.frames) {
-        if (spec.loop) {
-          idx = 0;
-          setFrameIdx(0);
-        } else if (spec.stopAt) {
-          setFrameIdx(spec.stopAt - 1);
-          return;
-        } else {
-          if (stance !== "breath_idle") setStance("breath_idle");
-          return;
-        }
-      } else {
-        idx = next;
-        setFrameIdx(next);
-      }
-      window.setTimeout(step, spec.holdMs[idx] ?? 400);
-    };
-    const t = window.setTimeout(step, spec.holdMs[idx] ?? 400);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(t);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stance, framesReady]);
-
-  // 呼吸时随机眨眼
-  useEffect(() => {
-    if (!enabled || stance !== "breath_idle") return;
-    blinkTimer.current = window.setTimeout(() => {
-      setStance("blink");
-    }, 2600 + Math.random() * 3600);
-    return () => {
-      if (blinkTimer.current) window.clearTimeout(blinkTimer.current);
-    };
-  }, [enabled, stance]);
-
-  // 占位眼珠跟随鼠标：让 Q 版小人更「活」
-  useEffect(() => {
-    if (!enabled) return;
-    const onMove = (e: MouseEvent) => {
-      const p = posRef.current;
-      const cx = p.x + showW / 2;
-      const cy = p.y + 60;
-      const dx = e.clientX - cx;
-      const dy = e.clientY - cy;
-      const dist = Math.max(1, Math.abs(dx) + Math.abs(dy));
-      const k = Math.min(1, 40 / dist); // 距离越近看得越“聚”
-      setEyePos({
-        x: Math.max(-6, Math.min(6, (dx / dist) * 6 * k)),
-        y: Math.max(-6, Math.min(6, (dy / dist) * 6 * k)),
-      });
-    };
-    window.addEventListener("mousemove", onMove);
-    return () => window.removeEventListener("mousemove", onMove);
-  }, [enabled, showW]);
-
-  // 行为循环：像桌宠模拟器一样自由活动 —— 每 8~20s 随机决定
-  // 「走向某处 / 原地小动作 / 待机呼吸」。free（拖放摆放）与 edge 不活动。
-  useEffect(() => {
-    if (!enabled || isEdge || dragging || wanderingRef.current) return;
-    if (mode === "free") return; // 拖到哪停哪，尊重摆放
-    if (stanceRef.current === "fall_asleep") return; // 睡着（wakeUp 恢复）
-    behaviorTimer.current = window.setTimeout(
-      () => {
-        const roll = Math.random();
-        if (roll < 0.5) {
-          // 走向目标（普通目标纯水平；框边目标平滑斜向）
-          const from = posRef.current;
-          const target = pickTarget(editorRef, from);
-          const dx = target.x - from.x;
-          setWalkDir(dx < -4 ? -1 : 1);
-          wanderingRef.current = true;
-          setStance("walk_side_r");
-
-          const finish = () => {
-            wanderingRef.current = false;
-            setMoveMs(1500);
-            setStance(
-              target.onArrive === "perch"
-                ? "perch_top"
-                : target.onArrive === "peek"
-                  ? "peek_over"
-                  : "breath_idle"
-            );
-            setBehaviorTick((t) => t + 1); // 调度下一个行为
-          };
-
-          if (Math.abs(dx) < 8) {
-            // 几乎没水平位移：直接平滑过渡到位（x、y 一起）
-            setMoveMs(800);
-            setPos({ x: target.x, y: target.y });
-            moveTimer.current = window.setTimeout(finish, 1000);
-            return;
-          }
-
-          // 分小段走（每小段 ≤ 屏 1/24，走 950ms + 停 450ms）：
-          // x、y 都按比例分摊进每一段 → 平滑斜向，不会「走完突然纵跳」
-          const seg = Math.max(36, window.innerWidth / 24);
-          const n = Math.max(2, Math.ceil(Math.abs(dx) / seg));
-          const stepMs = 950;
-          const pauseMs = 450;
-          const dy = target.y - from.y;
-          for (let i = 1; i <= n; i++) {
-            const timer = window.setTimeout(() => {
-              setMoveMs(stepMs);
-              setPos({
-                x: from.x + (dx * i) / n,
-                y: from.y + (dy * i) / n,
-              });
-            }, (i - 1) * (stepMs + pauseMs));
-            segTimers.current.push(timer);
-          }
-          moveTimer.current = window.setTimeout(
-            finish,
-            n * (stepMs + pauseMs) + 200
-          );
-        } else if (roll < 0.75) {
-          // 原地小动作（跳一下 / 张望 / 坐下蜷），2.5s 后回呼吸
-          const act = MINI_ACTIONS[Math.floor(Math.random() * MINI_ACTIONS.length)];
-          setStance(act);
-          moveTimer.current = window.setTimeout(() => {
-            setStance("breath_idle");
-            setBehaviorTick((t) => t + 1);
-          }, 2500);
-        } else {
-          // 待机呼吸（静静站一会儿）
-          setStance("breath_idle");
-          setBehaviorTick((t) => t + 1);
-        }
-      },
-      8000 + Math.random() * 12000
-    );
-    return () => {
-      if (behaviorTimer.current) window.clearTimeout(behaviorTimer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, mode, isEdge, dragging, behaviorTick]);
-
-  // 编辑器可见 → dock（行为目标偏框边）；不可见 → corner（自由游走）
-  useEffect(() => {
-    if (!enabled || mode === "free" || isEdge) return;
-    const el = editorRef?.current;
-    if (!el) {
-      setMode("corner");
-      setPos(cornerPos());
-      return;
-    }
-    const rect = el.getBoundingClientRect();
-    const inView =
-      rect.width > 40 &&
-      rect.top < window.innerHeight &&
-      rect.bottom > 0 &&
-      rect.left < window.innerWidth &&
-      rect.right > 0;
-    if (inView) {
-      if (mode !== "dock") setBehaviorTick((t) => t + 1); // 进入写作页后尽快活动
-      setMode("dock");
-    } else {
-      setMode("corner");
-    }
-  }, [enabled, mode, editorRef, isEdge]);
-
-  // 外部庆祝信号
-  useEffect(() => {
-    if (cheerSignal !== undefined && cheerSignal !== prevCheer.current) {
-      prevCheer.current = cheerSignal;
-      if (enabled) {
-        setStance("react_cheer");
-        say(isLateNight() ? "这么晚还保存，辛苦了。" : "保存成功，写得漂亮。");
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cheerSignal, enabled]);
-
-  // 打瞌睡：≥3 分钟【不与桌宠交互】触发，睡着时长随机（45~120s）
-  const wakeUp = useCallback(
-    (withLine: boolean) => {
-      if (sleepTimer.current) window.clearTimeout(sleepTimer.current);
-      sleepTimer.current = null;
-      setStance("breath_idle");
-      setBehaviorTick((t) => t + 1); // 睡醒恢复行为循环
-      if (withLine) say("（揉揉眼睛）我睡着了吗？……嗯，醒了。");
-    },
-    [say]
+  const metricsOf = useCallback(
+    (body: PetVisual["body"], dir: PetWalkDir = "r"): PetBodyMetrics =>
+      manifest ? bodyMetrics(manifest, body, dir) : FALLBACK_METRICS,
+    [manifest]
   );
 
-  const bumpPetActivity = useCallback(() => {
-    lastActivityRef.current = Date.now();
-    if (stanceRef.current === "fall_asleep") wakeUp(false);
-  }, [wakeUp]);
+  const editorRect = useCallback((): DOMRect | null => {
+    const el = editorRef?.current;
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const inView =
+      r.width > 40 &&
+      r.top < window.innerHeight &&
+      r.bottom > 0 &&
+      r.left < window.innerWidth &&
+      r.right > 0;
+    return inView ? r : null;
+  }, [editorRef]);
 
+  /** 站立姿势：整张画布留在屏幕内，脚不踩进底部条 */
+  const clampGround = useCallback(
+    (b: PetBox): PetBox => {
+      const met = metricsOf("idle");
+      const vp = viewport();
+      return {
+        left: Math.max(0, Math.min(b.left, vp.w - met.w * scale)),
+        top: Math.max(0, Math.min(b.top, vp.h - vp.bottomReserve - met.anchor.y * scale)),
+      };
+    },
+    [metricsOf, scale]
+  );
+
+  const groundBoxAt = useCallback(
+    (x: number, footY: number) => clampGround(boxAt(metricsOf("idle"), scale, x, footY)),
+    [clampGround, metricsOf, scale]
+  );
+
+  const cornerBox = useCallback(() => {
+    const met = metricsOf("idle");
+    const vp = viewport();
+    return groundBoxAt(
+      vp.w - CORNER_GAP - (met.w - met.anchor.x) * scale,
+      vp.h - vp.bottomReserve - 8
+    );
+  }, [groundBoxAt, metricsOf, scale]);
+
+  const dockBox = useCallback(
+    (r: DOMRect) => {
+      const met = metricsOf("idle");
+      return groundBoxAt(
+        r.right + DOCK_GAP + met.anchor.x * scale,
+        Math.min(r.bottom, window.innerHeight - BAR_RESERVE - 8)
+      );
+    },
+    [groundBoxAt, metricsOf, scale]
+  );
+
+  const perchX = useCallback(
+    (r: DOMRect, x: number) => {
+      const half = (metricsOf("perch_top").w / 2) * scale;
+      return Math.max(r.left + half * 0.6, Math.min(x, r.right - half * 0.6));
+    },
+    [metricsOf, scale]
+  );
+
+  const perchBox = useCallback(
+    (r: DOMRect, x: number) => boxAt(metricsOf("perch_top"), scale, perchX(r, x), r.top),
+    [metricsOf, perchX, scale]
+  );
+
+  const peekBox = useCallback(
+    (r: DOMRect, x: number) => boxAt(metricsOf("peek_over"), scale, perchX(r, x), r.top),
+    [metricsOf, perchX, scale]
+  );
+
+  const peekUnderBox = useCallback(
+    (r: DOMRect, x: number) =>
+      boxAt(upsideDownAnchor(metricsOf("peek_over")), scale, perchX(r, x), r.bottom),
+    [metricsOf, perchX, scale]
+  );
+
+  const sideFootY = useCallback((r: DOMRect, y: number) => {
+    const lo = r.top + FRAME_EDGE_BAND_PX;
+    const hi = Math.max(lo, r.bottom - FRAME_EDGE_BAND_PX);
+    return Math.max(lo, Math.min(y, hi));
+  }, []);
+
+  const perchSideBox = useCallback(
+    (side: "perchSideLeft" | "perchSideRight", r: DOMRect, y: number) => {
+      const met = metricsOf("perch_side");
+      const yy = sideFootY(r, y);
+      if (side === "perchSideRight") return boxAt(met, scale, r.right, yy);
+      return boxAt(mirroredAnchor(met), scale, r.left, yy);
+    },
+    [metricsOf, scale, sideFootY]
+  );
+
+  const edgeBox = useCallback(
+    (side: "edgeLeft" | "edgeRight", y: number) => {
+      const met = metricsOf(side === "edgeLeft" ? "peek_side_l" : "peek_side_r");
+      const vp = viewport();
+      const lo = met.anchor.y * scale * 0.6;
+      const hi = vp.h - vp.bottomReserve - (met.h - met.anchor.y) * scale;
+      const yy = Math.max(lo, Math.min(y, hi));
+      return boxAt(met, scale, side === "edgeLeft" ? 0 : vp.w, yy);
+    },
+    [metricsOf, scale]
+  );
+
+  const perchable = useCallback(
+    (r: DOMRect) => !manifest || canPerchAt(manifest, scale, r.top, viewport()),
+    [manifest, scale]
+  );
+  const peekable = useCallback(
+    (r: DOMRect) => !manifest || canPeekAt(manifest, scale, r.top),
+    [manifest, scale]
+  );
+  const peekUnderable = useCallback(
+    (r: DOMRect) => !manifest || canPeekUnderAt(manifest, scale, r.bottom, viewport()),
+    [manifest, scale]
+  );
+  const sideable = useCallback(
+    (side: "perchSideLeft" | "perchSideRight", r: DOMRect) =>
+      !manifest || canPerchSideAt(side, manifest, scale, side === "perchSideLeft" ? r.left : r.right, viewport()),
+    [manifest, scale]
+  );
+
+  const homePlacement = useCallback(
+    (): PetPlacement => (editorRect() ? "dock" : "corner"),
+    [editorRect]
+  );
+
+  const place = useCallback((b: PetBox, ms = 0) => {
+    setMoveMs(ms);
+    setBox(b);
+  }, []);
+
+  // 清单
+  useEffect(() => {
+    let alive = true;
+    loadPetManifest().then((m) => {
+      if (!alive) return;
+      setManifest(m);
+      if (m) preloadPetAssets(m);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 首次摆放（清单到了之后，挂点才准）
+  useEffect(() => {
+    if (!enabled || manifest === undefined || boxRef.current) return;
+    const r = editorRect();
+    if (r) {
+      dispatch({ type: "arrive", now: Date.now(), placement: "dock" });
+      place(dockBox(r));
+    } else {
+      place(cornerBox());
+    }
+  }, [enabled, manifest, editorRect, dockBox, cornerBox, place]);
+
+  // 设置开关同步：只在「关→开」时归位
+  useEffect(
+    () =>
+      subscribeDeskPet(() => {
+        const st = getDeskPetState();
+        if (st.enabled && !prevEnabled.current) {
+          dispatch({ type: "arrive", now: Date.now(), placement: "corner" });
+          setBox(null);
+        }
+        prevEnabled.current = st.enabled;
+        setEnabled(st.enabled);
+      }),
+    []
+  );
+
+  // 状态机时钟：没有变化时 reducer 返回原对象，不触发提交
   useEffect(() => {
     if (!enabled) return;
-    const check = () => {
-      if (stance === "fall_asleep") return; // 已在睡
-      if (isEdge || dragging || wanderingRef.current) return;
-      const idleMs = Date.now() - lastActivityRef.current;
-      if (idleMs >= SLEEP_AFTER_MS) {
-        setStance("fall_asleep");
-        const sleepMs = 45000 + Math.random() * 75000; // 45~120s 随机
-        sleepTimer.current = window.setTimeout(() => wakeUp(true), sleepMs);
-      }
-    };
-    const t = window.setInterval(check, 15000);
+    const t = window.setInterval(
+      () => dispatch({ type: "tick", now: Date.now(), r: Math.random() }),
+      TICK_MS
+    );
     return () => window.clearInterval(t);
-  }, [enabled, stance, isEdge, dragging, wakeUp]);
+  }, [enabled]);
+
+  // 系统「减少动态」
+  useEffect(() => {
+    const mq = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (!mq) return;
+    const on = () => dispatch({ type: "settings", reducedMotion: mq.matches });
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+
+  // 外部庆祝信号（保存成功）
+  useEffect(() => {
+    if (cheerSignal === undefined || cheerSignal === prevCheer.current) return;
+    prevCheer.current = cheerSignal;
+    if (enabled) {
+      dispatch({ type: "app", now: Date.now(), event: "save:ok", lateNight: isLateNight() });
+    }
+  }, [cheerSignal, enabled]);
+
+  useEffect(() => {
+    return subscribePet((signal) => {
+      if (!enabled) return;
+      const now = Date.now();
+      if (signal.kind === "sleep") {
+        dispatch({ type: "forceSleep", now });
+        return;
+      }
+      dispatch({
+        type: "app",
+        now,
+        event: signal.event,
+        line: signal.line,
+        lateNight: isLateNight(),
+      });
+    });
+  }, [enabled]);
+
+  const clearWalkTimers = () => {
+    walkTimers.current.forEach((t) => window.clearTimeout(t));
+    walkTimers.current = [];
+  };
+
+  /** 走到一半被打断：停在当前画面位置，状态机离开 walk */
+  const freezeWalk = useCallback(() => {
+    if (!walking.current && !walkPlan.current) return;
+    clearWalkTimers();
+    walking.current = false;
+    walkPlan.current = null;
+    const el = rootRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      place({ left: r.left, top: r.top });
+    }
+    dispatch({ type: "arrive", now: Date.now(), placement: homePlacement() });
+  }, [place, homePlacement]);
+
+  // 走路：状态机进入 walk 后才开始位移；身体不再是 walk 时停下
+  useEffect(() => {
+    if (state.body !== "walk") {
+      if (walking.current) freezeWalk();
+      return;
+    }
+    const plan = walkPlan.current;
+    if (!plan || walking.current) return;
+    walking.current = true;
+    setWalkDir(plan.dir);
+    place(plan.from);
+    const dist = Math.hypot(plan.to.left - plan.from.left, plan.to.top - plan.from.top);
+    const ms = Math.max(400, (dist / WALK_PX_PER_S) * 1000);
+    const raf = requestAnimationFrame(() =>
+      requestAnimationFrame(() => place(plan.to, ms))
+    );
+    walkTimers.current.push(
+      window.setTimeout(() => {
+        walking.current = false;
+        walkPlan.current = null;
+        place(plan.arrive);
+        dispatch({ type: "arrive", now: Date.now(), placement: plan.placement });
+        setBehaviorTick((t) => t + 1);
+      }, ms + 60)
+    );
+    return () => cancelAnimationFrame(raf);
+  }, [state.body, freezeWalk, place]);
+
+  /** 当前挂点的屏幕位置：站姿是脚底；坐框顶 / 探头的挂点就在框顶线上，正好当站立点 */
+  const currentFoot = useCallback(() => {
+    const b = boxRef.current;
+    if (!b) return null;
+    return anchorOf(metricsOf(petVisual(stateRef.current).body, walkDir), scale, b);
+  }, [metricsOf, scale, walkDir]);
+
+  const planWalk = useCallback(() => {
+    const foot = currentFoot();
+    if (!foot) return false;
+    const r = editorRect();
+    const vp = viewport();
+    const here: PetPlacement = r ? "dock" : "corner";
+    const options: Array<{ x: number; y: number; placement: PetPlacement; arrive?: PetBox }> = [];
+    const pick = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
+    if (r) {
+      const x = pick(r.left + r.width * 0.2, r.right - r.width * 0.2);
+      if (perchable(r)) options.push({ x, y: r.top, placement: "perchTop", arrive: perchBox(r, x) });
+      if (peekable(r)) options.push({ x, y: r.top, placement: "peekOver", arrive: peekBox(r, x) });
+      const d = anchorOf(metricsOf("idle"), scale, dockBox(r));
+      options.push({ ...d, placement: "dock" });
+    }
+    for (let i = 0; i < 2; i++) {
+      options.push({ x: pick(vp.w * 0.08, vp.w * 0.92), y: foot.y, placement: here });
+    }
+    const o = options[Math.floor(Math.random() * options.length)];
+    if ((o.placement === "perchTop" || o.placement === "peekOver") && r) {
+      frameOffset.current = { x: o.x - r.left, y: 0 };
+    }
+    const from = groundBoxAt(foot.x, foot.y);
+    const to = groundBoxAt(o.x, o.y);
+    walkPlan.current = {
+      from,
+      to,
+      dir: to.left < from.left ? "l" : "r",
+      placement: o.placement,
+      arrive: o.arrive ?? to,
+    };
+    const now = Date.now();
+    dispatch({ type: "arrive", now, placement: here });
+    dispatch({ type: "walkStart", now });
+    return true;
+  }, [currentFoot, editorRect, perchable, peekable, perchBox, peekBox, dockBox, metricsOf, scale, groundBoxAt]);
+
+  // 自主行为：间隔读本地 wanderInterval（normal 8–20s / calm 20–45s / off）
+  useEffect(() => {
+    if (!enabled || !box || dragging) return;
+    const wander = getDeskPetState().wanderInterval as PetWanderInterval;
+    if (wander === "off") return;
+    const delay =
+      wander === "calm" ? 20_000 + Math.random() * 25_000 : 8000 + Math.random() * 12_000;
+    const t = window.setTimeout(() => {
+      const s = stateRef.current;
+      const now = Date.now();
+      if (!walking.current && WANDER_FROM.has(s.placement) && isResting(s) && canWalk(s, now)) {
+        const roll = Math.random();
+        if (roll < 0.5) planWalk();
+        else if (roll < 0.65 && GROUND.has(s.placement)) {
+          dispatch({ type: "mini", now, body: "hideCorner" });
+        }
+      }
+      // 自主周期里较高概率尝试闲聊（仍受状态机冷却；白天多为写作提醒）
+      if (Math.random() < 0.45) dispatch({ type: "chatter", now, lateNight: isLateNight() });
+      setBehaviorTick((v) => v + 1);
+    }, delay);
+    return () => window.clearTimeout(t);
+  }, [enabled, box, dragging, behaviorTick, planWalk]);
+
+  // 编辑器打字：10 秒内不闲聊
+  useEffect(() => {
+    if (!enabled) return;
+    const el = editorRef?.current;
+    if (!el) return;
+    const onType = () => dispatch({ type: "typing", now: Date.now() });
+    el.addEventListener("input", onType);
+    el.addEventListener("keydown", onType);
+    return () => {
+      el.removeEventListener("input", onType);
+      el.removeEventListener("keydown", onType);
+    };
+  }, [enabled, editorRef]);
+
+  // 窗口尺寸变化：换显示尺寸，按位置重新摆
+  useEffect(() => {
+    const onResize = () => {
+      setDisplayW(displayWidth());
+      const s = stateRef.current;
+      const b = boxRef.current;
+      if (!b || walking.current) return;
+      const r = editorRect();
+      if (s.placement === "perchTop" && r) place(perchBox(r, anchorOf(metricsOf("perch_top"), scale, b).x));
+      else if (s.placement === "peekOver" && r) place(peekBox(r, anchorOf(metricsOf("peek_over"), scale, b).x));
+      else if (s.placement === "peekUnder" && r) {
+        place(peekUnderBox(r, anchorOf(upsideDownAnchor(metricsOf("peek_over")), scale, b).x));
+      } else if ((s.placement === "perchSideLeft" || s.placement === "perchSideRight") && r) {
+        const met = s.placement === "perchSideLeft" ? mirroredAnchor(metricsOf("perch_side")) : metricsOf("perch_side");
+        place(perchSideBox(s.placement, r, anchorOf(met, scale, b).y));
+      } else if (s.placement === "edgeLeft" || s.placement === "edgeRight") {
+        const met = metricsOf(s.placement === "edgeLeft" ? "peek_side_l" : "peek_side_r");
+        place(edgeBox(s.placement, anchorOf(met, scale, b).y));
+      } else place(clampGround(b));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [editorRect, perchBox, peekBox, peekUnderBox, perchSideBox, edgeBox, clampGround, metricsOf, place, scale]);
+
+  const frameBox = useCallback(
+    (placement: PetPlacement, r: DOMRect, off: { x: number; y: number }) => {
+      if (placement === "perchTop") return perchBox(r, r.left + off.x);
+      if (placement === "peekOver") return peekBox(r, r.left + off.x);
+      if (placement === "peekUnder") return peekUnderBox(r, r.left + off.x);
+      return perchSideBox(placement === "perchSideLeft" ? "perchSideLeft" : "perchSideRight", r, r.top + off.y);
+    },
+    [perchBox, peekBox, peekUnderBox, perchSideBox]
+  );
+
+  const anchorOnFrame = useCallback(
+    (placement: PetPlacement, b: PetBox) => {
+      if (placement === "perchTop") return anchorOf(metricsOf("perch_top"), scale, b);
+      if (placement === "peekOver") return anchorOf(metricsOf("peek_over"), scale, b);
+      if (placement === "peekUnder") return anchorOf(upsideDownAnchor(metricsOf("peek_over")), scale, b);
+      const met = placement === "perchSideLeft" ? mirroredAnchor(metricsOf("perch_side")) : metricsOf("perch_side");
+      return anchorOf(met, scale, b);
+    },
+    [metricsOf, scale]
+  );
+
+  // 挂在编辑框上时跟着框走。框滚出屏幕、或节点卸掉，就落到地面待机。
+  const followFrame = useCallback(() => {
+    const s = stateRef.current;
+    if (!ON_FRAME.has(s.placement)) return;
+    if (dragRef.current?.moved || walking.current || leavingFrame.current) return;
+    const el = editorRef?.current;
+    const r = el && el.isConnected ? editorRect() : null;
+    if (!r) {
+      leavingFrame.current = true;
+      frameOffset.current = null;
+      const b = boxRef.current;
+      const x = b
+        ? anchorOf(metricsOf(petVisual(s).body, walkDir), scale, b).x
+        : window.innerWidth / 2;
+      stateRef.current = { ...s, placement: "free", body: "idle" };
+      dispatch({ type: "frameGone", now: Date.now() });
+      const vp = viewport();
+      place(groundBoxAt(x, vp.h - vp.bottomReserve - 8), 420);
+      return;
+    }
+    if (frameOffset.current === null) {
+      const b = boxRef.current;
+      const grip = b ? anchorOnFrame(s.placement, b) : { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      frameOffset.current = { x: grip.x - r.left, y: grip.y - r.top };
+    }
+    const next = frameBox(s.placement, r, frameOffset.current);
+    const b = boxRef.current;
+    if (b && Math.abs(b.left - next.left) < 0.5 && Math.abs(b.top - next.top) < 0.5) return;
+    place(next, 0);
+  }, [editorRef, editorRect, metricsOf, scale, walkDir, place, groundBoxAt, frameBox, anchorOnFrame]);
+
+  useEffect(() => {
+    if (ON_FRAME.has(state.placement)) leavingFrame.current = false;
+  }, [state.placement]);
+
+  useEffect(() => {
+    if (!enabled || !ON_FRAME.has(state.placement)) return;
+    let queued = false;
+    const schedule = () => {
+      if (queued) return;
+      queued = true;
+      window.setTimeout(() => {
+        queued = false;
+        followFrame();
+      }, 0);
+    };
+    document.addEventListener("scroll", schedule, true);
+    window.addEventListener("scroll", schedule);
+    window.addEventListener("resize", schedule);
+    const poll = window.setInterval(schedule, 200);
+    schedule();
+    return () => {
+      document.removeEventListener("scroll", schedule, true);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      window.clearInterval(poll);
+    };
+  }, [enabled, state.placement, followFrame]);
 
   // 菜单打开时：点菜单外任意处关闭（菜单内按钮 stopPropagation 不受影响）
   useEffect(() => {
@@ -455,257 +656,330 @@ export function QPet({ editorRef, cheerSignal }: Props) {
     return () => window.removeEventListener("pointerdown", close);
   }, [menuOpen]);
 
-  // 拖拽 / 点击 / 贴边
+  const bubble = state.bubble;
+  const bubbleText = useMemo(
+    () => (bubble ? petLine(bubble.key, bubble.vars, bubbleRand(bubble.id)) : null),
+    [bubble]
+  );
+
+  // 气泡出现时播一小段口型
+  useEffect(() => {
+    if (!bubbleText) {
+      setBubbleTalk(false);
+      return;
+    }
+    setBubbleTalk(true);
+    const t = window.setTimeout(
+      () => setBubbleTalk(false),
+      Math.min(BUBBLE_TALK_MAX_MS, bubbleText.length * BUBBLE_TALK_MS_PER_CHAR)
+    );
+    return () => window.clearTimeout(t);
+  }, [bubbleText]);
+
+  /** 松手位置 → 落点（贴屏幕边 / 框顶 / 框后 / 框下 / 框外沿 / 自由） */
+  const dropZone = (clientX: number, b: PetBox): { zone: PetPlacement; box: PetBox } => {
+    const vp = viewport();
+    const met = metricsOf("held");
+    const foot = anchorOf(metricsOf("idle"), scale, b);
+    const r = editorRect();
+    let zone = classifyDrop(foot, clientX, r, vp.w);
+    if (zone === "perchTop" && r && !perchable(r)) zone = "free";
+    if (zone === "peekOver" && r && !peekable(r)) zone = "free";
+    if (zone === "peekUnder" && r && !peekUnderable(r)) zone = "free";
+    if ((zone === "perchSideLeft" || zone === "perchSideRight") && r && !sideable(zone, r)) zone = "free";
+    if (zone === "edgeLeft") return { zone, box: edgeBox("edgeLeft", b.top + met.h * scale * 0.35) };
+    if (zone === "edgeRight") return { zone, box: edgeBox("edgeRight", b.top + met.h * scale * 0.35) };
+    if (zone === "perchTop" && r) return { zone, box: perchBox(r, foot.x) };
+    if (zone === "peekOver" && r) return { zone, box: peekBox(r, foot.x) };
+    if (zone === "peekUnder" && r) return { zone, box: peekUnderBox(r, foot.x) };
+    if ((zone === "perchSideLeft" || zone === "perchSideRight") && r) {
+      return { zone, box: perchSideBox(zone, r, foot.y) };
+    }
+    return { zone: "free", box: clampGround(b) };
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    bumpPetActivity();
-    // 打断进行中的走位/小动作
-    wanderingRef.current = false;
-    segTimers.current.forEach((t) => window.clearTimeout(t));
-    segTimers.current = [];
-    if (moveTimer.current) window.clearTimeout(moveTimer.current);
+    if (e.button !== 0 || !box) return;
+    freezeWalk();
+    const el = rootRef.current;
+    const r = el?.getBoundingClientRect();
     dragRef.current = {
       startX: e.clientX,
       startY: e.clientY,
-      originX: pos.x,
-      originY: pos.y,
+      origin: r ? { left: r.left, top: r.top } : box,
       moved: false,
+      sampleX: e.clientX,
+      sampleT: performance.now(),
     };
-    setMode("free");
-    setDragging(true);
-    setMoveMs(0);
-    setStance("drag_held");
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragSpeed.current = 0;
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* 指针已失效（如触屏被系统接管）：不捕获也能拖，只是移出元素后收不到事件 */
+    }
   };
+
   const onPointerMove = (e: React.PointerEvent) => {
     const d = dragRef.current;
     if (!d) return;
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
-    if (Math.abs(dx) + Math.abs(dy) > 4) d.moved = true;
+    if (!d.moved && Math.abs(dx) + Math.abs(dy) > DRAG_THRESHOLD_PX) {
+      d.moved = true;
+      if (clickTimer.current) window.clearTimeout(clickTimer.current);
+      setDragging(true);
+      // 拎起姿势的领口对准指针，落点按拎起图的脚位判定
+      const met = metricsOf("held");
+      d.origin = {
+        left: e.clientX - met.anchor.x * scale - dx,
+        top: e.clientY - met.anchor.y * scale - dy,
+      };
+      dispatch({ type: "dragStart", now: Date.now() });
+    }
     if (d.moved) {
-      setPos({ x: clampX(d.originX + dx), y: clampY(d.originY + dy) });
+      const now = performance.now();
+      dragSpeed.current = masterPxPerSec(e.clientX - d.sampleX, now - d.sampleT, scale);
+      d.sampleX = e.clientX;
+      d.sampleT = now;
+      place({ left: d.origin.left + dx, top: d.origin.top + dy });
     }
   };
+
   const onPointerUp = (e: React.PointerEvent) => {
     const d = dragRef.current;
     dragRef.current = null;
-    setDragging(false);
-    setMoveMs(1500);
-    if (d?.moved) {
-      const finalPos = {
-        x: clampX(d.originX + (e.clientX - d.startX)),
-        y: clampY(d.originY + (e.clientY - d.startY)),
+    dragSpeed.current = 0;
+    if (!d) return;
+    if (d.moved) {
+      setDragging(false);
+      const dropped = {
+        left: d.origin.left + (e.clientX - d.startX),
+        top: d.origin.top + (e.clientY - d.startY),
       };
-      // 1) 贴屏幕边缘 → 吸附成「探出头」
-      const vw = window.innerWidth;
-      if (finalPos.x <= 6) {
-        setMode("edge-left");
-        setStance("peek_side_r");
-        setPos({ x: -showW * 0.55, y: finalPos.y });
-        setDeskPetPos({ x: -showW * 0.55, y: finalPos.y });
-        return;
-      }
-      if (finalPos.x >= vw - showW - 6) {
-        setMode("edge-right");
-        setStance("peek_side_r");
-        setPos({ x: vw - showW * 0.45, y: finalPos.y });
-        setDeskPetPos({ x: vw - showW * 0.45, y: finalPos.y });
-        return;
-      }
-      // 2) 拖到文本框上沿/框后 → 触发姿态；水平位置跟随落点
-      const el = editorRef?.current;
-      const r = el ? el.getBoundingClientRect() : null;
-      const inView = r && r.width > 40;
-      if (inView) {
-        const overlapX =
-          finalPos.x > r.left - 40 && finalPos.x < r.right + 40 - showW;
-        const onTop = Math.abs(finalPos.y - r.top) < 60;
-        const behind =
-          finalPos.y >= r.top - 130 && finalPos.y <= r.top + 60;
-        const nearRight =
-          Math.abs(finalPos.x - r.right) < 130 &&
-          finalPos.y > r.top - 80 &&
-          finalPos.y < r.bottom + 80;
-        if (overlapX && onTop) {
-          const s = PET_ANIMATIONS.perch_top;
-          const c = PET_CANVAS[s.canvas];
-          const h = (PET_W / c.w) * c.h;
-          const ratio = (s.anchor?.sit_contact?.y ?? c.h / 2) / c.h;
-          const p = { x: clampX(finalPos.x), y: clampY(r.top - h * ratio) };
-          setMode("dock");
-          setStance("perch_top");
-          setPos(p);
-          setDeskPetPos(p);
-          say("那我趴这儿陪你写。");
-          return;
+      const { zone, box: b } = dropZone(e.clientX, dropped);
+      if (ON_FRAME.has(zone)) {
+        const el = editorRef?.current;
+        if (el) {
+          const grip = anchorOnFrame(zone, b);
+          const rect = el.getBoundingClientRect();
+          frameOffset.current = { x: grip.x - rect.left, y: grip.y - rect.top };
         }
-        if (overlapX && behind) {
-          const p = { x: clampX(finalPos.x, 96), y: clampY(r.top - 56, 96) };
-          setMode("dock");
-          setStance("peek_over");
-          setPos(p);
-          setDeskPetPos(p);
-          say("躲在这儿偷看你写……");
-          return;
-        }
-        if (nearRight) {
-          const p = dockFromEditorRect(r);
-          setMode("dock");
-          setStance("breath_idle");
-          setPos(p);
-          setDeskPetPos(p);
-          return;
-        }
+      } else {
+        frameOffset.current = null;
       }
-      // 3) 其他位置 → 自由停留（拖到哪停在哪）
-      setPos(finalPos);
-      setDeskPetPos(finalPos);
-      setStance("drop_land");
-      window.setTimeout(() => {
-        setStance("breath_idle");
-      }, 320);
+      place(b);
+      setDeskPetPos({ x: b.left, y: b.top });
+      dispatch({ type: "dragEnd", now: Date.now(), zone });
       return;
     }
-    // 单击
     if (clickTimer.current) window.clearTimeout(clickTimer.current);
     clickTimer.current = window.setTimeout(() => {
-      if (stance === "fall_asleep") {
-        wakeUp(true);
-        return;
+      const s = stateRef.current;
+      if (s.placement === "edgeLeft" || s.placement === "edgeRight") {
+        const met = metricsOf("idle");
+        const vp = viewport();
+        const b = boxRef.current;
+        const footY = b ? b.top + met.h * scale * 0.9 : vp.h - BAR_RESERVE;
+        const x = s.placement === "edgeLeft" ? 24 + met.anchor.x * scale : vp.w - 24 - met.anchor.x * scale;
+        place(groundBoxAt(x, footY), 400);
       }
-      if (isEdge) {
-        const vw = window.innerWidth;
-        setMode("free");
-        setStance("react_cheer");
-        setPos({ x: mode === "edge-left" ? 24 : vw - showW - 24, y: pos.y });
-        say("被发现了！");
-        window.setTimeout(() => setStance("breath_idle"), 900);
-        return;
-      }
-      const pick = CLICK_POOL[Math.floor(Math.random() * CLICK_POOL.length)];
-      setStance(pick.stance);
-      if (pick.text) say(isLateNight() ? `（深夜）${pick.text}` : pick.text);
-      window.setTimeout(() => {
-        if (pick.stance !== "breath_idle") setStance("breath_idle");
-      }, 1000);
-    }, 240);
+      dispatch({ type: "click", now: Date.now() });
+    }, CLICK_DELAY_MS);
   };
+
   const onDoubleClick = () => {
-    bumpPetActivity();
     if (clickTimer.current) window.clearTimeout(clickTimer.current);
-    setStance("react_cheer");
-    say("摸头杀……开心。");
-    window.setTimeout(() => setStance("breath_idle"), 1000);
+    dispatch({ type: "doubleClick", now: Date.now() });
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      dispatch({ type: "click", now: Date.now() });
+    } else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      e.preventDefault();
+      setMenuOpen((v) => !v);
+    } else if (e.key === "Escape") {
+      setMenuOpen(false);
+    }
   };
 
   const dockHome = () => {
     setMenuOpen(false);
-    setMode("dock");
-    setStance("breath_idle");
-    setMoveMs(1500);
-    setBehaviorTick((t) => t + 1); // 立即恢复行为循环
-    const el = editorRef?.current;
-    if (el) setPos(dockPosFor("breath_idle", el.getBoundingClientRect()));
-    else setPos(cornerPos());
+    freezeWalk();
+    const r = editorRect();
+    dispatch({ type: "menu", now: Date.now(), action: "dock" });
+    place(r ? dockBox(r) : cornerBox(), 600);
+    setBehaviorTick((t) => t + 1);
   };
   const goCorner = () => {
     setMenuOpen(false);
-    setMode("corner");
-    setStance("hide_corner");
-    setPos(cornerPos());
-    window.setTimeout(() => setStance("breath_idle"), 900);
+    freezeWalk();
+    dispatch({ type: "menu", now: Date.now(), action: "corner" });
+    place(cornerBox(), 600);
   };
   const hide = () => {
     setMenuOpen(false);
     setDeskPetEnabled(false);
   };
+  const menuAct = (action: "feed" | "play" | "poseCycle" | "headpat") => {
+    setMenuOpen(false);
+    if (action === "feed" || action === "play") freezeWalk();
+    dispatch({ type: "menu", now: Date.now(), action });
+  };
+  const menuPeekUnder = () => {
+    setMenuOpen(false);
+    freezeWalk();
+    const now = Date.now();
+    const r = editorRect();
+    const vp = viewport();
+    if (manifest && r && canPeekUnderAt(manifest, scale, r.bottom, vp)) {
+      const x = r.left + r.width / 2;
+      frameOffset.current = { x: x - r.left, y: 0 };
+      place(peekUnderBox(r, x), 480);
+      dispatch({ type: "menu", now, action: "goZone", zone: "peekUnder" });
+      return;
+    }
+    dispatch({ type: "menu", now, action: "goZone", zone: stateRef.current.placement });
+  };
+  const menuPerchSide = () => {
+    setMenuOpen(false);
+    freezeWalk();
+    const now = Date.now();
+    const r = editorRect();
+    const vp = viewport();
+    const b = boxRef.current;
+    if (r && manifest) {
+      const footY = b
+        ? anchorOf(metricsOf("perch_side"), scale, b).y
+        : r.top + r.height / 2;
+      const mid = b ? b.left + metricsOf("idle").w * scale / 2 : r.left;
+      const preferLeft = mid < (r.left + r.right) / 2;
+      const sides: Array<"perchSideLeft" | "perchSideRight"> = preferLeft
+        ? ["perchSideLeft", "perchSideRight"]
+        : ["perchSideRight", "perchSideLeft"];
+      for (const side of sides) {
+        const edgeX = side === "perchSideLeft" ? r.left : r.right;
+        if (!canPerchSideAt(side, manifest, scale, edgeX, vp)) continue;
+        frameOffset.current = {
+          x: side === "perchSideLeft" ? 0 : r.width,
+          y: footY - r.top,
+        };
+        place(perchSideBox(side, r, footY), 480);
+        dispatch({ type: "menu", now, action: "goZone", zone: side });
+        return;
+      }
+    }
+    dispatch({ type: "menu", now, action: "goZone", zone: stateRef.current.placement });
+  };
 
   useEffect(
     () => () => {
-      if (lineTimer.current) window.clearTimeout(lineTimer.current);
-      if (blinkTimer.current) window.clearTimeout(blinkTimer.current);
-      if (behaviorTimer.current) window.clearTimeout(behaviorTimer.current);
+      clearWalkTimers();
       if (clickTimer.current) window.clearTimeout(clickTimer.current);
-      if (moveTimer.current) window.clearTimeout(moveTimer.current);
-      if (sleepTimer.current) window.clearTimeout(sleepTimer.current);
-      segTimers.current.forEach((t) => window.clearTimeout(t));
     },
     []
   );
 
-  if (!enabled) return null;
+  if (!enabled || manifest === undefined || !box) return null;
 
-  // 朝向：walk 朝左镜像；edge-left 探头朝右、edge-right 探头朝左（探回屏幕）
-  const flip =
-    stance === "walk_side_r"
-      ? walkDir
-      : mode === "edge-left"
-        ? 1
-        : mode === "edge-right"
-          ? -1
-          : 1;
-  const animClass = placeholderAnim(stance);
+  const visual = petVisual(state);
+  const met = metricsOf(visual.body, walkDir);
+  const w = met.w * scale;
+  const h = met.h * scale;
+  const headMark = met.emote.above_right[1];
+  const headY = ((visual.upsideDown ? met.h - headMark : headMark) + met.emote.size / 2) * scale;
+  const isWalking = visual.body === "walk";
+  const popAlign =
+    box.left + w / 2 > window.innerWidth / 2 ? { right: 0 } : { left: 0 };
 
   return (
     <div
+      ref={rootRef}
       className={`${styles.pet} ${dragging ? styles.dragging : ""}`}
       style={{
-        left: pos.x,
-        top: pos.y,
-        width: showW,
+        left: box.left,
+        top: box.top,
         transitionDuration: `${moveMs}ms, ${moveMs}ms`,
+        transitionTimingFunction: isWalking ? "linear" : undefined,
       }}
-      data-mode={mode}
-      data-stance={stance}
+      data-body={state.body}
+      data-placement={state.placement}
       data-testid="q-pet"
     >
-      {line && (
-        <div className={styles.bubble} role="status" aria-live="polite">
-          {line}
+      {bubbleText && (
+        <div
+          className={styles.bubble}
+          style={{ bottom: h - headY + 4, ...popAlign }}
+          role="status"
+          aria-live="polite"
+        >
+          {bubbleText}
         </div>
       )}
       <div
         className={styles.body}
+        style={{ width: w, height: h }}
+        tabIndex={0}
+        role="button"
+        aria-label="桌宠：Enter 互动，Shift+F10 打开菜单"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onDoubleClick={onDoubleClick}
+        onKeyDown={onKeyDown}
         onContextMenu={(e) => {
           e.preventDefault();
-          bumpPetActivity();
           setMenuOpen((v) => !v);
         }}
         title="点击互动 · 双击摸头 · 拖到框边/屏幕边缘 · 右键菜单"
       >
-        {framesReady ? (
-          <img
-            key={`${stance}-${frameIdx}`}
-            className={styles.frame}
-            style={{ transform: `scaleX(${flip})` }}
-            src={petFrameUrl(spec, frameIdx)}
-            alt=""
-            draggable={false}
-            onError={() => markFrameResult(stance, false)}
-            onLoad={() => markFrameResult(stance, true)}
+        {manifest ? (
+          <PetSprite
+            manifest={manifest}
+            visual={visual}
+            scale={scale}
+            walkDir={walkDir}
+            talking={state.talking || bubbleTalk}
+            emoteKey={state.reaction?.until ?? 0}
+            reducedMotion={state.reducedMotion}
+            dragSpeedRef={dragSpeed}
           />
         ) : (
-          <div className={animClass} style={{ transform: `scaleX(${flip})` }}>
-            <PetPlaceholder mood={mood} eyeX={eyePos.x} eyeY={eyePos.y} />
-          </div>
+          <PetPlaceholder mood={PLACEHOLDER_MOOD[state.mood]} />
         )}
       </div>
       {menuOpen && (
         <div
           className={styles.menu}
+          style={{ bottom: h - headY + 6, ...popAlign }}
           onPointerDown={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.key === "Escape" && setMenuOpen(false)}
         >
           <button type="button" onClick={dockHome}>
             回到编辑器
           </button>
           <button type="button" onClick={goCorner}>
             缩到角落
+          </button>
+          <button type="button" onClick={() => menuAct("feed")}>
+            喂食
+          </button>
+          <button type="button" onClick={() => menuAct("play")}>
+            玩耍
+          </button>
+          <button type="button" onClick={() => menuAct("poseCycle")}>
+            换个姿势
+          </button>
+          <button type="button" onClick={menuPeekUnder}>
+            去框下探头
+          </button>
+          <button type="button" onClick={menuPerchSide}>
+            靠到框边
+          </button>
+          <button type="button" onClick={() => menuAct("headpat")}>
+            摸摸头
           </button>
           <button type="button" onClick={hide}>
             隐藏桌宠
@@ -714,31 +988,4 @@ export function QPet({ editorRef, cheerSignal }: Props) {
       )}
     </div>
   );
-}
-
-/** 占位模式下的动作动画 class（无美术帧时也能看出"额外动画"） */
-function placeholderAnim(stance: PetActionId): string {
-  switch (stance) {
-    case "react_fluster":
-      return styles.petShake;
-    case "react_cheer":
-      return styles.petJump;
-    case "fall_asleep":
-      return styles.petNod;
-    case "walk_side_r":
-      return styles.petBob;
-    case "peek_over":
-    case "peek_side_r":
-    case "peek_under":
-      return styles.petLean;
-    case "read_over_shoulder":
-      return styles.petLean;
-    default:
-      return "";
-  }
-}
-
-function isLateNight(): boolean {
-  const h = new Date().getHours();
-  return h >= 23 || h < 5;
 }

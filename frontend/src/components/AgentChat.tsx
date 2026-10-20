@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { emitPetApp } from "../lib/petBridge";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   AGENT_SECTIONS,
@@ -1094,6 +1095,8 @@ export function AgentChat({
           : "编辑正在检索设定 / 读当前章…"
     );
     setBusy(true);
+    emitPetApp("agent:thinking");
+    let petFailed = false;
     setGateMarkHints([]);
     setGateAcceptCandidates([]);
     setCritiquePayload(null);
@@ -1409,6 +1412,7 @@ export function AgentChat({
         }
       }
       const finalMessages = [...opts.nextMessages, assistantMsg];
+      emitPetApp("agent:streaming");
       setMessages(finalMessages);
       track(EVENTS.agentTurnDone, {
         capability: opts.turnCapability || "chat",
@@ -1436,12 +1440,15 @@ export function AgentChat({
         return;
       }
       const msg = e instanceof Error ? e.message : "请求失败";
+      petFailed = true;
+      emitPetApp("agent:error");
       setError(msg);
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: `出错了：${msg}` },
       ]);
     } finally {
+      if (!petFailed) emitPetApp("agent:done");
       if (idleTimer !== undefined) window.clearTimeout(idleTimer);
       setBusy(false);
       setLiveStream(null);
@@ -1899,6 +1906,9 @@ export function AgentChat({
     messagesRef.current = withUser;
     setError("");
     setBusy(true);
+    emitPetApp("agent:thinking");
+    let petFailed = false;
+    let petTalking = false;
     setThinking(`正在按${opLabel[resolvedOp]}条件写…`);
     setSoftTimeoutHint(null);
     setLiveStream({ events: [], text: "" });
@@ -1930,6 +1940,10 @@ export function AgentChat({
       }) => {
         if (evt.type === "token" && evt.delta) {
           live += evt.delta;
+          if (!petTalking) {
+            petTalking = true;
+            emitPetApp("agent:streaming");
+          }
           setThinking(`正在写…（${live.length} 字）`);
           setLiveStream({ events: [], text: live });
         } else if (evt.type === "soft_timeout") {
@@ -2090,12 +2104,15 @@ export function AgentChat({
         track(EVENTS.agentTurnCancel, { capability: "write" });
         return;
       }
+      petFailed = true;
+      emitPetApp("agent:error");
       setError(msg);
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: `出错了：${msg}` },
       ]);
     } finally {
+      if (!petFailed) emitPetApp("agent:done");
       setBusy(false);
       setThinking("");
       setSoftTimeoutHint(null);

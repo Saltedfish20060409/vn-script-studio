@@ -84,6 +84,10 @@ docs/*
 !docs/blind-ab.md
 !docs/deploy-compare.md
 
+# 桌宠美术源文件 / 原始生成图 / 后处理临时目录（运行时图集在 frontend/public/pet/ 入库）
+art-src/
+.pet-work/
+
 # react-bits 临时导出文件(不入库)
 _rb/
 

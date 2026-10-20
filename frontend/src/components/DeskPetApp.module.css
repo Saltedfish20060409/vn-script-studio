@@ -20,6 +20,31 @@
   font-size: 0.9rem;
 }
 
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.fieldLabel {
+  color: var(--ink-soft);
+}
+
+.select {
+  max-width: 16rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--ink-soft) 35%, transparent);
+  border-radius: 6px;
+  background: var(--panel, #fff);
+  color: inherit;
+  font: inherit;
+}
+
+.select:disabled {
+  opacity: 0.55;
+}
+
 .note {
   margin: 0;
   font-size: 0.8rem;

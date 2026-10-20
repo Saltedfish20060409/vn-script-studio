@@ -1,12 +1,8 @@
 .pet {
   position: fixed;
   z-index: 380;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.3rem;
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.22));
-  /* 缓慢移动：wander 换位时平滑过渡（拖拽时禁用） */
+  /* 换位时平滑过渡；时长由组件按距离给（拖拽、瞬移时为 0） */
   transition:
     left 1.5s cubic-bezier(0.22, 1, 0.36, 1),
     top 1.5s cubic-bezier(0.22, 1, 0.36, 1);
@@ -17,105 +13,26 @@
 }
 
 .body {
+  position: relative;
   cursor: grab;
   touch-action: none;
   user-select: none;
   line-height: 0;
+  border-radius: 12px;
 }
 
 .body:active {
   cursor: grabbing;
 }
 
-.frame {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-/* ---- 占位模式的动作动画（美术帧未交付时也能看出"额外动画"） ---- */
-.petShake {
-  animation: petShake 0.5s ease-in-out 2;
-}
-
-.petJump {
-  animation: petJump 0.55s cubic-bezier(0.22, 1, 0.36, 1) 1;
-}
-
-.petNod {
-  animation: petNod 1.6s ease-in-out infinite;
-}
-
-.petBob {
-  animation: petBob 0.5s ease-in-out infinite;
-}
-
-.petLean {
-  animation: petLean 0.9s ease-in-out infinite;
-}
-
-@keyframes petShake {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  25% {
-    transform: translateX(-6px) rotate(-3deg);
-  }
-  75% {
-    transform: translateX(6px) rotate(3deg);
-  }
-}
-
-@keyframes petJump {
-  0% {
-    transform: translateY(0);
-  }
-  35% {
-    transform: translateY(-22px) scale(1.05);
-  }
-  70% {
-    transform: translateY(2px);
-  }
-  100% {
-    transform: translateY(0);
-  }
-}
-
-@keyframes petNod {
-  0%,
-  100% {
-    transform: rotate(0deg);
-  }
-  40% {
-    transform: rotate(-6deg) translateY(3px);
-  }
-  70% {
-    transform: rotate(4deg) translateY(0);
-  }
-}
-
-@keyframes petBob {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-4px);
-  }
-}
-
-@keyframes petLean {
-  0%,
-  100% {
-    transform: rotate(0deg);
-  }
-  50% {
-    transform: rotate(-7deg) translateY(2px);
-  }
+.body:focus-visible {
+  outline: 2px solid var(--accent, #6b8afd);
+  outline-offset: 2px;
 }
 
 .bubble {
+  position: absolute;
+  width: max-content;
   max-width: 230px;
   background: var(--panel-bg, #f6f8fc);
   border: 2px solid var(--line);
@@ -126,12 +43,11 @@
   color: var(--ink);
   box-shadow: var(--shadow-md, 0 8px 20px rgba(0, 0, 0, 0.18));
   animation: pop 180ms ease-out;
+  pointer-events: none;
 }
 
 .menu {
   position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
   display: flex;
   flex-direction: column;
   gap: 0.15rem;

@@ -10,6 +10,7 @@ import {
   type ComponentProps,
 } from "react";
 import { useNavigate } from "react-router-dom";
+import { emitPetApp } from "../lib/petBridge";
 import {
   ApiError,
   archiveChapterMemory,
@@ -1526,6 +1527,7 @@ export function StudioApp() {
       }
       return true;
     } catch (e) {
+      emitPetApp("save:error");
       setSaveBadge("error");
       if (e instanceof ApiError && e.status === 423) {
         // Chapter locked by another member — scoped save rejected.
@@ -2035,13 +2037,16 @@ export function StudioApp() {
         setRpyFindings(findings);
         downloadText(`${latest.title || "script"}.rpy`, text, "text/plain;charset=utf-8");
         trackOncePerUser(EVENTS.exportDone, { kind: "rpy" });
+        emitPetApp("export:ok");
         setStatus(`已下载 .rpy。${summarizeRpyFindings(findings).headline}`);
       } else {
         const blob = await exportDocx(latest.id);
         downloadBlob(`${latest.title || "script"}.docx`, blob);
         trackOncePerUser(EVENTS.exportDone, { kind: "docx" });
+        emitPetApp("export:ok");
       }
     } catch (e) {
+      emitPetApp("export:error");
       setError(e instanceof Error ? e.message : "导出失败");
     }
   }
@@ -2062,8 +2067,12 @@ export function StudioApp() {
       setRpyStale(false);
       const findings = await loadRpyFindings(saved.id);
       setRpyFindings(findings);
+      const problem = findings?.find((f) => f.severity === "error");
+      if (problem) emitPetApp("compile:error", problem.line >= 1 ? problem.line : undefined);
+      else emitPetApp("compile:ok");
       setStatus(`已根据当前剧本生成 .rpy，可预览后下载。${summarizeRpyFindings(findings).headline}`);
     } catch (e) {
+      emitPetApp("compile:error");
       setError(e instanceof Error ? e.message : "生成失败");
       setStatus("");
     }
@@ -2844,10 +2853,12 @@ export function StudioApp() {
   }, []);
 
   async function exitFocusSession() {
+    const wasFocused = focusMode;
     setFocusMode(false);
     saveFocusMode(false);
     setFocusPrefs(null);
     setFocusSetupOpen(false);
+    if (wasFocused) emitPetApp("focus:exit");
     try {
       await exitFullscreen();
     } catch {
@@ -2893,6 +2904,7 @@ export function StudioApp() {
         setFocusMode(false);
         saveFocusMode(false);
         setFocusPrefs(null);
+        emitPetApp("focus:exit");
       }
     }
     document.addEventListener("fullscreenchange", onFsChange);

@@ -1,0 +1,13 @@
+{
+  "name": "@vnss/desk-pet",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Standalone desk-pet product seed (companion / mobile). Studio keeps the writing-side pet.",
+  "type": "module",
+  "exports": {
+    "./host": "./src/host/PetHost.ts"
+  },
+  "scripts": {
+    "sync": "pwsh -File ./sync-from-studio.ps1"
+  }
+}
