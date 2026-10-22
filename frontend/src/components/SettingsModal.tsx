@@ -85,6 +85,7 @@ import {
   subscribeMusicBar,
 } from "../lib/musicBar";
 import styles from "./SettingsModal.module.css";
+import { AccountPane } from "./AccountPane";
 
 type Props = {
   open: boolean;
@@ -96,9 +97,13 @@ type Props = {
   onViewChange?: (v: "studio" | "desktop") => void;
   /** 嵌进桌面窗口里用：不画遮罩、不显示关闭按钮（窗口自己有） */
   embedded?: boolean;
+  /** 「账号」页签：退出登录（StudioApp 提供，会先落盘未保存的稿件）。 */
+  onLogout?: () => void;
+  /** 「账号」页签：删号成功后的收尾（清登录态 + 回登录页，不落盘）。 */
+  onAccountDeleted?: () => void;
 };
 
-type Pane = "theme" | "bg" | "usage" | "llm";
+type Pane = "theme" | "bg" | "usage" | "llm" | "account";
 
 /** 各厂商「申请 API Key」控制台地址（预设里选了哪家就显示哪家的链接）。 */
 const VENDOR_KEY_URL: Record<string, string> = {
@@ -1009,7 +1014,17 @@ function BgPanPreview({  image,
   );
 }
 
-export function SettingsModal({ open, onClose, settings, onChange, view, onViewChange, embedded = false }: Props) {
+export function SettingsModal({
+  open,
+  onClose,
+  settings,
+  onChange,
+  view,
+  onViewChange,
+  embedded = false,
+  onLogout,
+  onAccountDeleted,
+}: Props) {
   const [pane, setPane] = useState<Pane>("theme");
   /** 背景图导入的结果提示（自动压缩 / 压完仍过大 / 解码失败）。 */
   const [bgNotice, setBgNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(
@@ -1127,6 +1142,7 @@ export function SettingsModal({ open, onClose, settings, onChange, view, onViewC
                 ["bg", "02", t("settings.wallpaper")],
                 ["usage", "03", t("settings.usage")],
                 ["llm", "04", t("settings.llm")],
+                ["account", "05", t("settings.account")],
               ] as const
             ).map(([id, idx, label]) => (
               <button
@@ -1440,6 +1456,9 @@ export function SettingsModal({ open, onClose, settings, onChange, view, onViewC
             )}
             {pane === "usage" && <UsagePane />}
             {pane === "llm" && <LlmPane />}
+            {pane === "account" && (
+              <AccountPane onLogout={onLogout} onAccountDeleted={onAccountDeleted} />
+            )}
           </div>
         </div>
       </div>

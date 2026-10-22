@@ -14,6 +14,7 @@ from app.core.rate_limit import check_rate
 from app.db import get_db
 from app.models import User, UserSettings
 from app.schemas import (
+    DeleteAccountIn,
     EmailTokenIn,
     ForgotPasswordIn,
     LoginIn,
@@ -539,3 +540,74 @@ async def me(
 
     is_admin = await ensure_admin_access(user, settings, db)
     return _user_out(user, is_admin=is_admin)
+
+
+@router.delete("/me", response_model=OkMessageOut)
+async def delete_me(
+    body: DeleteAccountIn,
+    request: Request,
+    response: Response,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """永久删除当前账号及其名下全部数据（不可恢复）。
+
+    为什么要有这条（而不是继续让用户发邮件找管理员）：账号删除权是隐私政策里
+    已经写了的东西，也是国内《个人信息保护法》与应用商店审核对带账号体系产品的
+    基本要求。之前只有「请通过使用指南里的联系方式联系我们」，用户既找不到入口，
+    我们也要手工跑 SQL —— 双方都在为一件半小时的工程问题付人力成本。
+
+    三重确认，缺一不可：
+    - `confirm` 必须与自己的用户名完全一致（防手滑、防默认焦点回车）；
+    - 密码必须验过（防"偷来的会话"顺手删号）；
+    - 最后一位管理员不能删（否则站点失去唯一管理入口，同 revoke-admin 的判定）。
+
+    删除范围与级联行为见 `app/services/account_delete.py` 的模块 docstring。
+    删号后立即清掉 refresh Cookie；access token 在下一次请求时因 `sub` 查不到人
+    直接 401，不需要额外的黑名单。
+    """
+    if not check_rate(
+        user.id,
+        "delete_account",
+        limit=5,
+        enabled=settings.rate_limit_enabled,
+    ):
+        raise HTTPException(status_code=429, detail="操作过于频繁，请稍后再试")
+    if (body.confirm or "").strip() != user.username:
+        raise HTTPException(
+            status_code=400, detail="请把用户名完整输入一遍以确认删除（大小写需一致）"
+        )
+    if not verify_password(body.password, user.password_hash):
+        logger.warning(
+            "security account_delete_failed ip=%s user=%s reason=bad_password",
+            _client_ip(request),
+            user.username,
+        )
+        raise HTTPException(status_code=403, detail="密码不正确，账号未删除")
+
+    if user.is_admin:
+        from app.services.admin_access import count_db_admins
+
+        if await count_db_admins(db) <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="你是最后一位管理员，请先指定另一位管理员再删除账号",
+            )
+
+    from app.services.account_delete import delete_account
+
+    username = user.username
+    user_id = user.id
+    await delete_account(db, user)
+    logger.info(
+        "security account_deleted ip=%s user=%s id=%s",
+        _client_ip(request),
+        username,
+        user_id,
+    )
+    _clear_refresh_cookie(response, settings)
+    return OkMessageOut(
+        ok=True,
+        message="账号及名下数据已删除。同用户名与邮箱可以重新注册，但旧数据不会恢复。",
+    )

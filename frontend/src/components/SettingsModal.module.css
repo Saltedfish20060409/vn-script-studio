@@ -274,6 +274,12 @@
   line-height: 1.5;
 }
 
+/* 账号页签的小标题（退出登录 / 删除账号） */
+.form h4 {
+  margin: 0.15rem 0 0;
+  font-size: 0.9rem;
+}
+
 /* 能力提醒（如"该档位不支持 JSON 模式"）：比普通说明更需要注意，但不至于像报错 */
 .warnNote {
   margin: 0;
@@ -424,6 +430,46 @@
   margin: 0;
   font-size: 0.8rem;
   color: var(--ink-soft);
+}
+
+/* 危险操作区（删号）：视觉上必须和"保存 / 刷新"这类普通按钮明确分开，
+ * 靠边框和颜色提醒这里点下去是不可恢复的。 */
+.dangerBox {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 0.7rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--danger, #e11d48) 45%, var(--line));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--danger, #e11d48) 6%, transparent);
+}
+
+.dangerBox h4 {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--danger, #e11d48);
+}
+
+.danger {
+  align-self: flex-start;
+  padding: 0.42rem 0.9rem;
+  border: 1px solid var(--danger, #e11d48);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--danger, #e11d48);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.danger:hover {
+  background: color-mix(in srgb, var(--danger, #e11d48) 12%, transparent);
+}
+
+.danger[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 @media (max-width: 640px) {

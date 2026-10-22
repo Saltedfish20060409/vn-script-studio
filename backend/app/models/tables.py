@@ -77,7 +77,11 @@ class Project(Base):
     __tablename__ = "projects"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    owner_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
+    # CASCADE：删号（DELETE /auth/me）要能靠一条 `DELETE FROM users` 把名下项目
+    # 连同子表一起带走；项目自己的子表在 0012_project_cascade 里都已级联。
+    owner_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
     title: Mapped[str] = mapped_column(String(255), default="未命名剧本")
     genre: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     logline: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -143,7 +147,7 @@ class UserSettings(Base):
     __tablename__ = "user_settings"
 
     user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id"), primary_key=True
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     theme: Mapped[str] = mapped_column(String(16), default="day")
     font_scale: Mapped[float] = mapped_column(Float, default=1.0)
@@ -208,7 +212,12 @@ class ChapterMemorySlice(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     archive_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("chapter_memory_archives.id"), index=True
+        String(36),
+        # CASCADE：删项目（或删号带走项目）时归档连同切片一起走。**之前这里没有
+        # 级联**，所以带存档的项目删除会因切片外键直接失败——0012 只补了指向
+        # projects.id 的那一层，漏了 archive → slice 这一层（0032 补上）。
+        ForeignKey("chapter_memory_archives.id", ondelete="CASCADE"),
+        index=True,
     )
     # continuity | context_snapshot | notes
     kind: Mapped[str] = mapped_column(String(32), default="continuity")

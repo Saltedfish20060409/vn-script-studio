@@ -49,8 +49,15 @@ export default function LegalPage() {
             </Block>
             <Block title="4. 数据保存与删除">
               <P>
-                删除账号会同时删除你名下的项目与对话记录，操作不可恢复。你可以随时联系我们
-                要求导出或清除数据。
+                你可以随时自行删除账号：登录后进入「设置 → 账号 → 删除账号」，输入登录密码确认即可。
+                删除会同时清除你名下的全部项目、章节、设定、AI 对话记录与批注，<strong>操作不可恢复</strong>；
+                你作为协作者加入的他人项目不会被删除，你只会被移出该项目的成员列表。
+              </P>
+              <P>
+                只想换台设备接着写、或暂时不想再登录，请用「退出登录」，不要删除账号——退出登录不会动任何数据。
+              </P>
+              <P>
+                也可以联系我们要求导出或代为清除数据（见下方「联系我们」），我们会核对账号归属后处理。
               </P>
             </Block>
             <Block title="5. 第三方服务">
@@ -60,7 +67,19 @@ export default function LegalPage() {
               </P>
             </Block>
             <Block title="6. 联系我们">
-              <P>如有隐私问题，可通过站点内「使用指南」中登记的联系方式与我们联系。</P>
+              <P>
+                隐私问题、数据导出或删号协助，可通过以下任一渠道联系我们：作者 QQ
+                <strong> 464313944</strong>（备注「VNSS」）、邮件
+                <strong> 464313944@qq.com</strong>，或在
+                <a
+                  href="https://github.com/Saltedfish20060409/vn-script-studio/issues"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  项目 Issue 区
+                </a>
+                留言。
+              </P>
             </Block>
           </>
         ) : (

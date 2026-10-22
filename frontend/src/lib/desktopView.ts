@@ -170,7 +170,7 @@ export function shouldPlayBoot(opts: {
   }
 }
 
-/** 注销时重新武装开机画面：让"注销 → 重新开机"这件事成立。 */
+/** 退出登录时重新武装开机画面：让"退出登录 → 重新开机"这件事成立。 */
 export function rearmBoot(storage?: Pick<Storage, "removeItem"> | null): void {
   let store = storage ?? null;
   if (!storage) {

@@ -115,3 +115,23 @@ export function resetPassword(token: string, password: string): Promise<OkMessag
     timeoutKind: "auth",
   });
 }
+
+/**
+ * 永久删除当前账号及名下全部数据（不可恢复）。
+ *
+ * 不要与 `logout()` 混淆：logout 只是清掉本机登录态，账号与项目都在。
+ * 这里需要密码 + 用户名双重确认（后端也会各自校验一次）。
+ */
+export function deleteAccount(
+  password: string,
+  confirm: string
+): Promise<OkMessageOut> {
+  return apiFetch<OkMessageOut>("/auth/me", {
+    method: "DELETE",
+    body: JSON.stringify({ password, confirm }),
+    // 删号失败时不要顺手把人踢去登录页：错误信息要留在对话框里给人看。
+    skipAuthRedirect: true,
+    timeoutMs: TIMEOUTS.auth,
+    timeoutKind: "auth",
+  });
+}

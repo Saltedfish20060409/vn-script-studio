@@ -122,6 +122,51 @@ def test_ban_blocks_login_unban_restores():
     _run(_scenario())
 
 
+def test_ban_takes_public_share_offline():
+    """封禁必须让该账号的公开分享页下线——那是唯一不需要登录的内容出口。
+
+    背景：`shares.py` 曾经完全不看作者的 `disabled_at`，于是账号被封之后作品
+    还挂在公网上、读者照常能打开试读。处置只落在登录态，「违规内容可能被删除」
+    这句条款就成了空话。解封后链接应当恢复（不是删除，只是挡住访问）。
+    """
+
+    async def _scenario():
+        async with db_gate.make_client(APP) as client:
+            await _ensure_is_admin_column()
+            admin_headers = await _make_admin(client, "admin_share1")
+            author = await db_gate.register_headers(client, "author_share1")
+
+            r = await client.post(
+                "/api/v1/projects", json={"title": "待下线的作品"}, headers=author
+            )
+            assert r.status_code == 200, r.text
+            pid = r.json()["id"]
+            r = await client.post(f"/api/v1/projects/{pid}/shares", headers=author)
+            assert r.status_code == 200, r.text
+            token = r.json()["token"]
+
+            r = await client.get(f"/api/v1/shares/{token}")
+            assert r.status_code == 200, r.text
+
+            r = await client.post(
+                "/api/v1/admin/users/author_share1/ban", headers=admin_headers
+            )
+            assert r.status_code == 200, r.text
+            r = await client.get(f"/api/v1/shares/{token}")
+            assert r.status_code == 404, r.text
+            # 与「链接不存在」同一句文案：公开页不该告诉读者这位作者被封了
+            assert r.json()["detail"] == "分享不存在或已失效"
+
+            r = await client.post(
+                "/api/v1/admin/users/author_share1/unban", headers=admin_headers
+            )
+            assert r.status_code == 200, r.text
+            r = await client.get(f"/api/v1/shares/{token}")
+            assert r.status_code == 200, r.text
+
+    _run(_scenario())
+
+
 def test_email_diag_reports_unverified_account():
     """「收不到验证邮件」排查接口：只读，管理员可用，普通用户 403。
 

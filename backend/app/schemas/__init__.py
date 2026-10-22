@@ -66,6 +66,14 @@ class OkMessageOut(BaseModel):
     message: str = ""
 
 
+class DeleteAccountIn(BaseModel):
+    """删号确认：密码证明是本人，用户名确认防手滑。"""
+
+    password: str = Field(min_length=1, max_length=72)
+    # 必须原样敲对用户名（不用「确定/取消」的默认焦点，避免误触回车就删号）
+    confirm: str = Field(min_length=1, max_length=64)
+
+
 class ProjectSummary(BaseModel):
     id: str
     title: str

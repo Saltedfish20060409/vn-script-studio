@@ -2947,6 +2947,19 @@ export function StudioApp() {
     })();
   }
 
+  /**
+   * 删号成功后的收尾。
+   *
+   * 刻意不复用 `handleLogout`：它会 `flushPendingSave()` 把内存里的稿子再存一次，
+   * 而此刻服务端的项目已经随账号一起删掉了 —— 那次保存只会换回一串 404，
+   * 用户看到的是"删成功了却弹红字"。这里直接清登录态回登录页。
+   */
+  function handleAccountDeleted() {
+    setSettingsOpen(false);
+    logout();
+    navigate("/login", { replace: true });
+  }
+
   if (bootLoading) {
     return <StudioBootScreen stamp="LOAD" title="加载中" />;
   }
@@ -3297,6 +3310,8 @@ export function StudioApp() {
             onClose={() => {}}
             settings={settings}
             onChange={setSettings}
+            onLogout={handleLogout}
+            onAccountDeleted={handleAccountDeleted}
             view={view}
             onViewChange={(next) => {
               setView(next);
@@ -3359,7 +3374,7 @@ export function StudioApp() {
           openAppRequest={desktopAppOpen}
           onSwitchToStudioView={() => enterStudio(null)}
           onLogout={() => {
-            // 注销回登录页，并重新武装开机画面（"重启"的感觉）
+            // 退出登录回登录页，并重新武装开机画面（"重启"的感觉）
             rearmBoot();
             handleLogout();
           }}
@@ -4198,6 +4213,8 @@ export function StudioApp() {
             onClose={() => setSettingsOpen(false)}
             settings={settings}
             onChange={setSettings}
+            onLogout={handleLogout}
+            onAccountDeleted={handleAccountDeleted}
             view={view}
             onViewChange={(next) => {
               setView(next);

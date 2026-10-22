@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.agent_context import chapter_plain
 from app.db import get_db
 from app.domain.types import VnProject
-from app.models import Share
+from app.models import Project, Share, User
 from app.schemas import ShareOut
 
 router = APIRouter(prefix="/shares", tags=["shares"])
@@ -75,9 +75,21 @@ def _strip_chapter_bodies(data: Dict[str, Any]) -> Dict[str, Any]:
 
 @router.get("/{token}", response_model=ShareOut)
 async def get_share(token: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Share).where(Share.token == token))
-    share = result.scalar_one_or_none()
-    if share is None:
+    # 作者的停用状态必须在这一层就拦住：分享页是**唯一不需要登录**的内容出口，
+    # 之前管不到，于是账号被封之后作品还挂在公网上照常可读——这和服务条款里写的
+    # 「违规内容可能被删除」是相互矛盾的（处置只落在登录态，公开内容毫发无损）。
+    result = await db.execute(
+        select(Share, User.disabled_at)
+        .join(Project, Project.id == Share.project_id)
+        .join(User, User.id == Project.owner_id)
+        .where(Share.token == token)
+    )
+    row = result.first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="分享不存在或已失效")
+    share, owner_disabled_at = row
+    if owner_disabled_at is not None:
+        # 刻意与「不存在」同一条 404 文案：公开页不该告诉读者这位作者是被封了。
         raise HTTPException(status_code=404, detail="分享不存在或已失效")
     if share.expires_at is not None:
         exp = share.expires_at

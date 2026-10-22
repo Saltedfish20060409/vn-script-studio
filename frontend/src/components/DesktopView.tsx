@@ -49,7 +49,7 @@ export type DesktopApp = {
   /** 窗口内容；不返回就不开窗（例如只做动作的项） */
   render?: () => ReactNode;
   defaultRect?: WinRect;
-  /** 打开时先执行的动作（例如公告走弹窗、注销走登出） */
+  /** 打开时先执行的动作（例如公告走弹窗、退出登录走登出） */
   run?: () => void;
 };
 
@@ -101,7 +101,7 @@ type Props = {
   onResume?: () => void;
   /** 切换回工作台视图（非桌面形态） */
   onSwitchToStudioView: () => void;
-  /** 注销：回到登录页（会重新走过开机画面） */
+  /** 退出登录：回到登录页（会重新走过开机画面），账号与项目都保留 */
   onLogout: () => void;
 };
 
@@ -753,7 +753,7 @@ export function DesktopView({
                 onLogout();
               }}
             >
-              ⏏️ 注销（回到开机界面）
+              ⏏️ 退出登录（回到开机界面）
             </button>
           </div>
         ) : null}

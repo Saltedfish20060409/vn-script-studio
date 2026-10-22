@@ -675,9 +675,9 @@ export function StudioRibbon({
             type="button"
             className={styles.ghost}
             onClick={onLogout}
-            title="退出登录"
+            title="退出登录（账号与项目仍保留，下次登录继续）"
           >
-            退出
+            退出登录
           </button>
         </div>
 
